@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { CountdownHero } from '../components/CountdownHero';
+---
+
+<BaseLayout
+  title="ComCamp #25 // ค่ายวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ (16 พ.ย. 2026)"
+  description="นับถอยหลังสู่การเปิดรับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ วันที่ 16 พฤศจิกายน 2026 เวลา 00:00:00 น."
+>
+  <!-- 100dvh Single-Screen Futuristic Countdown Layout from User Sketch -->
+  <CountdownHero client:load />
+</BaseLayout>

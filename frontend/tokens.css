@@ -1,0 +1,59 @@
+/* Hallmark · Design Tokens · Cobalt-Custom (Porcelain / Crayola Blue / Bright Fern) */
+:root {
+  /* Surface & Canvas (85% paper feel) */
+  --bg-canvas: #FFFFFC;
+  --bg-surface: #F2F2EE;
+  --bg-glass: rgba(255, 255, 252, 0.72);
+  --bg-glass-card: rgba(242, 242, 238, 0.82);
+
+  /* Brand Accents (10% Tech / 5% Primary CTA) */
+  --color-tech: #337AFF;
+  --color-tech-muted: rgba(51, 122, 255, 0.12);
+  --color-cta: #03B800;
+  --color-cta-ink: #0A0E0A;
+  --color-cta-hover: #029900;
+  --color-danger: #E02424;
+  --color-warning: #FFD269;
+
+  /* Ink & Typography */
+  --color-ink: #111215;
+  --color-ink-muted: #5A5D66;
+  --color-border: #D8D8D2;
+  --color-border-dark: #B0B0A8;
+  --grid-line: rgba(216, 216, 210, 0.35);
+  --grid-dot: rgba(17, 18, 21, 0.1);
+
+  /* Typography Stacks */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-clock: 'Momo Trust Display', sans-serif;
+
+  /* Physics & Durations */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-smooth: 400ms;
+}
+
+html.dark,
+html[data-theme="dark"] {
+  /* Industrial Carbon (Dark Mode) */
+  --bg-canvas: #090A0F;
+  --bg-surface: #12141C;
+  --bg-glass: rgba(9, 10, 15, 0.72);
+  --bg-glass-card: rgba(18, 20, 28, 0.85);
+
+  --color-tech: #337AFF;
+  --color-tech-muted: rgba(51, 122, 255, 0.22);
+  --color-cta: #03B800;
+  --color-cta-ink: #0A0E0A;
+  --color-cta-hover: #04D900;
+  --color-danger: #FF4D4D;
+  --color-warning: #FFD269;
+
+  --color-ink: #F4F4F6;
+  --color-ink-muted: #9496A1;
+  --color-border: #1E2230;
+  --color-border-dark: #2D3348;
+  --grid-line: rgba(30, 34, 48, 0.5);
+  --grid-dot: rgba(244, 244, 246, 0.1);
+}

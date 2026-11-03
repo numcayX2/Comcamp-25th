@@ -1,0 +1,83 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'ComCamp #25 // ค่ายวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้',
+  description = 'เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (16 พ.ย. 2026)',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="th" class="min-h-dvh w-full overflow-x-clip overflow-y-auto scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#FFFFFC" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Momo+Trust+Display&family=Kanit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    
+    {/* Anti-FOUC instant inline background style */}
+    <style is:inline>
+      html, body {
+        background-color: #FFFFFC;
+        margin: 0;
+        padding: 0;
+      }
+      html.dark, html.dark body,
+      html[data-theme="dark"], html[data-theme="dark"] body {
+        background-color: #06070A;
+      }
+    </style>
+
+    {/* Theme persistence & anti-flash script */}
+    <script is:inline>
+      (function() {
+        const savedTheme = localStorage.getItem('comcamp-theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+
+      // Unregister any stale legacy service workers on port 4321
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (var i = 0; i < names.length; i++) {
+            caches.delete(names[i]);
+          }
+        });
+      }
+    </script>
+    <ClientRouter />
+  </head>
+  <body class="min-h-dvh w-full overflow-x-clip overflow-y-auto bg-[var(--bg-canvas)] text-[var(--color-ink)] transition-colors duration-500 relative select-none scroll-smooth">
+    <slot />
+  </body>
+</html>
