@@ -1,7 +1,0 @@
-{
-  "target": "both",
-  "mode": "agent",
-  "git": {
-    "commitPolicy": "ask"
-  }
-}

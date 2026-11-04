@@ -11,3 +11,13 @@ dist/
 tmp/
 scratch/
 */scratch/
+
+# AI Agent & Initskill local workspace configurations
+.agents/
+*/.agents/
+.codex/
+*/.codex/
+.agent-skill-manager.json
+*/.agent-skill-manager.json
+AGENTS.md
+*/AGENTS.md
