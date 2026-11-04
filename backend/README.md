@@ -28,7 +28,7 @@ PUBLIC_API_URL=http://localhost:8000/api
 | หน้าจอใน Frontend | HTTP Method & Endpoint | วัตถุประสงค์ & หน้าที่ |
 |---|---|---|
 | **`/` (Countdown Hero)** | `GET /api/settings/public` | ซิงค์เวลา Server กับตัวนับถอยหลัง ป้องกัน Clock Tampering และเช็คว่าเปิดรับสมัครหรือยัง |
-| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ตรวจเลขบัตร 13 หลัก, เบอร์ 10 หลัก, และคุมโควตา 30 ที่นั่ง) |
+| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ตรวจเลขบัตร 13 หลัก, เบอร์ 10 หลัก; เปิดรับสมัครทุกคนในช่วงเวลาเพื่อรอคัดกรอง) |
 | **`/status` (ตรวจสถานะ)** | `GET /api/applications/status?q={query}` | ค้นหาใบสมัครด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทร, หรือรหัสใบสมัคร (`CC25-xxxxxx`) |
 | **`/status` (ยืนยันสิทธิ์)** | `POST /api/applications/:id/confirm` | กดยืนยันการเข้าร่วมค่าย (ทำได้เมื่อสถานะเป็น `PASSED` หรือ `CONFIRMED`) |
 | **`/status` (แนบสลิป)** | `POST /api/applications/:id/slip` | อัปโหลดรูปภาพสลิปโอนเงิน (จำกัด 5MB พร้อมระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
@@ -36,6 +36,8 @@ PUBLIC_API_URL=http://localhost:8000/api
 | **`/admin` (รายชื่อผู้สมัคร)** | `GET /api/admin/applications` | ดึงรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (`Bearer <token>`) |
 | **`/admin` (ปรับสถานะ)** | `PATCH /api/admin/applications/:id` | ประกาศผลผู้ผ่านการคัดเลือก เช่น ปรับเป็น `PASSED` หรือ `RESERVE` |
 | **`/admin` (ตรวจสลิป)** | `PATCH /api/admin/applications/:id/verify-slip` | พี่ค่ายกดอนุมัติสลิปโอนเงิน เพื่อเปลี่ยนสถานะเป็น `CONFIRMED` สมบูรณ์ |
+| **`/admin` (ดูการตั้งค่าค่าย)** | `GET /api/admin/settings` | ดึงข้อมูลกำหนดการ, โควตารับสมัคร (maxCapacity), ค่าค่าย และสถานะระบบ (`Bearer <token>`) |
+| **`/admin` (ปรับแก้โควตา/เวลา)** | `PATCH /api/admin/settings` | แก้ไขโควตาจำนวนรับ (ยืดหยุ่นตามผู้สมัครจริง ไม่ Hardcode), วันเปิด-ปิดรับสมัคร, วันประกาศผล (`Bearer <token>`) |
 | **Static Assets (ดูรูปสลิป)** | `GET /uploads/slips/{filename}` | หน้าบ้านสามารถดึงรูปภาพสลิปต้นฉบับขนาดเต็มมาแสดงผลให้พี่ค่ายดูด้วยตาเปล่าได้ |
 
 ---

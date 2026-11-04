@@ -108,12 +108,6 @@ func (s *ApplicantService) Submit(ctx context.Context, req ApplicationCreateRequ
 		if now.Before(settings.RegistrationOpenAt) || now.After(settings.RegistrationCloseAt) {
 			return nil, ErrRegistrationClosed
 		}
-
-		// Check Quota
-		activeCount, err := s.appRepo.CountActive(ctx)
-		if err == nil && settings.MaxCapacity > 0 && activeCount >= settings.MaxCapacity {
-			return nil, ErrQuotaExceeded
-		}
 	}
 
 	// Split full name into first and last name if possible

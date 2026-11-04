@@ -125,6 +125,8 @@ func main() {
 			admin.Get("/admin/applications", appHandler.AdminList)
 			admin.Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
 			admin.Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
+			admin.Get("/admin/settings", settingHandler.GetAdmin)
+			admin.Patch("/admin/settings", settingHandler.UpdateAdmin)
 		})
 	})
 

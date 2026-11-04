@@ -69,6 +69,8 @@ func setupTestApp(t *testing.T) http.Handler {
 			admin.Get("/admin/applications", appH.AdminList)
 			admin.Patch("/admin/applications/{id}", appH.AdminUpdateStatus)
 			admin.Patch("/admin/applications/{id}/verify-slip", payH.VerifySlip)
+			admin.Get("/admin/settings", setH.GetAdmin)
+			admin.Patch("/admin/settings", setH.UpdateAdmin)
 		})
 	})
 
@@ -343,6 +345,53 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 		if finalApp.SlipURL == nil || *finalApp.SlipURL == "" {
 			t.Errorf("expected non-empty slipURL")
+		}
+	})
+
+	// Step 14: Admin checks and updates dynamic camp settings
+	t.Run("14. GET and PATCH /api/admin/settings", func(t *testing.T) {
+		// 14.1 GET /api/admin/settings
+		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/settings", nil)
+		getReq.Header.Set("Authorization", "Bearer "+token)
+		getRec := httptest.NewRecorder()
+		app.ServeHTTP(getRec, getReq)
+
+		if getRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for GET /api/admin/settings, got %d", getRec.Code)
+		}
+
+		// 14.2 PATCH /api/admin/settings to update capacity from 30 to 50
+		updateBody := `{"maxCapacity": 50, "campName": "ComCamp #25 (Updated)"}`
+		patchReq := httptest.NewRequest(http.MethodPatch, "/api/admin/settings", bytes.NewReader([]byte(updateBody)))
+		patchReq.Header.Set("Authorization", "Bearer "+token)
+		patchReq.Header.Set("Content-Type", "application/json")
+		patchRec := httptest.NewRecorder()
+		app.ServeHTTP(patchRec, patchReq)
+
+		if patchRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for PATCH /api/admin/settings, got %d (body: %s)", patchRec.Code, patchRec.Body.String())
+		}
+
+		var updatedSettings domain.Settings
+		if err := json.Unmarshal(patchRec.Body.Bytes(), &updatedSettings); err != nil {
+			t.Fatalf("failed to parse updated settings: %v", err)
+		}
+		if updatedSettings.MaxCapacity != 50 {
+			t.Errorf("expected updated capacity 50, got %d", updatedSettings.MaxCapacity)
+		}
+		if updatedSettings.CampName != "ComCamp #25 (Updated)" {
+			t.Errorf("expected updated camp name, got %s", updatedSettings.CampName)
+		}
+
+		// 14.3 Verify Public Settings reflects updated capacity
+		pubReq := httptest.NewRequest(http.MethodGet, "/api/settings/public", nil)
+		pubRec := httptest.NewRecorder()
+		app.ServeHTTP(pubRec, pubReq)
+
+		var pubSettings domain.PublicSettingsResponse
+		_ = json.Unmarshal(pubRec.Body.Bytes(), &pubSettings)
+		if pubSettings.MaxCapacity != 50 {
+			t.Errorf("expected public settings maxCapacity 50, got %d", pubSettings.MaxCapacity)
 		}
 	})
 }

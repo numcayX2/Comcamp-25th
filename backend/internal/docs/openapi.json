@@ -407,6 +407,54 @@
           }
         }
       }
+    },
+    "/admin/settings": {
+      "get": {
+        "tags": ["Admin Management"],
+        "summary": "Get Admin Settings",
+        "description": "ดึงข้อมูลการตั้งค่าค่ายทั้งหมด รวมถึงเวลาเปิด-ปิด โควตา และสถานะระบบ",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "ข้อมูลการตั้งค่าค่าย",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminSettingsResponse" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Admin Management"],
+        "summary": "Update Admin Settings",
+        "description": "อัปเดตการตั้งค่าค่าย เช่น ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), วันเปิด-ปิดรับสมัคร, ค่าสมัครค่าย, หรือสวิตช์ปิดระบบฉุกเฉิน",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateSettingsRequest" },
+              "example": {
+                "campName": "ComCamp #25",
+                "maxCapacity": 50,
+                "campFee": 300.00,
+                "isManualClosed": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "อัปเดตการตั้งค่าสำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminSettingsResponse" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -539,6 +587,38 @@
         "type": "object",
         "properties": {
           "message": { "type": "string", "example": "operation completed successfully" }
+        }
+      },
+      "UpdateSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "campName": { "type": "string", "example": "ComCamp #25" },
+          "registrationOpenAt": { "type": "string", "format": "date-time" },
+          "registrationCloseAt": { "type": "string", "format": "date-time" },
+          "announcementAt": { "type": "string", "format": "date-time" },
+          "paymentOpenAt": { "type": "string", "format": "date-time" },
+          "paymentDeadline": { "type": "string", "format": "date-time" },
+          "certificateReleaseAt": { "type": "string", "format": "date-time" },
+          "maxCapacity": { "type": "integer", "example": 50 },
+          "campFee": { "type": "number", "example": 300.00 },
+          "isManualClosed": { "type": "boolean", "example": false }
+        }
+      },
+      "AdminSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "campName": { "type": "string", "example": "ComCamp #25" },
+          "registrationOpenAt": { "type": "string", "format": "date-time" },
+          "registrationCloseAt": { "type": "string", "format": "date-time" },
+          "announcementAt": { "type": "string", "format": "date-time" },
+          "paymentOpenAt": { "type": "string", "format": "date-time" },
+          "paymentDeadline": { "type": "string", "format": "date-time" },
+          "certificateReleaseAt": { "type": "string", "format": "date-time" },
+          "maxCapacity": { "type": "integer", "example": 50 },
+          "campFee": { "type": "number", "example": 300.00 },
+          "isManualClosed": { "type": "boolean", "example": false },
+          "updatedAt": { "type": "string", "format": "date-time" }
         }
       }
     }

@@ -142,10 +142,10 @@ func TestApplicantService_Submit_ClosedSchedule(t *testing.T) {
 	}
 }
 
-func TestApplicantService_Submit_QuotaExceeded(t *testing.T) {
+func TestApplicantService_Submit_OpenCapacity(t *testing.T) {
 	svc, _, setRepo := setupTestServices()
 
-	// Set max capacity to 1
+	// Target capacity is 1, but registration is open for competitive screening
 	_ = setRepo.Update(context.Background(), &domain.Settings{
 		ID:                  1,
 		RegistrationOpenAt:  time.Now().Add(-1 * time.Hour),
@@ -179,9 +179,12 @@ func TestApplicantService_Submit_QuotaExceeded(t *testing.T) {
 		Grade:      "ม.5",
 		ShirtSize:  "L",
 	}
-	_, err = svc.Submit(context.Background(), req2)
-	if err != service.ErrQuotaExceeded {
-		t.Fatalf("expected ErrQuotaExceeded for person 2, got %v", err)
+	res2, err := svc.Submit(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("expected person 2 to also be accepted into PENDING screening, got %v", err)
+	}
+	if res2.Status != domain.StatusPending {
+		t.Errorf("expected person 2 status PENDING, got %s", res2.Status)
 	}
 }
 
