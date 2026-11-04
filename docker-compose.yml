@@ -7,10 +7,13 @@ services:
       POSTGRES_USER: ${DB_USER:-comcamp}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-change_this_strong_password}
       POSTGRES_DB: ${DB_NAME:-comcamp_db}
+      POSTGRESQL_USER: ${DB_USER:-comcamp}
+      POSTGRESQL_PASSWORD: ${DB_PASSWORD:-change_this_strong_password}
+      POSTGRESQL_DATABASE: ${DB_NAME:-comcamp_db}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/pgsql/data
 
 volumes:
   pgdata:

@@ -1,0 +1,546 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ComCamp #25 API Documentation",
+    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับพี่ค่าย (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป)",
+    "version": "1.0.0",
+    "contact": {
+      "name": "ComCamp 25 Technical Team",
+      "url": "https://github.com/numcayX2/Comcamp-25th"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    { "name": "System", "description": "ระบบตรวจสอบความพร้อมและเวลาของเซิร์ฟเวอร์" },
+    { "name": "Public Settings", "description": "ข้อมูลการตั้งค่าค่าย กำหนดการ และการซิงค์เวลา" },
+    { "name": "Applications", "description": "ระบบรับสมัคร ตรวจสอบสถานะ และยืนยันสิทธิ์" },
+    { "name": "Payments", "description": "ระบบอัปโหลดและตรวจสอบสลิปโอนเงิน" },
+    { "name": "Admin Auth", "description": "การเข้าสู่ระบบสำหรับผู้ดูแลและพี่ค่าย" },
+    { "name": "Admin Management", "description": "ระบบจัดการใบสมัครและอนุมัติสลิป" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health Check",
+        "description": "ตรวจสอบสถานะการทำงานของ Go backend API",
+        "responses": {
+          "200": {
+            "description": "Backend พร้อมทำงาน",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": {
+                  "status": "healthy",
+                  "service": "comcamp25-backend",
+                  "time": "2026-11-04T12:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/public": {
+      "get": {
+        "tags": ["Public Settings"],
+        "summary": "Get Public Camp Settings & Time Sync",
+        "description": "ดึงข้อมูลการตั้งค่าค่ายเพื่อซิงค์เวลาเครื่องลูกข่ายกับเวลาจริงของเซิร์ฟเวอร์ และตรวจสอบว่าระบบเปิดรับสมัครอยู่หรือไม่",
+        "responses": {
+          "200": {
+            "description": "ข้อมูลการตั้งค่าปัจจุบัน",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PublicSettingsResponse" },
+                "example": {
+                  "serverTime": "2026-11-04T05:00:00Z",
+                  "registrationOpenAt": "2026-11-16T00:00:00+07:00",
+                  "isOpen": false,
+                  "currentCount": 0,
+                  "maxCapacity": 30,
+                  "campFee": 300.00,
+                  "isCertificateReleased": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/applications": {
+      "post": {
+        "tags": ["Applications"],
+        "summary": "Submit New Application",
+        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ApplicationCreateRequest" },
+              "example": {
+                "fullName": "สมชาย ใจดี",
+                "nickname": "ชาย",
+                "nationalId": "1509900000000",
+                "phone": "0812345678",
+                "email": "somchai@example.com",
+                "school": "โรงเรียนแม่โจ้วิทยาคม",
+                "grade": "ม.5",
+                "shirtSize": "L",
+                "motivation": "อยากเรียนรู้การเขียนโปรแกรม IoT และต่อวงจรฮาร์ดแวร์จริง"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ยื่นใบสมัครสำเร็จ ได้รับรหัสใบสมัคร",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApplicationResponse" },
+                "example": {
+                  "id": "CC25-8A4B2C",
+                  "fullName": "สมชาย ใจดี",
+                  "nickname": "ชาย",
+                  "nationalId": "1509900000000",
+                  "phone": "0812345678",
+                  "email": "somchai@example.com",
+                  "school": "โรงเรียนแม่โจ้วิทยาคม",
+                  "grade": "ม.5",
+                  "shirtSize": "L",
+                  "motivation": "อยากเรียนรู้การเขียนโปรแกรม IoT และต่อวงจรฮาร์ดแวร์จริง",
+                  "status": "PENDING",
+                  "attendanceConfirmed": false,
+                  "createdAt": "2026-11-16T00:01:23Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (เช่น เลขบัตรไม่ครบ 13 หลัก, ไซส์เสื้อผิด)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "อยู่นอกช่วงเวลาเปิดรับสมัคร หรือระบบถูกปิดชั่วคราว",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "409": {
+            "description": "จำนวนผู้สมัครครบโควตา 30 ที่นั่งแล้ว",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/applications/status": {
+      "get": {
+        "tags": ["Applications"],
+        "summary": "Query Application Status",
+        "description": "ค้นหาใบสมัครและตรวจสอบสถานะด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทรศัพท์, หรือรหัสใบสมัคร (เช่น CC25-XXXXXX)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "เลขบัตรประชาชน 13 หลัก หรือเบอร์โทร 10 หลัก หรือรหัสใบสมัคร",
+            "schema": { "type": "string" },
+            "example": "1509900000000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "พบข้อมูลใบสมัคร",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApplicationResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูลใบสมัคร",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/applications/{id}/confirm": {
+      "post": {
+        "tags": ["Applications"],
+        "summary": "Confirm or Decline Attendance",
+        "description": "ยืนยันการเข้าร่วมค่าย (ทำได้เฉพาะผู้สมัครที่มีสถานะ PASSED หรือ CONFIRMED)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AttendanceConfirmRequest" },
+              "example": { "confirmed": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ยืนยันสิทธิ์สำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApplicationResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/applications/{id}/slip": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Upload Payment Slip",
+        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (ระบบมีระบบป้องกันสลิปซ้ำผ่าน SHA-256 อัตโนมัติ)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slip": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "ไฟล์รูปภาพสลิป (JPG, PNG สูงสุด 5MB)"
+                  }
+                },
+                "required": ["slip"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบ",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SlipUploadResponse" },
+                "example": {
+                  "id": "CC25-8A4B2C",
+                  "slipUrl": "/uploads/slips/CC25-8A4B2C-1793785200.jpg",
+                  "status": "PASSED",
+                  "message": "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ตรวจพบการใช้รูปสลิปเดิมซ้ำ (Duplicate Slip Detected)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Admin Auth"],
+        "summary": "Admin Login",
+        "description": "เข้าสู่ระบบผู้ดูแลระบบ/พี่ค่ายเพื่อรับ JWT Bearer Token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" },
+              "example": {
+                "username": "admin",
+                "password": "strong_password"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "เข้าสู่ระบบสำเร็จ ได้รับ JWT Token",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponse" },
+                "example": {
+                  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Username หรือ Password ไม่ถูกต้อง",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/applications": {
+      "get": {
+        "tags": ["Admin Management"],
+        "summary": "Admin List Applications",
+        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "กรองตามสถานะ เช่น PENDING, PASSED, RESERVE, CONFIRMED, REJECTED",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "รายการผู้สมัคร",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ApplicationResponse" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/applications/{id}": {
+      "patch": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Update Application Status",
+        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ประกาศผลเป็นตัวจริง (PASSED) หรือตัวสำรอง (RESERVE)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateStatusRequest" },
+              "example": {
+                "status": "PASSED",
+                "reason": "ผ่านการคัดเลือกการทำแบบทดสอบและพิจารณาเหตุผลความสนใจ"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "อัปเดตสถานะสำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApplicationResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/applications/{id}/verify-slip": {
+      "patch": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Manual Slip Verification",
+        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงิน (หากอนุมัติ สถานะผู้สมัครจะเปลี่ยนเป็น CONFIRMED ทันที)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifySlipRequest" },
+              "example": {
+                "approved": true,
+                "note": "ยอดเงินเข้าบัญชี 300 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ยืนยันผลการตรวจสลิปเรียบร้อย",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "example": { "message": "Slip verified successfully" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "ใส่ Token ที่ได้รับจาก /api/auth/login"
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "healthy" },
+          "service": { "type": "string", "example": "comcamp25-backend" },
+          "time": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublicSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "serverTime": { "type": "string", "format": "date-time" },
+          "registrationOpenAt": { "type": "string", "format": "date-time" },
+          "isOpen": { "type": "boolean" },
+          "currentCount": { "type": "integer", "example": 15 },
+          "maxCapacity": { "type": "integer", "example": 30 },
+          "campFee": { "type": "number", "example": 300.00 },
+          "isCertificateReleased": { "type": "boolean", "example": false }
+        }
+      },
+      "ApplicationCreateRequest": {
+        "type": "object",
+        "required": ["fullName", "nickname", "nationalId", "phone", "email", "school", "grade", "shirtSize"],
+        "properties": {
+          "fullName": { "type": "string", "example": "สมชาย ใจดี" },
+          "nickname": { "type": "string", "example": "ชาย" },
+          "nationalId": { "type": "string", "example": "1509900000000", "description": "เลขบัตรประชาชน 13 หลัก" },
+          "phone": { "type": "string", "example": "0812345678", "description": "เบอร์โทร 10 หลักขึ้นต้นด้วย 0" },
+          "email": { "type": "string", "format": "email", "example": "somchai@example.com" },
+          "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
+          "grade": { "type": "string", "enum": ["ม.4", "ม.5", "ม.6", "ปวช.1", "ปวช.2", "ปวช.3"], "example": "ม.5" },
+          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "L" },
+          "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
+          "province": { "type": "string", "example": "เชียงใหม่" }
+        }
+      },
+      "ApplicationResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "CC25-8A4B2C" },
+          "fullName": { "type": "string", "example": "สมชาย ใจดี" },
+          "nickname": { "type": "string", "example": "ชาย" },
+          "nationalId": { "type": "string", "example": "1509900000000" },
+          "phone": { "type": "string", "example": "0812345678" },
+          "email": { "type": "string", "example": "somchai@example.com" },
+          "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
+          "grade": { "type": "string", "example": "ม.5" },
+          "shirtSize": { "type": "string", "example": "L" },
+          "motivation": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED"],
+            "example": "PENDING"
+          },
+          "attendanceConfirmed": { "type": "boolean", "example": false },
+          "slipUrl": { "type": "string", "nullable": true, "example": "/uploads/slips/CC25-8A4B2C-123456.jpg" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AttendanceConfirmRequest": {
+        "type": "object",
+        "required": ["confirmed"],
+        "properties": {
+          "confirmed": { "type": "boolean", "example": true }
+        }
+      },
+      "SlipUploadResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "CC25-8A4B2C" },
+          "slipUrl": { "type": "string", "example": "/uploads/slips/CC25-8A4B2C-123456.jpg" },
+          "status": { "type": "string", "example": "PASSED" },
+          "message": { "type": "string", "example": "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "example": "strong_password" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+        }
+      },
+      "UpdateStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED"],
+            "example": "PASSED"
+          },
+          "reason": { "type": "string", "example": "คะแนนคัดกรองผ่านเกณฑ์" }
+        }
+      },
+      "VerifySlipRequest": {
+        "type": "object",
+        "required": ["approved"],
+        "properties": {
+          "approved": { "type": "boolean", "example": true },
+          "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 300 บาท เรียบร้อยแล้ว" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "invalid national ID (must be 13 digits)" }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "example": "operation completed successfully" }
+        }
+      }
+    }
+  }
+}

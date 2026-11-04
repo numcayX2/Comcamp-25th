@@ -15,6 +15,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"comcamp25-backend/internal/config"
+	"comcamp25-backend/internal/docs"
 	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/handler"
 	"comcamp25-backend/internal/middleware"
@@ -82,6 +83,7 @@ func main() {
 	appHandler := handler.NewApplicantHandler(appService)
 	settingHandler := handler.NewSettingHandler(settingService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
+	swaggerHandler := handler.NewSwaggerHandler(docs.OpenAPISpec)
 
 	// 4. Setup Router
 	r := chi.NewRouter()
@@ -93,9 +95,14 @@ func main() {
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.NewCORS(cfg.FrontendURL))
 
+	// Interactive Swagger UI
+	r.Get("/swagger", swaggerHandler.ServeUI)
+	r.Get("/docs", swaggerHandler.ServeUI)
+
 	r.Route("/api", func(api chi.Router) {
-		// Health Check
+		// Health & Docs
 		api.Get("/health", healthHandler.Check)
+		api.Get("/docs/openapi.json", swaggerHandler.ServeSpec)
 
 		// Public Camp Settings
 		api.Get("/settings/public", settingHandler.GetPublic)
@@ -129,6 +136,7 @@ func main() {
 	serverErrors := make(chan error, 1)
 	go func() {
 		log.Printf("ComCamp 25 Backend API running on port :%s", cfg.Port)
+		log.Printf("Swagger UI documentation available at: http://localhost:%s/swagger", cfg.Port)
 		serverErrors <- server.ListenAndServe()
 	}()
 
