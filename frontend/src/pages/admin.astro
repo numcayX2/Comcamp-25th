@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { AdminSection } from '../components/AdminSection';
+---
+
+<BaseLayout
+  title="ผู้ดูแลระบบ · ComCamp #25"
+  description="หน้าจัดการใบสมัครสำหรับผู้ดูแล (skeleton สำหรับทดสอบ Go backend)"
+>
+  <nav class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6" style="font-family: Kanit, sans-serif">
+    <a href="/" class="text-sm font-bold tracking-wide text-gray-900">ComCamp #25</a>
+    <div class="flex flex-wrap gap-1 text-sm">
+      <a href="/register" class="rounded-lg px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100">สมัคร</a>
+      <a href="/status" class="rounded-lg px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100">ตรวจสอบสถานะ</a>
+      <a href="/admin" class="rounded-lg bg-gray-900 px-3 py-1.5 font-medium text-white">ผู้ดูแล</a>
+    </div>
+  </nav>
+  <main>
+    <AdminSection client:load />
+  </main>
+</BaseLayout>
