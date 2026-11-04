@@ -8,3 +8,5 @@ dist/
 *.sql
 *.dump
 tmp/
+scratch/
+*/scratch/

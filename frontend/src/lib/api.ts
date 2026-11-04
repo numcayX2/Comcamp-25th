@@ -13,9 +13,11 @@ export interface PublicSettings {
   isCertificateReleased?: boolean;
 }
 
+export const DEFAULT_TARGET_DATE = "2026-11-16T00:00:00+07:00";
+
 export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   serverTime: new Date().toISOString(),
-  registrationOpenAt: "2026-11-16T00:00:00+07:00",
+  registrationOpenAt: DEFAULT_TARGET_DATE,
   isOpen: false,
 };
 
