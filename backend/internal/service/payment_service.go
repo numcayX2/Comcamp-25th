@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,8 +19,9 @@ import (
 )
 
 var (
-	ErrDuplicateSlip = errors.New("this slip has already been uploaded (duplicate slip detected)")
-	ErrNotPassed     = errors.New("cannot upload slip: applicant has not passed selection")
+	ErrDuplicateSlip   = errors.New("this slip has already been uploaded (duplicate slip detected)")
+	ErrNotPassed       = errors.New("cannot upload slip: applicant has not passed selection")
+	ErrInvalidFileType = errors.New("invalid file type: only JPG, PNG, and WebP images are allowed")
 )
 
 type PaymentService struct {
@@ -71,9 +73,14 @@ func (s *PaymentService) UploadSlip(ctx context.Context, appIdentifier string, f
 		return nil, ErrDuplicateSlip
 	}
 
-	// 2. Save file to disk
+	// 2. Validate MIME type and File Extension
+	mimeType := http.DetectContentType(fileData)
+	if !strings.HasPrefix(mimeType, "image/") && mimeType != "application/octet-stream" {
+		return nil, ErrInvalidFileType
+	}
+
 	cleanExt := strings.ToLower(filepath.Ext(ext))
-	if cleanExt == "" {
+	if cleanExt != ".jpg" && cleanExt != ".jpeg" && cleanExt != ".png" && cleanExt != ".webp" {
 		cleanExt = ".jpg"
 	}
 	fileName := fmt.Sprintf("%s-%d%s", applicant.ApplicationNo, time.Now().Unix(), cleanExt)
