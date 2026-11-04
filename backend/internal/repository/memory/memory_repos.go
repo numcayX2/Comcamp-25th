@@ -1,0 +1,417 @@
+package memory
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	"comcamp25-backend/internal/domain"
+)
+
+// MemoryApplicantRepo provides thread-safe in-memory storage for applicants
+type MemoryApplicantRepo struct {
+	mu   sync.RWMutex
+	data map[uuid.UUID]*domain.Applicant
+	logs []*domain.ApplicantStatusLog
+}
+
+func NewMemoryApplicantRepo() *MemoryApplicantRepo {
+	return &MemoryApplicantRepo{
+		data: make(map[uuid.UUID]*domain.Applicant),
+		logs: make([]*domain.ApplicantStatusLog, 0),
+	}
+}
+
+func (m *MemoryApplicantRepo) Create(ctx context.Context, a *domain.Applicant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, existing := range m.data {
+		if existing.NationalID == a.NationalID {
+			return errors.New("national ID already registered")
+		}
+		if existing.Phone == a.Phone {
+			return errors.New("phone already registered")
+		}
+		if existing.Email == a.Email {
+			return errors.New("email already registered")
+		}
+	}
+
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+
+	// Clone to avoid pointer side-effects
+	clone := *a
+	m.data[a.ID] = &clone
+	return nil
+}
+
+func (m *MemoryApplicantRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Applicant, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return nil, errors.New("applicant not found")
+	}
+	clone := *a
+	return &clone, nil
+}
+
+func (m *MemoryApplicantRepo) GetByApplicationNo(ctx context.Context, appNo string) (*domain.Applicant, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, a := range m.data {
+		if a.ApplicationNo == appNo && a.DeletedAt == nil {
+			clone := *a
+			return &clone, nil
+		}
+	}
+	return nil, errors.New("applicant not found")
+}
+
+func (m *MemoryApplicantRepo) GetByNationalID(ctx context.Context, nationalID string) (*domain.Applicant, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, a := range m.data {
+		if a.NationalID == nationalID && a.DeletedAt == nil {
+			clone := *a
+			return &clone, nil
+		}
+	}
+	return nil, errors.New("applicant not found")
+}
+
+func (m *MemoryApplicantRepo) FindByQuery(ctx context.Context, q string) (*domain.Applicant, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, a := range m.data {
+		if (a.ApplicationNo == q || a.NationalID == q || a.Phone == q) && a.DeletedAt == nil {
+			clone := *a
+			return &clone, nil
+		}
+	}
+	return nil, errors.New("applicant not found")
+}
+
+func (m *MemoryApplicantRepo) ListAll(ctx context.Context, status *domain.ApplicationStatus) ([]*domain.Applicant, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []*domain.Applicant
+	for _, a := range m.data {
+		if a.DeletedAt != nil {
+			continue
+		}
+		if status != nil && a.Status != *status {
+			continue
+		}
+		clone := *a
+		result = append(result, &clone)
+	}
+	return result, nil
+}
+
+func (m *MemoryApplicantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return errors.New("applicant not found")
+	}
+	oldStatus := a.Status
+	a.Status = newStatus
+	a.UpdatedAt = time.Now().UTC()
+
+	m.logs = append(m.logs, &domain.ApplicantStatusLog{
+		ID:               int64(len(m.logs) + 1),
+		ApplicantID:      id,
+		ChangedByAdminID: adminID,
+		OldStatus:        oldStatus,
+		NewStatus:        newStatus,
+		Reason:           &reason,
+		CreatedAt:        a.UpdatedAt,
+	})
+	return nil
+}
+
+func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return errors.New("applicant not found")
+	}
+	a.AttendanceConfirmed = confirmed
+	a.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (m *MemoryApplicantRepo) CountActive(ctx context.Context) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	count := 0
+	for _, a := range m.data {
+		if a.Status != domain.StatusRejected && a.DeletedAt == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// MemorySettingRepo
+type MemorySettingRepo struct {
+	mu       sync.RWMutex
+	settings *domain.Settings
+}
+
+func NewMemorySettingRepo() *MemorySettingRepo {
+	now := time.Now().UTC()
+	openAt := now.Add(-1 * time.Hour) // Open by default for test
+	closeAt := now.Add(14 * 24 * time.Hour)
+
+	return &MemorySettingRepo{
+		settings: &domain.Settings{
+			ID:                  1,
+			CampName:            "ComCamp 25th",
+			RegistrationOpenAt:  openAt,
+			RegistrationCloseAt: closeAt,
+			MaxCapacity:         30,
+			CampFee:             decimal.NewFromFloat(300.00),
+			IsManualClosed:      false,
+			UpdatedAt:           now,
+		},
+	}
+}
+
+func (m *MemorySettingRepo) Get(ctx context.Context) (*domain.Settings, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	clone := *m.settings
+	return &clone, nil
+}
+
+func (m *MemorySettingRepo) Update(ctx context.Context, s *domain.Settings) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	clone := *s
+	clone.UpdatedAt = time.Now().UTC()
+	m.settings = &clone
+	return nil
+}
+
+// MemoryAdminRepo
+type MemoryAdminRepo struct {
+	mu    sync.RWMutex
+	data  map[int64]*domain.Admin
+	byUsr map[string]*domain.Admin
+}
+
+func NewMemoryAdminRepo() *MemoryAdminRepo {
+	return &MemoryAdminRepo{
+		data:  make(map[int64]*domain.Admin),
+		byUsr: make(map[string]*domain.Admin),
+	}
+}
+
+func (m *MemoryAdminRepo) GetByID(ctx context.Context, id int64) (*domain.Admin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	a, ok := m.data[id]
+	if !ok {
+		return nil, errors.New("admin not found")
+	}
+	clone := *a
+	return &clone, nil
+}
+
+func (m *MemoryAdminRepo) GetByUsername(ctx context.Context, username string) (*domain.Admin, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	a, ok := m.byUsr[username]
+	if !ok {
+		return nil, errors.New("admin not found")
+	}
+	clone := *a
+	return &clone, nil
+}
+
+func (m *MemoryAdminRepo) UpdateLastLogin(ctx context.Context, id int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok {
+		return errors.New("admin not found")
+	}
+	now := time.Now().UTC()
+	a.LastLoginAt = &now
+	return nil
+}
+
+func (m *MemoryAdminRepo) Create(ctx context.Context, a *domain.Admin) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.byUsr[a.Username]; ok {
+		return errors.New("username already exists")
+	}
+	if a.ID == 0 {
+		a.ID = int64(len(m.data) + 1)
+	}
+	now := time.Now().UTC()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+
+	clone := *a
+	m.data[a.ID] = &clone
+	m.byUsr[a.Username] = &clone
+	return nil
+}
+
+// MemoryPaymentRepo
+type MemoryPaymentRepo struct {
+	mu           sync.RWMutex
+	data         map[uuid.UUID]*domain.Payment
+	appRepo      *MemoryApplicantRepo
+	transRefs    map[string]bool
+	slipHashes   map[string]bool
+}
+
+func NewMemoryPaymentRepo(appRepo *MemoryApplicantRepo) *MemoryPaymentRepo {
+	return &MemoryPaymentRepo{
+		data:       make(map[uuid.UUID]*domain.Payment),
+		appRepo:    appRepo,
+		transRefs:  make(map[string]bool),
+		slipHashes: make(map[string]bool),
+	}
+}
+
+func (m *MemoryPaymentRepo) Create(ctx context.Context, p *domain.Payment) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if p.TransRef != nil && *p.TransRef != "" && m.transRefs[*p.TransRef] {
+		return errors.New("duplicate transaction reference")
+	}
+	if p.SlipHash != nil && *p.SlipHash != "" && m.slipHashes[*p.SlipHash] {
+		return errors.New("duplicate slip hash (file already uploaded)")
+	}
+
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	p.UploadedAt = time.Now().UTC()
+
+	clone := *p
+	m.data[p.ID] = &clone
+	if p.TransRef != nil && *p.TransRef != "" {
+		m.transRefs[*p.TransRef] = true
+	}
+	if p.SlipHash != nil && *p.SlipHash != "" {
+		m.slipHashes[*p.SlipHash] = true
+	}
+	return nil
+}
+
+func (m *MemoryPaymentRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Payment, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	p, ok := m.data[id]
+	if !ok {
+		return nil, errors.New("payment not found")
+	}
+	clone := *p
+	return &clone, nil
+}
+
+func (m *MemoryPaymentRepo) GetByApplicantID(ctx context.Context, applicantID uuid.UUID) ([]*domain.Payment, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var list []*domain.Payment
+	for _, p := range m.data {
+		if p.ApplicantID == applicantID {
+			clone := *p
+			list = append(list, &clone)
+		}
+	}
+	return list, nil
+}
+
+func (m *MemoryPaymentRepo) GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*domain.Payment, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var latest *domain.Payment
+	for _, p := range m.data {
+		if p.ApplicantID == applicantID {
+			if latest == nil || p.UploadedAt.After(latest.UploadedAt) {
+				clone := *p
+				latest = &clone
+			}
+		}
+	}
+	if latest == nil {
+		return nil, errors.New("payment not found")
+	}
+	return latest, nil
+}
+
+func (m *MemoryPaymentRepo) CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.transRefs[transRef], nil
+}
+
+func (m *MemoryPaymentRepo) CheckDuplicateSlipHash(ctx context.Context, slipHash string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.slipHashes[slipHash], nil
+}
+
+func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.data[paymentID]
+	if !ok {
+		return errors.New("payment not found")
+	}
+
+	now := time.Now().UTC()
+	if approved {
+		p.Status = domain.PaymentApproved
+	} else {
+		p.Status = domain.PaymentRejected
+	}
+	p.VerifiedByAdminID = &adminID
+	p.AdminNote = &note
+	p.VerifiedAt = &now
+
+	if approved && m.appRepo != nil {
+		_ = m.appRepo.UpdateStatus(ctx, p.ApplicantID, domain.StatusConfirmed, &adminID, "Payment approved")
+	}
+
+	return nil
+}

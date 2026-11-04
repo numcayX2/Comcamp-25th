@@ -6,6 +6,7 @@ dist/
 .astro/
 .DS_Store
 *.sql
+!backend/migrations/*.sql
 *.dump
 tmp/
 scratch/
