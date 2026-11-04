@@ -99,6 +99,9 @@ func main() {
 	r.Get("/swagger", swaggerHandler.ServeUI)
 	r.Get("/docs", swaggerHandler.ServeUI)
 
+	// Static File Server for uploaded slips and assets (enables admin manual inspection)
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(cfg.UploadDir))))
+
 	r.Route("/api", func(api chi.Router) {
 		// Health & Docs
 		api.Get("/health", healthHandler.Check)

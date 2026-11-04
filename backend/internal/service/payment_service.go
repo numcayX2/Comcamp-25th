@@ -35,12 +35,13 @@ func NewPaymentService(
 	settingRepo domain.SettingRepository,
 	uploadDir string,
 ) *PaymentService {
-	_ = os.MkdirAll(uploadDir, 0755)
+	slipDir := filepath.Join(uploadDir, "slips")
+	_ = os.MkdirAll(slipDir, 0755)
 	return &PaymentService{
 		paymentRepo: paymentRepo,
 		appRepo:     appRepo,
 		settingRepo: settingRepo,
-		uploadDir:   uploadDir,
+		uploadDir:   slipDir,
 	}
 }
 

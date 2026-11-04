@@ -42,7 +42,8 @@ func setupTestApp(t *testing.T) http.Handler {
 	authService := service.NewAuthService(admRepo, jwtSecret)
 	appService := service.NewApplicantService(appRepo, setRepo, payRepo)
 	settingService := service.NewSettingService(setRepo, appRepo)
-	paymentService := service.NewPaymentService(payRepo, appRepo, setRepo, t.TempDir())
+	uploadDir := t.TempDir()
+	paymentService := service.NewPaymentService(payRepo, appRepo, setRepo, uploadDir)
 
 	healthH := handler.NewHealthHandler("comcamp25-backend")
 	authH := handler.NewAuthHandler(authService)
@@ -51,6 +52,7 @@ func setupTestApp(t *testing.T) http.Handler {
 	payH := handler.NewPaymentHandler(paymentService)
 
 	r := chi.NewRouter()
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(uploadDir))))
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", healthH.Check)
 		api.Get("/settings/public", setH.GetPublic)
@@ -271,6 +273,21 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+
+		var slipRes service.SlipUploadResult
+		_ = json.Unmarshal(rec.Body.Bytes(), &slipRes)
+
+		// Test admin fetching the uploaded slip file over HTTP (manual inspection)
+		reqFetch := httptest.NewRequest(http.MethodGet, slipRes.SlipURL, nil)
+		recFetch := httptest.NewRecorder()
+		app.ServeHTTP(recFetch, reqFetch)
+
+		if recFetch.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK when admin fetches slip, got %d", recFetch.Code)
+		}
+		if !bytes.Equal(recFetch.Body.Bytes(), mockSlipBytes) {
+			t.Errorf("fetched slip bytes do not match uploaded bytes")
 		}
 	})
 
