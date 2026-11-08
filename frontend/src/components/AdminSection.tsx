@@ -29,6 +29,9 @@ import {
   ChevronsRight,
   FileText,
   SlidersHorizontal,
+  RotateCcw,
+  Save,
+  Layers,
 } from 'lucide-react';
 import {
   adminLogin,
@@ -67,6 +70,228 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
 export function getCertificateNo(app: Application): string {
   const cleanId = app.id.replace(/^CC25-?/i, '');
   return `CC25-CERT-${cleanId}`;
+}
+
+export type CertificateTheme = 'royal-gold' | 'cyber-tech' | 'maejo-green' | 'minimal-academic';
+export type CertificateBorder = 'ornate-gold' | 'tech-frame' | 'classic-double' | 'minimal';
+
+export interface CertificateTemplate {
+  theme: CertificateTheme;
+  border: CertificateBorder;
+  organization: string;
+  campTitle: string;
+  headerSubtitle: string;
+  achievementText: string;
+  dateText: string;
+  prefixCertNo: string;
+  signer1Name: string;
+  signer1Title: string;
+  signer2Name: string;
+  signer2Title: string;
+  showEmblem: boolean;
+  showCorners: boolean;
+  showCertNo: boolean;
+  showSignatures: boolean;
+  showSchool: boolean;
+}
+
+export const DEFAULT_CERT_TEMPLATE: CertificateTemplate = {
+  theme: 'royal-gold',
+  border: 'ornate-gold',
+  organization: 'สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้',
+  campTitle: 'โครงการค่ายวิทยาการคอมพิวเตอร์ ComCamp ครั้งที่ 25',
+  headerSubtitle: 'เกียรติบัตรฉบับนี้ให้ไว้เพื่อแสดงว่า',
+  achievementText:
+    'ได้ผ่านการเข้าร่วมและสำเร็จการฝึกอบรมเชิงปฏิบัติการทางวิทยาการคอมพิวเตอร์ นวัตกรรมซอฟต์แวร์ และปัญญาประดิษฐ์ (AI & IoT) ตลอดระยะเวลาการจัดโครงการค่าย ComCamp ครั้งที่ 25',
+  dateText: 'ให้ไว้ ณ วันที่ 16 พฤศจิกายน พุทธศักราช 2569',
+  prefixCertNo: 'CC25-CERT-',
+  signer1Name: '(ผู้ช่วยศาสตราจารย์ ดร. ......)',
+  signer1Title: 'ประธานหลักสูตรวิทยาการคอมพิวเตอร์',
+  signer2Name: '(รองศาสตราจารย์ ดร. ......)',
+  signer2Title: 'คณบดีคณะวิทยาศาสตร์',
+  showEmblem: true,
+  showCorners: true,
+  showCertNo: true,
+  showSignatures: true,
+  showSchool: true,
+};
+
+interface CertificateCardProps {
+  template: CertificateTemplate;
+  app: {
+    id: string;
+    fullName: string;
+    school?: string;
+    province?: string;
+  };
+  isPrintVersion?: boolean;
+}
+
+export function CertificateCard({ template, app, isPrintVersion = false }: CertificateCardProps) {
+  const cleanId = app.id.replace(/^CC25-?/i, '');
+  const certNo = `${template.prefixCertNo || 'CC25-CERT-'}${cleanId}`;
+
+  const themeDetails = useMemo(() => {
+    switch (template.theme) {
+      case 'cyber-tech':
+        return {
+          cardBg: 'bg-linear-to-br from-cyan-50/70 via-white to-blue-50/70',
+          orgColor: 'text-cyan-950 font-bold',
+          campTitleColor: 'text-blue-900 font-extrabold',
+          emblemBg: 'bg-linear-to-tr from-cyan-600 to-blue-600 text-white shadow-md',
+          nameUnderline: 'border-b-2 border-cyan-500 text-blue-950',
+          cornerBorder: 'border-cyan-600',
+          badgeBorder: 'border-cyan-300 bg-cyan-50/90 text-cyan-900',
+          borderClass:
+            template.border === 'tech-frame'
+              ? 'border-4 border-solid border-cyan-600 ring-4 ring-cyan-100 shadow-xl'
+              : template.border === 'classic-double'
+              ? 'border-4 border-double border-cyan-700 shadow-lg'
+              : template.border === 'minimal'
+              ? 'border border-cyan-300 shadow-sm'
+              : 'border-8 border-double border-cyan-600 shadow-xl',
+        };
+      case 'maejo-green':
+        return {
+          cardBg: 'bg-linear-to-b from-emerald-50/70 via-white to-amber-50/40',
+          orgColor: 'text-emerald-950 font-bold',
+          campTitleColor: 'text-emerald-900 font-extrabold',
+          emblemBg: 'bg-linear-to-tr from-emerald-700 to-emerald-500 text-white shadow-md',
+          nameUnderline: 'border-b-2 border-emerald-500 text-emerald-950',
+          cornerBorder: 'border-emerald-600',
+          badgeBorder: 'border-emerald-300 bg-emerald-50/90 text-emerald-900',
+          borderClass:
+            template.border === 'ornate-gold'
+              ? 'border-8 border-double border-emerald-700 ring-2 ring-amber-400/60 shadow-xl'
+              : template.border === 'classic-double'
+              ? 'border-4 border-double border-emerald-800 shadow-lg'
+              : template.border === 'minimal'
+              ? 'border border-emerald-300 shadow-sm'
+              : 'border-4 border-solid border-emerald-700 ring-2 ring-emerald-200 shadow-xl',
+        };
+      case 'minimal-academic':
+        return {
+          cardBg: 'bg-white',
+          orgColor: 'text-slate-800 font-semibold',
+          campTitleColor: 'text-slate-950 font-bold',
+          emblemBg: 'bg-slate-800 text-white shadow-sm',
+          nameUnderline: 'border-b border-slate-700 text-slate-900',
+          cornerBorder: 'border-slate-800',
+          badgeBorder: 'border-slate-300 bg-slate-50 text-slate-800',
+          borderClass:
+            template.border === 'minimal'
+              ? 'border border-slate-300 shadow-xs'
+              : template.border === 'classic-double'
+              ? 'border-4 border-double border-slate-800 shadow-sm'
+              : 'border-2 border-solid border-slate-800 ring-1 ring-slate-300 shadow-sm',
+        };
+      case 'royal-gold':
+      default:
+        return {
+          cardBg: 'bg-linear-to-b from-amber-50/80 via-white to-amber-50/80',
+          orgColor: 'text-amber-950 font-bold',
+          campTitleColor: 'text-slate-900 font-extrabold',
+          emblemBg: 'bg-linear-to-tr from-amber-600 to-amber-400 text-white shadow-md',
+          nameUnderline: 'border-b-2 border-amber-400/90 text-slate-900',
+          cornerBorder: 'border-amber-600',
+          badgeBorder: 'border-amber-300 bg-amber-50/90 text-amber-900',
+          borderClass:
+            template.border === 'classic-double'
+              ? 'border-4 border-double border-amber-600 shadow-md'
+              : template.border === 'tech-frame'
+              ? 'border-4 border-solid border-amber-600 ring-4 ring-amber-100 shadow-xl'
+              : template.border === 'minimal'
+              ? 'border border-amber-300 shadow-xs'
+              : 'border-8 border-double border-amber-600/70 shadow-xl',
+        };
+    }
+  }, [template.theme, template.border]);
+
+  return (
+    <div
+      className={`relative w-full max-w-3xl rounded-2xl p-6 sm:p-9 text-center transition-all ${
+        themeDetails.cardBg
+      } ${themeDetails.borderClass} ${
+        isPrintVersion ? 'cert-print-sheet my-0 mx-auto' : ''
+      }`}
+      style={{ fontFamily: 'Kanit, sans-serif' }}
+    >
+      {/* Decorative Ornate Corners */}
+      {template.showCorners && (
+        <>
+          <div className={`absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 pointer-events-none ${themeDetails.cornerBorder}`} />
+          <div className={`absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 pointer-events-none ${themeDetails.cornerBorder}`} />
+          <div className={`absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 pointer-events-none ${themeDetails.cornerBorder}`} />
+          <div className={`absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 pointer-events-none ${themeDetails.cornerBorder}`} />
+        </>
+      )}
+
+      {/* Emblem & Organization Header */}
+      <div className="mb-4">
+        {template.showEmblem && (
+          <div className={`mx-auto mb-2.5 flex h-14 w-14 items-center justify-center rounded-full ${themeDetails.emblemBg}`}>
+            <Sparkles className="h-7 w-7" />
+          </div>
+        )}
+        <p className={`text-xs sm:text-sm tracking-wider uppercase ${themeDetails.orgColor}`}>
+          {template.organization}
+        </p>
+        <h4 className={`mt-1 text-base sm:text-lg tracking-tight ${themeDetails.campTitleColor}`}>
+          {template.campTitle}
+        </h4>
+      </div>
+
+      {/* Presentation & Student Name */}
+      <div className="my-5 space-y-2.5">
+        <p className="text-xs sm:text-sm font-medium text-slate-500">
+          {template.headerSubtitle}
+        </p>
+        <div>
+          <h2 className={`text-2xl sm:text-3xl font-bold tracking-wide inline-block px-8 pb-1.5 ${themeDetails.nameUnderline}`}>
+            {app.fullName}
+          </h2>
+        </div>
+        {template.showSchool && (
+          <p className="text-xs sm:text-sm font-medium text-slate-600">
+            {app.school ? `โรงเรียน${app.school}` : ''} {app.province ? `(${app.province})` : ''}
+          </p>
+        )}
+        <p className="mx-auto max-w-xl text-xs sm:text-sm text-slate-600 leading-relaxed pt-2">
+          {template.achievementText}
+        </p>
+        <p className="text-xs text-slate-500 pt-1 font-medium">
+          {template.dateText}
+        </p>
+      </div>
+
+      {/* Signatures & Serial Number */}
+      <div className="mt-8 pt-4 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 items-end gap-4 text-center">
+        {template.showSignatures ? (
+          <div>
+            <div className="mx-auto mb-2 h-9 w-32 border-b border-dashed border-slate-400" />
+            <p className="text-xs font-semibold text-slate-800">{template.signer1Name}</p>
+            <p className="text-[10px] text-slate-500">{template.signer1Title}</p>
+          </div>
+        ) : <div />}
+
+        {template.showCertNo ? (
+          <div className={`rounded-xl p-2.5 border text-center ${themeDetails.badgeBorder}`}>
+            <div className="text-[10px] font-mono text-slate-500">เลขที่เกียรติบัตร</div>
+            <div className="text-xs font-bold font-mono tracking-wider">{certNo}</div>
+            <div className="mt-0.5 text-[9px] text-slate-400">✓ ออกโดยระบบ ComCamp #25</div>
+          </div>
+        ) : <div />}
+
+        {template.showSignatures ? (
+          <div>
+            <div className="mx-auto mb-2 h-9 w-32 border-b border-dashed border-slate-400" />
+            <p className="text-xs font-semibold text-slate-800">{template.signer2Name}</p>
+            <p className="text-[10px] text-slate-500">{template.signer2Title}</p>
+          </div>
+        ) : <div />}
+      </div>
+    </div>
+  );
 }
 
 export function AdminSection() {
@@ -112,10 +337,24 @@ export function AdminSection() {
   const [certApp, setCertApp] = useState<Application | null>(null);
   const [copiedCertId, setCopiedCertId] = useState<boolean>(false);
 
-  // Canva Export Modal State
-  const [isCanvaModalOpen, setIsCanvaModalOpen] = useState<boolean>(false);
-  const [canvaScope, setCanvaScope] = useState<'CONFIRMED' | 'PASSED_OR_CONFIRMED' | 'FILTERED'>('CONFIRMED');
-  const [copiedCanvaTable, setCopiedCanvaTable] = useState<boolean>(false);
+  // In-Web Certificate Studio Modal State & Template
+  const [isCertStudioOpen, setIsCertStudioOpen] = useState<boolean>(false);
+  const [studioTab, setStudioTab] = useState<'design' | 'content' | 'signers' | 'bulk'>('design');
+  const [previewAppId, setPreviewAppId] = useState<string>('SAMPLE');
+  const [bulkScope, setBulkScope] = useState<'CONFIRMED' | 'PASSED_OR_CONFIRMED' | 'FILTERED'>('CONFIRMED');
+  const [printingApps, setPrintingApps] = useState<Application[] | null>(null);
+
+  const [certTemplate, setCertTemplate] = useState<CertificateTemplate>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('comcamp-cert-template');
+        if (saved) return { ...DEFAULT_CERT_TEMPLATE, ...JSON.parse(saved) };
+      } catch {
+        // ignore parse error
+      }
+    }
+    return DEFAULT_CERT_TEMPLATE;
+  });
 
   async function loadSettings(t: string) {
     setSettingsBusy(true);
@@ -313,16 +552,85 @@ export function AdminSection() {
     return filtered.slice(startIndex, endIndex);
   }, [filtered, startIndex, endIndex]);
 
-  // Canva target scope computation
-  const canvaTargetApps = useMemo(() => {
-    if (canvaScope === 'CONFIRMED') {
+  // Bulk target apps for certificate printing
+  const bulkTargetApps = useMemo(() => {
+    if (bulkScope === 'CONFIRMED') {
       return apps.filter((a) => a.status === 'CONFIRMED');
     }
-    if (canvaScope === 'PASSED_OR_CONFIRMED') {
+    if (bulkScope === 'PASSED_OR_CONFIRMED') {
       return apps.filter((a) => a.status === 'CONFIRMED' || a.status === 'PASSED');
     }
     return filtered;
-  }, [apps, filtered, canvaScope]);
+  }, [apps, filtered, bulkScope]);
+
+  // Active student used for live preview in the Studio
+  const activePreviewStudent = useMemo(() => {
+    if (previewAppId !== 'SAMPLE') {
+      const found = apps.find((a) => a.id === previewAppId);
+      if (found) return found;
+    }
+    if (apps.length > 0) {
+      return apps[0];
+    }
+    return {
+      id: 'CC25-SAMPLE-01',
+      fullName: 'นายสมชาย พัฒนาซอฟต์แวร์',
+      nickname: 'ชาย',
+      school: 'โรงเรียนแม่โจ้วิทยาคม',
+      province: 'เชียงใหม่',
+      status: 'CONFIRMED' as ApplicationStatus,
+      nationalId: '1509900000000',
+      phone: '0812345678',
+      grade: 'ม.5',
+      shirtSize: 'L',
+      allergies: '',
+      foodRestrictions: '',
+      emergencyContact: '',
+      reason: '',
+      computerSkill: '',
+      expectation: '',
+    };
+  }, [previewAppId, apps]);
+
+  function handleSaveCertTemplate() {
+    try {
+      localStorage.setItem('comcamp-cert-template', JSON.stringify(certTemplate));
+      setActionSuccess('บันทึกการตั้งค่าและดีไซน์เกียรติบัตรเรียบร้อยแล้ว');
+    } catch {
+      setError('ไม่สามารถบันทึกเทมเพลตลงในเบราว์เซอร์ได้');
+    }
+  }
+
+  function handleResetCertTemplate() {
+    setCertTemplate(DEFAULT_CERT_TEMPLATE);
+    localStorage.removeItem('comcamp-cert-template');
+    setActionSuccess('คืนค่าเทมเพลตเกียรติบัตรเป็นค่าเริ่มต้นเรียบร้อยแล้ว');
+  }
+
+  function handlePrintSingle(app: Application) {
+    setPrintingApps([app]);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  }
+
+  function handlePrintBulk() {
+    if (bulkTargetApps.length === 0) {
+      setError('ไม่พบรายชื่อผู้สมัครในกลุ่มที่เลือกพิมพ์');
+      return;
+    }
+    setPrintingApps(bulkTargetApps);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  }
+
+  function handlePrintCurrentPreview() {
+    setPrintingApps([activePreviewStudent as Application]);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  }
 
   function exportCSV() {
     if (apps.length === 0) return;
@@ -452,33 +760,45 @@ export function AdminSection() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
       
-      {/* Print-only CSS to format certificates cleanly */}
+      {/* Print-only CSS ensuring A4 Landscape and Clean Page Breaks */}
       <style>{`
         @media print {
           body * {
             visibility: hidden !important;
           }
-          #printable-certificate-container,
-          #printable-certificate-container * {
+          #cert-print-portal,
+          #cert-print-portal * {
             visibility: visible !important;
           }
-          #printable-certificate-container {
-            position: fixed !important;
-            inset: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            padding: 1.5cm !important;
+          #cert-print-portal {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
             margin: 0 !important;
+            padding: 0 !important;
             background: white !important;
+            display: block !important;
+            z-index: 999999 !important;
+          }
+          .cert-print-sheet {
+            page-break-after: always !important;
+            break-after: page !important;
+            width: 100% !important;
+            min-height: 98vh !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            z-index: 99999 !important;
-            box-shadow: none !important;
+            box-sizing: border-box !important;
+            margin: 0 auto !important;
+          }
+          .cert-print-sheet:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           @page {
             size: A4 landscape;
-            margin: 0;
+            margin: 6mm;
           }
         }
       `}</style>
@@ -522,16 +842,16 @@ export function AdminSection() {
               <span>ตั้งค่าค่าย/โควตา</span>
             </button>
 
-            {/* Canva Bulk Create Button */}
+            {/* In-Web Certificate Studio Button */}
             <button
               type="button"
-              id="btn-open-canva-modal"
-              onClick={() => setIsCanvaModalOpen(true)}
+              id="btn-open-cert-studio"
+              onClick={() => setIsCertStudioOpen(true)}
               disabled={apps.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-purple-300 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-800 hover:bg-purple-100 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
             >
-              <Palette className="w-3.5 h-3.5 text-purple-600" />
-              <span>🎨 ส่งออก Canva / เกียรติบัตร</span>
+              <Palette className="w-3.5 h-3.5 text-amber-700" />
+              <span>🎨 สตูดิโอออกแบบเกียรติบัตร</span>
             </button>
 
             <button
@@ -784,6 +1104,7 @@ export function AdminSection() {
               <div className="relative w-full md:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
+                  id="applicant-search-input"
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -885,6 +1206,7 @@ export function AdminSection() {
                             {slip ? (
                               <button
                                 type="button"
+                                data-testid="inspect-slip-btn"
                                 onClick={() => {
                                   setInspectingApp(a);
                                   setVerificationNote('');
@@ -905,6 +1227,7 @@ export function AdminSection() {
                             {/* Certificate Button */}
                             <button
                               type="button"
+                              data-testid="view-cert-btn"
                               title="ออกเกียรติบัตรสำหรับผู้สมัครรายนี้"
                               onClick={() => setCertApp(a)}
                               className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
@@ -1352,78 +1675,14 @@ export function AdminSection() {
                   </button>
                 </div>
 
-                {/* Printable Certificate Frame */}
-                <div className="mt-6 flex justify-center">
-                  <div
-                    id="printable-certificate-container"
-                    className="w-full max-w-3xl rounded-2xl border-8 border-double border-amber-600/60 bg-linear-to-b from-amber-50/40 via-white to-amber-50/40 p-6 sm:p-10 shadow-lg text-center relative"
-                  >
-                    {/* Decorative Corner Flairs */}
-                    <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-amber-600/80 pointer-events-none" />
-                    <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-amber-600/80 pointer-events-none" />
-                    <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-amber-600/80 pointer-events-none" />
-                    <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-amber-600/80 pointer-events-none" />
-
-                    {/* Emblem & Host */}
-                    <div className="mb-4">
-                      <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-linear-to-tr from-amber-600 to-amber-400 text-white shadow-md">
-                        <Sparkles className="h-7 w-7" />
-                      </div>
-                      <p className="text-xs font-semibold tracking-wider text-amber-800 uppercase">
-                        สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
-                      </p>
-                      <h4 className="mt-1 text-base font-bold text-slate-800">
-                        โครงการค่ายวิทยาการคอมพิวเตอร์ ComCamp ครั้งที่ 25
-                      </h4>
-                    </div>
-
-                    {/* Certificate Presentation Text */}
-                    <div className="my-6 space-y-3">
-                      <p className="text-xs font-medium text-slate-500">
-                        เกียรติบัตรฉบับนี้ให้ไว้เพื่อแสดงว่า
-                      </p>
-                      <h2 className="text-2xl sm:text-3xl font-bold tracking-wide text-slate-900 border-b-2 border-amber-400/50 pb-2 inline-block px-8">
-                        {certApp.fullName}
-                      </h2>
-                      <p className="text-sm font-medium text-blue-900">
-                        โรงเรียน{certApp.school} {certApp.province ? `(${certApp.province})` : ''}
-                      </p>
-                      <p className="mx-auto max-w-xl text-xs sm:text-sm text-slate-600 leading-relaxed pt-2">
-                        ได้ผ่านการเข้าร่วมและสำเร็จการฝึกอบรมเชิงปฏิบัติการทางวิทยาการคอมพิวเตอร์ นวัตกรรมซอฟต์แวร์ และปัญญาประดิษฐ์ (AI & IoT)
-                        ตลอดระยะเวลาการจัดโครงการค่าย ComCamp ครั้งที่ 25
-                      </p>
-                      <p className="text-xs text-slate-500 pt-2 font-medium">
-                        ให้ไว้ ณ วันที่ 16 พฤศจิกายน พุทธศักราช 2569
-                      </p>
-                    </div>
-
-                    {/* Signatures & Verification Badge */}
-                    <div className="mt-8 pt-4 border-t border-amber-200/60 grid grid-cols-1 sm:grid-cols-3 items-end gap-4 text-center">
-                      <div>
-                        <div className="mx-auto mb-2 h-10 w-28 border-b border-dashed border-slate-400" />
-                        <p className="text-xs font-semibold text-slate-800">(ผู้ช่วยศาสตราจารย์ ดร. ...)</p>
-                        <p className="text-[10px] text-slate-500">ประธานหลักสูตรวิทยาการคอมพิวเตอร์</p>
-                      </div>
-
-                      <div className="bg-white/80 rounded-xl p-2.5 border border-amber-200 text-center">
-                        <div className="text-[10px] font-mono text-slate-400">เลขที่เกียรติบัตร</div>
-                        <div className="text-xs font-bold font-mono text-amber-800">{getCertificateNo(certApp)}</div>
-                        <div className="mt-1 text-[9px] text-slate-400">✓ ออกโดยระบบ ComCamp #25</div>
-                      </div>
-
-                      <div>
-                        <div className="mx-auto mb-2 h-10 w-28 border-b border-dashed border-slate-400" />
-                        <p className="text-xs font-semibold text-slate-800">(รองศาสตราจารย์ ดร. ...)</p>
-                        <p className="text-[10px] text-slate-500">คณบดีคณะวิทยาศาสตร์</p>
-                      </div>
-                    </div>
-
-                  </div>
+                {/* Certificate Render using Active Template */}
+                <div className="mt-6 flex justify-center overflow-x-auto">
+                  <CertificateCard template={certTemplate} app={certApp} />
                 </div>
 
                 {/* Modal Footer Actions */}
                 <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => copyCertificateId(getCertificateNo(certApp))}
@@ -1445,13 +1704,14 @@ export function AdminSection() {
                     <button
                       type="button"
                       onClick={() => {
+                        setPreviewAppId(certApp.id);
                         setCertApp(null);
-                        setIsCanvaModalOpen(true);
+                        setIsCertStudioOpen(true);
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100 cursor-pointer transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100 cursor-pointer transition-colors"
                     >
-                      <Palette className="w-3.5 h-3.5 text-purple-600" />
-                      <span>เปิดส่งออก Canva Bulk Create</span>
+                      <Palette className="w-3.5 h-3.5 text-amber-700" />
+                      <span>🎨 ปรับแต่งดีไซน์ในสตูดิโอ</span>
                     </button>
                   </div>
 
@@ -1467,7 +1727,7 @@ export function AdminSection() {
                     <button
                       type="button"
                       id="btn-print-certificate"
-                      onClick={handlePrintCertificate}
+                      onClick={() => handlePrintSingle(certApp)}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 cursor-pointer transition-colors"
                     >
                       <Printer className="w-4 h-4" />
@@ -1480,205 +1740,495 @@ export function AdminSection() {
             </div>
           )}
 
-          {/* 9. Canva Bulk Create & Template Export Hub Modal */}
-          {isCanvaModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-              <div className="relative w-full max-w-2xl rounded-2xl bg-white p-6 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto">
+          {/* 9. Comprehensive In-Web Certificate Designer Studio & Bulk Print Hub */}
+          {isCertStudioOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 sm:p-5 backdrop-blur-xs">
+              <div className="relative w-full max-w-6xl rounded-2xl bg-white shadow-2xl max-h-[94vh] flex flex-col overflow-hidden">
                 
-                {/* Modal Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-purple-100 text-purple-700">
+                {/* Studio Header */}
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-800">
                       <Palette className="h-5 w-5" />
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-900">
-                        ส่งออกข้อมูลสำหรับ Canva (Bulk Create / Template)
+                        สตูดิโอออกแบบเกียรติบัตร & พิมพ์ยกค่าย (Certificate Studio)
                       </h3>
                       <p className="text-xs text-slate-500">
-                        เชื่อมต่อข้อมูลผู้เข้าร่วมค่ายเพื่อสร้างเกียรติบัตรบน Canva แบบอัตโนมัติในครั้งเดียว
+                        ปรับแต่งธีม สี ข้อความ ลายเซ็น และสั่งพิมพ์เกียรติบัตรเดี่ยวหรือยกค่ายได้โดยตรงในเว็บ
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsCanvaModalOpen(false)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
 
-                {/* Scope Selection */}
-                <div className="mt-5 space-y-2">
-                  <label className="block text-xs font-bold text-slate-700">
-                    เลือกกลุ่มผู้สมัครที่ต้องการส่งออก ({canvaTargetApps.length} รายการ):
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setCanvaScope('CONFIRMED')}
-                      className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                        canvaScope === 'CONFIRMED'
-                          ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
+                      id="btn-reset-cert-template"
+                      onClick={handleResetCertTemplate}
+                      title="คืนค่าเป็นค่าเริ่มต้น"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                     >
-                      <div className="font-bold flex items-center justify-between">
-                        <span>ยืนยันสิทธิ์สมบูรณ์</span>
-                        <span className="font-mono">{confirmedCount} คน</span>
+                      <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                      <span className="hidden sm:inline">รีเซ็ต</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-save-cert-template"
+                      onClick={handleSaveCertTemplate}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>บันทึกการออกแบบ</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-close-cert-studio"
+                      onClick={() => setIsCertStudioOpen(false)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer ml-1"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Studio Body (Split View: Left Controls / Right Live Preview) */}
+                <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                  
+                  {/* Left Column: Designer Settings (5 Cols) */}
+                  <div className="lg:col-span-5 p-5 space-y-5 bg-slate-50/50">
+                    
+                    {/* Tab Navigation */}
+                    <div className="flex rounded-xl bg-slate-200/80 p-1 text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setStudioTab('design')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          studioTab === 'design' ? 'bg-white text-slate-900 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🎨 ธีม & กรอบ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioTab('content')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          studioTab === 'content' ? 'bg-white text-slate-900 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        ✍️ ข้อความ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioTab('signers')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          studioTab === 'signers' ? 'bg-white text-slate-900 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        ✒️ ผู้ลงนาม
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioTab('bulk')}
+                        className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          studioTab === 'bulk' ? 'bg-white text-purple-900 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🖨️ พิมพ์ยกค่าย
+                      </button>
+                    </div>
+
+                    {/* Tab 1: Theme & Frame */}
+                    {studioTab === 'design' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-2">
+                            เลือกรูปแบบธีม (Certificate Theme):
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'royal-gold', name: 'Royal Gold', desc: 'ทองคำหรูหรา มาตรฐานมหาวิทยาลัย', badge: 'bg-amber-400' },
+                              { id: 'cyber-tech', name: 'Cyber Tech', desc: 'ไซเบอร์สีฟ้าคราม สไตล์คอมพิวเตอร์', badge: 'bg-cyan-500' },
+                              { id: 'maejo-green', name: 'Maejo Green', desc: 'เขียวทองแม่โจ้ อัตลักษณ์มหาวิทยาลัย', badge: 'bg-emerald-600' },
+                              { id: 'minimal-academic', name: 'Academic Minimal', desc: 'มินิมอลขาว-เทา ทางการเรียบหรู', badge: 'bg-slate-700' },
+                            ].map((th) => (
+                              <button
+                                key={th.id}
+                                type="button"
+                                onClick={() => setCertTemplate((p) => ({ ...p, theme: th.id as CertificateTheme }))}
+                                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                  certTemplate.theme === th.id
+                                    ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-200'
+                                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-3 h-3 rounded-full ${th.badge}`} />
+                                  <span className="text-xs font-bold text-slate-800">{th.name}</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-1 leading-tight">{th.desc}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-2">
+                            รูปแบบเส้นกรอบ (Border Style):
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'ornate-gold', label: 'กรอบทองคู่แบบวิจิตร' },
+                              { id: 'tech-frame', label: 'กรอบไซเบอร์โมเดิร์น' },
+                              { id: 'classic-double', label: 'กรอบคลาสสิก' },
+                              { id: 'minimal', label: 'กรอบมินิมอลเรียบ' },
+                            ].map((b) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => setCertTemplate((p) => ({ ...p, border: b.id as CertificateBorder }))}
+                                className={`p-2.5 rounded-xl border text-center text-xs transition-all cursor-pointer ${
+                                  certTemplate.border === b.id
+                                    ? 'border-blue-600 bg-blue-50 text-blue-900 font-bold ring-2 ring-blue-100'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                {b.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Display Toggles */}
+                        <div className="pt-2 border-t border-slate-200 space-y-2">
+                          <label className="block text-xs font-bold text-slate-700">
+                            เปิด-ปิดองค์ประกอบบนเกียรติบัตร:
+                          </label>
+                          
+                          <div className="space-y-1.5 text-xs text-slate-700">
+                            {[
+                              { key: 'showEmblem', label: 'แสดงตราสัญลักษณ์ / ตราสถาบัน' },
+                              { key: 'showCorners', label: 'แสดงมุมลวดลายวิจิตร (Corners)' },
+                              { key: 'showCertNo', label: 'แสดงเลขที่เกียรติบัตร (Serial Number)' },
+                              { key: 'showSignatures', label: 'แสดงบล็อกลายเซ็นผู้ลงนาม' },
+                              { key: 'showSchool', label: 'แสดงชื่อโรงเรียนของผู้เข้าร่วม' },
+                            ].map((item) => (
+                              <label key={item.key} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(certTemplate[item.key as keyof CertificateTemplate])}
+                                  onChange={(e) =>
+                                    setCertTemplate((p) => ({
+                                      ...p,
+                                      [item.key]: e.target.checked,
+                                    }))
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>{item.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">แนะนำสำหรับออกเกียรติบัตรจริง</p>
-                    </button>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => setCanvaScope('PASSED_OR_CONFIRMED')}
-                      className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                        canvaScope === 'PASSED_OR_CONFIRMED'
-                          ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="font-bold flex items-center justify-between">
-                        <span>ผ่านคัดเลือกทั้งหมด</span>
-                        <span className="font-mono">{passedCount + confirmedCount} คน</span>
+                    {/* Tab 2: Certificate Content */}
+                    {studioTab === 'content' && (
+                      <div className="space-y-3.5">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            หน่วยงานผู้จัด (Organization):
+                          </label>
+                          <input
+                            type="text"
+                            value={certTemplate.organization}
+                            onChange={(e) => setCertTemplate((p) => ({ ...p, organization: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            ชื่อโครงการค่าย (Camp Title):
+                          </label>
+                          <input
+                            type="text"
+                            value={certTemplate.campTitle}
+                            onChange={(e) => setCertTemplate((p) => ({ ...p, campTitle: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            คำเกริ่นนำ (Header Subtitle):
+                          </label>
+                          <input
+                            type="text"
+                            value={certTemplate.headerSubtitle}
+                            onChange={(e) => setCertTemplate((p) => ({ ...p, headerSubtitle: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            คำประกาศเกียรติคุณ / ผลงาน (Achievement Description):
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={certTemplate.achievementText}
+                            onChange={(e) => setCertTemplate((p) => ({ ...p, achievementText: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600 resize-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              วันที่ออกเกียรติบัตร:
+                            </label>
+                            <input
+                              type="text"
+                              value={certTemplate.dateText}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, dateText: e.target.value }))}
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              รหัสนำหน้าเลขที่:
+                            </label>
+                            <input
+                              type="text"
+                              value={certTemplate.prefixCertNo}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, prefixCertNo: e.target.value }))}
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-600 font-mono"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">PASSED + CONFIRMED</p>
-                    </button>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => setCanvaScope('FILTERED')}
-                      className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                        canvaScope === 'FILTERED'
-                          ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="font-bold flex items-center justify-between">
-                        <span>ตามตัวกรองปัจจุบัน</span>
-                        <span className="font-mono">{filtered.length} คน</span>
+                    {/* Tab 3: Signers */}
+                    {studioTab === 'signers' && (
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2">
+                          <span className="text-xs font-bold text-slate-900 block">
+                            ผู้ลงนาม 1 (ฝั่งซ้าย - ประธานหลักสูตร):
+                          </span>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">ชื่อ-สกุล พร้อมตำแหน่งทางวิชาการ:</label>
+                            <input
+                              type="text"
+                              value={certTemplate.signer1Name}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, signer1Name: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">ตำแหน่งบริหาร:</label>
+                            <input
+                              type="text"
+                              value={certTemplate.signer1Title}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, signer1Title: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-600"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2">
+                          <span className="text-xs font-bold text-slate-900 block">
+                            ผู้ลงนาม 2 (ฝั่งขวา - คณบดี):
+                          </span>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">ชื่อ-สกุล พร้อมตำแหน่งทางวิชาการ:</label>
+                            <input
+                              type="text"
+                              value={certTemplate.signer2Name}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, signer2Name: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">ตำแหน่งบริหาร:</label>
+                            <input
+                              type="text"
+                              value={certTemplate.signer2Title}
+                              onChange={(e) => setCertTemplate((p) => ({ ...p, signer2Title: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-600"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">รวมผลค้นหาปัจจุบัน</p>
-                    </button>
+                    )}
+
+                    {/* Tab 4: Bulk Print Hub */}
+                    {studioTab === 'bulk' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-2">
+                            เลือกกลุ่มผู้สมัครที่ต้องการพิมพ์เกียรติบัตรยกค่าย:
+                          </label>
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setBulkScope('CONFIRMED')}
+                              className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                                bulkScope === 'CONFIRMED'
+                                  ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold">
+                                <span>เฉพาะผู้ยืนยันสิทธิ์สมบูรณ์ (CONFIRMED)</span>
+                                <span className="font-mono bg-purple-200 text-purple-900 px-2 py-0.5 rounded-full">
+                                  {confirmedCount} คน
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-1">แนะนำ: สำหรับผู้ที่จ่ายเงินและผ่านการอนุมัติสิทธิ์แล้ว</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setBulkScope('PASSED_OR_CONFIRMED')}
+                              className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                                bulkScope === 'PASSED_OR_CONFIRMED'
+                                  ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold">
+                                <span>ผู้ผ่านการคัดเลือกทั้งหมด (PASSED + CONFIRMED)</span>
+                                <span className="font-mono bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full">
+                                  {passedCount + confirmedCount} คน
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-1">พิมพ์ให้ทุกคนที่ได้รับการคัดเลือกเข้าร่วมค่าย</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setBulkScope('FILTERED')}
+                              className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                                bulkScope === 'FILTERED'
+                                  ? 'border-purple-600 bg-purple-50 text-purple-900 ring-2 ring-purple-200 font-semibold'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold">
+                                <span>ตามตัวกรองปัจจุบัน (ตารางหลัก)</span>
+                                <span className="font-mono bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full">
+                                  {filtered.length} คน
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-1">รวมผลการค้นหาและตัวกรองที่เลือกไว้ในตาราง</p>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Bulk Print Trigger Button */}
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            id="btn-print-bulk-studio"
+                            onClick={handlePrintBulk}
+                            disabled={bulkTargetApps.length === 0}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-bold text-white shadow-md hover:bg-purple-700 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span>🖨️ เริ่มพิมพ์เกียรติบัตรทุกคน ({bulkTargetApps.length} ใบ)</span>
+                          </button>
+                          <p className="text-[10px] text-slate-400 text-center mt-1.5">
+                            ระบบจะเปิดหน้าต่างพิมพ์ของเบราว์เซอร์ พร้อมแยกหน้าละ 1 คนอัตโนมัติ (A4 แนวนอน)
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
-                </div>
 
-                {/* Canva Template Variable Mapping Table */}
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-800">
-                      ตัวแปรที่ส่งออกไปยัง Template ใน Canva (Data Field Mapping):
-                    </span>
-                    <span className="text-[11px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                      UTF-8 BOM Supported
-                    </span>
+                  {/* Right Column: Live Real-Time Preview (7 Cols) */}
+                  <div className="lg:col-span-7 p-5 flex flex-col justify-between bg-slate-100/60 overflow-x-auto">
+                    
+                    <div>
+                      {/* Preview Selector & Status */}
+                      <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5 text-blue-600" />
+                            <span>ดูตัวอย่างเกียรติบัตรสด (Live Preview):</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label htmlFor="preview-student-select" className="text-xs text-slate-500 shrink-0">สำหรับผู้สมัคร:</label>
+                          <select
+                            id="preview-student-select"
+                            value={previewAppId}
+                            onChange={(e) => setPreviewAppId(e.target.value)}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-800 outline-none focus:border-blue-600 cursor-pointer max-w-56"
+                          >
+                            <option value="SAMPLE">ตัวอย่างจำลอง: นายสมชาย พัฒนาซอฟต์แวร์</option>
+                            {apps.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.fullName} ({a.school})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Live Certificate Card Rendering */}
+                      <div className="flex justify-center p-2">
+                        <CertificateCard template={certTemplate} app={activePreviewStudent} />
+                      </div>
+                    </div>
+
+                    {/* Studio Footer Quick Print */}
+                    <div className="mt-5 pt-4 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs text-slate-500 font-mono">
+                        เลขที่ตัวอย่าง: {certTemplate.prefixCertNo}{activePreviewStudent.id.replace(/^CC25-?/i, '')}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          id="btn-print-studio-preview"
+                          onClick={handlePrintCurrentPreview}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>พิมพ์เกียรติบัตรใบนี้</span>
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-slate-600">
-                      <thead className="border-b border-slate-200 text-slate-400 uppercase text-[10px]">
-                        <tr>
-                          <th className="py-1.5 px-2">ชื่อคอลัมน์ใน Canva</th>
-                          <th className="py-1.5 px-2">ตัวอย่างค่าที่ส่งออก</th>
-                          <th className="py-1.5 px-2">กล่องข้อความที่แนะนำใน Canva</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200/60 font-mono text-[11px]">
-                        <tr>
-                          <td className="py-1.5 px-2 font-bold text-purple-700">{`{{FullName}}`}</td>
-                          <td className="py-1.5 px-2 text-slate-800">{canvaTargetApps[0]?.fullName || 'สมชาย รักคอม'}</td>
-                          <td className="py-1.5 px-2 text-slate-500">ชื่อ-นามสกุลผู้รับเกียรติบัตร</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1.5 px-2 font-bold text-purple-700">{`{{School}}`}</td>
-                          <td className="py-1.5 px-2 text-slate-800">{canvaTargetApps[0]?.school || 'โรงเรียนแม่โจ้วิทยาคม'}</td>
-                          <td className="py-1.5 px-2 text-slate-500">โรงเรียนของผู้เข้าร่วม</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1.5 px-2 font-bold text-purple-700">{`{{CertificateNo}}`}</td>
-                          <td className="py-1.5 px-2 text-slate-800">{canvaTargetApps[0] ? getCertificateNo(canvaTargetApps[0]) : 'CC25-CERT-866F13'}</td>
-                          <td className="py-1.5 px-2 text-slate-500">รหัสเลขที่เกียรติบัตร</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1.5 px-2 font-bold text-purple-700">{`{{Date}}`}</td>
-                          <td className="py-1.5 px-2 text-slate-800">16 พฤศจิกายน 2569</td>
-                          <td className="py-1.5 px-2 text-slate-500">วันที่จัดกิจกรรม / ออกเกียรติบัตร</td>
-                        </tr>
-                        <tr>
-                          <td className="py-1.5 px-2 font-bold text-purple-700">{`{{CampName}}`}</td>
-                          <td className="py-1.5 px-2 text-slate-800">ค่ายวิทยาการคอมพิวเตอร์ ComCamp ครั้งที่ 25</td>
-                          <td className="py-1.5 px-2 text-slate-500">ชื่อโครงการค่าย</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
 
-                {/* Step-by-Step Instructions */}
-                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3.5 text-xs text-blue-900 space-y-1.5">
-                  <p className="font-bold text-blue-800 flex items-center gap-1.5">
-                    <span>💡 วิธีเชื่อมต่อ Canva แบบกลุ่ม (Bulk Create) ใน 4 ขั้นตอน:</span>
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1">
-                    <li>เปิดดีไซน์เกียรติบัตรใน Canva (ค้นหาคำว่า <em>Certificate</em> หรือใช้ Template ของค่าย)</li>
-                    <li>ที่แถบเครื่องมือซ้ายมือ คลิก <strong>Apps (แอป)</strong> ค้นหาและเลือก <strong>Bulk Create (สร้างแบบกลุ่ม)</strong></li>
-                    <li>กด <strong>Upload CSV</strong> (ไฟล์ที่โหลดจากปุ่มล่าง) หรือกด <strong>Enter data manually</strong> แล้วกด <strong>Ctrl+V</strong> เพื่อวางตารางได้ทันที</li>
-                    <li>คลิกขวาที่กล่องข้อความบนเกียรติบัตร เลือก <strong>Connect data (เชื่อมต่อข้อมูล)</strong> ตามชื่อตัวแปร แล้วกด <strong>Generate pages</strong> 🎉</li>
-                  </ol>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                  <a
-                    href="https://www.canva.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 underline"
-                  >
-                    <span>เปิด Canva.com ในแท็บใหม่</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    {/* Copy Table for Canva Manual Entry */}
-                    <button
-                      type="button"
-                      id="btn-copy-canva-table"
-                      onClick={() => copyCanvaTableData(canvaTargetApps)}
-                      disabled={canvaTargetApps.length === 0}
-                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
-                    >
-                      {copiedCanvaTable ? (
-                        <>
-                          <Check className="w-4 h-4 text-emerald-600" />
-                          <span className="text-emerald-700">คัดลอกตารางแล้ว (วางใน Canva ได้เลย)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 text-slate-500" />
-                          <span>คัดลอกตาราง (Paste ใน Canva)</span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Download CSV for Canva */}
-                    <button
-                      type="button"
-                      id="btn-download-canva-csv"
-                      onClick={() => exportCanvaCSV(canvaTargetApps)}
-                      disabled={canvaTargetApps.length === 0}
-                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs font-semibold text-white shadow-2xs hover:bg-purple-700 transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>ดาวน์โหลด CSV สำหรับ Canva ({canvaTargetApps.length} คน)</span>
-                    </button>
-                  </div>
                 </div>
 
               </div>
             </div>
           )}
+
+          {/* 10. Dedicated Printable Portal for Native Browser Printing */}
+          <div id="cert-print-portal" className="hidden print:block">
+            {(printingApps && printingApps.length > 0
+              ? printingApps
+              : certApp
+              ? [certApp]
+              : activePreviewStudent
+              ? [activePreviewStudent]
+              : []
+            ).map((student) => (
+              <div key={student.id} className="cert-print-sheet">
+                <CertificateCard template={certTemplate} app={student} isPrintVersion={true} />
+              </div>
+            ))}
+          </div>
 
         </div>
       )}

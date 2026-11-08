@@ -389,3 +389,48 @@ html[data-theme="dark"] .rm-mesh-gradient {
 @media (prefers-reduced-motion: reduce) {
   .rm-loader--exit { transition: none; }
 }
+
+
+/* ==========================================================================
+   ComCamp In-Web Certificate Studio Print Rules
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 6mm;
+  }
+  html, body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Hide standard page elements, navigation, and overlays */
+  nav, header, footer, .no-print, [role="dialog"] {
+    display: none !important;
+  }
+  #cert-print-portal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: transparent !important;
+  }
+  .cert-print-sheet {
+    page-break-after: always;
+    break-after: page;
+    width: 100%;
+    min-height: 95vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+    margin: 0 auto;
+  }
+  .cert-print-sheet:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+}
