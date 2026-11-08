@@ -22,7 +22,7 @@ export const DEFAULT_TARGET_DATE = "2026-11-16T00:00:00+07:00";
 
 export const API_BASE: string =
   (typeof import.meta !== 'undefined' && import.meta.env?.PUBLIC_API_URL) ||
-  'http://localhost:8000/api';
+  '/api';
 
 /** Where the response came from. Always rendered in UI for backend debugging. */
 export type ApiSource = 'LIVE GO API' | 'MOCK FALLBACK';

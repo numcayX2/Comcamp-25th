@@ -48,7 +48,7 @@ func (h *PaymentHandler) UploadSlip(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case service.ErrDuplicateSlip:
 			response.Error(w, http.StatusConflict, err.Error())
-		case service.ErrNotPassed:
+		case service.ErrApplicantRejected:
 			response.Error(w, http.StatusForbidden, err.Error())
 		case service.ErrApplicantNotFound:
 			response.Error(w, http.StatusNotFound, err.Error())

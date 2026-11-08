@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   getApplicationStatus,
   confirmAttendance,
@@ -38,6 +38,29 @@ export function StatusSection() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewLocalUrl, setPreviewLocalUrl] = useState<string | null>(null);
+
+  // Auto-search if ?q=... is present in URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const queryParam = params.get('q');
+      if (queryParam) {
+        setQ(queryParam);
+        setBusy(true);
+        setError(null);
+        getApplicationStatus(queryParam.trim())
+          .then((res) => {
+            setApp(res.data);
+            setSource(res.source);
+          })
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : 'ไม่พบข้อมูลใบสมัครที่ค้นหา');
+            setApp(null);
+          })
+          .finally(() => setBusy(false));
+      }
+    }
+  }, []);
 
   async function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -96,7 +119,8 @@ export function StatusSection() {
     setUploadMessage(null);
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
+      const isImg = (file.type && file.type.startsWith('image/')) || /\.(jpg|jpeg|png|webp)$/i.test(file.name);
+      if (!isImg) {
         setUploadError('กรุณาเลือกไฟล์รูปภาพ (JPG, PNG หรือ WebP)');
         return;
       }
@@ -142,7 +166,7 @@ export function StatusSection() {
   }
 
   const currentSlip = getSlipUrl(app);
-  const isEligibleForPayment = app && (app.status === 'PASSED' || app.status === 'CONFIRMED');
+  const isEligibleForPayment = app && app.status !== 'REJECTED';
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
@@ -280,14 +304,14 @@ export function StatusSection() {
             )}
           </section>
 
-          {/* Payment Slip Upload Card (Only for PASSED or CONFIRMED) */}
+          {/* Payment Slip Upload Card */}
           {isEligibleForPayment && (
             <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">หลักฐานการชำระเงิน (Payment Slip)</h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    รองรับไฟล์รูปภาพ JPG, PNG ขนาดไม่เกิน 5MB สำหรับตรวจสอบสิทธิ์
+                    ค่าสมัครค่าย 300.00 บาท (รองรับไฟล์ JPG, PNG, WebP ขนาดไม่เกิน 5MB)
                   </p>
                 </div>
                 <div>

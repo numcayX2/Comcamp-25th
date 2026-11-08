@@ -20,7 +20,7 @@ import (
 
 var (
 	ErrDuplicateSlip   = errors.New("this slip has already been uploaded (duplicate slip detected)")
-	ErrNotPassed       = errors.New("cannot upload slip: applicant has not passed selection")
+	ErrApplicantRejected = errors.New("cannot upload slip: applicant has been rejected")
 	ErrInvalidFileType = errors.New("invalid file type: only JPG, PNG, and WebP images are allowed")
 )
 
@@ -60,8 +60,8 @@ func (s *PaymentService) UploadSlip(ctx context.Context, appIdentifier string, f
 		return nil, ErrApplicantNotFound
 	}
 
-	if applicant.Status != domain.StatusPassed && applicant.Status != domain.StatusConfirmed {
-		return nil, ErrNotPassed
+	if applicant.Status == domain.StatusRejected {
+		return nil, ErrApplicantRejected
 	}
 
 	// 1. Anti-fraud check: Compute SHA256 of the uploaded slip file
