@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   submitApplication,
   uploadPaymentSlip,
+  getApplicationStatus,
   getSlipImageUrl,
+  getSlipUrl,
+  saveActiveApplication,
+  getActiveApplication,
+  clearActiveApplication,
+  saveFormDraft,
+  getFormDraft,
+  clearFormDraft,
   type ApplicationPayload,
   type Application,
   type ApiSource,
@@ -31,6 +39,7 @@ export function RegisterSection() {
   const [createdApp, setCreatedApp] = useState<Application | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recoverableApp, setRecoverableApp] = useState<Application | null>(null);
 
   // Step 2: Slip upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -40,8 +49,88 @@ export function RegisterSection() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedSlipUrl, setUploadedSlipUrl] = useState<string | null>(null);
 
-  const set = <K extends keyof ApplicationPayload>(key: K, value: ApplicationPayload[K]) =>
-    setForm((f) => ({ ...f, [key]: value }));
+  // Restore application or draft on mount (survives refresh)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const queryId = params.get('id') || params.get('appId') || params.get('q');
+
+    if (queryId) {
+      setBusy(true);
+      getApplicationStatus(queryId.trim())
+        .then((res) => {
+          setCreatedApp(res.data);
+          setSource(res.source);
+          saveActiveApplication(res.data);
+          const currentSlip = getSlipUrl(res.data);
+          if (currentSlip) setUploadedSlipUrl(currentSlip);
+        })
+        .catch(() => {
+          restoreFromStorage();
+        })
+        .finally(() => setBusy(false));
+      return;
+    }
+
+    restoreFromStorage();
+
+    function restoreFromStorage() {
+      const savedApp = getActiveApplication();
+      if (savedApp) {
+        setCreatedApp(savedApp);
+        const currentSlip = getSlipUrl(savedApp);
+        if (currentSlip) setUploadedSlipUrl(currentSlip);
+
+        // Fetch latest status in background to keep data fresh
+        getApplicationStatus(savedApp.id)
+          .then((res) => {
+            setCreatedApp(res.data);
+            setSource(res.source);
+            saveActiveApplication(res.data);
+            const liveSlip = getSlipUrl(res.data);
+            if (liveSlip) setUploadedSlipUrl(liveSlip);
+          })
+          .catch(() => {});
+        return;
+      }
+
+      // Restore form draft if any
+      const draft = getFormDraft();
+      if (draft) {
+        setForm(draft);
+      }
+    }
+  }, []);
+
+  const set = <K extends keyof ApplicationPayload>(key: K, value: ApplicationPayload[K]) => {
+    setForm((f) => {
+      const updated = { ...f, [key]: value };
+      saveFormDraft(updated);
+      return updated;
+    });
+  };
+
+  function handleStartNewApplication() {
+    clearActiveApplication();
+    clearFormDraft();
+    setCreatedApp(null);
+    setForm(EMPTY);
+    setRecoverableApp(null);
+    setSelectedFile(null);
+    setPreviewLocalUrl(null);
+    setUploadedSlipUrl(null);
+    setUploadMessage(null);
+    setUploadError(null);
+    setError(null);
+    if (typeof window !== 'undefined' && window.history.replaceState) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('id');
+      url.searchParams.delete('appId');
+      url.searchParams.delete('q');
+      window.history.replaceState(null, '', url.pathname);
+    }
+  }
 
   const inputCls =
     'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 placeholder-gray-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-colors';
@@ -70,7 +159,7 @@ export function RegisterSection() {
 
     setBusy(true);
     setError(null);
-    setCreatedApp(null);
+    setRecoverableApp(null);
     setUploadMessage(null);
     setUploadError(null);
 
@@ -87,12 +176,37 @@ export function RegisterSection() {
       const res = await submitApplication(payload);
       setCreatedApp(res.data);
       setSource(res.source);
-      // Scroll to top smoothly
-      if (typeof window !== 'undefined') {
+      saveActiveApplication(res.data);
+      clearFormDraft();
+
+      // Update URL with ?id=... so refresh keeps the exact application
+      if (typeof window !== 'undefined' && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('id', res.data.id);
+        window.history.replaceState(null, '', url.toString());
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการส่งใบสมัคร');
+      const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการส่งใบสมัคร';
+      const isAlreadyRegistered =
+        msg.includes('already registered') ||
+        msg.includes('เคยลงทะเบียน') ||
+        msg.includes('ซ้ำ');
+
+      if (isAlreadyRegistered) {
+        // Look up existing application so user can resume immediately without remembering ID!
+        const searchKey = cleanNationalId || cleanPhone;
+        getApplicationStatus(searchKey)
+          .then((foundRes) => {
+            setRecoverableApp(foundRes.data);
+            setError(null);
+          })
+          .catch(() => {
+            setError(msg);
+          });
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -133,6 +247,13 @@ export function RegisterSection() {
       const res = await uploadPaymentSlip(createdApp.id, selectedFile);
       setUploadedSlipUrl(res.data.slipUrl);
       setUploadMessage(res.data.message || 'อัปโหลดสลิปเรียบร้อยแล้ว ข้อมูลถูกส่งเข้าสู่ระบบของพี่ค่ายเพื่อตรวจสอบ');
+      const updatedApp: Application = {
+        ...createdApp,
+        slipUrl: res.data.slipUrl,
+        slip_url: res.data.slipUrl,
+      };
+      setCreatedApp(updatedApp);
+      saveActiveApplication(updatedApp);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการอัปโหลดสลิป');
     } finally {
@@ -165,6 +286,53 @@ export function RegisterSection() {
               กรอกข้อมูลส่วนตัวเพื่อลงทะเบียนเข้าสู่ระบบ จากนั้นจะเข้าสู่ขั้นตอนชำระเงินค่าสมัคร
             </p>
           </header>
+
+          {/* Conflict Recovery Banner */}
+          {recoverableApp && (
+            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5 shadow-sm text-amber-900">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl mt-0.5">⚠️</span>
+                <div className="flex-1">
+                  <h3 className="font-bold text-base text-amber-900">
+                    ตรวจพบข้อมูลการสมัครในระบบแล้ว
+                  </h3>
+                  <p className="mt-1 text-sm text-amber-800 leading-relaxed">
+                    เลขประจำตัวประชาชน <strong className="font-mono">{recoverableApp.nationalId}</strong> หรือเบอร์โทรศัพท์นี้ มีใบสมัครในระบบแล้วในชื่อ <strong>{recoverableApp.fullName}</strong> ({recoverableApp.nickname})
+                    <span className="block mt-0.5 font-mono text-xs text-amber-700">
+                      เลขที่ใบสมัคร: <strong>{recoverableApp.id}</strong> (สถานะ: {recoverableApp.status})
+                    </span>
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedApp(recoverableApp);
+                        saveActiveApplication(recoverableApp);
+                        setRecoverableApp(null);
+                        const existingSlip = getSlipUrl(recoverableApp);
+                        if (existingSlip) setUploadedSlipUrl(existingSlip);
+                        if (typeof window !== 'undefined' && window.history.replaceState) {
+                          const url = new URL(window.location.href);
+                          url.searchParams.set('id', recoverableApp.id);
+                          window.history.replaceState(null, '', url.toString());
+                        }
+                      }}
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <span>💳 ไปหน้าชำระเงิน & แนบสลิปต่อทันที</span>
+                      <span>&rarr;</span>
+                    </button>
+                    <a
+                      href={`/status?q=${recoverableApp.id}`}
+                      className="rounded-xl border border-amber-300 bg-white px-3.5 py-2 text-xs font-medium text-amber-900 hover:bg-amber-50 transition-colors inline-flex items-center gap-1"
+                    >
+                      🔍 ตรวจสอบสถานะใบสมัคร
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-start gap-2.5">
@@ -250,10 +418,23 @@ export function RegisterSection() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">เลขที่ใบสมัคร (Application No.)</p>
                 <p className="text-2xl font-bold font-mono text-blue-900">{createdApp.id}</p>
+                <p className="text-[11px] text-green-700 font-medium mt-0.5 flex items-center gap-1">
+                  <span>💾</span>
+                  <span>บันทึกข้อมูลในเครื่องนี้แล้ว (รีเฟรชหน้าจอข้อมูลไม่หาย)</span>
+                </p>
               </div>
-              <span className="rounded-full bg-amber-100 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">
-                สถานะ: รอชำระเงินและตรวจสลิป
-              </span>
+              <div className="flex flex-col items-end gap-1.5">
+                <span className="rounded-full bg-amber-100 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">
+                  สถานะ: {createdApp.status === 'PENDING' ? 'รอชำระเงินและตรวจสลิป' : createdApp.status}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleStartNewApplication}
+                  className="text-xs text-blue-700 hover:text-red-600 underline font-medium transition-colors"
+                >
+                  + สมัครใหม่สำหรับคนอื่น
+                </button>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-700">
               <p><span className="text-gray-400">ผู้สมัคร:</span> <strong>{createdApp.fullName}</strong> ({createdApp.nickname})</p>

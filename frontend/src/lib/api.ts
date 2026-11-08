@@ -205,6 +205,104 @@ export function getSlipImageUrl(slipUrl?: string | null): string {
   return `${origin}${cleanPath}`;
 }
 
+/* ============================================================
+   Application & Form State Persistence (Local Storage Helpers)
+   ============================================================ */
+
+export interface SavedAppSummary {
+  id: string;
+  fullName: string;
+  nickname?: string;
+  nationalId: string;
+  phone: string;
+  status: ApplicationStatus;
+  savedAt: string;
+}
+
+const STORAGE_ACTIVE_APP = 'comcamp25_active_app';
+const STORAGE_RECENT_APPS = 'comcamp25_recent_apps';
+const STORAGE_FORM_DRAFT = 'comcamp25_form_draft';
+
+export function saveActiveApplication(app: Application): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_ACTIVE_APP, JSON.stringify(app));
+
+    // Also persist in recent applications list
+    const existingStr = localStorage.getItem(STORAGE_RECENT_APPS);
+    let list: SavedAppSummary[] = [];
+    if (existingStr) {
+      try {
+        list = JSON.parse(existingStr);
+      } catch {}
+    }
+    list = list.filter((item) => item.id !== app.id && item.nationalId !== app.nationalId);
+    list.unshift({
+      id: app.id,
+      fullName: app.fullName,
+      nickname: app.nickname,
+      nationalId: app.nationalId,
+      phone: app.phone,
+      status: app.status,
+      savedAt: new Date().toISOString(),
+    });
+    localStorage.setItem(STORAGE_RECENT_APPS, JSON.stringify(list.slice(0, 5)));
+  } catch (err) {
+    console.warn('saveActiveApplication error:', err);
+  }
+}
+
+export function getActiveApplication(): Application | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_ACTIVE_APP);
+    return raw ? (JSON.parse(raw) as Application) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveApplication(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_ACTIVE_APP);
+  } catch {}
+}
+
+export function getRecentApplications(): SavedAppSummary[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_RECENT_APPS);
+    return raw ? (JSON.parse(raw) as SavedAppSummary[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFormDraft(draft: ApplicationPayload): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_FORM_DRAFT, JSON.stringify(draft));
+  } catch {}
+}
+
+export function getFormDraft(): ApplicationPayload | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_FORM_DRAFT);
+    return raw ? (JSON.parse(raw) as ApplicationPayload) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearFormDraft(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_FORM_DRAFT);
+  } catch {}
+}
+
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);

@@ -5,6 +5,9 @@ import {
   uploadPaymentSlip,
   getSlipImageUrl,
   getSlipUrl,
+  saveActiveApplication,
+  getRecentApplications,
+  type SavedAppSummary,
   type Application,
   type ApplicationStatus,
   type ApiSource,
@@ -38,50 +41,49 @@ export function StatusSection() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewLocalUrl, setPreviewLocalUrl] = useState<string | null>(null);
+  const [recentApps, setRecentApps] = useState<SavedAppSummary[]>([]);
 
-  // Auto-search if ?q=... is present in URL
+  // Load recent applications from localStorage on mount & auto-search if ?q=... is present in URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      setRecentApps(getRecentApplications());
+
       const params = new URLSearchParams(window.location.search);
       const queryParam = params.get('q');
       if (queryParam) {
         setQ(queryParam);
-        setBusy(true);
-        setError(null);
-        getApplicationStatus(queryParam.trim())
-          .then((res) => {
-            setApp(res.data);
-            setSource(res.source);
-          })
-          .catch((err) => {
-            setError(err instanceof Error ? err.message : 'ไม่พบข้อมูลใบสมัครที่ค้นหา');
-            setApp(null);
-          })
-          .finally(() => setBusy(false));
+        searchDirect(queryParam.trim());
       }
     }
   }, []);
 
-  async function onSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const query = q.trim();
+  async function searchDirect(query: string) {
     if (!query) return;
     setBusy(true);
     setError(null);
-    setUploadMessage(null);
-    setUploadError(null);
-    setSelectedFile(null);
-    setPreviewLocalUrl(null);
     try {
       const res = await getApplicationStatus(query);
       setApp(res.data);
       setSource(res.source);
+      saveActiveApplication(res.data);
+      setRecentApps(getRecentApplications());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ไม่พบข้อมูลใบสมัครที่ค้นหา');
       setApp(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const query = q.trim();
+    if (!query) return;
+    setUploadMessage(null);
+    setUploadError(null);
+    setSelectedFile(null);
+    setPreviewLocalUrl(null);
+    await searchDirect(query);
   }
 
   async function onConfirm() {
@@ -194,6 +196,36 @@ export function StatusSection() {
           {busy ? 'กำลังค้นหา...' : 'ค้นหาข้อมูล'}
         </button>
       </form>
+
+      <p className="mt-2 text-xs text-gray-500 px-1">
+        💡 จำ Application ID ไม่ได้? สามารถพิมพ์ค้นหาด้วย <strong>เลขประจำตัวประชาชน 13 หลัก</strong> หรือ <strong>เบอร์โทรศัพท์มือถือ</strong> ที่ใช้สมัครได้ทันที
+      </p>
+
+      {/* Recent Applications Quick Access */}
+      {recentApps.length > 0 && !app && (
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3.5 text-xs text-blue-900">
+          <p className="font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
+            <span>💾 ใบสมัครล่าสุดบนเครื่องนี้:</span>
+            <span className="text-[11px] font-normal text-blue-600">(คลิกเพื่อตรวจสอบข้อมูลทันทีโดยไม่ต้องพิมพ์)</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {recentApps.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setQ(item.id);
+                  searchDirect(item.id);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 shadow-2xs transition-colors"
+              >
+                <span className="font-mono font-bold">{item.id}</span>
+                <span>· {item.fullName}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-start gap-3">
