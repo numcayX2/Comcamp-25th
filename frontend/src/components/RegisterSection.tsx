@@ -15,6 +15,7 @@ import {
   Mail,
   BookOpen,
   ArrowRight,
+  ArrowLeft,
   RotateCcw,
   Check,
   Trash2,
@@ -67,6 +68,7 @@ const EMPTY: ApplicationPayload = {
 
 export function RegisterSection() {
   const [form, setForm] = useState<ApplicationPayload>(EMPTY);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [busy, setBusy] = useState(false);
   const [createdApp, setCreatedApp] = useState<Application | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
@@ -149,6 +151,7 @@ export function RegisterSection() {
     clearActiveApplication();
     clearFormDraft();
     setCreatedApp(null);
+    setCurrentStep(1);
     setForm(EMPTY);
     setRecoverableApp(null);
     setSelectedFile(null);
@@ -178,19 +181,42 @@ export function RegisterSection() {
     'w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all';
   const labelCls = 'block text-xs font-semibold text-slate-700 mb-1.5';
 
+  // Step Validations
+  const isNatIdValid = /^\d{13}$/.test(form.nationalId.trim());
+  const isPhoneValid = /^0\d{9}$/.test(form.phone.trim());
+
+  const isStep1Complete = Boolean(
+    form.fullName.trim() &&
+    form.nickname.trim() &&
+    isNatIdValid &&
+    isPhoneValid
+  );
+
+  const isStep2Complete = Boolean(
+    form.school.trim() &&
+    form.province.trim() &&
+    form.grade &&
+    form.shirtSize
+  );
+
+  const isStep3Complete = Boolean(
+    form.motivation.trim().length >= 10
+  );
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Client-side validation aligning with Go backend
     const cleanNationalId = form.nationalId.trim();
     if (!/^\d{13}$/.test(cleanNationalId)) {
       setError('เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก');
+      setCurrentStep(1);
       return;
     }
 
     const cleanPhone = form.phone.trim();
     if (!/^0\d{9}$/.test(cleanPhone)) {
       setError('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักขึ้นต้นด้วย 0 (เช่น 08XXXXXXXX)');
+      setCurrentStep(1);
       return;
     }
 
@@ -236,7 +262,6 @@ export function RegisterSection() {
         msg.includes('ซ้ำ');
 
       if (isAlreadyRegistered) {
-        // Look up existing application so user can resume immediately without remembering ID!
         const searchKey = cleanNationalId || cleanPhone;
         getApplicationStatus(searchKey)
           .then((foundRes) => {
@@ -306,16 +331,13 @@ export function RegisterSection() {
     }
   }
 
-  const isNatIdValid = /^\d{13}$/.test(form.nationalId);
-  const isPhoneValid = /^0\d{9}$/.test(form.phone);
-
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
+    <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
       
-      {/* Visual Stepper Bar */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between max-w-md mx-auto">
-          {/* Step 1 Pill */}
+      {/* Top Main Stepper (กรอกใบสมัคร vs ชำระเงิน) */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between max-w-xs mx-auto">
+          {/* Main Step 1 */}
           <div className="flex items-center gap-2">
             <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition-all ${
               !createdApp
@@ -326,13 +348,13 @@ export function RegisterSection() {
             </div>
             <div className="text-left">
               <p className="text-xs font-semibold text-slate-900">ขั้นตอนที่ 1</p>
-              <p className="text-[11px] text-slate-500">กรอกข้อมูลใบสมัคร</p>
+              <p className="text-[11px] text-slate-500">กรอกใบสมัคร</p>
             </div>
           </div>
 
-          <div className="h-0.5 w-12 sm:w-20 bg-slate-200" />
+          <div className="h-0.5 w-12 sm:w-16 bg-slate-200" />
 
-          {/* Step 2 Pill */}
+          {/* Main Step 2 */}
           <div className="flex items-center gap-2">
             <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition-all ${
               createdApp
@@ -350,9 +372,9 @@ export function RegisterSection() {
       </div>
 
       {!createdApp ? (
-        /* STEP 1: Registration Form */
+        /* STEP 1: Multi-Step Registration Form Wizard */
         <div>
-          <header className="mb-8 text-center">
+          <header className="mb-6 text-center">
             <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
               <Sparkles className="w-3.5 h-3.5" />
               <span>ComCamp #25 · รับสมัครน้องค่าย</span>
@@ -361,11 +383,11 @@ export function RegisterSection() {
               สมัครเข้าร่วมค่าย ComCamp #25
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-500">
-              กรอกข้อมูลเพื่อลงทะเบียนเข้าสู่ระบบ จากนั้นจะเข้าสู่ขั้นตอนชำระเงินค่ายืนยันสิทธิ์ทันที
+              กรอกข้อมูลตามขั้นตอนทีละส่วน สะดวก รวดเร็ว ไม่ต้องเลื่อนจอเยอะ
             </p>
           </header>
 
-          {/* Conflict Recovery Banner (เมื่อพบว่าเคยสมัครแล้ว) */}
+          {/* Conflict Recovery Banner */}
           {recoverableApp && (
             <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50/80 p-5 shadow-2xs text-amber-950">
               <div className="flex items-start gap-3">
@@ -395,7 +417,7 @@ export function RegisterSection() {
                           window.history.replaceState(null, '', url.toString());
                         }
                       }}
-                      className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-2xs transition-colors flex items-center gap-1.5"
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <CreditCard className="w-3.5 h-3.5" />
                       <span>ไปหน้าชำระเงิน & แนบสลิปต่อทันที</span>
@@ -421,228 +443,376 @@ export function RegisterSection() {
             </div>
           )}
 
-          <form onSubmit={onSubmit} className="space-y-6">
-            
-            {/* Section 1: ข้อมูลส่วนตัว */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <User className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-bold text-slate-900">1. ข้อมูลส่วนตัวผู้สมัคร</h2>
-              </div>
+          {/* Sub-step Wizard Nav */}
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5">
+            <div className="flex items-center justify-between">
+              
+              {/* Tab 1 */}
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  currentStep === 1
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : isStep1Complete
+                    ? 'text-emerald-700 hover:bg-slate-100'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                  isStep1Complete ? 'bg-emerald-600 text-white' : currentStep === 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {isStep1Complete ? <Check className="w-3 h-3" /> : '1'}
+                </span>
+                <span>ข้อมูลส่วนตัว</span>
+              </button>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelCls} htmlFor="fullName">ชื่อ-นามสกุล *</label>
-                  <input
-                    id="fullName"
-                    className={inputCls}
-                    required
-                    value={form.fullName}
-                    onChange={(e) => set('fullName', e.target.value)}
-                    placeholder="เช่น สมชาย ใจดี"
-                  />
-                </div>
+              <span className="text-slate-300 px-1">&rarr;</span>
 
-                <div>
-                  <label className={labelCls} htmlFor="nickname">ชื่อเล่น *</label>
-                  <input
-                    id="nickname"
-                    className={inputCls}
-                    required
-                    value={form.nickname}
-                    onChange={(e) => set('nickname', e.target.value)}
-                    placeholder="เช่น ชาย"
-                  />
-                </div>
+              {/* Tab 2 */}
+              <button
+                type="button"
+                disabled={!isStep1Complete}
+                onClick={() => isStep1Complete && setCurrentStep(2)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                  currentStep === 2
+                    ? 'bg-white text-blue-700 shadow-2xs cursor-pointer'
+                    : isStep2Complete
+                    ? 'text-emerald-700 hover:bg-slate-100 cursor-pointer'
+                    : isStep1Complete
+                    ? 'text-slate-600 hover:bg-slate-100 cursor-pointer'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                  isStep2Complete ? 'bg-emerald-600 text-white' : currentStep === 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {isStep2Complete ? <Check className="w-3 h-3" /> : '2'}
+                </span>
+                <span>การศึกษา & เสื้อ</span>
+              </button>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-slate-700" htmlFor="nationalId">
-                      เลขประจำตัวประชาชน (13 หลัก) *
-                    </label>
-                    {isNatIdValid && (
-                      <span className="text-[11px] text-emerald-600 font-medium inline-flex items-center gap-1">
-                        <Check className="w-3 h-3" /> ครบ 13 หลัก
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    id="nationalId"
-                    className={`${inputCls} font-mono`}
-                    required
-                    maxLength={13}
-                    value={form.nationalId}
-                    onChange={(e) => set('nationalId', e.target.value.replace(/\D/g, ''))}
-                    placeholder="1509900112233"
-                    inputMode="numeric"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">ใช้สำหรับยืนยันตัวตนและค้นหาประวัติใบสมัคร</p>
-                </div>
+              <span className="text-slate-300 px-1">&rarr;</span>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-slate-700" htmlFor="phone">
-                      เบอร์โทรศัพท์มือถือ (10 หลัก) *
-                    </label>
-                    {isPhoneValid && (
-                      <span className="text-[11px] text-emerald-600 font-medium inline-flex items-center gap-1">
-                        <Check className="w-3 h-3" /> ถูกต้อง
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    id="phone"
-                    className={`${inputCls} font-mono`}
-                    required
-                    maxLength={10}
-                    type="tel"
-                    value={form.phone}
-                    onChange={(e) => set('phone', e.target.value.replace(/\D/g, ''))}
-                    placeholder="08XXXXXXXX"
-                    inputMode="numeric"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">เบอร์ที่สามารถติดต่อได้ในวันค่าย</p>
-                </div>
+              {/* Tab 3 */}
+              <button
+                type="button"
+                disabled={!isStep1Complete || !isStep2Complete}
+                onClick={() => isStep1Complete && isStep2Complete && setCurrentStep(3)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                  currentStep === 3
+                    ? 'bg-white text-blue-700 shadow-2xs cursor-pointer'
+                    : isStep3Complete
+                    ? 'text-emerald-700 hover:bg-slate-100 cursor-pointer'
+                    : isStep1Complete && isStep2Complete
+                    ? 'text-slate-600 hover:bg-slate-100 cursor-pointer'
+                    : 'text-slate-300 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                  isStep3Complete ? 'bg-emerald-600 text-white' : currentStep === 3 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {isStep3Complete ? <Check className="w-3 h-3" /> : '3'}
+                </span>
+                <span>ความมุ่งหวัง</span>
+              </button>
 
-                <div className="sm:col-span-2">
-                  <label className={labelCls} htmlFor="email">อีเมลสำหรับติดต่อ (ไม่บังคับ)</label>
-                  <input
-                    id="email"
-                    className={inputCls}
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => set('email', e.target.value)}
-                    placeholder="student@example.com"
-                  />
-                </div>
-              </div>
             </div>
+          </div>
 
-            {/* Section 2: ข้อมูลการศึกษา & ไซส์เสื้อ */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <School className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-bold text-slate-900">2. ข้อมูลการศึกษาและเสื้อค่าย</h2>
+          <form onSubmit={onSubmit} className="space-y-4">
+
+            {/* SUB-STEP 1: ข้อมูลส่วนตัว */}
+            {currentStep === 1 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-2xs space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <User className="w-4 h-4 text-blue-600" />
+                  <h2 className="text-sm font-bold text-slate-900">ส่วนที่ 1: ข้อมูลส่วนตัวผู้สมัคร</h2>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls} htmlFor="fullName">ชื่อ-นามสกุล *</label>
+                    <input
+                      id="fullName"
+                      className={inputCls}
+                      required
+                      value={form.fullName}
+                      onChange={(e) => set('fullName', e.target.value)}
+                      placeholder="เช่น สมชาย ใจดี"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelCls} htmlFor="nickname">ชื่อเล่น *</label>
+                    <input
+                      id="nickname"
+                      className={inputCls}
+                      required
+                      value={form.nickname}
+                      onChange={(e) => set('nickname', e.target.value)}
+                      placeholder="เช่น ชาย"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-700" htmlFor="nationalId">
+                        เลขประจำตัวประชาชน (13 หลัก) *
+                      </label>
+                      {isNatIdValid ? (
+                        <span className="text-[11px] text-emerald-600 font-medium inline-flex items-center gap-1">
+                          <Check className="w-3 h-3" /> ครบ 13 หลัก
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {form.nationalId.length}/13
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      id="nationalId"
+                      className={`${inputCls} font-mono`}
+                      required
+                      maxLength={13}
+                      value={form.nationalId}
+                      onChange={(e) => set('nationalId', e.target.value.replace(/\D/g, ''))}
+                      placeholder="1509900112233"
+                      inputMode="numeric"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-700" htmlFor="phone">
+                        เบอร์โทรศัพท์มือถือ (10 หลัก) *
+                      </label>
+                      {isPhoneValid ? (
+                        <span className="text-[11px] text-emerald-600 font-medium inline-flex items-center gap-1">
+                          <Check className="w-3 h-3" /> ถูกต้อง
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {form.phone.length}/10
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      id="phone"
+                      className={`${inputCls} font-mono`}
+                      required
+                      maxLength={10}
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => set('phone', e.target.value.replace(/\D/g, ''))}
+                      placeholder="08XXXXXXXX"
+                      inputMode="numeric"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className={labelCls} htmlFor="email">อีเมลสำหรับติดต่อ (ไม่บังคับ)</label>
+                    <input
+                      id="email"
+                      className={inputCls}
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => set('email', e.target.value)}
+                      placeholder="student@example.com"
+                    />
+                  </div>
+                </div>
+
+                {/* Step 1 Actions */}
+                <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400 order-2 sm:order-1">
+                    {!isStep1Complete ? '⚠️ กรุณากรอกชื่อ, ชื่อเล่น, เลขบัตร 13 หลัก และเบอร์โทร 10 หลักเพื่อไปต่อ' : '✓ ข้อมูลส่วนตัวครบถ้วนพร้อมไปขั้นตอนถัดไป'}
+                  </p>
+                  <button
+                    id="btn-next-step-1"
+                    type="button"
+                    disabled={!isStep1Complete}
+                    onClick={() => isStep1Complete && setCurrentStep(2)}
+                    className="w-full sm:w-auto order-1 sm:order-2 rounded-xl bg-blue-600 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-2xs hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>ถัดไป: ข้อมูลการศึกษา (2/3)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* SUB-STEP 2: ข้อมูลการศึกษา & เสื้อ */}
+            {currentStep === 2 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-2xs space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <School className="w-4 h-4 text-blue-600" />
+                  <h2 className="text-sm font-bold text-slate-900">ส่วนที่ 2: ข้อมูลการศึกษาและเสื้อค่าย</h2>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls} htmlFor="school">โรงเรียน / วิทยาลัย *</label>
+                    <input
+                      id="school"
+                      className={inputCls}
+                      required
+                      value={form.school}
+                      onChange={(e) => set('school', e.target.value)}
+                      placeholder="เช่น โรงเรียนแม่โจ้วิทยาคม"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelCls} htmlFor="province">จังหวัดของโรงเรียน *</label>
+                    <input
+                      id="province"
+                      className={inputCls}
+                      required
+                      value={form.province}
+                      onChange={(e) => set('province', e.target.value)}
+                      placeholder="เช่น เชียงใหม่, ลำพูน, ลำปาง"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelCls} htmlFor="grade">ระดับชั้นปัจจุบัน *</label>
+                    <select
+                      id="grade"
+                      className={inputCls}
+                      value={form.grade}
+                      onChange={(e) => set('grade', e.target.value)}
+                    >
+                      {GRADES.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelCls} htmlFor="shirtSize">ไซส์เสื้อค่าย ComCamp #25 *</label>
+                    <select
+                      id="shirtSize"
+                      className={inputCls}
+                      value={form.shirtSize}
+                      onChange={(e) => set('shirtSize', e.target.value as ShirtSize)}
+                    >
+                      {SHIRT_SIZE_SPECS.map(({ size, chest }) => (
+                        <option key={size} value={size}>
+                          ไซส์ {size} ({chest})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      ขนาดที่เลือก: <strong className="text-blue-700">{form.shirtSize}</strong> ({SHIRT_SIZE_SPECS.find(s => s.size === form.shirtSize)?.chest})
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 Actions */}
+                <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(1)}
+                    className="w-full sm:w-auto rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>ย้อนกลับไปส่วนที่ 1</span>
+                  </button>
+
+                  <button
+                    id="btn-next-step-2"
+                    type="button"
+                    disabled={!isStep2Complete}
+                    onClick={() => isStep2Complete && setCurrentStep(3)}
+                    className="w-full sm:w-auto rounded-xl bg-blue-600 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-2xs hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>ถัดไป: ความมุ่งหวัง (3/3)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-STEP 3: ความมุ่งหวัง & ยืนยันข้อมูล */}
+            {currentStep === 3 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-2xs space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    <h2 className="text-sm font-bold text-slate-900">ส่วนที่ 3: ความมุ่งหวังและยืนยันข้อมูล</h2>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {form.motivation.length} ตัวอักษร
+                  </span>
+                </div>
+
                 <div>
-                  <label className={labelCls} htmlFor="school">โรงเรียน / วิทยาลัย *</label>
-                  <input
-                    id="school"
-                    className={inputCls}
+                  <label className={labelCls} htmlFor="motivation">
+                    เหตุผลและความสนใจที่อยากเข้าร่วมค่าย ComCamp ครั้งที่ 25 *
+                  </label>
+                  <textarea
+                    id="motivation"
                     required
-                    value={form.school}
-                    onChange={(e) => set('school', e.target.value)}
-                    placeholder="เช่น โรงเรียนแม่โจ้วิทยาคม"
+                    rows={4}
+                    className={`${inputCls} resize-none`}
+                    value={form.motivation}
+                    onChange={(e) => set('motivation', e.target.value)}
+                    placeholder="เช่น สนใจเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard พร้อมทั้งสัมผัสบรรยากาศการเรียนสาขาวิทยาการคอมพิวเตอร์ ม.แม่โจ้..."
                   />
-                </div>
-
-                <div>
-                  <label className={labelCls} htmlFor="province">จังหวัดของโรงเรียน *</label>
-                  <input
-                    id="province"
-                    className={inputCls}
-                    value={form.province}
-                    onChange={(e) => set('province', e.target.value)}
-                    placeholder="เช่น เชียงใหม่, ลำพูน, ลำปาง"
-                  />
-                </div>
-
-                <div>
-                  <label className={labelCls} htmlFor="grade">ระดับชั้นปัจจุบัน *</label>
-                  <select
-                    id="grade"
-                    className={inputCls}
-                    value={form.grade}
-                    onChange={(e) => set('grade', e.target.value)}
-                  >
-                    {GRADES.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className={labelCls} htmlFor="shirtSize">ไซส์เสื้อค่าย ComCamp #25 *</label>
-                  <select
-                    id="shirtSize"
-                    className={inputCls}
-                    value={form.shirtSize}
-                    onChange={(e) => set('shirtSize', e.target.value as ShirtSize)}
-                  >
-                    {SHIRT_SIZE_SPECS.map(({ size, chest }) => (
-                      <option key={size} value={size}>
-                        ไซส์ {size} ({chest})
-                      </option>
-                    ))}
-                  </select>
                   <p className="mt-1 text-[11px] text-slate-400">
-                    ขนาดที่เลือก: <strong className="text-blue-700">{form.shirtSize}</strong> ({SHIRT_SIZE_SPECS.find(s => s.size === form.shirtSize)?.chest})
+                    {form.motivation.trim().length < 10 ? 'กรุณาระบุอย่างน้อย 10 ตัวอักษร' : '✓ ความมุ่งหวังครบถ้วน'}
                   </p>
                 </div>
-              </div>
-            </div>
 
-            {/* Section 3: ความมุ่งหวัง & เหตุผล */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  <h2 className="text-sm font-bold text-slate-900">3. ความมุ่งหวังในการเข้าร่วมค่าย</h2>
+                {/* Quick Recap Card */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-xs space-y-1.5 text-slate-700">
+                  <p className="font-semibold text-slate-900 border-b border-slate-200 pb-1 mb-1">
+                    📋 สรุปข้อมูลก่อนส่งใบสมัคร:
+                  </p>
+                  <p><span className="text-slate-400">ชื่อ-นามสกุล:</span> <strong>{form.fullName}</strong> ({form.nickname})</p>
+                  <p><span className="text-slate-400">เลขบัตร / โทร:</span> <span className="font-mono">{form.nationalId}</span> / <span className="font-mono">{form.phone}</span></p>
+                  <p><span className="text-slate-400">สถานศึกษา:</span> {form.school} ({form.grade}) · เสื้อไซส์ <strong>{form.shirtSize}</strong></p>
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {form.motivation.length} ตัวอักษร
-                </span>
-              </div>
 
-              <div>
-                <label className={labelCls} htmlFor="motivation">
-                  เหตุผลและความสนใจที่อยากเข้าร่วมค่าย ComCamp ครั้งที่ 25 *
-                </label>
-                <textarea
-                  id="motivation"
-                  required
-                  rows={4}
-                  className={`${inputCls} resize-none`}
-                  value={form.motivation}
-                  onChange={(e) => set('motivation', e.target.value)}
-                  placeholder="เช่น อยากเรียนรู้การเขียนโปรแกรมและการทำโครงงาน IoT เชื่อมต่อคลาวด์ พร้อมทั้งสัมผัสบรรยากาศการเรียนสาขาวิทยาการคอมพิวเตอร์ ม.แม่โจ้..."
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  บอกเล่าความสนใจเพื่อช่วยให้พี่ๆ ค่ายเตรียมเนื้อหาที่เหมาะสมสำหรับน้อง
-                </p>
-              </div>
-            </div>
+                {/* Step 3 Actions */}
+                <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(2)}
+                    className="w-full sm:w-auto rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>ย้อนกลับไปส่วนที่ 2</span>
+                  </button>
 
-            {/* Submit Action */}
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full rounded-2xl bg-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {busy ? (
-                  <>
-                    <RotateCcw className="w-4 h-4 animate-spin" />
-                    <span>กำลังส่งข้อมูลใบสมัคร...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>ส่งใบสมัคร & ไปขั้นตอนชำระเงิน</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-              <p className="mt-2 text-center text-[11px] text-slate-400">
-                เมื่อกดส่งใบสมัคร ระบบจะบันทึกข้อมูลและนำท่านเข้าสู่ขั้นตอนโอนเงิน 300 บาท และแนบสลิปทันที
-              </p>
-            </div>
+                  <button
+                    id="btn-submit-application"
+                    type="submit"
+                    disabled={!isStep3Complete || busy}
+                    className="w-full sm:w-auto rounded-xl bg-blue-600 px-6 py-3 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {busy ? (
+                      <>
+                        <RotateCcw className="w-4 h-4 animate-spin" />
+                        <span>กำลังส่งข้อมูลใบสมัคร...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>ส่งใบสมัคร & ไปหน้าชำระเงิน</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
           </form>
         </div>
       ) : (
         /* STEP 2: Payment & Slip Upload Section */
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in duration-200">
           
           <header className="text-center">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 mb-2 border border-emerald-200">

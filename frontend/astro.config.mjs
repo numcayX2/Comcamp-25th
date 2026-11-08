@@ -8,7 +8,7 @@ export default defineConfig({
   integrations: [react()],
   server: {
     port: 4321,
-    host: true,
+    host: '127.0.0.1',
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       'Pragma': 'no-cache',
@@ -19,7 +19,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
     server: {
       port: 4321,
-      host: true,
+      host: '127.0.0.1',
+      hmr: {
+        host: '127.0.0.1',
+      },
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
