@@ -11,6 +11,8 @@ dist/
 tmp/
 scratch/
 */scratch/
+uploads/
+*/uploads/
 
 # AI Agent & Initskill local workspace configurations
 .agents/

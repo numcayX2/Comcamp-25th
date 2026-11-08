@@ -4,11 +4,15 @@ import {
   listApplications,
   updateApplicationStatus,
   verifyPaymentSlip,
+  getAdminSettings,
+  updateAdminSettings,
   getSlipImageUrl,
   getSlipUrl,
   type Application,
   type ApplicationStatus,
   type ApiSource,
+  type AdminSettings,
+  type UpdateAdminSettingsPayload,
 } from '../lib/api';
 
 const STATUSES: ApplicationStatus[] = ['PENDING', 'PASSED', 'RESERVE', 'CONFIRMED', 'REJECTED'];
@@ -45,6 +49,61 @@ export function AdminSection() {
   const [inspectingApp, setInspectingApp] = useState<Application | null>(null);
   const [verificationNote, setVerificationNote] = useState('');
   const [verifying, setVerifying] = useState(false);
+
+  // Settings modal state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsData, setSettingsData] = useState<AdminSettings | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<{
+    campName: string;
+    maxCapacity: number;
+    campFee: number;
+    isManualClosed: boolean;
+  }>({
+    campName: 'ComCamp 25th',
+    maxCapacity: 30,
+    campFee: 300,
+    isManualClosed: false,
+  });
+
+  async function loadSettings(t: string) {
+    setSettingsBusy(true);
+    try {
+      const res = await getAdminSettings(t);
+      setSettingsData(res.data);
+      setSettingsForm({
+        campName: res.data.campName,
+        maxCapacity: res.data.maxCapacity,
+        campFee: Number(res.data.campFee) || 300,
+        isManualClosed: res.data.isManualClosed,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'โหลดการตั้งค่าไม่สำเร็จ');
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setSettingsBusy(true);
+    try {
+      const res = await updateAdminSettings(token, {
+        campName: settingsForm.campName.trim(),
+        maxCapacity: Number(settingsForm.maxCapacity),
+        campFee: Number(settingsForm.campFee),
+        isManualClosed: settingsForm.isManualClosed,
+      });
+      setSettingsData(res.data);
+      setActionSuccess(`บันทึกการตั้งค่าเรียบร้อย: โควตา ${res.data.maxCapacity} คน, ค่าสมัคร ${res.data.campFee} บาท`);
+      setIsSettingsOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'บันทึกการตั้งค่าไม่สำเร็จ');
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
 
   async function refresh(t: string) {
     setBusy(true);
@@ -238,6 +297,17 @@ export function AdminSection() {
               <button
                 type="button"
                 onClick={() => {
+                  setIsSettingsOpen(true);
+                  if (token) loadSettings(token);
+                }}
+                className="rounded-lg border border-blue-300 bg-blue-50 px-3.5 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 shadow-sm transition-colors inline-flex items-center gap-1.5"
+              >
+                ⚙️ ตั้งค่าค่าย/โควตา
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setToken(null);
                   setApps([]);
                   localStorage.removeItem('comcamp-admin-token');
@@ -404,6 +474,130 @@ export function AdminSection() {
 
           {filtered.length === 0 && (
             <p className="mt-8 text-center text-sm text-gray-400">ไม่พบใบสมัครที่ตรงกับเงื่อนไขการค้นหา</p>
+          )}
+
+          {/* Camp Settings & Quota Modal */}
+          {isSettingsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+              <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">⚙️ ตั้งค่าระบบค่ายและโควตา (Dynamic Settings)</h3>
+                    <p className="text-xs text-gray-500 font-mono">
+                      Endpoint: PATCH /api/admin/settings
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveSettings} className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="set-camp-name">
+                      ชื่อโครงการค่าย
+                    </label>
+                    <input
+                      id="set-camp-name"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100"
+                      value={settingsForm.campName}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, campName: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="set-capacity">
+                        โควตารับสมัครเป้าหมาย (คน) *
+                      </label>
+                      <input
+                        id="set-capacity"
+                        type="number"
+                        min="1"
+                        max="1000"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 font-mono"
+                        value={settingsForm.maxCapacity}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, maxCapacity: parseInt(e.target.value, 10) || 1 })}
+                        required
+                      />
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        ปรับเพิ่มได้ตามจำนวนผู้สมัครจริง ไม่จำกัดตายตัว
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="set-fee">
+                        ค่าสมัครค่าย (บาท) *
+                      </label>
+                      <input
+                        id="set-fee"
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 font-mono"
+                        value={settingsForm.campFee}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, campFee: parseFloat(e.target.value) || 0 })}
+                        required
+                      />
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        ยอดเงินที่น้องต้องชำระในสลิป
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settingsForm.isManualClosed}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, isManualClosed: e.target.checked })}
+                        className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300"
+                      />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-800">
+                          ปิดระบบรับสมัครฉุกเฉิน (Emergency Manual Close)
+                        </span>
+                        <p className="text-xs text-gray-500">
+                          เมื่อเปิดใช้งาน ระบบจะระงับการส่งใบสมัครใหม่ทันทีโดยไม่คำนึงถึงกำหนดการ
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {settingsData && (
+                    <div className="text-[11px] text-gray-400 space-y-0.5 border-t border-gray-100 pt-2 font-mono">
+                      <p>เปิดรับสมัคร: {new Date(settingsData.registrationOpenAt).toLocaleString('th-TH')}</p>
+                      <p>ปิดรับสมัคร: {new Date(settingsData.registrationCloseAt).toLocaleString('th-TH')}</p>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end border-t border-gray-100 pt-3">
+                    <button
+                      type="button"
+                      disabled={settingsBusy}
+                      onClick={() => setIsSettingsOpen(false)}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={settingsBusy}
+                      className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm disabled:opacity-50"
+                    >
+                      {settingsBusy ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า (Save Settings)'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
 
           {/* Slip Inspection & Verification Modal */}

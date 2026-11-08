@@ -15,6 +15,32 @@ export interface PublicSettings {
 
 export const DEFAULT_TARGET_DATE = "2026-11-16T00:00:00+07:00";
 
+/* ============================================================
+   ComCamp #25 — Full-Stack API Client (Go backend end-to-end)
+   Base URL: PUBLIC_API_URL or http://localhost:8000/api
+   ============================================================ */
+
+export const API_BASE: string =
+  (typeof import.meta !== 'undefined' && import.meta.env?.PUBLIC_API_URL) ||
+  'http://localhost:8000/api';
+
+/** Where the response came from. Always rendered in UI for backend debugging. */
+export type ApiSource = 'LIVE GO API' | 'MOCK FALLBACK';
+
+export interface ApiResult<T> {
+  data: T;
+  source: ApiSource;
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   serverTime: new Date().toISOString(),
   registrationOpenAt: DEFAULT_TARGET_DATE,
@@ -37,7 +63,7 @@ export async function fetchPublicSettings(): Promise<{ settings: PublicSettings;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-    const response = await fetch('/api/settings/public', {
+    const response = await fetch(`${API_BASE}/settings/public`, {
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
@@ -80,22 +106,7 @@ export function getSynchronizedServerDate(offsetMs: number = cachedOffsetMs): Da
   return new Date(Date.now() + offsetMs);
 }
 
-/* ============================================================
-   ComCamp #25 — Full-Stack Skeleton API (Go backend end-to-end)
-   Base URL: PUBLIC_API_URL or http://localhost:8000/api
-   ============================================================ */
-
-export const API_BASE: string =
-  (typeof import.meta !== 'undefined' && import.meta.env?.PUBLIC_API_URL) ||
-  'http://localhost:8000/api';
-
-/** Where the response came from. Always rendered in UI for backend debugging. */
-export type ApiSource = 'LIVE GO API' | 'MOCK FALLBACK';
-
-export interface ApiResult<T> {
-  data: T;
-  source: ApiSource;
-}
+// API_BASE and ApiResult defined above
 
 export type ApplicationStatus = 'PENDING' | 'PASSED' | 'RESERVE' | 'CONFIRMED' | 'REJECTED';
 
@@ -210,7 +221,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!res.ok) {
       const errData = await res.json().catch(() => null);
       const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-      throw new Error(errMsg);
+      throw new ApiError(res.status, errMsg);
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
@@ -223,7 +234,10 @@ async function withFallback<T>(live: () => Promise<T>, mock: () => T): Promise<A
   try {
     const data = await live();
     return { data, source: 'LIVE GO API' };
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
     return { data: mock(), source: 'MOCK FALLBACK' };
   }
 }
@@ -347,7 +361,7 @@ export function uploadPaymentSlip(
         if (!res.ok) {
           const errData = await res.json().catch(() => null);
           const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-          throw new Error(errMsg);
+          throw new ApiError(res.status, errMsg);
         }
         return (await res.json()) as SlipUploadResult;
       } finally {
@@ -504,6 +518,79 @@ export function verifyPaymentSlip(
       message: approved
         ? 'อนุมัติสลิปสำเร็จ (Mock Mode)'
         : 'ปฏิเสธสลิปสำเร็จ (Mock Mode)',
+    }),
+  );
+}
+
+/* ============================================================
+   ComCamp #25 — Admin Camp Settings & Quota Management API
+   ============================================================ */
+
+export interface AdminSettings {
+  id: number;
+  campName: string;
+  registrationOpenAt: string;
+  registrationCloseAt: string;
+  announcementAt?: string | null;
+  paymentOpenAt?: string | null;
+  paymentDeadline?: string | null;
+  certificateReleaseAt?: string | null;
+  maxCapacity: number;
+  campFee: number;
+  isManualClosed: boolean;
+  updatedByAdminId?: number | null;
+  updatedAt?: string;
+}
+
+export interface UpdateAdminSettingsPayload {
+  campName?: string;
+  registrationOpenAt?: string;
+  registrationCloseAt?: string;
+  announcementAt?: string;
+  paymentOpenAt?: string;
+  paymentDeadline?: string;
+  certificateReleaseAt?: string;
+  maxCapacity?: number;
+  campFee?: number;
+  isManualClosed?: boolean;
+}
+
+/** GET /admin/settings */
+export function getAdminSettings(token: string): Promise<ApiResult<AdminSettings>> {
+  return withFallback(
+    () => fetchJson<AdminSettings>('/admin/settings', { headers: authHeader(token) }),
+    () => ({
+      id: 1,
+      campName: 'ComCamp 25th',
+      registrationOpenAt: DEFAULT_TARGET_DATE,
+      registrationCloseAt: '2026-11-30T23:59:59+07:00',
+      maxCapacity: 30,
+      campFee: 300,
+      isManualClosed: false,
+    }),
+  );
+}
+
+/** PATCH /admin/settings */
+export function updateAdminSettings(
+  token: string,
+  payload: UpdateAdminSettingsPayload,
+): Promise<ApiResult<AdminSettings>> {
+  return withFallback(
+    () =>
+      fetchJson<AdminSettings>('/admin/settings', {
+        method: 'PATCH',
+        headers: authHeader(token),
+        body: JSON.stringify(payload),
+      }),
+    () => ({
+      id: 1,
+      campName: payload.campName || 'ComCamp 25th',
+      registrationOpenAt: payload.registrationOpenAt || DEFAULT_TARGET_DATE,
+      registrationCloseAt: payload.registrationCloseAt || '2026-11-30T23:59:59+07:00',
+      maxCapacity: payload.maxCapacity ?? 30,
+      campFee: payload.campFee ?? 300,
+      isManualClosed: payload.isManualClosed ?? false,
     }),
   );
 }
