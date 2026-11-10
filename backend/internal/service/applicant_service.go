@@ -44,6 +44,7 @@ var (
 	ErrInvalidQuery          = newValidationError("search query must be a national ID, phone number or application ID")
 	ErrVerifyCodeRequired    = newValidationError("verifyCode must be the last 4 digits of the applicant's national ID")
 	ErrInvalidVerifyCode     = errors.New("verification code does not match this application")
+	ErrCannotWithdraw        = errors.New("cannot withdraw an already confirmed application, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
@@ -406,6 +407,76 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 	applicant.Status = newStatus
 
 	return s.toAdmin(ctx, applicant)
+}
+
+func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adminID int64, reason, ip string) error {
+	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	if err != nil {
+		return notFoundOr(err)
+	}
+
+	audit := &domain.AuditEntry{
+		AdminID:    &adminID,
+		Action:     domain.AuditApplicantDelete,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicant.ApplicationNo,
+		Details: map[string]any{
+			"fullName":   applicant.FullName,
+			"nationalId": applicant.NationalID,
+			"reason":     reason,
+		},
+		IPAddress: ip,
+	}
+
+	return s.appRepo.SoftDelete(ctx, applicant.ID, &adminID, reason, audit)
+}
+
+// Withdraw lets applicants cancel their own application from the receipt or /status page. It is
+// public, so it needs the application ID plus verifyCode (last 4 digits of the national ID, see
+// CheckVerifyCode). The row is soft-deleted, which frees the seat (CountActive ignores deleted
+// rows) and lets the same person register again. Once the place is confirmed (status CONFIRMED or
+// an approved slip) money has changed hands, so only staff can remove it (ErrCannotWithdraw).
+func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, verifyCode, reason, ip string) error {
+	reason = strings.TrimSpace(stripZeroWidth(reason))
+	if utf8.RuneCountInString(reason) > maxReasonRunes {
+		return newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
+	}
+
+	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	if err != nil {
+		return notFoundOr(err)
+	}
+	if err := CheckVerifyCode(applicant, verifyCode); err != nil {
+		return err
+	}
+
+	if applicant.Status == domain.StatusConfirmed {
+		return ErrCannotWithdraw
+	}
+	payment, err := s.latestPayment(ctx, applicant.ID)
+	if err != nil {
+		return err
+	}
+	if payment != nil && payment.Status == domain.PaymentApproved {
+		return ErrCannotWithdraw
+	}
+
+	details := map[string]any{"reason": reason, "ip": ip, "selfService": true}
+	if payment != nil {
+		// Staff need to know a slip was sent, in case a refund is due.
+		details["slipStatus"] = payment.Status
+	}
+	audit := &domain.AuditEntry{
+		Action:     domain.AuditApplicantWithdrawSelf,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicant.ApplicationNo,
+		Details:    details,
+		IPAddress:  ip,
+	}
+	if err := s.appRepo.SoftDelete(ctx, applicant.ID, nil, reason, audit); err != nil {
+		return notFoundOr(err)
+	}
+	return nil
 }
 
 func (s *ApplicantService) latestPayment(ctx context.Context, applicantID uuid.UUID) (*domain.Payment, error) {

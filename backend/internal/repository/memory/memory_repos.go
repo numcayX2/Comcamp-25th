@@ -105,6 +105,11 @@ func (m *MemoryApplicantRepo) createLocked(a *domain.Applicant) error {
 		if existing.ApplicationNo == a.ApplicationNo {
 			return domain.ErrDuplicateApplicationNo
 		}
+		// A withdrawn / deleted application no longer holds the person's identity, so they can
+		// register again (mirrors the partial unique indexes in migration 000003).
+		if existing.DeletedAt != nil {
+			continue
+		}
 		if existing.NationalID == a.NationalID || existing.Phone == a.Phone ||
 			(a.Email != "" && existing.Email == a.Email) {
 			return domain.ErrDuplicateApplicant
@@ -210,6 +215,27 @@ func (m *MemoryApplicantRepo) setStatusLocked(id uuid.UUID, newStatus domain.App
 		CreatedAt:        a.UpdatedAt,
 	})
 	return oldStatus, nil
+}
+
+func (m *MemoryApplicantRepo) SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *domain.AuditEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return domain.ErrNotFound
+	}
+	now := time.Now().UTC()
+	a.DeletedAt = &now
+	a.UpdatedAt = now
+
+	if audit != nil {
+		entry := withDetail(audit, "deletedAt", now)
+		entry.Details["oldStatus"] = a.Status
+		entry.Details["reason"] = reason
+		_ = m.audit.Log(ctx, entry)
+	}
+	return nil
 }
 
 func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error {

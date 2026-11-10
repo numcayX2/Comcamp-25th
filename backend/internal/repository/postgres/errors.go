@@ -36,7 +36,8 @@ func mapPgError(err error) error {
 		return domain.ErrDuplicateIdempotencyKey
 	case "applicants_application_no_key":
 		return domain.ErrDuplicateApplicationNo
-	case "applicants_national_id_key", "applicants_phone_key", "applicants_email_key", "uq_applicants_email":
+	case "applicants_national_id_key", "applicants_phone_key", "applicants_email_key", "uq_applicants_email",
+		"uq_applicants_national_id_live", "uq_applicants_phone_live":
 		return domain.ErrDuplicateApplicant
 	case "uq_payments_slip_hash":
 		return domain.ErrDuplicateSlipHash

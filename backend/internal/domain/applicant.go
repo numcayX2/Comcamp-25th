@@ -98,6 +98,7 @@ type ApplicantRepository interface {
 	// UpdateStatus changes the status and writes applicant_status_logs plus the audit entry
 	// (when non-nil) in one transaction.
 	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry) error
+	SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *AuditEntry) error
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error
 	CountActive(ctx context.Context) (int, error)
 }

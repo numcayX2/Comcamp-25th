@@ -75,7 +75,9 @@ backend/
 │   ├── 000001_init_schema.up.sql   # สร้าง Tables, Constraints, และ Indexes ทั้งหมด
 │   ├── 000001_init_schema.down.sql # Rollback Schema
 │   ├── 000002_security_hardening.up.sql   # audit_logs, idempotency_key, unique slip_hash
-│   └── 000002_security_hardening.down.sql
+│   ├── 000002_security_hardening.down.sql
+│   ├── 000003_soft_delete_identity.up.sql # national ID / phone / email unique among live rows only
+│   └── 000003_soft_delete_identity.down.sql
 ├── go.mod
 └── go.sum
 ```

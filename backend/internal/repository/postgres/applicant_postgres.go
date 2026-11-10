@@ -224,6 +224,36 @@ func setStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, oldStatus, newSta
 	return nil
 }
 
+func (r *ApplicantPostgresRepo) SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *domain.AuditEntry) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var oldStatus domain.ApplicationStatus
+	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&oldStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock applicant: %w", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE applicants SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, id); err != nil {
+		return fmt.Errorf("failed to soft delete applicant: %w", err)
+	}
+
+	if audit != nil {
+		if err := insertAudit(ctx, tx, withAuditDetail(audit, "oldStatus", oldStatus)); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error {
 	query := `UPDATE applicants SET attendance_confirmed = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`
 	tag, err := r.pool.Exec(ctx, query, confirmed, time.Now().UTC(), id)
