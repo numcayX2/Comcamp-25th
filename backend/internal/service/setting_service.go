@@ -148,6 +148,15 @@ func (s *SettingService) UpdateSettings(ctx context.Context, req UpdateSettingsR
 		if *req.MaxCapacity < 1 || *req.MaxCapacity > maxCapacityLimit {
 			return nil, newValidationError(fmt.Sprintf("maxCapacity must be between 1 and %d", maxCapacityLimit))
 		}
+		// Never shrink the quota below seats already taken: that would leave the camp
+		// over-subscribed with no way to tell who to drop.
+		current, err := s.appRepo.CountActive(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if *req.MaxCapacity < current {
+			return nil, newValidationError("maxCapacity cannot be lower than the current applicant count")
+		}
 		changed["maxCapacity"] = map[string]int{"old": settings.MaxCapacity, "new": *req.MaxCapacity}
 		settings.MaxCapacity = *req.MaxCapacity
 	}

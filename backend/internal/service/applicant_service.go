@@ -33,7 +33,7 @@ var (
 	ErrRegistrationBusy      = errors.New("registration is very busy right now, please try again")
 	ErrDuplicateApplicant    = domain.ErrDuplicateApplicant
 	ErrIdempotencyKeyReused  = errors.New("this idempotency key was already used for a different application")
-	ErrInvalidNationalID     = newValidationError("invalid national ID (must be 13 digits)")
+	ErrInvalidNationalID     = newValidationError("invalid national ID (must be 13 digits with a valid check digit)")
 	ErrInvalidPhone          = newValidationError("invalid phone number (must be 10 digits starting with 0)")
 	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose XS, S, M, L, XL, 2XL, 3XL)")
 	ErrInvalidEmail          = newValidationError("invalid email address")
@@ -264,8 +264,21 @@ func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 	return req
 }
 
+// isValidThaiNationalID reports whether id is 13 digits whose last digit is the Thai Mod-11
+// check digit: (11 - (sum(d[i] * (13 - i)) for i in 0..11) % 11) % 10.
+func isValidThaiNationalID(id string) bool {
+	if len(id) != 13 || !isNumeric(id) {
+		return false
+	}
+	sum := 0
+	for i := 0; i < 12; i++ {
+		sum += int(id[i]-'0') * (13 - i)
+	}
+	return (11-sum%11)%10 == int(id[12]-'0')
+}
+
 func validateRequest(req ApplicationCreateRequest) error {
-	if len(req.NationalID) != 13 || !isNumeric(req.NationalID) {
+	if !isValidThaiNationalID(req.NationalID) {
 		return ErrInvalidNationalID
 	}
 	if len(req.Phone) != 10 || !strings.HasPrefix(req.Phone, "0") || !isNumeric(req.Phone) {

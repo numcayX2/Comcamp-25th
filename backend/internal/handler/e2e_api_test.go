@@ -111,6 +111,21 @@ func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }
 
+// validTestNationalID builds a 13-digit national ID that passes the Thai Mod-11 check: the
+// 12-digit body "15099" + seq (7 digits, zero-padded) plus its computed check digit. Distinct
+// seq values give distinct IDs.
+func validTestNationalID(seq int) string {
+	body := fmt.Sprintf("15099%07d", seq%10_000_000)
+	sum := 0
+	for i := 0; i < 12; i++ {
+		sum += int(body[i]-'0') * (13 - i)
+	}
+	return body + string(rune('0'+(11-sum%11)%10))
+}
+
+// e2eNationalID is the ID used by the end-to-end flow and the masking test.
+var e2eNationalID = validTestNationalID(112233)
+
 func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
 		FullName:   "สมเกียรติ สุขสมบูรณ์",
@@ -236,7 +251,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 
 	var created service.ApplicationResponse
 	t.Run("3. POST /api/applications", func(t *testing.T) {
-		created = app.submit(t, "1509900112233", "0819876543", "somkiat@school.ac.th")
+		created = app.submit(t, e2eNationalID, "0819876543", "somkiat@school.ac.th")
 		if created.ID == "" {
 			t.Errorf("expected generated Application ID")
 		}
@@ -246,7 +261,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	})
 
 	t.Run("4. GET /api/applications/status?q={nationalId}", func(t *testing.T) {
-		rec := app.do(t, http.MethodGet, "/api/applications/status?q=1509900112233", nil, nil)
+		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+e2eNationalID, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
@@ -278,7 +293,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		if len(list) != 1 {
 			t.Fatalf("expected 1 applicant, got %d", len(list))
 		}
-		if list[0].NationalID != "1509900112233" {
+		if list[0].NationalID != e2eNationalID {
 			t.Errorf("admin list should return the full national ID, got %q", list[0].NationalID)
 		}
 	})
@@ -288,8 +303,8 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	})
 
 	t.Run("9. POST /api/applications/{id}/confirm", func(t *testing.T) {
-		// verifyCode = last 4 digits of the national ID 1509900112233 (AGENTS.md §13.5).
-		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"2233"}`), nil)
+		// verifyCode = last 4 digits of the national ID (AGENTS.md §13.5).
+		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"`+e2eNationalID[9:]+`"}`), nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}

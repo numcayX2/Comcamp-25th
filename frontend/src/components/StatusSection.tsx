@@ -218,10 +218,6 @@ export function StatusSection() {
             ค้นหาด้วยเลขบัตรประชาชน 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span className="font-mono text-sm tabular-nums">CC25-XXXXXX</span>)
           </p>
         </div>
-
-        <p className="mt-4 overflow-x-auto whitespace-nowrap border-t pt-3 font-mono text-xs tabular-nums" style={{ borderColor: RULE, color: '#62666E' }}>
-          GET /api/applications/status · POST /api/applications/:id/confirm · POST /api/applications/:id/slip
-        </p>
       </header>
 
       {/* ── 02 · Search strip ─────────────────────────────── */}
@@ -239,10 +235,7 @@ export function StatusSection() {
         </div>
 
         <form onSubmit={onSearch} className="border bg-white p-6 sm:p-8 md:col-span-7" style={{ borderColor: INK, backgroundColor: '#FFFFFF' }}>
-          <p className="font-mono text-xs font-medium uppercase" style={{ color: '#62666E' }}>
-            Lookup / Query
-          </p>
-          <label className="mb-1.5 mt-4 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
+          <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
             เลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร
           </label>
           <input

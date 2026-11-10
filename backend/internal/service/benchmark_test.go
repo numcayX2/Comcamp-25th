@@ -24,7 +24,7 @@ func BenchmarkApplicantService_Submit(b *testing.B) {
 		req := service.ApplicationCreateRequest{
 			FullName:   fmt.Sprintf("นักเรียน %d", i),
 			Nickname:   "นนท์",
-			NationalID: fmt.Sprintf("%013d", i+1000000000000),
+			NationalID: validTestNationalID(i),
 			Phone:      fmt.Sprintf("08%08d", i),
 			Email:      fmt.Sprintf("student%d@school.ac.th", i),
 			School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -52,7 +52,7 @@ func BenchmarkApplicantService_QueryStatus(b *testing.B) {
 		res, _ := svc.Submit(ctx, service.ApplicationCreateRequest{
 			FullName:   fmt.Sprintf("นักเรียน %d", i),
 			Nickname:   "นนท์",
-			NationalID: fmt.Sprintf("%013d", i+1000000000000),
+			NationalID: validTestNationalID(i),
 			Phone:      fmt.Sprintf("08%08d", i),
 			Email:      fmt.Sprintf("student%d@school.ac.th", i),
 			School:     "โรงเรียนแม่โจ้วิทยาคม",

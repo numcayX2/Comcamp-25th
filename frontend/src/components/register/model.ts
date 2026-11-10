@@ -48,7 +48,7 @@ export const EMPTY_FORM: FormState = {
 export const MOCK_FORM: FormState = {
   fullName: 'สมชาย ทดสอบระบบ',
   nickname: 'ชาย',
-  nationalId: '1509900112233',
+  nationalId: '1103701234512',
   phone: '0812345678',
   email: 'somchai.test@example.com',
   school: 'โรงเรียนเชียงใหม่วิทยาคม',
@@ -116,6 +116,14 @@ export const pad2 = (n: number) => String(n).padStart(2, '0');
 
 const onlyDigits = (s: string) => s.replace(/\D/g, '');
 
+/** 13 digits whose last digit is the Thai Mod-11 check digit (mirrors the Go backend). */
+export function isValidThaiNationalID(id: string): boolean {
+  if (!/^\d{13}$/.test(id)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(id[i]) * (13 - i);
+  return (11 - (sum % 11)) % 10 === Number(id[12]);
+}
+
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
   switch (key) {
     case 'fullName':
@@ -123,9 +131,10 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     case 'nickname':
       return form.nickname.trim() ? undefined : 'กรุณากรอกชื่อเล่น';
     case 'nationalId': {
-      const n = onlyDigits(form.nationalId).length;
-      if (n === 0) return 'กรุณากรอกเลขบัตรประชาชน 13 หลัก';
-      return n === 13 ? undefined : `เลขบัตรประชาชนต้องมี 13 หลัก (ตอนนี้กรอกไว้ ${n} หลัก)`;
+      const id = onlyDigits(form.nationalId);
+      if (id.length === 0) return 'กรุณากรอกเลขบัตรประชาชน 13 หลัก';
+      if (id.length !== 13) return `เลขบัตรประชาชนต้องมี 13 หลัก (ตอนนี้กรอกไว้ ${id.length} หลัก)`;
+      return isValidThaiNationalID(id) ? undefined : 'เลขบัตรประชาชนไม่ถูกต้องตามหลักตรวจสอบ (Check Digit)';
     }
     case 'phone': {
       const p = onlyDigits(form.phone);
