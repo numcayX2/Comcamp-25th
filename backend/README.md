@@ -28,7 +28,7 @@ PUBLIC_API_URL=http://localhost:8000/api
 | หน้าจอใน Frontend | HTTP Method & Endpoint | วัตถุประสงค์ & หน้าที่ |
 |---|---|---|
 | **`/` (Countdown Hero)** | `GET /api/settings/public` | ซิงค์เวลา Server กับตัวนับถอยหลัง ป้องกัน Clock Tampering และเช็คว่าเปิดรับสมัครหรือยัง |
-| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ตรวจเลขบัตร 13 หลัก, เบอร์ 10 หลัก, และคุมโควตา 30 ที่นั่ง) |
+| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ตรวจเลขบัตร 13 หลัก, เบอร์ 10 หลัก, คุมโควตาตาม `maxCapacity` ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้ที่ `PATCH /api/admin/settings`) |
 | **`/status` (ตรวจสถานะ)** | `GET /api/applications/status?q={query}` | ค้นหาใบสมัครด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทร, หรือรหัสใบสมัคร (`CC25-xxxxxx`) |
 | **`/status` (ยืนยันสิทธิ์)** | `POST /api/applications/:id/confirm` | กดยืนยันการเข้าร่วมค่าย (ทำได้เมื่อสถานะเป็น `PASSED` หรือ `CONFIRMED`) body `{ "confirmed": true, "verifyCode": "<เลข 4 ตัวท้ายบัตรประชาชน>" }` |
 | **`/status` (แนบสลิป)** | `POST /api/applications/:id/slip` | อัปโหลดรูปภาพสลิปโอนเงิน (multipart: `verifyCode` + `slip`, จำกัด 5MB และ 4096×4096 px พร้อมระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
@@ -37,6 +37,8 @@ PUBLIC_API_URL=http://localhost:8000/api
 | **`/admin` (ปรับสถานะ)** | `PATCH /api/admin/applications/:id` | ประกาศผลผู้ผ่านการคัดเลือก เช่น ปรับเป็น `PASSED` หรือ `RESERVE` |
 | **`/admin` (ตรวจสลิป)** | `PATCH /api/admin/applications/:id/verify-slip` | พี่ค่ายกดอนุมัติสลิปโอนเงิน เพื่อเปลี่ยนสถานะเป็น `CONFIRMED` สมบูรณ์ |
 | **`/admin` (ดูรูปสลิป)** | `GET /api/admin/applications/:id/slip` | ส่งรูปสลิปล่าสุดให้พี่ค่ายที่ login แล้วเท่านั้น (`Bearer <token>`) หน้าบ้านโหลดเป็น blob ไม่มี URL สาธารณะของสลิป |
+| **`/admin` (ดูการตั้งค่าค่าย)** | `GET /api/admin/settings` | ดึงข้อมูลกำหนดการ, โควตารับสมัคร (maxCapacity), ค่าค่าย และสถานะระบบ (`Bearer <token>`) |
+| **`/admin` (ปรับแก้โควตา/เวลา)** | `PATCH /api/admin/settings` | แก้ไขโควตาจำนวนรับ (`maxCapacity` ค่าเริ่มต้น 30 ระบบปฏิเสธใบสมัครเมื่อเต็ม `409 QUOTA_FULL`), วันเปิด-ปิดรับสมัคร, วันประกาศผล (`Bearer <token>`) |
 
 ---
 

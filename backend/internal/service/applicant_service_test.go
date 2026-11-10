@@ -142,10 +142,12 @@ func TestApplicantService_Submit_ClosedSchedule(t *testing.T) {
 	}
 }
 
-func TestApplicantService_Submit_QuotaExceeded(t *testing.T) {
-	svc, _, setRepo := setupTestServices()
+// The seat quota is maxCapacity from settings (default 30, adjustable by admins through
+// PATCH /api/admin/settings): a full camp rejects new applications, and raising the quota
+// lets them in again without a deploy.
+func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
+	svc, appRepo, setRepo := setupTestServices()
 
-	// Set max capacity to 1
 	_ = setRepo.Update(context.Background(), &domain.Settings{
 		ID:                  1,
 		RegistrationOpenAt:  time.Now().Add(-1 * time.Hour),
@@ -179,9 +181,22 @@ func TestApplicantService_Submit_QuotaExceeded(t *testing.T) {
 		Grade:      "ม.5",
 		ShirtSize:  "L",
 	}
-	_, err = svc.Submit(context.Background(), req2)
-	if err != service.ErrQuotaExceeded {
-		t.Fatalf("expected ErrQuotaExceeded for person 2, got %v", err)
+	if _, err := svc.Submit(context.Background(), req2); err != service.ErrQuotaExceeded {
+		t.Fatalf("capacity 1 is full: expected ErrQuotaExceeded for person 2, got %v", err)
+	}
+
+	// An admin raises the quota to 2; person 2 can now apply.
+	settingSvc := service.NewSettingService(setRepo, appRepo, appRepo.Audit())
+	two := 2
+	if _, err := settingSvc.UpdateSettings(context.Background(), service.UpdateSettingsRequest{MaxCapacity: &two}, 1, "127.0.0.1"); err != nil {
+		t.Fatalf("raise capacity: %v", err)
+	}
+	res2, err := svc.Submit(context.Background(), req2)
+	if err != nil {
+		t.Fatalf("after raising capacity: expected person 2 to be accepted, got %v", err)
+	}
+	if res2.Status != domain.StatusPending {
+		t.Errorf("expected person 2 status PENDING, got %s", res2.Status)
 	}
 }
 

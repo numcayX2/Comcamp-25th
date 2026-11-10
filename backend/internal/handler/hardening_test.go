@@ -184,3 +184,53 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 		}
 	}
 }
+
+// Admin-adjustable seat quota (default 30): PATCH /api/admin/settings needs a token, rejects
+// bad input instead of ignoring it, is audited, and the new limit is enforced at submit.
+func TestSecurity_AdminSettingsQuota(t *testing.T) {
+	app := setupTestApp(t)
+	patch := func(body string, headers map[string]string) *httptest.ResponseRecorder {
+		return app.do(t, http.MethodPatch, "/api/admin/settings", bytes.NewBufferString(body), headers)
+	}
+
+	if rec := patch(`{"maxCapacity":2}`, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("without token: expected 401, got %d", rec.Code)
+	}
+	token := app.login(t)
+
+	pub := app.do(t, http.MethodGet, "/api/settings/public", nil, nil)
+	var before domain.PublicSettingsResponse
+	_ = json.Unmarshal(pub.Body.Bytes(), &before)
+	if before.MaxCapacity != 30 {
+		t.Fatalf("default capacity: expected 30, got %d", before.MaxCapacity)
+	}
+
+	for name, body := range map[string]string{
+		"zero capacity":     `{"maxCapacity":0}`,
+		"huge capacity":     `{"maxCapacity":100000}`,
+		"bad date":          `{"registrationOpenAt":"16/11/2026"}`,
+		"close before open": `{"registrationCloseAt":"2000-01-01T00:00:00Z"}`,
+		"negative fee":      `{"campFee":"-1"}`,
+		"empty":             `{}`,
+	} {
+		if rec := patch(body, bearer(token)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d (%s)", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	if rec := patch(`{"maxCapacity":1}`, bearer(token)); rec.Code != http.StatusOK {
+		t.Fatalf("set capacity 1: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !hasAudit(app, domain.AuditSettingsUpdate, "1") {
+		t.Error("expected a settings.update audit entry")
+	}
+
+	app.submit(t, "1509900000070", "0810000070", "")
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000071", "0810000071", ""), nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("capacity 1 full: expected 409, got %d", rec.Code)
+	}
+	if e := decodeErr(t, rec.Body.Bytes()); e.Code != response.CodeQuotaFull {
+		t.Fatalf("expected %s, got %+v", response.CodeQuotaFull, e)
+	}
+}

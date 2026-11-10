@@ -102,6 +102,8 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				admin.Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
 				admin.Get("/admin/applications/{id}/slip", paymentHandler.GetSlip)
 				admin.Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
+				admin.Get("/admin/settings", settingHandler.GetAdmin)
+				admin.Patch("/admin/settings", settingHandler.UpdateAdmin)
 			})
 		})
 	})

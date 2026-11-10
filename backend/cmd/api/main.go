@@ -90,7 +90,7 @@ func main() {
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: service.NewApplicantService(appRepo, settingRepo, paymentRepo),
-		Setting:   service.NewSettingService(settingRepo, appRepo),
+		Setting:   service.NewSettingService(settingRepo, appRepo, auditRepo),
 		Payment:   service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir),
 	}
 
