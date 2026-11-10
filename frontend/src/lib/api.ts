@@ -357,6 +357,24 @@ export function getApplicationStatus(query: string): Promise<ApiResult<Applicati
  * answers 403 INVALID_VERIFY_CODE when it does not match, so knowing an application ID alone is
  * not enough to act on someone else's application.
  */
+/**
+ * POST /api/applications/:id/withdraw — the applicant cancels their own application. Needs the
+ * last 4 digits of the national ID. The server soft-deletes the row, which frees the seat and
+ * lets the same person register again. 403 INVALID_VERIFY_CODE for a wrong code, 409 once the
+ * place is confirmed (only staff can remove it then), 404 if it is already gone.
+ */
+export async function withdrawApplication(
+  id: string,
+  verifyCode: string,
+  reason?: string,
+): Promise<ApiResult<{ message: string; id: string }>> {
+  const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
+    method: 'POST',
+    body: JSON.stringify({ verifyCode, reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+  });
+  return { data, source: 'LIVE GO API' };
+}
+
 export function confirmAttendance(id: string, confirmed: boolean, verifyCode: string): Promise<ApiResult<Application>> {
   return withFallback(
     () =>
@@ -439,6 +457,69 @@ export function adminLogin(username: string, password: string): Promise<ApiResul
   );
 }
 
+/* ── Admin settings (GET/PATCH /api/admin/settings) ─────────────────────── */
+
+/** Staff view of the camp settings. `campFee` is a decimal string from the Go backend (e.g. "1000"). */
+export interface AdminSettings {
+  id: number;
+  campName: string;
+  registrationOpenAt: string;
+  registrationCloseAt: string;
+  announcementAt?: string;
+  paymentOpenAt?: string;
+  paymentDeadline?: string;
+  maxCapacity: number;
+  campFee: string | number;
+  isManualClosed: boolean;
+  isCertificateReleased?: boolean;
+  currentCount?: number;
+}
+
+/** Partial update, mirroring the Go `UpdateSettingsRequest`. Omitted fields are left unchanged. */
+export interface UpdateAdminSettingsPayload {
+  maxCapacity?: number;
+  campFee?: number;
+  isManualClosed?: boolean;
+  registrationOpenAt?: string;
+  registrationCloseAt?: string;
+}
+
+/** Offline-dev stand-in only, used when the server cannot be reached under `astro dev`. */
+const MOCK_ADMIN_SETTINGS: AdminSettings = {
+  id: 1,
+  campName: 'ComCamp #25 (Mock)',
+  registrationOpenAt: DEFAULT_TARGET_DATE,
+  // TODO(content): วันปิดรับสมัครยังไม่ประกาศ ใช้วันเปิดเป็นค่าชั่วคราวใน mock เท่านั้น
+  registrationCloseAt: DEFAULT_TARGET_DATE,
+  maxCapacity: 30,
+  campFee: 1000,
+  isManualClosed: false,
+};
+
+/** GET /admin/settings */
+export function fetchAdminSettings(token: string): Promise<ApiResult<AdminSettings>> {
+  return withFallback(
+    () => fetchJson<AdminSettings>('/admin/settings', { headers: authHeader(token) }),
+    () => MOCK_ADMIN_SETTINGS,
+  );
+}
+
+/**
+ * PATCH /admin/settings. The server checks the quota (1–1000, and not below the current applicant
+ * count, 400) and the fee range, and writes an audit entry for every change.
+ */
+export async function updateAdminSettings(
+  token: string,
+  payload: UpdateAdminSettingsPayload,
+): Promise<ApiResult<AdminSettings>> {
+  const data = await fetchJson<AdminSettings>('/admin/settings', {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify(payload),
+  });
+  return { data, source: 'LIVE GO API' };
+}
+
 /** GET /admin/applications */
 export function listApplications(
   token: string,
@@ -508,37 +589,18 @@ export function listApplications(
 }
 
 /** PATCH /admin/applications/:id — body { status: "...", reason: "..." } */
-export function updateApplicationStatus(
+export async function updateApplicationStatus(
   token: string,
   id: string,
   status: ApplicationStatus,
   reason?: string,
 ): Promise<ApiResult<Application>> {
-  return withFallback(
-    () =>
-      fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        headers: authHeader(token),
-        body: JSON.stringify({ status, reason }),
-      }),
-    () => ({
-      id,
-      fullName: 'ตัวอย่าง ผู้สมัคร (Mock)',
-      nickname: 'ตัวอย่าง',
-      nationalId: '1509900000000',
-      phone: '0800000000',
-      email: 'mock@example.com',
-      school: 'โรงเรียนตัวอย่าง',
-      grade: 'ม.5',
-      shirtSize: 'M',
-      motivation: '',
-      province: 'เชียงใหม่',
-      status,
-      attendanceConfirmed: status === 'CONFIRMED',
-      hasSlip: false,
-      createdAt: new Date().toISOString(),
-    }),
-  );
+  const data = await fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify({ status, reason }),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /**
@@ -546,28 +608,21 @@ export function updateApplicationStatus(
  * Verifies or rejects the payment slip of an applicant.
  * Body: { approved: boolean, note: string }
  */
-export function verifyPaymentSlip(
+export async function verifyPaymentSlip(
   token: string,
   id: string,
   approved: boolean,
   note: string = '',
 ): Promise<ApiResult<VerifySlipResponse>> {
-  return withFallback(
-    () =>
-      fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
-        method: 'PATCH',
-        headers: authHeader(token),
-        body: JSON.stringify({
-          approved,
-          note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
-        }),
-      }),
-    () => ({
-      message: approved
-        ? 'อนุมัติสลิปสำเร็จ (Mock Mode)'
-        : 'ปฏิเสธสลิปสำเร็จ (Mock Mode)',
+  const data = await fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify({
+      approved,
+      note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
     }),
-  );
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /**
@@ -588,4 +643,18 @@ export async function fetchAdminSlip(token: string, id: string): Promise<string>
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/** DELETE /admin/applications/:id — soft-deletes the applicant and writes an audit log */
+export async function deleteApplication(
+  token: string,
+  id: string,
+  reason?: string,
+): Promise<ApiResult<{ message: string }>> {
+  const data = await fetchJson<{ message: string }>(`/admin/applications/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeader(token),
+    body: JSON.stringify({ reason: reason || 'ลบโดยผู้ดูแลระบบ' }),
+  });
+  return { data, source: 'LIVE GO API' };
 }

@@ -12,25 +12,65 @@
 
   --bg-canvas: #F9F8F4;
   --bg-surface: #F2F0E8;
-  --color-border: rgba(18, 19, 22, 0.08);
+  --bg-card: #FFFFFF;
+  --color-border: rgba(18, 19, 22, 0.14);
+  --color-border-subtle: rgba(18, 19, 22, 0.08);
+  --color-border-input: #8A8D93;
   --color-ink: #121316;
   --color-ink-muted: #4A4D55;
+  --color-ink-subtle: #62666E;
   --color-tech: #1A5FE0;
   --color-cta: #03B800;
   --color-warning: #B45309;
+  --color-danger: #C62828;
+  --color-success: #029E00;
+  --color-btn-dark: #121316;
+  --color-btn-dark-text: #F9F8F4;
+  --color-btn-ghost-hover: #F2F0E8;
+
+  /* Master Token Aliases */
+  --canvas-0: #F9F8F4;
+  --canvas-1: #F2F0E8;
+  --surface: #FFFFFF;
+  --ink: #121316;
+  --ink-2: #4A4D55;
+  --ink-3: #62666E;
+  --rule: rgba(18, 19, 22, 0.14);
+  --rule-strong: rgba(18, 19, 22, 0.24);
+  --border-input: #8A8D93;
 }
 
 html.dark,
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg-canvas: #06070A;
-  --bg-surface: #0E1117;
-  --color-border: #1E2330;
-  --color-ink: #F8FAFC;
-  --color-ink-muted: #94A3B8;
+  --bg-canvas: #0B0F19;
+  --bg-surface: #151A24;
+  --bg-card: #141820;
+  --color-border: rgba(255, 255, 255, 0.14);
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-input: #5A5D63;
+  --color-ink: #F5F4EF;
+  --color-ink-muted: #C3C4C7;
+  --color-ink-subtle: #9A9CA1;
   --color-tech: #337AFF;
   --color-warning: #F59E0B;
+  --color-danger: #F87171;
+  --color-success: #3DDC3A;
+  --color-btn-dark: #F5F4EF;
+  --color-btn-dark-text: #121316;
+  --color-btn-ghost-hover: rgba(255, 255, 255, 0.08);
+
+  /* Master Token Aliases */
+  --canvas-0: #0B0F19;
+  --canvas-1: #151A24;
+  --surface: #141820;
+  --ink: #F5F4EF;
+  --ink-2: #C3C4C7;
+  --ink-3: #9A9CA1;
+  --rule: rgba(255, 255, 255, 0.14);
+  --rule-strong: rgba(255, 255, 255, 0.24);
+  --border-input: #5A5D63;
 }
 
 html, body {
@@ -60,3 +100,32 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   html, body { scroll-behavior: auto; }
 }
+
+/* ============================================================
+   Form select & option theme consistency (Fixes dark mode popups)
+   ============================================================ */
+select {
+  color-scheme: light dark;
+}
+
+html.dark select,
+html[data-theme="dark"] select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #FFFFFF;
+  color: #121316;
+}
+
+html.dark select option,
+html[data-theme="dark"] select option {
+  background-color: #141820 !important;
+  color: #F5F4EF !important;
+}
+
+html:not(.dark) select option {
+  background-color: #FFFFFF !important;
+  color: #121316 !important;
+}
+
