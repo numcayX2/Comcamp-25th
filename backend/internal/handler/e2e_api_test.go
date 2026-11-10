@@ -3,24 +3,43 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
 	"comcamp25-backend/internal/domain"
-	"comcamp25-backend/internal/handler"
-	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/repository/memory"
+	"comcamp25-backend/internal/server"
 	"comcamp25-backend/internal/service"
 )
 
-func setupTestApp(t *testing.T) http.Handler {
+const (
+	testAdminUser = "admin"
+	testAdminPass = "admin123-test-only"
+)
+
+type testApp struct {
+	http.Handler
+	appRepo   *memory.MemoryApplicantRepo
+	adminRepo *memory.MemoryAdminRepo
+	setRepo   *memory.MemorySettingRepo
+	adminID   int64
+	// verifyCodes maps application ID → last 4 national-ID digits, filled by submit, so the
+	// public confirm / slip helpers can pass the /status second factor (AGENTS.md §13.5).
+	verifyCodes map[string]string
+}
+
+// setupTestApp builds the production router (server.NewRouter) over in-memory repositories, so
+// these tests run through the same security middleware as the deployed API.
+func setupTestApp(t *testing.T) *testApp {
 	t.Helper()
 
 	appRepo := memory.NewMemoryApplicantRepo()
@@ -28,77 +47,181 @@ func setupTestApp(t *testing.T) http.Handler {
 	admRepo := memory.NewMemoryAdminRepo()
 	payRepo := memory.NewMemoryPaymentRepo(appRepo)
 
-	// Seed admin
-	hash, _ := service.HashPassword("admin123")
-	_ = admRepo.Create(context.Background(), &domain.Admin{
-		Username:     "admin",
+	hash, _ := service.HashPassword(testAdminPass)
+	admin := &domain.Admin{
+		Username:     testAdminUser,
 		PasswordHash: hash,
 		FullName:     "System Admin",
 		Role:         domain.RoleSuperadmin,
 		IsActive:     true,
-	})
+	}
+	_ = admRepo.Create(context.Background(), admin)
 
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
-	authService := service.NewAuthService(admRepo, jwtSecret)
-	appService := service.NewApplicantService(appRepo, setRepo, payRepo)
-	settingService := service.NewSettingService(setRepo, appRepo)
-	uploadDir := t.TempDir()
-	paymentService := service.NewPaymentService(payRepo, appRepo, setRepo, uploadDir)
+	services := server.Services{
+		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
+		Applicant: service.NewApplicantService(appRepo, setRepo, payRepo),
+		Setting:   service.NewSettingService(setRepo, appRepo),
+		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()),
+	}
 
-	healthH := handler.NewHealthHandler("comcamp25-backend")
-	authH := handler.NewAuthHandler(authService)
-	appH := handler.NewApplicantHandler(appService)
-	setH := handler.NewSettingHandler(settingService)
-	payH := handler.NewPaymentHandler(paymentService)
-
-	r := chi.NewRouter()
-	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(uploadDir))))
-	r.Route("/api", func(api chi.Router) {
-		api.Get("/health", healthH.Check)
-		api.Get("/settings/public", setH.GetPublic)
-
-		api.Post("/applications", appH.Submit)
-		api.Get("/applications/status", appH.GetStatus)
-		api.Post("/applications/{id}/confirm", appH.ConfirmAttendance)
-		api.Post("/applications/{id}/slip", payH.UploadSlip)
-
-		api.Post("/auth/login", authH.Login)
-
-		api.Group(func(admin chi.Router) {
-			admin.Use(middleware.RequireAuth(authService))
-			admin.Get("/admin/applications", appH.AdminList)
-			admin.Patch("/admin/applications/{id}", appH.AdminUpdateStatus)
-			admin.Patch("/admin/applications/{id}/verify-slip", payH.VerifySlip)
-		})
+	router := server.NewRouter(services, server.Options{
+		AllowedOrigins: []string{"http://localhost:4321"},
+		RateLimits:     server.DefaultRateLimits(),
 	})
 
-	return r
+	return &testApp{
+		Handler: router, appRepo: appRepo, adminRepo: admRepo, setRepo: setRepo, adminID: admin.ID,
+		verifyCodes: map[string]string{},
+	}
+}
+
+func (a *testApp) do(t *testing.T, method, target string, body io.Reader, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, body)
+	if body != nil && headers["Content-Type"] == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	a.ServeHTTP(rec, req)
+	return rec
+}
+
+func (a *testApp) login(t *testing.T) string {
+	t.Helper()
+	body := fmt.Sprintf(`{"username":%q,"password":%q}`, testAdminUser, testAdminPass)
+	rec := a.do(t, http.MethodPost, "/api/auth/login", bytes.NewBufferString(body), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var res struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	if res.Token == "" {
+		t.Fatal("login: empty token")
+	}
+	return res.Token
+}
+
+func bearer(token string) map[string]string {
+	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
+	body, _ := json.Marshal(service.ApplicationCreateRequest{
+		FullName:   "สมเกียรติ สุขสมบูรณ์",
+		Nickname:   "เกียรติ",
+		NationalID: nationalID,
+		Phone:      phone,
+		Email:      email,
+		School:     "โรงเรียนแม่โจ้วิทยาคม",
+		Grade:      "ม.5",
+		ShirtSize:  "XL",
+		Motivation: "อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard",
+	})
+	return bytes.NewBuffer(body)
+}
+
+func (a *testApp) submit(t *testing.T, nationalID, phone, email string) service.ApplicationResponse {
+	t.Helper()
+	rec := a.do(t, http.MethodPost, "/api/applications", applicationJSON(nationalID, phone, email), nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("submit: expected 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var app service.ApplicationResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &app)
+	a.verifyCodes[app.ID] = nationalID[len(nationalID)-4:]
+	return app
+}
+
+func (a *testApp) setStatus(t *testing.T, token, appID string, status domain.ApplicationStatus) {
+	t.Helper()
+	body := fmt.Sprintf(`{"status":%q,"reason":"test"}`, status)
+	rec := a.do(t, http.MethodPatch, "/api/admin/applications/"+appID, bytes.NewBufferString(body), bearer(token))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set status: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// Real 1×1 images: the upload path sniffs the magic bytes and then parses the header for the
+// dimension check (AGENTS.md §13.4), so a bare magic-byte prefix is no longer accepted.
+var (
+	jpegBytes = encodeJPEG(1, 1)
+	pngBytes  = encodePNG(1, 1)
+	// 1×1 lossless WebP (VP8L chunk).
+	webpBytes = mustBase64("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+	gifBytes  = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00")
+	pdfBytes  = []byte("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")
+	binBytes  = []byte{0x00, 0x01, 0x02, 0x03, 0xFE, 0xFD, 0x7F, 0x10}
+)
+
+func encodeJPEG(w, h int) []byte {
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, w, h)), nil); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+func encodePNG(w, h int) []byte {
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}
+
+func mustBase64(s string) []byte {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func slipForm(t *testing.T, filename, verifyCode string, data []byte) (*bytes.Buffer, map[string]string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if verifyCode != "" {
+		_ = writer.WriteField("verifyCode", verifyCode)
+	}
+	part, _ := writer.CreateFormFile("slip", filename)
+	_, _ = part.Write(data)
+	_ = writer.Close()
+	return body, map[string]string{"Content-Type": writer.FormDataContentType()}
+}
+
+// uploadSlip posts a slip with the applicant's correct verifyCode.
+func (a *testApp) uploadSlip(t *testing.T, appID, filename string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	return a.uploadSlipWithCode(t, appID, a.verifyCodes[appID], filename, data)
+}
+
+func (a *testApp) uploadSlipWithCode(t *testing.T, appID, verifyCode, filename string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	body, headers := slipForm(t, filename, verifyCode, data)
+	return a.do(t, http.MethodPost, "/api/applications/"+appID+"/slip", body, headers)
 }
 
 func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	app := setupTestApp(t)
 
-	// Step 1: Health Check
 	t.Run("1. GET /api/health", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
+		if rec := app.do(t, http.MethodGet, "/api/health", nil, nil); rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
 	})
 
-	// Step 2: Public Settings
 	t.Run("2. GET /api/settings/public", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/settings/public", nil)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+		rec := app.do(t, http.MethodGet, "/api/settings/public", nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
-
 		var settings domain.PublicSettingsResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
 			t.Fatalf("failed to parse json: %v", err)
@@ -111,140 +234,62 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	var createdApp service.ApplicationResponse
-
-	// Step 3: Register new applicant
+	var created service.ApplicationResponse
 	t.Run("3. POST /api/applications", func(t *testing.T) {
-		payload := service.ApplicationCreateRequest{
-			FullName:   "สมเกียรติ สุขสมบูรณ์",
-			Nickname:   "เกียรติ",
-			NationalID: "1509900112233",
-			Phone:      "0819876543",
-			Email:      "somkiat@school.ac.th",
-			School:     "โรงเรียนแม่โจ้วิทยาคม",
-			Grade:      "ม.5",
-			ShirtSize:  "XL",
-			Motivation: "อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard",
-		}
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/applications", bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("expected 201 Created, got %d (body: %s)", rec.Code, rec.Body.String())
-		}
-
-		if err := json.Unmarshal(rec.Body.Bytes(), &createdApp); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
-
-		if createdApp.ID == "" {
+		created = app.submit(t, "1509900112233", "0819876543", "somkiat@school.ac.th")
+		if created.ID == "" {
 			t.Errorf("expected generated Application ID")
 		}
-		if createdApp.Status != domain.StatusPending {
-			t.Errorf("expected status PENDING, got %s", createdApp.Status)
+		if created.Status != domain.StatusPending {
+			t.Errorf("expected status PENDING, got %s", created.Status)
 		}
 	})
 
-	// Step 4: Query Status by National ID
 	t.Run("4. GET /api/applications/status?q={nationalId}", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/applications/status?q=1509900112233", nil)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+		rec := app.do(t, http.MethodGet, "/api/applications/status?q=1509900112233", nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
 		var queried service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &queried)
-		if queried.ID != createdApp.ID {
-			t.Errorf("expected ID %s, got %s", createdApp.ID, queried.ID)
+		if queried.ID != created.ID {
+			t.Errorf("expected ID %s, got %s", created.ID, queried.ID)
 		}
 	})
 
-	// Step 5: Admin Login
 	var token string
 	t.Run("5. POST /api/auth/login", func(t *testing.T) {
-		loginBody := `{"username":"admin","password":"admin123"}`
-		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader([]byte(loginBody)))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d", rec.Code)
-		}
-
-		var res struct {
-			Token string `json:"token"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &res)
-		token = res.Token
-		if token == "" {
-			t.Fatalf("expected non-empty JWT token")
-		}
+		token = app.login(t)
 	})
 
-	// Step 6: Admin Endpoint Auth Protection Check
 	t.Run("6. Protected endpoint check without token", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/applications", nil)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusUnauthorized {
+		if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("expected 401 Unauthorized, got %d", rec.Code)
 		}
 	})
 
-	// Step 7: Admin Lists Applications
 	t.Run("7. GET /api/admin/applications (with auth)", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/applications", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+		rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
-
 		var list []service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &list)
 		if len(list) != 1 {
-			t.Errorf("expected 1 applicant, got %d", len(list))
+			t.Fatalf("expected 1 applicant, got %d", len(list))
+		}
+		if list[0].NationalID != "1509900112233" {
+			t.Errorf("admin list should return the full national ID, got %q", list[0].NationalID)
 		}
 	})
 
-	// Step 8: Admin updates status to PASSED
 	t.Run("8. PATCH /api/admin/applications/{id} -> PASSED", func(t *testing.T) {
-		patchBody := `{"status":"PASSED","reason":"คะแนนสัมภาษณ์ผ่านเกณฑ์"}`
-		targetURL := fmt.Sprintf("/api/admin/applications/%s", createdApp.ID)
-		req := httptest.NewRequest(http.MethodPatch, targetURL, bytes.NewReader([]byte(patchBody)))
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK, got %d (body: %s)", rec.Code, rec.Body.String())
-		}
-		var updated service.ApplicationResponse
-		_ = json.Unmarshal(rec.Body.Bytes(), &updated)
-		if updated.Status != domain.StatusPassed {
-			t.Errorf("expected PASSED, got %s", updated.Status)
-		}
+		app.setStatus(t, token, created.ID, domain.StatusPassed)
 	})
 
-	// Step 9: Applicant confirms attendance
 	t.Run("9. POST /api/applications/{id}/confirm", func(t *testing.T) {
-		targetURL := fmt.Sprintf("/api/applications/%s/confirm", createdApp.ID)
-		confirmBody := `{"confirmed":true}`
-		req := httptest.NewRequest(http.MethodPost, targetURL, bytes.NewReader([]byte(confirmBody)))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+		// verifyCode = last 4 digits of the national ID 1509900112233 (AGENTS.md §13.5).
+		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"2233"}`), nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
@@ -255,94 +300,56 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 10: Upload payment slip
-	mockSlipBytes := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00}
-	t.Run("10. POST /api/applications/{id}/slip (upload)", func(t *testing.T) {
-		targetURL := fmt.Sprintf("/api/applications/%s/slip", createdApp.ID)
-
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		part, _ := writer.CreateFormFile("slip", "slip_transfer_kbank.jpg")
-		_, _ = io.Copy(part, bytes.NewReader(mockSlipBytes))
-		_ = writer.Close()
-
-		req := httptest.NewRequest(http.MethodPost, targetURL, body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+	t.Run("10. Upload slip, then admin fetches it through the authenticated endpoint", func(t *testing.T) {
+		rec := app.uploadSlip(t, created.ID, "slip_transfer_kbank.jpg", jpegBytes)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d (body: %s)", rec.Code, rec.Body.String())
 		}
-
 		var slipRes service.SlipUploadResult
 		_ = json.Unmarshal(rec.Body.Bytes(), &slipRes)
-
-		// Test admin fetching the uploaded slip file over HTTP (manual inspection)
-		reqFetch := httptest.NewRequest(http.MethodGet, slipRes.SlipURL, nil)
-		recFetch := httptest.NewRecorder()
-		app.ServeHTTP(recFetch, reqFetch)
-
-		if recFetch.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK when admin fetches slip, got %d", recFetch.Code)
+		if !slipRes.HasSlip || slipRes.SlipStatus != domain.PaymentPending {
+			t.Errorf("unexpected upload result: %+v", slipRes)
 		}
-		if !bytes.Equal(recFetch.Body.Bytes(), mockSlipBytes) {
+
+		fetch := app.do(t, http.MethodGet, service.AdminSlipPath(created.ID), nil, bearer(token))
+		if fetch.Code != http.StatusOK {
+			t.Fatalf("expected 200 when admin fetches slip, got %d", fetch.Code)
+		}
+		if ct := fetch.Header().Get("Content-Type"); ct != "image/jpeg" {
+			t.Errorf("expected image/jpeg, got %q", ct)
+		}
+		if !bytes.Equal(fetch.Body.Bytes(), jpegBytes) {
 			t.Errorf("fetched slip bytes do not match uploaded bytes")
 		}
 	})
 
-	// Step 11: Anti-fraud duplicate slip detection
-	t.Run("11. Upload duplicate slip -> Expect 409 Conflict", func(t *testing.T) {
-		targetURL := fmt.Sprintf("/api/applications/%s/slip", createdApp.ID)
-
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		part, _ := writer.CreateFormFile("slip", "same_slip_reused.jpg")
-		_, _ = io.Copy(part, bytes.NewReader(mockSlipBytes)) // Same hash
-		_ = writer.Close()
-
-		req := httptest.NewRequest(http.MethodPost, targetURL, body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+	t.Run("11. Upload duplicate slip -> 409 Conflict", func(t *testing.T) {
+		rec := app.uploadSlip(t, created.ID, "same_slip_reused.jpg", jpegBytes)
 		if rec.Code != http.StatusConflict {
 			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
 		}
 	})
 
-	// Step 12: Admin verifies payment slip
-	t.Run("12. PATCH /api/admin/applications/{id}/verify-slip -> CONFIRMED", func(t *testing.T) {
-		targetURL := fmt.Sprintf("/api/admin/applications/%s/verify-slip", createdApp.ID)
-		verifyBody := `{"approved":true,"note":"ยอดเงินเข้าบัญชี 300 บาท ถูกต้องครบถ้วน"}`
-		req := httptest.NewRequest(http.MethodPatch, targetURL, bytes.NewReader([]byte(verifyBody)))
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+	t.Run("12. PATCH verify-slip -> CONFIRMED", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"approved":true,"note":"ยอดเงินเข้าบัญชีถูกต้องครบถ้วน"}`)
+		rec := app.do(t, http.MethodPatch, "/api/admin/applications/"+created.ID+"/verify-slip", body, bearer(token))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d (body: %s)", rec.Code, rec.Body.String())
 		}
 	})
 
-	// Step 13: Final Status Check -> CONFIRMED
-	t.Run("13. Check final applicant status is CONFIRMED", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/applications/status?q="+createdApp.ID, nil)
-		rec := httptest.NewRecorder()
-		app.ServeHTTP(rec, req)
-
+	t.Run("13. Final public status is CONFIRMED with an approved slip", func(t *testing.T) {
+		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
-		var finalApp service.ApplicationResponse
-		_ = json.Unmarshal(rec.Body.Bytes(), &finalApp)
-
-		if finalApp.Status != domain.StatusConfirmed {
-			t.Errorf("expected final status CONFIRMED, got %s", finalApp.Status)
+		var final service.ApplicationResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &final)
+		if final.Status != domain.StatusConfirmed {
+			t.Errorf("expected final status CONFIRMED, got %s", final.Status)
 		}
-		if finalApp.SlipURL == nil || *finalApp.SlipURL == "" {
-			t.Errorf("expected non-empty slipURL")
+		if !final.HasSlip || final.SlipStatus == nil || *final.SlipStatus != domain.PaymentApproved {
+			t.Errorf("expected an approved slip, got hasSlip=%v slipStatus=%v", final.HasSlip, final.SlipStatus)
 		}
 	})
 }

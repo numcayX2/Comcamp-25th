@@ -60,7 +60,7 @@ func (r *AdminPostgresRepo) scan(row pgx.Row) (*domain.Admin, error) {
 	err := row.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.FullName, &a.Role, &a.IsActive, &a.LastLoginAt, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("admin not found")
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to scan admin: %w", err)
 	}

@@ -11,13 +11,33 @@ dist/
 tmp/
 scratch/
 */scratch/
+# Hallmark skill local run state (per-machine, churns every run)
+.hallmark/
+*/.hallmark/
 
 # AI Agent & Initskill local workspace configurations
 .agents/
 */.agents/
 .codex/
 */.codex/
+.commandcode/
+*/.commandcode/
 .agent-skill-manager.json
 */.agent-skill-manager.json
 AGENTS.md
 */AGENTS.md
+
+# Gallery images hosted on Cloudflare CDN (keep local fallback out of Git)
+frontend/public/assets/gallery/
+
+# Archify generated diagram output (local, regenerable)
+.archify/
+*/.archify/
+
+# Uploaded payment slips contain personal and banking data - never commit them
+backend/uploads/
+uploads/
+
+# Compiled binaries
+*.exe
+backend/api

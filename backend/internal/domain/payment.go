@@ -40,5 +40,8 @@ type PaymentRepository interface {
 	GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*Payment, error)
 	CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error)
 	CheckDuplicateSlipHash(ctx context.Context, slipHash string) (bool, error)
-	Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string) error
+	// Verify settles a PENDING payment and, in the same transaction, moves the applicant to
+	// CONFIRMED (approved) or back to PASSED (rejected, so they can re-upload), writing the
+	// status log and the audit entry. Returns ErrPaymentAlreadyVerified if it is not PENDING.
+	Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string, audit *AuditEntry) error
 }

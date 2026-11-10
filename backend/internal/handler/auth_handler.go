@@ -2,8 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/pkg/response"
 	"comcamp25-backend/internal/service"
 )
@@ -28,17 +30,22 @@ type LoginResponse struct {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid request body")
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "invalid request body")
+		return
+	}
+	// bcrypt only reads the first 72 bytes; refuse absurd inputs before hashing.
+	if req.Username == "" || req.Password == "" || len(req.Username) > 100 || len(req.Password) > 72 {
+		response.ErrorCode(w, http.StatusUnauthorized, response.CodeUnauthorized, service.ErrInvalidCredentials.Error())
 		return
 	}
 
-	token, _, err := h.authService.Login(r.Context(), req.Username, req.Password)
+	token, _, err := h.authService.Login(r.Context(), req.Username, req.Password, middleware.RemoteIP(r))
 	if err != nil {
-		if err == service.ErrInvalidCredentials || err == service.ErrAccountInactive {
-			response.Error(w, http.StatusUnauthorized, err.Error())
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			response.ErrorCode(w, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, err.Error())
+		response.Internal(w, r, err)
 		return
 	}
 

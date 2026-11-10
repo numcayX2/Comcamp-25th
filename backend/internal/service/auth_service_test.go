@@ -12,7 +12,7 @@ import (
 func TestAuthService_Login(t *testing.T) {
 	adminRepo := memory.NewMemoryAdminRepo()
 	secret := "super-secure-jwt-secret-at-least-32-chars"
-	authSvc := service.NewAuthService(adminRepo, secret)
+	authSvc := service.NewAuthService(adminRepo, nil, secret)
 
 	hash, _ := service.HashPassword("secret123")
 	_ = adminRepo.Create(context.Background(), &domain.Admin{
@@ -24,7 +24,7 @@ func TestAuthService_Login(t *testing.T) {
 	})
 
 	t.Run("Valid login", func(t *testing.T) {
-		token, admin, err := authSvc.Login(context.Background(), "camp_leader", "secret123")
+		token, admin, err := authSvc.Login(context.Background(), "camp_leader", "secret123", "127.0.0.1")
 		if err != nil {
 			t.Fatalf("expected login to succeed, got %v", err)
 		}
@@ -45,14 +45,14 @@ func TestAuthService_Login(t *testing.T) {
 	})
 
 	t.Run("Invalid password", func(t *testing.T) {
-		_, _, err := authSvc.Login(context.Background(), "camp_leader", "wrong_password")
+		_, _, err := authSvc.Login(context.Background(), "camp_leader", "wrong_password", "127.0.0.1")
 		if err != service.ErrInvalidCredentials {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
 	})
 
 	t.Run("Non-existent user", func(t *testing.T) {
-		_, _, err := authSvc.Login(context.Background(), "nobody", "secret123")
+		_, _, err := authSvc.Login(context.Background(), "nobody", "secret123", "127.0.0.1")
 		if err != service.ErrInvalidCredentials {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}

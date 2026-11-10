@@ -222,18 +222,29 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	}
 
 	// 3. Confirm attendance while still PENDING should fail
-	_, err = svc.ConfirmAttendance(context.Background(), created.ID, true)
+	_, err = svc.ConfirmAttendance(context.Background(), created.ID, "8888", true)
 	if err != service.ErrCannotConfirm {
 		t.Fatalf("expected ErrCannotConfirm while PENDING, got %v", err)
 	}
 
 	// 4. Update status to PASSED then confirm should succeed
-	_, err = svc.UpdateStatus(context.Background(), created.ID, domain.StatusPassed, nil, "Passed screening")
+	_, err = svc.UpdateStatus(context.Background(), created.ID, domain.StatusPassed, nil, "Passed screening", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("failed to update status: %v", err)
 	}
 
-	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, true)
+	// 5. verifyCode (AGENTS.md §13.5): last 4 digits of the national ID only. A missing code is a
+	//    validation error; a wrong one, or the phone's last 4 digits, is rejected.
+	if _, err := svc.ConfirmAttendance(context.Background(), created.ID, "", true); err != service.ErrVerifyCodeRequired {
+		t.Fatalf("missing verifyCode: expected ErrVerifyCodeRequired, got %v", err)
+	}
+	for _, code := range []string{"1234", "9999"} { // 9999 = the phone's last 4 digits
+		if _, err := svc.ConfirmAttendance(context.Background(), created.ID, code, true); err != service.ErrInvalidVerifyCode {
+			t.Fatalf("verifyCode %s: expected ErrInvalidVerifyCode, got %v", code, err)
+		}
+	}
+
+	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, "8888", true)
 	if err != nil {
 		t.Fatalf("failed to confirm attendance: %v", err)
 	}

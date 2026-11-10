@@ -36,7 +36,7 @@ func (r *SettingPostgresRepo) Get(ctx context.Context) (*domain.Settings, error)
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("settings not found")
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}

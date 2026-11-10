@@ -17,11 +17,14 @@ type PoolConfig struct {
 	MaxConnIdleTime time.Duration
 }
 
+// DefaultPoolConfig sizes the pool for the 00:00 registration burst (AGENTS.md §13.7): up to 40
+// connections, 20 kept warm so the first wave does not pay connection setup. Keep MaxConns well
+// below PostgreSQL max_connections (default 100) to leave room for psql, migrations and backups.
 func DefaultPoolConfig(dsN string) PoolConfig {
 	return PoolConfig{
 		DSN:             dsN,
-		MaxConns:        25,
-		MinConns:        5,
+		MaxConns:        40,
+		MinConns:        20,
 		MaxConnLifetime: time.Hour,
 		MaxConnIdleTime: 30 * time.Minute,
 	}

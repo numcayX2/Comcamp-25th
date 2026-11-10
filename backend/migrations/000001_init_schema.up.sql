@@ -120,5 +120,5 @@ CREATE INDEX IF NOT EXISTS idx_status_logs_applicant ON applicant_status_logs(ap
 
 -- Initial Singleton Setting Row
 INSERT INTO settings (id, camp_name, registration_open_at, registration_close_at, max_capacity, camp_fee)
-VALUES (1, 'ComCamp 25th', '2026-11-16 00:00:00+07', '2026-11-30 23:59:59+07', 30, 0.00)
+VALUES (1, 'ComCamp 25th', '2026-11-16 00:00:00+07', '2026-11-30 23:59:59+07', 30, 1000.00)
 ON CONFLICT (id) DO NOTHING;

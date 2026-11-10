@@ -5,15 +5,15 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-comcamp}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_this_strong_password}
+      # No fallback password (AGENTS.md §13.2): compose refuses to start until .env sets it.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:-comcamp_db}
-      POSTGRESQL_USER: ${DB_USER:-comcamp}
-      POSTGRESQL_PASSWORD: ${DB_PASSWORD:-change_this_strong_password}
-      POSTGRESQL_DATABASE: ${DB_NAME:-comcamp_db}
     ports:
+      # Loopback only (AGENTS.md §13.1) - never publish the database on 0.0.0.0.
       - "127.0.0.1:5432:5432"
     volumes:
-      - pgdata:/var/lib/pgsql/data
+      # postgres:16-alpine keeps its data in /var/lib/postgresql/data.
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:

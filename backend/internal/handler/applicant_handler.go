@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -20,41 +19,39 @@ func NewApplicantHandler(appService *service.ApplicantService) *ApplicantHandler
 	return &ApplicantHandler{appService: appService}
 }
 
+// Submit handles POST /api/applications. With X-Idempotency-Key, a retry of a submission that
+// was already stored answers 200 + "Idempotent-Replayed: true" with the original application.
 func (h *ApplicantHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	var req service.ApplicationCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid request body payload")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
-	app, err := h.appService.Submit(r.Context(), req)
+	app, replayed, err := h.appService.SubmitWithKey(r.Context(), req, r.Header.Get("X-Idempotency-Key"))
 	if err != nil {
-		switch err {
-		case service.ErrRegistrationClosed:
-			response.Error(w, http.StatusForbidden, err.Error())
-		case service.ErrQuotaExceeded:
-			response.Error(w, http.StatusConflict, err.Error())
-		case service.ErrInvalidNationalID, service.ErrInvalidPhone, service.ErrInvalidShirtSize:
-			response.Error(w, http.StatusBadRequest, err.Error())
-		default:
-			response.Error(w, http.StatusBadRequest, err.Error())
-		}
+		writeServiceError(w, r, err)
 		return
 	}
 
+	if replayed {
+		w.Header().Set("Idempotent-Replayed", "true")
+		response.OK(w, app)
+		return
+	}
 	response.Created(w, app)
 }
 
+// GetStatus handles the public lookup; the response is masked (AGENTS.md §13.5).
 func (h *ApplicantHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	if q == "" {
-		response.Error(w, http.StatusBadRequest, "query parameter 'q' is required")
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "query parameter 'q' is required")
 		return
 	}
 
 	app, err := h.appService.QueryStatus(r.Context(), q)
 	if err != nil {
-		response.Error(w, http.StatusNotFound, "Application not found")
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -64,21 +61,22 @@ func (h *ApplicantHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		response.Error(w, http.StatusBadRequest, "application id is required")
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
 		return
 	}
 
 	var body struct {
 		Confirmed bool `json:"confirmed"`
+		// VerifyCode is the last 4 digits of the applicant's national ID (AGENTS.md §13.5).
+		VerifyCode string `json:"verifyCode"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid json payload")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 
-	app, err := h.appService.ConfirmAttendance(r.Context(), id, body.Confirmed)
+	app, err := h.appService.ConfirmAttendance(r.Context(), id, body.VerifyCode, body.Confirmed)
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -87,20 +85,15 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 
 func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	var statusFilter *domain.ApplicationStatus
-	statusParam := r.URL.Query().Get("status")
-	if statusParam != "" {
+	if statusParam := r.URL.Query().Get("status"); statusParam != "" {
 		st := domain.ApplicationStatus(statusParam)
 		statusFilter = &st
 	}
 
 	apps, err := h.appService.ListAll(r.Context(), statusFilter)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, err.Error())
+		writeServiceError(w, r, err)
 		return
-	}
-
-	if apps == nil {
-		apps = []*service.ApplicationResponse{}
 	}
 
 	response.OK(w, apps)
@@ -109,7 +102,7 @@ func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		response.Error(w, http.StatusBadRequest, "application id is required")
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
 		return
 	}
 
@@ -117,20 +110,18 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 		Status string `json:"status"`
 		Reason string `json:"reason,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid json payload")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 
-	claims := middleware.GetAdminClaims(r.Context())
 	var adminID *int64
-	if claims != nil {
+	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
 		adminID = &claims.AdminID
 	}
 
-	app, err := h.appService.UpdateStatus(r.Context(), id, domain.ApplicationStatus(body.Status), adminID, body.Reason)
+	app, err := h.appService.UpdateStatus(r.Context(), id, domain.ApplicationStatus(body.Status), adminID, body.Reason, middleware.RemoteIP(r))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 

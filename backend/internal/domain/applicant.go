@@ -60,6 +60,7 @@ type Applicant struct {
 	Status              ApplicationStatus `db:"status" json:"status"`
 	AttendanceConfirmed bool              `db:"attendance_confirmed" json:"attendanceConfirmed"`
 	CertificateURL      *string           `db:"certificate_url" json:"certificateUrl,omitempty"`
+	IdempotencyKey      *uuid.UUID        `db:"idempotency_key" json:"-"`
 	CreatedAt           time.Time         `db:"created_at" json:"createdAt"`
 	UpdatedAt           time.Time         `db:"updated_at" json:"updatedAt"`
 	DeletedAt           *time.Time        `db:"deleted_at" json:"-"`
@@ -84,12 +85,19 @@ type ApplicantStatusLog struct {
 
 type ApplicantRepository interface {
 	Create(ctx context.Context, applicant *Applicant) error
+	// CreateWithinCapacity atomically checks the active-applicant count against maxCapacity and
+	// inserts, so concurrent submits can never exceed the quota. maxCapacity <= 0 means unlimited.
+	// Returns ErrCapacityReached, ErrDuplicateApplicant or ErrDuplicateIdempotencyKey.
+	CreateWithinCapacity(ctx context.Context, applicant *Applicant, maxCapacity int) error
+	GetByIdempotencyKey(ctx context.Context, key uuid.UUID) (*Applicant, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Applicant, error)
 	GetByApplicationNo(ctx context.Context, appNo string) (*Applicant, error)
 	GetByNationalID(ctx context.Context, nationalID string) (*Applicant, error)
 	FindByQuery(ctx context.Context, query string) (*Applicant, error)
 	ListAll(ctx context.Context, status *ApplicationStatus) ([]*Applicant, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string) error
+	// UpdateStatus changes the status and writes applicant_status_logs plus the audit entry
+	// (when non-nil) in one transaction.
+	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry) error
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error
 	CountActive(ctx context.Context) (int, error)
 }

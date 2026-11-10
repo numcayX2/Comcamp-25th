@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -13,10 +14,15 @@ import (
 	"comcamp25-backend/internal/repository/postgres"
 )
 
-const testDSN = "host=127.0.0.1 port=5432 user=comcamp password=change_this_strong_password dbname=comcamp_db sslmode=disable"
+// testDSN comes from the environment so no database password lives in the repository.
+// Example: TEST_DATABASE_DSN="host=127.0.0.1 port=5432 user=comcamp password=... dbname=comcamp_db sslmode=disable"
+var testDSN = os.Getenv("TEST_DATABASE_DSN")
 
 func setupRealDB(t *testing.T) *postgres.ApplicantPostgresRepo {
 	t.Helper()
+	if testDSN == "" {
+		t.Skip("Skipping integration test: TEST_DATABASE_DSN is not set")
+	}
 
 	cfg := repository.DefaultPoolConfig(testDSN)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -35,6 +41,9 @@ func setupRealDB(t *testing.T) *postgres.ApplicantPostgresRepo {
 }
 
 func TestPostgres_FullIntegration(t *testing.T) {
+	if testDSN == "" {
+		t.Skip("Skipping real database test: TEST_DATABASE_DSN is not set")
+	}
 	cfg := repository.DefaultPoolConfig(testDSN)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -158,7 +167,7 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		}
 
 		// Update Status with Audit Log
-		err = appRepo.UpdateStatus(ctx, applicantID, domain.StatusPassed, &testAdminID, "ผ่านสัมภาษณ์รอบแรก")
+		err = appRepo.UpdateStatus(ctx, applicantID, domain.StatusPassed, &testAdminID, "ผ่านสัมภาษณ์รอบแรก", &domain.AuditEntry{AdminID: &testAdminID, Action: domain.AuditStatusUpdate, TargetType: domain.AuditTargetApplicant, TargetID: "integration-test", IPAddress: "127.0.0.1"})
 		if err != nil {
 			t.Fatalf("failed to update status: %v", err)
 		}
@@ -201,7 +210,7 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		}
 
 		// Admin Verifies Payment -> Applicant status automatically becomes CONFIRMED
-		err = payRepo.Verify(ctx, paymentID, true, testAdminID, "ยอดเงินเข้าบัญชีเรียบร้อย")
+		err = payRepo.Verify(ctx, paymentID, true, testAdminID, "ยอดเงินเข้าบัญชีเรียบร้อย", &domain.AuditEntry{AdminID: &testAdminID, Action: domain.AuditSlipVerify, TargetType: domain.AuditTargetApplicant, TargetID: "integration-test", IPAddress: "127.0.0.1"})
 		if err != nil {
 			t.Fatalf("failed to verify payment: %v", err)
 		}
@@ -219,6 +228,7 @@ func TestPostgres_FullIntegration(t *testing.T) {
 	t.Run("5. Cleanup test records", func(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM payments WHERE applicant_id = $1`, applicantID)
 		_, _ = pool.Exec(ctx, `DELETE FROM applicant_status_logs WHERE applicant_id = $1`, applicantID)
+		_, _ = pool.Exec(ctx, `DELETE FROM audit_logs WHERE target_id = 'integration-test'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM applicants WHERE id = $1`, applicantID)
 		_, _ = pool.Exec(ctx, `DELETE FROM admins WHERE id = $1`, testAdminID)
 	})

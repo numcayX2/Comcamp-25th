@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -13,8 +15,18 @@ import (
 )
 
 var (
+	// ErrInvalidCredentials is returned for every failed login — unknown user, wrong password or
+	// deactivated account — so the response never reveals which usernames exist.
 	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrAccountInactive    = errors.New("admin account is inactive")
+)
+
+const (
+	jwtIssuer = "comcamp25-backend"
+	// TokenTTL is one staff shift; shorter tokens limit the damage of a leaked token.
+	TokenTTL = 8 * time.Hour
+	// PasswordHashCost is above the AGENTS.md §13.2 minimum of 10.
+	PasswordHashCost = 12
 )
 
 type AdminClaims struct {
@@ -26,60 +38,112 @@ type AdminClaims struct {
 
 type AuthService struct {
 	adminRepo domain.AdminRepository
+	auditRepo domain.AuditRepository
 	jwtSecret []byte
 }
 
-func NewAuthService(adminRepo domain.AdminRepository, jwtSecret string) *AuthService {
+// NewAuthService builds the admin auth service. auditRepo may be nil (no login auditing).
+func NewAuthService(adminRepo domain.AdminRepository, auditRepo domain.AuditRepository, jwtSecret string) *AuthService {
 	return &AuthService{
 		adminRepo: adminRepo,
+		auditRepo: auditRepo,
 		jwtSecret: []byte(jwtSecret),
 	}
 }
 
-func (s *AuthService) Login(ctx context.Context, username, password string) (string, *domain.Admin, error) {
+var (
+	dummyHashOnce sync.Once
+	dummyHash     []byte
+)
+
+// equalizeTiming spends the same bcrypt work as a real password check, so response time does
+// not reveal whether a username exists.
+func equalizeTiming(password string) {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("comcamp25-timing-equalizer"), PasswordHashCost)
+	})
+	_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+}
+
+func (s *AuthService) Login(ctx context.Context, username, password, ip string) (string, *domain.Admin, error) {
 	admin, err := s.adminRepo.GetByUsername(ctx, username)
 	if err != nil {
+		if !errors.Is(err, domain.ErrNotFound) {
+			return "", nil, fmt.Errorf("load admin: %w", err)
+		}
+		equalizeTiming(password)
+		s.audit(ctx, nil, domain.AuditLoginFailure, username, ip, "unknown_user")
 		return "", nil, ErrInvalidCredentials
 	}
 
-	if !admin.IsActive {
-		return "", nil, ErrAccountInactive
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
+		s.audit(ctx, &admin.ID, domain.AuditLoginFailure, username, ip, "bad_password")
+		return "", nil, ErrInvalidCredentials
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
+	// Checked only after the password, and reported as a generic failure.
+	if !admin.IsActive {
+		s.audit(ctx, &admin.ID, domain.AuditLoginFailure, username, ip, "inactive")
 		return "", nil, ErrInvalidCredentials
 	}
 
 	_ = s.adminRepo.UpdateLastLogin(ctx, admin.ID)
 
-	// Create JWT token (24 hour expiration)
+	now := time.Now()
 	claims := AdminClaims{
 		AdminID:  admin.ID,
 		Username: admin.Username,
 		Role:     admin.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "comcamp25-backend",
+			ExpiresAt: jwt.NewNumericDate(now.Add(TokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    jwtIssuer,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(s.jwtSecret)
+	tokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to sign jwt: %w", err)
 	}
 
+	s.audit(ctx, &admin.ID, domain.AuditLoginSuccess, username, ip, "")
 	return tokenString, admin, nil
 }
 
+func (s *AuthService) audit(ctx context.Context, adminID *int64, action domain.AuditAction, username, ip, reason string) {
+	if s.auditRepo == nil {
+		return
+	}
+	if len(username) > 50 {
+		username = username[:50]
+	}
+	details := map[string]any{"username": username}
+	if reason != "" {
+		details["reason"] = reason
+	}
+	entry := &domain.AuditEntry{
+		AdminID:    adminID,
+		Action:     action,
+		TargetType: domain.AuditTargetAdmin,
+		TargetID:   username,
+		Details:    details,
+		IPAddress:  ip,
+	}
+	if err := s.auditRepo.Log(ctx, entry); err != nil {
+		log.Printf("audit log write failed (%s): %v", action, err)
+	}
+}
+
+// VerifyToken checks signature, algorithm, issuer and expiry only. Use Authenticate for requests.
 func (s *AuthService) VerifyToken(tokenString string) (*AdminClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &AdminClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
 		return s.jwtSecret, nil
-	})
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithExpirationRequired(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +154,26 @@ func (s *AuthService) VerifyToken(tokenString string) (*AdminClaims, error) {
 	return nil, errors.New("invalid token")
 }
 
+// Authenticate verifies the token and then re-loads the admin, rejecting deactivated accounts and
+// taking the current role from the database rather than from the (possibly stale) token.
+func (s *AuthService) Authenticate(ctx context.Context, tokenString string) (*AdminClaims, error) {
+	claims, err := s.VerifyToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	admin, err := s.adminRepo.GetByID(ctx, claims.AdminID)
+	if err != nil {
+		return nil, err
+	}
+	if !admin.IsActive {
+		return nil, ErrAccountInactive
+	}
+	claims.Username = admin.Username
+	claims.Role = admin.Role
+	return claims, nil
+}
+
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordHashCost)
 	return string(hash), err
 }

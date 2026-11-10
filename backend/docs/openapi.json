@@ -63,7 +63,7 @@
                   "isOpen": false,
                   "currentCount": 0,
                   "maxCapacity": 30,
-                  "campFee": 300.00,
+                  "campFee": 1000.00,
                   "isCertificateReleased": false
                 }
               }
@@ -76,7 +76,16 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Submit New Application",
-        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง)",
+        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง) ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask",
+        "parameters": [
+          {
+            "name": "X-Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "UUID ประจำแบบฟอร์ม ส่งซ้ำด้วย key เดิมจะได้ใบสมัครเดิมกลับมา (200 + Idempotent-Replayed: true) แทนการสร้างซ้ำ",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -106,15 +115,15 @@
                   "id": "CC25-8A4B2C",
                   "fullName": "สมชาย ใจดี",
                   "nickname": "ชาย",
-                  "nationalId": "1509900000000",
-                  "phone": "0812345678",
-                  "email": "somchai@example.com",
+                  "nationalId": "1-5099-XXXXX-XX-X",
+                  "phone": "XXX-XXX-5678",
+                  "email": "s***@example.com",
                   "school": "โรงเรียนแม่โจ้วิทยาคม",
                   "grade": "ม.5",
                   "shirtSize": "L",
-                  "motivation": "อยากเรียนรู้การเขียนโปรแกรม IoT และต่อวงจรฮาร์ดแวร์จริง",
                   "status": "PENDING",
                   "attendanceConfirmed": false,
+                  "hasSlip": false,
                   "createdAt": "2026-11-16T00:01:23Z"
                 }
               }
@@ -128,10 +137,18 @@
             "description": "อยู่นอกช่วงเวลาเปิดรับสมัคร หรือระบบถูกปิดชั่วคราว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
+          "200": {
+            "description": "ส่งซ้ำด้วย X-Idempotency-Key เดิม: คืนใบสมัครที่บันทึกไว้แล้ว (header Idempotent-Replayed: true)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } }
+          },
           "409": {
-            "description": "จำนวนผู้สมัครครบโควตา 30 ที่นั่งแล้ว",
+            "description": "code QUOTA_FULL = ครบโควตา 30 ที่นั่ง, code DUPLICATE_APPLICATION = เลขบัตร/เบอร์/อีเมลนี้สมัครแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
-          }
+          },
+          "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "422": { "description": "code IDEMPOTENCY_KEY_REUSED = key นี้ถูกใช้กับเลขบัตรประชาชนอื่นแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "ส่งถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "503": { "description": "อ่านการตั้งค่าค่ายไม่ได้ชั่วคราว หรือรอคิวโควตาเกิน lock_timeout 3 วินาที (มี Retry-After) ใบสมัครยังไม่ถูกบันทึก ส่งซ้ำด้วย X-Idempotency-Key เดิมได้อย่างปลอดภัย", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -139,7 +156,7 @@
       "get": {
         "tags": ["Applications"],
         "summary": "Query Application Status",
-        "description": "ค้นหาใบสมัครและตรวจสอบสถานะด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทรศัพท์, หรือรหัสใบสมัคร (เช่น CC25-XXXXXX)",
+        "description": "ค้นหาใบสมัครและตรวจสอบสถานะด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทรศัพท์, หรือรหัสใบสมัคร (เช่น CC25-XXXXXX) ผลลัพธ์ mask เลขบัตร/เบอร์/อีเมลเสมอ และไม่มี slipUrl ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่างออกจากเลขบัตร/เบอร์ก่อนค้นหา",
         "parameters": [
           {
             "name": "q",
@@ -162,7 +179,8 @@
           "404": {
             "description": "ไม่พบข้อมูลใบสมัคร",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
-          }
+          },
+          "429": { "description": "ค้นหาถี่เกินไป (60 ครั้ง/นาที/IP)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -170,7 +188,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Confirm or Decline Attendance",
-        "description": "ยืนยันการเข้าร่วมค่าย (ทำได้เฉพาะผู้สมัครที่มีสถานะ PASSED หรือ CONFIRMED)",
+        "description": "ยืนยันการเข้าร่วมค่าย (ทำได้เฉพาะผู้สมัครที่มีสถานะ PASSED หรือ CONFIRMED) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน (AGENTS.md §13.5)",
         "parameters": [
           {
             "name": "id",
@@ -185,7 +203,7 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/AttendanceConfirmRequest" },
-              "example": { "confirmed": true }
+              "example": { "confirmed": true, "verifyCode": "2233" }
             }
           }
         },
@@ -198,10 +216,13 @@
               }
             }
           },
-          "400": {
+          "400": { "description": "ไม่ได้ส่ง verifyCode หรือไม่ใช่ตัวเลข 4 หลัก (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": {
             "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
-          }
+          },
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -209,7 +230,7 @@
       "post": {
         "tags": ["Payments"],
         "summary": "Upload Payment Slip",
-        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (ระบบมีระบบป้องกันสลิปซ้ำผ่าน SHA-256 อัตโนมัติ)",
+        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (JPEG/PNG/WebP ตรวจจาก magic bytes, สูงสุด 5 MB, ความกว้าง/สูงไม่เกิน 4096 px ตรวจจาก header ของภาพ, ป้องกันสลิปซ้ำผ่าน SHA-256) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ไฟล์ถูกเขียนและ fsync ก่อนบันทึกลงฐานข้อมูล และไม่ถูกเปิดเป็น URL สาธารณะ",
         "parameters": [
           {
             "name": "id",
@@ -226,13 +247,19 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "verifyCode": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}$",
+                    "example": "2233",
+                    "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (ไม่รับเลขท้ายเบอร์โทร เพราะหน้าสถานะแสดงเลขนั้นอยู่แล้ว)"
+                  },
                   "slip": {
                     "type": "string",
                     "format": "binary",
-                    "description": "ไฟล์รูปภาพสลิป (JPG, PNG สูงสุด 5MB)"
+                    "description": "ไฟล์รูปภาพสลิป (JPG, PNG, WebP สูงสุด 5MB, ไม่เกิน 4096×4096 px)"
                   }
                 },
-                "required": ["slip"]
+                "required": ["verifyCode", "slip"]
               }
             }
           }
@@ -245,17 +272,22 @@
                 "schema": { "$ref": "#/components/schemas/SlipUploadResponse" },
                 "example": {
                   "id": "CC25-8A4B2C",
-                  "slipUrl": "/uploads/slips/CC25-8A4B2C-1793785200.jpg",
                   "status": "PASSED",
+                  "hasSlip": true,
+                  "slipStatus": "PENDING",
                   "message": "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่"
                 }
               }
             }
           },
+          "400": { "description": "ไม่ใช่ไฟล์ JPEG/PNG/WebP หรืออ่าน header ภาพไม่ได้ (VALIDATION_ERROR), ภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS), ไม่ได้ส่ง verifyCode (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "verifyCode ไม่ตรง (INVALID_VERIFY_CODE) หรือผู้สมัครยังไม่ผ่านการคัดเลือก (FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
-            "description": "ตรวจพบการใช้รูปสลิปเดิมซ้ำ (Duplicate Slip Detected)",
+            "description": "code DUPLICATE_SLIP = ใช้รูปสลิปเดิมซ้ำ, code ALREADY_VERIFIED = สลิปได้รับการอนุมัติแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
-          }
+          },
+          "413": { "description": "ไฟล์เกิน 5 MB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "อัปโหลดถี่เกินไป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -271,7 +303,7 @@
               "schema": { "$ref": "#/components/schemas/LoginRequest" },
               "example": {
                 "username": "admin",
-                "password": "strong_password"
+                "password": "your-password"
               }
             }
           }
@@ -368,11 +400,40 @@
         }
       }
     },
+    "/admin/applications/{id}/slip": {
+      "get": {
+        "tags": ["Admin Management"],
+        "summary": "Download Latest Payment Slip",
+        "description": "ส่งรูปสลิปล่าสุดของผู้สมัครให้พี่ค่ายที่ login แล้วเท่านั้น (ทุกการเปิดดูถูกบันทึกใน audit_logs)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "รูปสลิป",
+            "content": {
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/admin/applications/{id}/verify-slip": {
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Manual Slip Verification",
-        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงิน (หากอนุมัติ สถานะผู้สมัครจะเปลี่ยนเป็น CONFIRMED ทันที)",
+        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -390,7 +451,7 @@
               "schema": { "$ref": "#/components/schemas/VerifySlipRequest" },
               "example": {
                 "approved": true,
-                "note": "ยอดเงินเข้าบัญชี 300 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน"
+                "note": "ยอดเงินเข้าบัญชี 1,000 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน"
               }
             }
           }
@@ -404,7 +465,9 @@
                 "example": { "message": "Slip verified successfully" }
               }
             }
-          }
+          },
+          "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "code ALREADY_VERIFIED = สลิปนี้ถูกตรวจไปแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     }
@@ -435,7 +498,7 @@
           "isOpen": { "type": "boolean" },
           "currentCount": { "type": "integer", "example": 15 },
           "maxCapacity": { "type": "integer", "example": 30 },
-          "campFee": { "type": "number", "example": 300.00 },
+          "campFee": { "type": "number", "example": 1000.00 },
           "isCertificateReleased": { "type": "boolean", "example": false }
         }
       },
@@ -461,37 +524,42 @@
           "id": { "type": "string", "example": "CC25-8A4B2C" },
           "fullName": { "type": "string", "example": "สมชาย ใจดี" },
           "nickname": { "type": "string", "example": "ชาย" },
-          "nationalId": { "type": "string", "example": "1509900000000" },
-          "phone": { "type": "string", "example": "0812345678" },
-          "email": { "type": "string", "example": "somchai@example.com" },
+          "nationalId": { "type": "string", "example": "1-5099-XXXXX-XX-X", "description": "endpoint สาธารณะได้ค่าแบบ mask เสมอ, /api/admin/* ได้ค่าเต็ม" },
+          "phone": { "type": "string", "example": "XXX-XXX-5678", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
+          "email": { "type": "string", "example": "s***@example.com", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "grade": { "type": "string", "example": "ม.5" },
           "shirtSize": { "type": "string", "example": "L" },
-          "motivation": { "type": "string" },
+          "province": { "type": "string", "example": "เชียงใหม่" },
+          "motivation": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "status": {
             "type": "string",
             "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED"],
             "example": "PENDING"
           },
           "attendanceConfirmed": { "type": "boolean", "example": false },
-          "slipUrl": { "type": "string", "nullable": true, "example": "/uploads/slips/CC25-8A4B2C-123456.jpg" },
+          "hasSlip": { "type": "boolean", "example": true },
+          "slipStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "nullable": true },
+          "slipUrl": { "type": "string", "nullable": true, "example": "/api/admin/applications/CC25-8A4B2C/slip", "description": "เฉพาะ /api/admin/*: path ของ API ที่ต้องใช้ Bearer token" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         }
       },
       "AttendanceConfirmRequest": {
         "type": "object",
-        "required": ["confirmed"],
+        "required": ["confirmed", "verifyCode"],
         "properties": {
-          "confirmed": { "type": "boolean", "example": true }
+          "confirmed": { "type": "boolean", "example": true },
+          "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (AGENTS.md §13.5)" }
         }
       },
       "SlipUploadResponse": {
         "type": "object",
         "properties": {
           "id": { "type": "string", "example": "CC25-8A4B2C" },
-          "slipUrl": { "type": "string", "example": "/uploads/slips/CC25-8A4B2C-123456.jpg" },
           "status": { "type": "string", "example": "PASSED" },
+          "hasSlip": { "type": "boolean", "example": true },
+          "slipStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "example": "PENDING" },
           "message": { "type": "string", "example": "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่" }
         }
       },
@@ -500,7 +568,7 @@
         "required": ["username", "password"],
         "properties": {
           "username": { "type": "string", "example": "admin" },
-          "password": { "type": "string", "example": "strong_password" }
+          "password": { "type": "string", "format": "password" }
         }
       },
       "LoginResponse": {
@@ -526,13 +594,18 @@
         "required": ["approved"],
         "properties": {
           "approved": { "type": "boolean", "example": true },
-          "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 300 บาท เรียบร้อยแล้ว" }
+          "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 1,000 บาท เรียบร้อยแล้ว" }
         }
       },
       "ErrorResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "example": "invalid national ID (must be 13 digits)" }
+          "error": { "type": "string", "example": "invalid national ID (must be 13 digits)" },
+          "code": {
+            "type": "string",
+            "description": "รหัสข้อผิดพลาดสำหรับโปรแกรม",
+            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_VERIFY_CODE", "INVALID_IMAGE_DIMENSIONS"]
+          }
         }
       },
       "MessageResponse": {

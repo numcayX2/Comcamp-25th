@@ -11,136 +11,115 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
-
 	"comcamp25-backend/internal/config"
 	"comcamp25-backend/internal/docs"
 	"comcamp25-backend/internal/domain"
-	"comcamp25-backend/internal/handler"
-	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/repository"
 	"comcamp25-backend/internal/repository/memory"
 	"comcamp25-backend/internal/repository/postgres"
+	"comcamp25-backend/internal/server"
 	"comcamp25-backend/internal/service"
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
+	log.Printf("Starting ComCamp 25 backend (APP_ENV=%s)", cfg.Env)
 
-	// 1. Initialize Repositories (Postgres with Memory Fallback)
+	// 1. Initialize Repositories
 	var (
 		appRepo     domain.ApplicantRepository
 		settingRepo domain.SettingRepository
 		adminRepo   domain.AdminRepository
 		paymentRepo domain.PaymentRepository
+		auditRepo   domain.AuditRepository
 	)
 
-	poolConfig := repository.DefaultPoolConfig(cfg.DSN())
 	ctxPing, cancelPing := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelPing()
 
-	pool, err := repository.NewPool(ctxPing, poolConfig)
-	if err == nil {
+	pool, err := repository.NewPool(ctxPing, repository.DefaultPoolConfig(cfg.DSN()))
+	switch {
+	case err == nil:
 		log.Println("Database connection established: using PostgreSQL repositories")
 		appRepo = postgres.NewApplicantPostgresRepo(pool)
 		settingRepo = postgres.NewSettingPostgresRepo(pool)
 		adminRepo = postgres.NewAdminPostgresRepo(pool)
 		paymentRepo = postgres.NewPaymentPostgresRepo(pool)
+		auditRepo = postgres.NewAuditPostgresRepo(pool)
 		defer pool.Close()
-	} else {
-		log.Printf("PostgreSQL not reachable (%v): using In-Memory repositories for development/testing", err)
-		memApp := memory.NewMemoryApplicantRepo()
-		memSet := memory.NewMemorySettingRepo()
-		memAdm := memory.NewMemoryAdminRepo()
-		memPay := memory.NewMemoryPaymentRepo(memApp)
 
-		// Seed a default admin for dev/testing
-		hash, _ := service.HashPassword("strong_password")
-		_ = memAdm.Create(context.Background(), &domain.Admin{
-			Username:     "admin",
-			PasswordHash: hash,
-			FullName:     "System Administrator",
-			Role:         domain.RoleSuperadmin,
-			IsActive:     true,
-		})
+	case cfg.IsProduction():
+		// Fail closed: silently switching to memory would lose every application submitted
+		// during a database outage (AGENTS.md P0).
+		log.Fatalf("PostgreSQL not reachable in production, refusing to start: %v", err)
+
+	default:
+		log.Printf("PostgreSQL not reachable (%v): using In-Memory repositories (APP_ENV=development only, data is lost on restart)", err)
+		memApp := memory.NewMemoryApplicantRepo()
+		memAdm := memory.NewMemoryAdminRepo()
+
+		// A dev admin exists only when DEV_ADMIN_PASSWORD is set; there is no built-in password.
+		if cfg.DevAdminPassword != "" {
+			hash, err := service.HashPassword(cfg.DevAdminPassword)
+			if err != nil {
+				log.Fatalf("hash dev admin password: %v", err)
+			}
+			_ = memAdm.Create(context.Background(), &domain.Admin{
+				Username:     cfg.DevAdminUsername,
+				PasswordHash: hash,
+				FullName:     "Development Administrator",
+				Role:         domain.RoleSuperadmin,
+				IsActive:     true,
+			})
+			log.Printf("Seeded in-memory dev admin %q from DEV_ADMIN_PASSWORD", cfg.DevAdminUsername)
+		} else {
+			log.Println("No dev admin seeded: set DEV_ADMIN_PASSWORD in .env to log in to /admin")
+		}
 
 		appRepo = memApp
-		settingRepo = memSet
+		settingRepo = memory.NewMemorySettingRepo()
 		adminRepo = memAdm
-		paymentRepo = memPay
+		paymentRepo = memory.NewMemoryPaymentRepo(memApp)
+		auditRepo = memApp.Audit()
 	}
 
 	// 2. Initialize Services
-	authService := service.NewAuthService(adminRepo, cfg.JWTSecret)
-	appService := service.NewApplicantService(appRepo, settingRepo, paymentRepo)
-	settingService := service.NewSettingService(settingRepo, appRepo)
-	paymentService := service.NewPaymentService(paymentRepo, appRepo, settingRepo, cfg.UploadDir)
+	services := server.Services{
+		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
+		Applicant: service.NewApplicantService(appRepo, settingRepo, paymentRepo),
+		Setting:   service.NewSettingService(settingRepo, appRepo),
+		Payment:   service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir),
+	}
 
-	// 3. Initialize Handlers
-	healthHandler := handler.NewHealthHandler("comcamp25-backend")
-	authHandler := handler.NewAuthHandler(authService)
-	appHandler := handler.NewApplicantHandler(appService)
-	settingHandler := handler.NewSettingHandler(settingService)
-	paymentHandler := handler.NewPaymentHandler(paymentService)
-	swaggerHandler := handler.NewSwaggerHandler(docs.OpenAPISpec)
-
-	// 4. Setup Router
-	r := chi.NewRouter()
-
-	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(60 * time.Second))
-	r.Use(middleware.NewCORS(cfg.FrontendURL))
-
-	// Interactive Swagger UI
-	r.Get("/swagger", swaggerHandler.ServeUI)
-	r.Get("/docs", swaggerHandler.ServeUI)
-
-	// Static File Server for uploaded slips and assets (enables admin manual inspection)
-	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(cfg.UploadDir))))
-
-	r.Route("/api", func(api chi.Router) {
-		// Health & Docs
-		api.Get("/health", healthHandler.Check)
-		api.Get("/docs/openapi.json", swaggerHandler.ServeSpec)
-
-		// Public Camp Settings
-		api.Get("/settings/public", settingHandler.GetPublic)
-
-		// Public Application Flow
-		api.Post("/applications", appHandler.Submit)
-		api.Get("/applications/status", appHandler.GetStatus)
-		api.Post("/applications/{id}/confirm", appHandler.ConfirmAttendance)
-		api.Post("/applications/{id}/slip", paymentHandler.UploadSlip)
-
-		// Auth
-		api.Post("/auth/login", authHandler.Login)
-
-		// Protected Admin Endpoints
-		api.Group(func(admin chi.Router) {
-			admin.Use(middleware.RequireAuth(authService))
-			admin.Get("/admin/applications", appHandler.AdminList)
-			admin.Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
-			admin.Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
-		})
+	// 3. Router (all security middleware lives in internal/server)
+	router := server.NewRouter(services, server.Options{
+		AllowedOrigins: cfg.AllowedOrigins,
+		TrustedProxies: cfg.TrustedProxies,
+		EnableSwagger:  cfg.EnableSwagger,
+		OpenAPISpec:    docs.OpenAPISpec,
+		RateLimits:     server.DefaultRateLimits(),
 	})
 
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%s", cfg.Port),
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%s", cfg.Port),
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second, // a 5 MB slip over a slow mobile connection
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    32 << 10,
 	}
 
 	serverErrors := make(chan error, 1)
 	go func() {
 		log.Printf("ComCamp 25 Backend API running on port :%s", cfg.Port)
-		log.Printf("Swagger UI documentation available at: http://localhost:%s/swagger", cfg.Port)
-		serverErrors <- server.ListenAndServe()
+		if cfg.EnableSwagger {
+			log.Printf("Swagger UI documentation available at: http://localhost:%s/swagger", cfg.Port)
+		}
+		serverErrors <- httpServer.ListenAndServe()
 	}()
 
 	shutdown := make(chan os.Signal, 1)
@@ -156,9 +135,9 @@ func main() {
 		ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := server.Shutdown(ctxShutdown); err != nil {
+		if err := httpServer.Shutdown(ctxShutdown); err != nil {
 			log.Printf("Graceful shutdown failed: %v, forcing close", err)
-			_ = server.Close()
+			_ = httpServer.Close()
 		}
 		log.Println("Server exited cleanly.")
 	}
