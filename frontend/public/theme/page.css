@@ -1,0 +1,179 @@
+/* Section 02 — "สิ่งที่จะได้ทำจริงในค่าย"
+   Editorial chapter list: sticky intro on the left, hairline-separated chapters on the right.
+   No cards, no shadows, no illustration frames. */
+#experience {
+  --exp-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: clamp(64px, 9vw, 112px) 0;
+  color: var(--ink);
+}
+
+#experience .exp {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 56px);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  #experience .exp {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: clamp(40px, 6vw, 96px);
+  }
+  #experience .exp-intro {
+    position: sticky;
+    top: calc(var(--nav-h) + 24px);
+  }
+}
+
+#experience .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+#experience .eyebrow-code {
+  font-family: var(--exp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+#experience .exp-title {
+  margin: 0;
+  max-width: 20ch;
+  font-size: clamp(1.75rem, 3.2vw + 0.5rem, 2.75rem);
+  line-height: 1.28;
+  font-weight: 700;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+#experience .exp-lead {
+  margin: clamp(14px, 1.6vw, 20px) 0 0;
+  max-width: 44ch;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+#experience .exp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule-strong);
+}
+
+#experience .exp-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: clamp(14px, 2vw, 26px);
+  padding: clamp(22px, 2.6vw, 32px) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+#experience .exp-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+#experience .exp-num {
+  font-family: var(--exp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.42;
+  padding-top: 0.28rem;
+  color: var(--ink-3);
+  transition: color 0.18s ease;
+}
+
+#experience .exp-item:hover .exp-num {
+  color: var(--ink);
+}
+
+#experience .exp-item-title {
+  margin: 0;
+  font-size: clamp(1.125rem, 1.1vw + 0.95rem, 1.4rem);
+  line-height: 1.42;
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+#experience .exp-item-text {
+  margin: 0.5rem 0 0;
+  max-width: 52ch;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+#experience .exp-spec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.85rem 0 0;
+  font-family: var(--exp-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  line-height: 1.6;
+}
+
+#experience .exp-key {
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+#experience .exp-val {
+  color: var(--ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #experience .exp-num {
+    transition: none;
+  }
+}
+
+/* Intro veil — editorial preloader, home only.
+   Full-bleed canvas, masthead top row, oversized title, hairline progress. */
+.veil{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;overflow:hidden;background:var(--canvas-0);color:var(--ink);padding:20px 20px calc(20px + env(safe-area-inset-bottom));transition:transform .9s cubic-bezier(.76,0,.24,1)}
+.veil.is-done{transform:translateY(-101%)}
+.veil[hidden]{display:none}
+.veil-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.veil-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.veil-brand{font-weight:700;font-size:1rem}
+.veil-ed{font-size:.75rem;color:var(--ink-3);letter-spacing:.04em}
+.veil-center{position:relative;z-index:1;margin:auto 0;padding:32px 0}
+.veil-kicker{margin:0 0 12px;font-size:.75rem;color:var(--ink-3);letter-spacing:.04em;animation:veil-fade .7s ease both}
+.veil-display{margin:0;font-weight:700;font-size:clamp(3.5rem,15vw,8.5rem);line-height:.92;letter-spacing:-.03em}
+.veil-display .vl{display:block;overflow:hidden}
+.veil-display .vl i{display:block;font-style:normal;animation:veil-rise .9s cubic-bezier(.22,1,.36,1) both}
+.veil-display .vl:nth-child(2) i{animation-delay:.09s}
+.veil-display .ol{color:transparent;-webkit-text-stroke:2px var(--ink)}
+.veil-thai{margin:16px 0 0;font-weight:600;font-size:clamp(1.2rem,3.6vw,1.9rem);line-height:1.4;animation:veil-fade .7s ease .18s both}
+.veil-sub{margin:10px 0 0;font-size:.9375rem;line-height:1.75;color:var(--ink-2);animation:veil-fade .7s ease .26s both}
+.veil-sub .nowrap,.veil-thai .nowrap{white-space:nowrap}
+.veil-ghost{position:absolute;z-index:0;right:-1vw;bottom:9vh;font-family:var(--font-mono);font-weight:600;font-size:clamp(10rem,32vw,24rem);line-height:1;color:transparent;-webkit-text-stroke:1px var(--rule-strong);pointer-events:none;user-select:none}
+@keyframes veil-rise{from{transform:translateY(112%)}}
+@keyframes veil-fade{from{opacity:0;transform:translateY(10px)}}
+.veil-foot{border-top:1px solid var(--rule);padding-top:14px}
+.veil-row{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:.8125rem;color:var(--ink-2)}
+.veil-count{color:var(--ink-3)}
+.veil-rule{display:block;height:2px;margin-top:10px;background:var(--rule)}
+.veil-rule i{display:block;height:100%;background:var(--ink);transform:scaleX(0);transform-origin:left}
+@media(min-width:768px){.veil{padding:28px 40px calc(28px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.veil{transition:none}.veil-kicker,.veil-display .vl i,.veil-thai,.veil-sub{animation:none}}

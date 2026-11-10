@@ -15,7 +15,16 @@ pnpm-debug.log*
 
 # environment variables
 .env
-.env.production
+.env.*
+!.env.example
+
+# AI Agent local workspace configurations
+.commandcode/
+.agents/
+.codex/
+
+# Gallery images hosted on Cloudflare CDN
+public/assets/gallery/
 
 # macOS-specific files
 .DS_Store
@@ -25,3 +34,8 @@ pnpm-debug.log*
 
 # temporary scratch scripts
 scratch/
+
+Anti-slop-guide.md
+
+# local QA harness (never deploy)
+public/probe.html

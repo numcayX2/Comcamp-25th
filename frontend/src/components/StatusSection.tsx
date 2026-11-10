@@ -1,30 +1,84 @@
 import { useState } from 'react';
 import {
+  ApiHttpError,
   getApplicationStatus,
   confirmAttendance,
   uploadPaymentSlip,
-  getSlipImageUrl,
-  getSlipUrl,
+  hasSlip,
+  normalizeLookupQuery,
   type Application,
   type ApplicationStatus,
   type ApiSource,
 } from '../lib/api';
 
-const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
-  PASSED: 'bg-blue-100 text-blue-800 border-blue-200',
-  RESERVE: 'bg-purple-100 text-purple-800 border-purple-200',
-  CONFIRMED: 'bg-green-100 text-green-800 border-green-200',
-  REJECTED: 'bg-red-100 text-red-800 border-red-200',
+/** Server limit on slip width and height (AGENTS.md §13.4). */
+const MAX_SLIP_PX = 4096;
+
+/** Thai copy keyed by the backend error code; falls back to the server message. */
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof ApiHttpError) {
+    switch (err.code) {
+      case 'INVALID_VERIFY_CODE':
+        return 'เลข 4 ตัวท้ายของบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
+      case 'INVALID_IMAGE_DIMENSIONS':
+        return `รูปสลิปมีขนาดใหญ่เกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} พิกเซล กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`;
+      case 'DUPLICATE_SLIP':
+        return 'สลิปนี้เคยถูกอัปโหลดในระบบแล้ว กรุณาใช้สลิปการโอนของใบสมัครนี้';
+      case 'RATE_LIMITED':
+        return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
+    }
+    return err.message || fallback;
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+/** Natural size of an image file, or null when the browser cannot decode it. */
+function readImageSize(url: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/* Editorial minimalism — same flat ledger language as AdminSection:
+   hairline rules, mono indexes, square tags with a solid 3px status bar. */
+const STATUS_BAR: Record<ApplicationStatus, string> = {
+  PENDING: '#B45309',
+  PASSED: '#1A5FE0',
+  RESERVE: '#4A4D55',
+  CONFIRMED: '#029E00',
+  REJECTED: '#C62828',
 };
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
-  PENDING: 'รอประกาศผล (PENDING)',
-  PASSED: 'ผ่านการคัดเลือก (PASSED)',
-  RESERVE: 'ตัวสำรอง (RESERVE)',
-  CONFIRMED: 'ยืนยันสิทธิ์สำเร็จ (CONFIRMED)',
-  REJECTED: 'ไม่ผ่านการคัดเลือก (REJECTED)',
+  PENDING: 'รอประกาศผล',
+  PASSED: 'ผ่านการคัดเลือก',
+  RESERVE: 'ตัวสำรอง',
+  CONFIRMED: 'ยืนยันสิทธิ์สำเร็จ',
+  REJECTED: 'ไม่ผ่านการคัดเลือก',
 };
+
+const INK = '#121316';
+
+/** Must match the backend allow-list (magic-byte checked server-side). */
+const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const RULE = 'rgba(18,19,22,0.14)';
+
+function StatusTag({ status }: { status: ApplicationStatus }) {
+  return (
+    <span
+      className="inline-block border px-3 py-1 text-xs font-semibold"
+      style={{ borderColor: RULE, borderLeft: `3px solid ${STATUS_BAR[status]}`, color: INK, backgroundColor: '#FFFFFF' }}
+    >
+      {STATUS_LABELS[status] || status}
+      <span className="ml-2 font-mono text-[11px] font-medium tabular-nums" style={{ color: '#62666E' }}>
+        {status}
+      </span>
+    </span>
+  );
+}
 
 export function StatusSection() {
   const [q, setQ] = useState('');
@@ -38,10 +92,16 @@ export function StatusSection() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewLocalUrl, setPreviewLocalUrl] = useState<string | null>(null);
+  /** The slip sent in this visit, shown from the device. Uploaded slips are never served publicly. */
+  const [sentPreviewUrl, setSentPreviewUrl] = useState<string | null>(null);
+  /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
+  const [verifyCode, setVerifyCode] = useState('');
+  const codeReady = verifyCode.length === 4;
 
   async function onSearch(e: React.FormEvent) {
     e.preventDefault();
-    const query = q.trim();
+    // Zero-width characters and hyphens from a LINE copy-paste are removed (§9.2.2).
+    const query = normalizeLookupQuery(q);
     if (!query) return;
     setBusy(true);
     setError(null);
@@ -49,54 +109,44 @@ export function StatusSection() {
     setUploadError(null);
     setSelectedFile(null);
     setPreviewLocalUrl(null);
+    setSentPreviewUrl(null);
+    setVerifyCode('');
     try {
       const res = await getApplicationStatus(query);
       setApp(res.data);
       setSource(res.source);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ไม่พบข้อมูลใบสมัครที่ค้นหา');
+      setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
       setApp(null);
     } finally {
       setBusy(false);
     }
   }
 
-  async function onConfirm() {
-    if (!app) return;
+  async function setAttendance(confirmed: boolean) {
+    if (!app || !codeReady) return;
     setConfirmBusy(true);
     setError(null);
     try {
-      const res = await confirmAttendance(app.id, true);
+      const res = await confirmAttendance(app.id, confirmed, verifyCode);
       setApp(res.data);
       setSource(res.source);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ยืนยันสิทธิ์ไม่สำเร็จ');
+      setError(describeError(err, confirmed ? 'ยืนยันสิทธิ์ไม่สำเร็จ' : 'ยกเลิกการยืนยันไม่สำเร็จ'));
     } finally {
       setConfirmBusy(false);
     }
   }
 
-  async function onCancelConfirm() {
-    if (!app) return;
-    setConfirmBusy(true);
-    setError(null);
-    try {
-      const res = await confirmAttendance(app.id, false);
-      setApp(res.data);
-      setSource(res.source);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'ยกเลิกการยืนยันไม่สำเร็จ');
-    } finally {
-      setConfirmBusy(false);
-    }
-  }
+  const onConfirm = () => setAttendance(true);
+  const onCancelConfirm = () => setAttendance(false);
 
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     setUploadError(null);
     setUploadMessage(null);
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
+      if (!SLIP_TYPES.includes(file.type)) {
         setUploadError('กรุณาเลือกไฟล์รูปภาพ (JPG, PNG หรือ WebP)');
         return;
       }
@@ -104,154 +154,230 @@ export function StatusSection() {
         setUploadError('ขนาดไฟล์รูปภาพต้องไม่เกิน 5 MB');
         return;
       }
+      const url = URL.createObjectURL(file);
+      // Same limit as the server, checked here so a doomed upload never uses mobile data.
+      const size = await readImageSize(url);
+      if (size && (size.width > MAX_SLIP_PX || size.height > MAX_SLIP_PX)) {
+        URL.revokeObjectURL(url);
+        setUploadError(
+          `รูปสลิปมีขนาด ${size.width}×${size.height} พิกเซล ซึ่งเกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`,
+        );
+        return;
+      }
       setSelectedFile(file);
-      setPreviewLocalUrl(URL.createObjectURL(file));
+      setPreviewLocalUrl(url);
     }
   }
 
   async function onUploadSlip(e: React.FormEvent) {
     e.preventDefault();
-    if (!app || !selectedFile) return;
+    if (!app || !selectedFile || !codeReady) return;
 
     setUploadBusy(true);
     setUploadError(null);
     setUploadMessage(null);
 
     try {
-      const res = await uploadPaymentSlip(app.id, selectedFile);
+      const res = await uploadPaymentSlip(app.id, selectedFile, verifyCode);
       setUploadMessage(res.data.message || 'อัปโหลดสลิปเรียบร้อยแล้ว รอเจ้าหน้าที่ตรวจสอบ');
       setSource(res.source);
 
-      // Refresh application record to reflect new slipUrl
-      setApp((prev) =>
-        prev
-          ? {
-              ...prev,
-              slipUrl: res.data.slipUrl,
-              slip_url: res.data.slipUrl,
-            }
-          : null,
-      );
+      setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: res.data.slipStatus } : null));
+      setSentPreviewUrl(previewLocalUrl);
       setSelectedFile(null);
       setPreviewLocalUrl(null);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการอัปโหลดสลิป');
+      setUploadError(describeError(err, 'เกิดข้อผิดพลาดในการอัปโหลดสลิป'));
     } finally {
       setUploadBusy(false);
     }
   }
 
-  const currentSlip = getSlipUrl(app);
+  const slipUploaded = hasSlip(app);
+  // slipStatus comes from the server; older responses without it fall back to the applicant status.
+  const slipApproved = app?.slipStatus ? app.slipStatus === 'APPROVED' : app?.status === 'CONFIRMED';
+  const slipRejected = app?.slipStatus === 'REJECTED';
   const isEligibleForPayment = app && (app.status === 'PASSED' || app.status === 'CONFIRMED');
+  // The code is asked for only while there is something left to do on this application.
+  const needsVerifyCode = Boolean(isEligibleForPayment && (app?.status === 'PASSED' || !slipApproved));
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
-      <header className="mb-8 text-center">
-        <p className="text-sm font-semibold tracking-widest text-blue-700 uppercase">ComCamp #25</p>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">ตรวจสอบสถานะใบสมัคร</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          ค้นหาด้วยเลขบัตรประชาชน (13 หลัก), เบอร์โทรศัพท์ หรือ Application ID (เช่น CC25-XXXXXX)
+    <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+      {/* ── 01 · Masthead ─────────────────────────────────── */}
+      <header className="border-t-4 pt-4" style={{ borderColor: INK }}>
+        <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-6">
+          <div className="min-w-0">
+            <p className="font-mono text-xs font-medium uppercase tabular-nums" style={{ color: '#62666E' }}>
+              ComCamp #25 — Status / 02
+            </p>
+            <h1 className="mt-2 text-balance text-3xl font-bold leading-[1.22] sm:text-5xl" style={{ color: INK }}>
+              ตรวจสอบสถานะใบสมัคร
+            </h1>
+          </div>
+          <p className="max-w-[42ch] text-base leading-7" style={{ color: '#4A4D55' }}>
+            ค้นหาด้วยเลขบัตรประชาชน 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span className="font-mono text-sm tabular-nums">CC25-XXXXXX</span>)
+          </p>
+        </div>
+
+        <p className="mt-4 overflow-x-auto whitespace-nowrap border-t pt-3 font-mono text-xs tabular-nums" style={{ borderColor: RULE, color: '#62666E' }}>
+          GET /api/applications/status · POST /api/applications/:id/confirm · POST /api/applications/:id/slip
         </p>
       </header>
 
-      {/* Search Form */}
-      <form onSubmit={onSearch} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:p-6">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="เช่น 1509900112233 หรือ CC25-XXXXXX"
-          className="w-full flex-1 rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-        />
-        <button
-          type="submit"
-          disabled={busy || !q.trim()}
-          className="rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold whitespace-nowrap text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
-        >
-          {busy ? 'กำลังค้นหา...' : 'ค้นหาข้อมูล'}
-        </button>
-      </form>
+      {/* ── 02 · Search strip ─────────────────────────────── */}
+      <section className="mt-8 grid gap-10 md:grid-cols-12">
+        <div className="md:col-span-5">
+          <p className="font-mono text-6xl font-semibold tabular-nums" style={{ color: INK }}>
+            02
+          </p>
+          <h2 className="mt-2 text-balance text-xl font-bold leading-8" style={{ color: INK }}>
+            ค้นหาใบสมัครของน้อง
+          </h2>
+          <p className="mt-2 max-w-[42ch] text-base leading-7" style={{ color: '#4A4D55' }}>
+            ผลการคัดเลือก การยืนยันสิทธิ์ และการอัปโหลดสลิปโอนเงินทำได้ในหน้าเดียวโดยไม่ต้องสมัครใหม่
+          </p>
+        </div>
 
+        <form onSubmit={onSearch} className="border bg-white p-6 sm:p-8 md:col-span-7" style={{ borderColor: INK, backgroundColor: '#FFFFFF' }}>
+          <p className="font-mono text-xs font-medium uppercase" style={{ color: '#62666E' }}>
+            Lookup / Query
+          </p>
+          <label className="mb-1.5 mt-4 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
+            เลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร
+          </label>
+          <input
+            id="status-q"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="เช่น 1509900112233 หรือ CC25-XXXXXX"
+            className="w-full rounded-none border bg-white px-3 py-2.5 text-base outline-none transition-colors focus:border-[#1A5FE0]"
+            style={{ borderColor: '#8A8D93' }}
+          />
+          <button
+            type="submit"
+            disabled={busy || !q.trim()}
+            className="mt-4 w-full rounded-full px-4 py-3 text-base font-semibold transition-opacity disabled:opacity-50"
+            style={{ backgroundColor: INK, color: '#F9F8F4' }}
+          >
+            {busy ? 'กำลังค้นหา…' : 'ค้นหาข้อมูล'}
+          </button>
+        </form>
+      </section>
+
+      {/* ── Alerts: flat, square, ruled ─────────────────────── */}
       {error && (
-        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-start gap-3">
-          <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <p className="font-medium">ไม่พบข้อมูล</p>
-            <p className="text-xs mt-0.5">{error}</p>
-          </div>
+        <div className="mt-6 flex items-center justify-between gap-4 border border-l-4 bg-white px-4 py-3" style={{ borderColor: RULE, borderLeftColor: '#C62828' }}>
+          <p className="text-sm leading-7" style={{ color: INK }}>
+            <span className="mr-2 font-mono text-xs font-semibold">ERR</span>
+            {error}
+          </p>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 rounded-full px-3 py-1 text-sm font-medium underline underline-offset-4" style={{ color: '#4A4D55' }}>
+            ปิด
+          </button>
+        </div>
+      )}
+
+      {uploadMessage && (
+        <div className="mt-6 flex items-center justify-between gap-4 border border-l-4 bg-white px-4 py-3" style={{ borderColor: RULE, borderLeftColor: '#029E00' }}>
+          <p className="text-sm leading-7" style={{ color: INK }}>
+            <span className="mr-2 font-mono text-xs font-semibold">OK</span>
+            {uploadMessage}
+          </p>
+          <button type="button" onClick={() => setUploadMessage(null)} className="shrink-0 rounded-full px-3 py-1 text-sm font-medium underline underline-offset-4" style={{ color: '#4A4D55' }}>
+            ปิด
+          </button>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="mt-6 flex items-center justify-between gap-4 border border-l-4 bg-white px-4 py-3" style={{ borderColor: RULE, borderLeftColor: '#C62828' }}>
+          <p className="text-sm leading-7" style={{ color: INK }}>
+            <span className="mr-2 font-mono text-xs font-semibold">ERR</span>
+            {uploadError}
+          </p>
+          <button type="button" onClick={() => setUploadError(null)} className="shrink-0 rounded-full px-3 py-1 text-sm font-medium underline underline-offset-4" style={{ color: '#4A4D55' }}>
+            ปิด
+          </button>
         </div>
       )}
 
       {app && (
-        <div className="mt-8 space-y-6">
-          {/* Main Info Card */}
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
+        <div className="mt-8 space-y-8">
+          {/* ── 03 · Application record ─────────────────────── */}
+          <section className="border bg-white p-6 sm:p-8" style={{ borderColor: INK, backgroundColor: '#FFFFFF' }}>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
               <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-wider text-gray-400">Application No.</span>
-                <p className="font-mono text-xl font-bold text-gray-900">{app.id}</p>
+                <p className="font-mono text-xs font-medium uppercase" style={{ color: '#62666E' }}>
+                  Record / Application No.
+                </p>
+                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums" style={{ color: INK }}>{app.id}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_COLORS[app.status]}`}>
-                  {STATUS_LABELS[app.status] || app.status}
-                </span>
+                <StatusTag status={app.status} />
                 {source && (
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${source === 'LIVE GO API' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                  <span className="rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold" style={{ borderColor: RULE, color: INK, backgroundColor: '#FFFFFF' }}>
                     {source}
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-y-4 gap-x-6 sm:grid-cols-2 text-sm">
-              <div>
-                <dt className="text-gray-500">ชื่อ - นามสกุล</dt>
-                <dd className="font-medium text-gray-900 text-base">{app.fullName}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">ชื่อเล่น</dt>
-                <dd className="font-medium text-gray-900 text-base">{app.nickname || '-'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">เลขบัตรประชาชน</dt>
-                <dd className="font-mono text-gray-800">{app.nationalId}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">เบอร์โทรศัพท์ติดต่อ</dt>
-                <dd className="text-gray-800">{app.phone}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">โรงเรียน</dt>
-                <dd className="text-gray-800">{app.school}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">ระดับชั้น / ไซส์เสื้อ</dt>
-                <dd className="text-gray-800">{app.grade} (เสื้อไซส์: {app.shirtSize})</dd>
-              </div>
-              {app.email && (
-                <div>
-                  <dt className="text-gray-500">อีเมล</dt>
-                  <dd className="text-gray-800">{app.email}</dd>
+            <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+              {[
+                { k: 'ชื่อ – นามสกุล', v: app.fullName, mono: false },
+                { k: 'ชื่อเล่น', v: app.nickname || '–', mono: false },
+                { k: 'เลขบัตรประชาชน', v: app.nationalId, mono: true },
+                { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
+                { k: 'โรงเรียน', v: app.school, mono: false },
+                { k: 'ระดับชั้น / ไซส์เสื้อ', v: `${app.grade} / ${app.shirtSize}`, mono: false },
+                ...(app.email ? [{ k: 'อีเมล', v: app.email, mono: false }] : []),
+                ...(app.province ? [{ k: 'จังหวัด', v: app.province, mono: false }] : []),
+              ].map((row) => (
+                <div key={row.k} className="border-b py-3" style={{ borderColor: RULE }}>
+                  <dt className="font-mono text-[11px] font-medium uppercase" style={{ color: '#62666E' }}>{row.k}</dt>
+                  <dd className={`mt-0.5 text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
+                    {row.v}
+                  </dd>
                 </div>
-              )}
-              {app.province && (
-                <div>
-                  <dt className="text-gray-500">จังหวัด</dt>
-                  <dd className="text-gray-800">{app.province}</dd>
-                </div>
-              )}
-            </div>
+              ))}
+            </dl>
 
-            {/* Attendance Confirmation Section */}
+            {/* Second factor (AGENTS.md §13.5): an application ID or a phone number alone is not
+                enough to confirm or send a slip. The phone's digits are not accepted on purpose:
+                the record above shows them. */}
+            {needsVerifyCode && (
+              <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
+                <label className="block text-base font-bold leading-7" style={{ color: INK }} htmlFor="verify-code">
+                  เลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชน
+                </label>
+                <p id="verify-code-hint" className="max-w-[60ch] text-sm leading-7" style={{ color: '#4A4D55' }}>
+                  ใช้ยืนยันว่าเป็นเจ้าของใบสมัครก่อนกดยืนยันสิทธิ์หรือส่งสลิป ระบบไม่บันทึกตัวเลขนี้ไว้ในเครื่อง
+                </p>
+                <input
+                  id="verify-code"
+                  value={verifyCode}
+                  // Digits only, max 4: also drops zero-width characters pasted from LINE.
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="0000"
+                  aria-describedby="verify-code-hint"
+                  className="mt-2 w-32 rounded-none border bg-white px-3 py-2.5 font-mono text-base tabular-nums outline-none transition-colors focus:border-[#1A5FE0] focus-visible:ring-2 focus-visible:ring-[#1A5FE0]/30"
+                  style={{ borderColor: '#8A8D93', color: INK }}
+                />
+              </div>
+            )}
+
+            {/* Attendance confirmation */}
             {app.status === 'PASSED' && (
-              <div className="mt-6 rounded-xl bg-blue-50/70 p-4 border border-blue-100">
-                <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-blue-900">การยืนยันสิทธิ์เข้าร่วมค่าย</h3>
-                    <p className="text-xs text-blue-700 mt-0.5">
+                    <h3 className="text-base font-bold leading-7" style={{ color: INK }}>การยืนยันสิทธิ์เข้าร่วมค่าย</h3>
+                    <p className="text-sm leading-7" style={{ color: '#4A4D55' }}>
                       {app.attendanceConfirmed
-                        ? 'คุณได้กดยืนยันสิทธิ์เข้าร่วมค่ายเรียบร้อยแล้ว'
+                        ? 'กดยืนยันสิทธิ์เข้าร่วมค่ายเรียบร้อยแล้ว'
                         : 'โปรดยืนยันสิทธิ์เข้าร่วมค่ายและอัปโหลดหลักฐานการโอนเงิน'}
                     </p>
                   </div>
@@ -259,17 +385,21 @@ export function StatusSection() {
                     <button
                       type="button"
                       onClick={onConfirm}
-                      disabled={confirmBusy || app.attendanceConfirmed}
-                      className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      disabled={confirmBusy || app.attendanceConfirmed || !codeReady}
+                      aria-describedby={!codeReady && !app.attendanceConfirmed ? 'verify-code-hint' : undefined}
+                      className="rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
+                      style={{ backgroundColor: INK, color: '#F9F8F4' }}
                     >
-                      {confirmBusy ? 'กำลังดำเนินการ...' : app.attendanceConfirmed ? '✓ ยืนยันสิทธิ์แล้ว' : 'ยืนยันสิทธิ์'}
+                      {confirmBusy ? 'กำลังดำเนินการ…' : app.attendanceConfirmed ? '✓ ยืนยันสิทธิ์แล้ว' : 'ยืนยันสิทธิ์'}
                     </button>
                     {app.attendanceConfirmed && (
                       <button
                         type="button"
                         onClick={onCancelConfirm}
-                        disabled={confirmBusy}
-                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        disabled={confirmBusy || !codeReady}
+                        aria-describedby={!codeReady ? 'verify-code-hint' : undefined}
+                        className="rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                        style={{ borderColor: RULE, color: '#4A4D55', backgroundColor: '#FFFFFF' }}
                       >
                         ยกเลิก
                       </button>
@@ -280,129 +410,116 @@ export function StatusSection() {
             )}
           </section>
 
-          {/* Payment Slip Upload Card (Only for PASSED or CONFIRMED) */}
+          {/* ── 04 · Payment slip ───────────────────────────── */}
           {isEligibleForPayment && (
-            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+            <section className="border bg-white p-6 sm:p-8" style={{ borderColor: INK, backgroundColor: '#FFFFFF' }}>
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">หลักฐานการชำระเงิน (Payment Slip)</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    รองรับไฟล์รูปภาพ JPG, PNG ขนาดไม่เกิน 5MB สำหรับตรวจสอบสิทธิ์
+                  <p className="font-mono text-xs font-medium uppercase" style={{ color: '#62666E' }}>
+                    Payment / Slip
+                  </p>
+                  <h2 className="mt-1 text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
+                  <p className="mt-1 text-sm leading-7" style={{ color: '#4A4D55' }}>
+                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">1,000</span> บาท (รองรับไฟล์รูปภาพ JPG, PNG หรือ WebP ขนาดไม่เกิน <span className="font-mono tabular-nums">5</span> MB และไม่เกิน <span className="font-mono tabular-nums">{MAX_SLIP_PX}×{MAX_SLIP_PX}</span> พิกเซล)
                   </p>
                 </div>
-                <div>
-                  {currentSlip ? (
-                    app.status === 'CONFIRMED' ? (
-                      <span className="rounded-full bg-green-100 text-green-800 px-3 py-1 text-xs font-semibold">
-                        ✓ อนุมัติสลิปแล้ว
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-semibold">
-                        ⏳ รอเจ้าหน้าที่ตรวจสอบ
-                      </span>
-                    )
-                  ) : (
-                    <span className="rounded-full bg-gray-100 text-gray-600 px-3 py-1 text-xs font-semibold">
-                      ยังไม่อัปโหลด
+                {slipUploaded ? (
+                  slipApproved ? (
+                    <span className="inline-block border px-3 py-1 text-xs font-semibold" style={{ borderColor: RULE, borderLeft: '3px solid #029E00', color: INK, backgroundColor: '#FFFFFF' }}>
+                      ✓ อนุมัติสลิปแล้ว
                     </span>
-                  )}
-                </div>
+                  ) : slipRejected ? (
+                    <span className="inline-block border px-3 py-1 text-xs font-semibold" style={{ borderColor: RULE, borderLeft: '3px solid #C62828', color: INK, backgroundColor: '#FFFFFF' }}>
+                      สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดใหม่
+                    </span>
+                  ) : (
+                    <span className="inline-block border px-3 py-1 text-xs font-semibold" style={{ borderColor: RULE, borderLeft: '3px solid #B45309', color: INK, backgroundColor: '#FFFFFF' }}>
+                      ⏳ รอเจ้าหน้าที่ตรวจสอบ
+                    </span>
+                  )
+                ) : (
+                  <span className="inline-block border px-3 py-1 font-mono text-xs tabular-nums" style={{ borderColor: RULE, color: '#62666E', backgroundColor: '#FFFFFF' }}>
+                    — NO SLIP
+                  </span>
+                )}
               </div>
 
-              {/* Upload Status Alerts */}
-              {uploadMessage && (
-                <div className="mt-4 rounded-xl bg-green-50 border border-green-200 p-4 text-sm text-green-800 flex items-start gap-2">
-                  <svg className="w-5 h-5 text-green-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span>{uploadMessage}</span>
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700 flex items-start gap-2">
-                  <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{uploadError}</span>
-                </div>
-              )}
-
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                {/* Current Slip Preview */}
-                <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">สลิปที่อัปโหลดปัจจุบัน</p>
-                  {currentSlip ? (
-                    <div className="space-y-3">
-                      <div className="relative group overflow-hidden rounded-lg border border-gray-200 bg-white">
-                        <img
-                          src={getSlipImageUrl(currentSlip)}
-                          alt="หลักฐานการโอนเงิน"
-                          className="w-full max-h-64 object-contain mx-auto"
-                        />
-                      </div>
-                      <a
-                        href={getSlipImageUrl(currentSlip)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        เปิดดูรูปภาพขนาดเต็ม
-                      </a>
+              <div className="mt-6 grid grid-cols-1 items-start gap-6 md:grid-cols-2">
+                <div className="border p-2" style={{ borderColor: RULE, backgroundColor: '#F2F0E8' }}>
+                  {sentPreviewUrl ? (
+                    <div>
+                      <img
+                        src={sentPreviewUrl}
+                        alt="หลักฐานการโอนเงินที่เพิ่งส่ง"
+                        className="mx-auto max-h-72 w-full object-contain"
+                      />
+                      <p className="mt-2 bg-white px-2 py-1 text-xs leading-6" style={{ color: '#4A4D55', backgroundColor: '#FFFFFF' }}>
+                        สลิปที่เพิ่งส่ง (แสดงจากเครื่องของคุณ)
+                      </p>
                     </div>
+                  ) : slipUploaded ? (
+                    <p className="px-4 py-10 text-center text-sm leading-7" style={{ color: '#4A4D55' }}>
+                      ได้รับสลิปของคุณแล้ว เพื่อความปลอดภัยของข้อมูลทางการเงิน รูปสลิปจะเปิดดูได้เฉพาะในระบบของเจ้าหน้าที่
+                    </p>
                   ) : (
-                    <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center text-gray-400">
-                      <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <p className="mt-2 text-xs">ยังไม่มีรูปภาพสลิปในระบบ</p>
-                    </div>
+                    <p className="py-10 text-center font-mono text-sm tabular-nums" style={{ color: '#62666E' }}>
+                      — NO IMAGE
+                    </p>
                   )}
                 </div>
 
-                {/* File Upload Form */}
+                {slipApproved ? (
+                  <p className="text-sm leading-7" style={{ color: '#4A4D55' }}>
+                    ชำระเงินเรียบร้อยแล้ว ไม่ต้องอัปโหลดสลิปเพิ่ม
+                  </p>
+                ) : (
                 <form onSubmit={onUploadSlip} className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="slipFile">
-                      {currentSlip ? 'อัปโหลดสลิปใหม่เพื่อแทนที่' : 'เลือกไฟล์สลิปการโอนเงิน'}
+                    <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="slipFile">
+                      {slipUploaded ? 'อัปโหลดสลิปใหม่เพื่อแทนที่' : 'เลือกไฟล์สลิปการโอนเงิน'}
                     </label>
                     <input
                       id="slipFile"
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       onChange={onFileChange}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-gray-200 rounded-lg p-1 bg-white"
+                      className="block w-full cursor-pointer border bg-white p-1 text-sm"
+                      style={{ borderColor: '#8A8D93', color: '#4A4D55' }}
                     />
                   </div>
 
                   {previewLocalUrl && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3">
-                      <p className="text-xs font-semibold text-blue-900 mb-2">ตัวอย่างรูปภาพที่กำลังจะอัปโหลด:</p>
+                    <div className="border p-3" style={{ borderColor: '#1A5FE0', backgroundColor: '#FFFFFF' }}>
+                      <p className="mb-2 text-xs font-semibold" style={{ color: INK }}>ตัวอย่างรูปภาพที่กำลังจะอัปโหลด</p>
                       <img
                         src={previewLocalUrl}
                         alt="ตัวอย่างรูปภาพสลิปใหม่"
-                        className="max-h-48 rounded object-contain mx-auto"
+                        className="mx-auto max-h-48 rounded-none object-contain"
                       />
-                      <p className="mt-1 text-center text-xs text-gray-500">
+                      <p className="mt-1 text-center font-mono text-xs tabular-nums" style={{ color: '#62666E' }}>
                         {selectedFile?.name} ({(selectedFile ? selectedFile.size / 1024 : 0).toFixed(1)} KB)
                       </p>
                     </div>
                   )}
 
+                  {!codeReady && (
+                    <p className="text-sm leading-7" style={{ color: '#4A4D55' }}>
+                      กรอกเลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชนด้านบนก่อนส่งสลิป
+                    </p>
+                  )}
                   <button
                     type="submit"
-                    disabled={uploadBusy || !selectedFile}
-                    className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    disabled={uploadBusy || !selectedFile || !codeReady}
+                    className="w-full rounded-full px-4 py-3 text-sm font-semibold transition-opacity disabled:opacity-50"
+                    style={{ backgroundColor: INK, color: '#F9F8F4' }}
                   >
-                    {uploadBusy ? 'กำลังอัปโหลด...' : 'ยืนยันและส่งหลักฐานสลิป'}
+                    {uploadBusy ? 'กำลังอัปโหลด…' : 'ยืนยันและส่งหลักฐานสลิป'}
                   </button>
-                  <p className="text-center text-xs text-gray-400">
-                    Endpoint: <code>POST /api/applications/:id/slip</code>
+                  <p className="overflow-x-auto whitespace-nowrap text-center font-mono text-[11px] tabular-nums" style={{ color: '#62666E' }}>
+                    POST /api/applications/:id/slip
                   </p>
                 </form>
+                )}
               </div>
             </section>
           )}

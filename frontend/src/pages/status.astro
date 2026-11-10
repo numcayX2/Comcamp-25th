@@ -1,21 +1,15 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import SiteNav from '../components/SiteNav.astro';
 import { StatusSection } from '../components/StatusSection';
 ---
 
 <BaseLayout
   title="ตรวจสอบสถานะใบสมัคร · ComCamp #25"
-  description="ค้นหาสถานะใบสมัครด้วยเลขบัตรประชาชน เบอร์โทรศัพท์ หรือ Application ID (skeleton สำหรับทดสอบ Go backend)"
+  description="ค้นหาสถานะใบสมัครด้วยเลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร ยืนยันสิทธิ์และอัปโหลดสลิปโอนเงิน"
 >
-  <nav class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6" style="font-family: Kanit, sans-serif">
-    <a href="/" class="text-sm font-bold tracking-wide text-gray-900">ComCamp #25</a>
-    <div class="flex flex-wrap gap-1 text-sm">
-      <a href="/register" class="rounded-lg px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100">สมัคร</a>
-      <a href="/status" class="rounded-lg bg-gray-900 px-3 py-1.5 font-medium text-white">ตรวจสอบสถานะ</a>
-      <a href="/admin" class="rounded-lg px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100">ผู้ดูแล</a>
-    </div>
-  </nav>
-  <main>
+  <SiteNav active="status" />
+  <main id="main">
     <StatusSection client:load />
   </main>
 </BaseLayout>

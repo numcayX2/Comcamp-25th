@@ -1,0 +1,135 @@
+---
+/**
+ * HeroSection.astro — ComCamp #25 Hero Section
+ *
+ * Usage:
+ *   <HeroSection />                      → Clean bold sans title (Swiss editorial)
+ *   <HeroSection titleStyle="pixel" />   → Pixel / dot-matrix title (Figma draft)
+ */
+import '@fontsource/pixelify-sans/700.css';
+
+interface Props {
+  titleStyle?: 'sans' | 'pixel';
+  registerHref?: string;
+  statusHref?: string;
+}
+
+const {
+  titleStyle = 'sans',
+  registerHref = '/register',
+  statusHref = '/status',
+} = Astro.props;
+---
+
+<section class="hero" id="sec-hero" data-title-style={titleStyle} aria-labelledby="hero-title">
+  <div class="hero__grid">
+    <div class="hero__copy">
+      <img
+        class="hero__logo"
+        src="/assets/logo/comcamp25-logo-sm.png"
+        alt="ComCamp 25th"
+        width="160"
+        height="80"
+        decoding="async"
+      />
+
+      <p class="hero__eyebrow"><span>MAEJO UNIVERSITY</span><i aria-hidden="true"></i></p>
+
+      <h1 class="hero__title" id="hero-title">
+        <span>Comcamp</span> <span>25th</span>
+      </h1>
+
+      <p class="hero__sub">
+        3 วัน 2 คืน ลงมือต่อวงจรจริง อ่านค่าเซนเซอร์ Ultrasonic และ LDR แล้วสร้าง Web Dashboard สั่งงานผ่านสมาร์ตโฟน — เริ่มจากศูนย์ได้ มี AI ช่วยขึ้นโครงและดีบักโค้ด
+      </p>
+      <p class="hero__fee">
+        <span class="hero__fee-amount"><span class="font-mono">1,000</span> บาท</span>
+        <span class="hero__fee-label">ค่าสมัคร</span>
+      </p>
+
+      <div class="hero__actions">
+        <a class="hero__cta" id="cta-primary" href={registerHref}>
+          <span>เปิดรับสมัคร 16 พ.ย.</span>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square">
+            <path d="M4 12 12 4M5.5 4H12v6.5" />
+          </svg>
+        </a>
+        <a class="hero__link" id="cta-secondary" href={statusHref}>ตรวจสอบสถานะใบสมัคร →</a>
+      </div>
+
+      <p class="hero__proof">
+        <span>สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</span>
+        <span class="hero__proof-sep" aria-hidden="true"></span>
+        <span>ComCamp <span class="font-mono">#25</span> · ครบรอบ 25 ปี</span>
+      </p>
+    </div>
+
+    <!-- ───────────── RIGHT: 3D hardware stage ───────────── -->
+    <div class="hero__stage-wrap">
+      <!-- Architectural backdrop (behind the canvas) -->
+      <div class="hero__backdrop" aria-hidden="true">
+        <span class="bd bd-circle"></span>
+        <span class="bd bd-panel"></span>
+        <span class="bd bd-hline"></span>
+        <span class="bd bd-vline"></span>
+        <span class="bd bd-cross"></span>
+      </div>
+
+      <div class="hero-stage" id="heroStage" data-state="loading">
+        <canvas
+          id="heroStageCanvas"
+          role="img"
+          tabindex="0"
+          aria-label="โมเดล 3 มิติของบอร์ด ESP8266 และ Arduino UNO R3 ใช้ปุ่มลูกศรซ้ายขวาเพื่อหมุนดูรอบตัว"
+        ></canvas>
+
+        <p class="hero-stage__loading" aria-live="polite">Loading 3D…</p>
+
+        <!-- Fallback slot: shown only if WebGL is unavailable or both .glb files fail. -->
+        <img
+          class="hero-stage__fallback"
+          src="/assets/hero/boards-fallback.png"
+          alt="บอร์ด ESP8266 และ Arduino UNO R3"
+          width="1100"
+          height="1000"
+          loading="lazy"
+          decoding="async"
+          onerror="this.remove()"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Far-right callout badge (desktop only) -->
+  <div class="hero__badge" aria-hidden="true">
+    <p class="hero__badge-num">25<sup>th</sup></p>
+    <p class="hero__badge-label">ANNIVERSARY<br />COMCAMP</p>
+  </div>
+
+  <!-- ───────────── Bottom bar ───────────── -->
+  <div class="hero__bar">
+    <p class="hero__bar-start">
+      <i class="hero__dash" aria-hidden="true"></i>
+      <span>
+        <b>25 YEARS</b>
+        <small>OF LEARNING AND INNOVATION</small>
+      </span>
+    </p>
+
+    <a class="hero__explore" href="#experience" aria-label="Explore — เลื่อนลง">
+      <span>Explore</span>
+      <i class="hero__explore-line" aria-hidden="true"></i>
+    </a>
+
+    <div class="hero__bar-end" aria-hidden="true">
+      <i class="hero__rule"></i>
+      <i class="hero__tick"></i>
+      <span class="hero__slashes"><i></i><i></i><i></i></span>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Astro bundles this (and `three`)
+  import '../scripts/hero-3d.js';
+</script>

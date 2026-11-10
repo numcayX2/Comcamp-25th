@@ -1,0 +1,386 @@
+﻿---
+import '../styles/fonts.css';
+import SiteNav from './SiteNav.astro';
+import HeroSection from './HeroSection.astro';
+import BackToTop from './BackToTop.astro';
+import thai400 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-400-normal.woff2?url';
+import thai700 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-700-normal.woff2?url';
+import mono500 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2?url';
+const rawGalleryBase = import.meta.env.PUBLIC_GALLERY_BASE_URL || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
+const galleryBaseUrl = rawGalleryBase.endsWith('/') ? rawGalleryBase : `${rawGalleryBase}/`;
+const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api';
+---
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ComCamp #25 — ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 · CS MJU</title>
+<meta name="description" content="ComCamp #25 ค่าย Microcontroller (ESP8266 & Arduino UNO R3) with IoT & AI Dashboard สำหรับ ม.4–ม.6 และ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
+<meta name="theme-color" content="#F9F8F4">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preload" href={thai700} as="font" type="font/woff2" crossorigin>
+<link rel="preload" href={thai400} as="font" type="font/woff2" crossorigin>
+<link rel="preload" href={mono500} as="font" type="font/woff2" crossorigin>
+<script is:inline>
+  (function() {
+    try {
+      var stored = localStorage.getItem('comcamp-theme');
+      var isDark = stored ? stored === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="/theme/styles.css">
+<link rel="stylesheet" href="/theme/page.css">
+<link rel="stylesheet" href="/theme/editorial.css">
+<noscript><style>.veil{display:none!important}</style></noscript>
+<script is:inline define:vars={{ galleryBaseUrl, apiBaseUrl }}>
+  window.__CC25_GALLERY_BASE_URL__ = galleryBaseUrl;
+  window.__CC25_API_BASE_URL__ = apiBaseUrl;
+</script>
+</head>
+<body>
+  <!-- Intro veil: editorial preloader, lifts on load. Home only. -->
+  <div class="veil" id="veil" aria-hidden="true">
+    <div class="veil-top">
+      <span class="veil-brand">ComCamp <span class="veil-mono">#25</span></span>
+      <span class="veil-ed veil-mono">25TH EDITION</span>
+    </div>
+    <div class="veil-center">
+      <p class="veil-kicker veil-mono">COMPUTER SCIENCE · MAEJO UNIVERSITY</p>
+      <p class="veil-display"><span class="vl"><i>Comcamp</i></span><span class="vl"><i class="ol">25th</i></span></p>
+      <p class="veil-thai">ค่ายยุวชนคอมพิวเตอร์ <span class="nowrap">ครั้งที่ <span class="veil-mono">25</span></span></p>
+      <p class="veil-sub"><span class="nowrap">เปิดรับ <span class="veil-mono">16.11.69</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
+    </div>
+    <span class="veil-ghost veil-mono">25</span>
+    <div class="veil-foot">
+      <div class="veil-row">
+        <span>กำลังเตรียมหน้าเว็บ</span>
+        <span class="veil-count veil-mono"><span data-veil-num>00</span> / 100</span>
+      </div>
+      <span class="veil-rule"><i></i></span>
+    </div>
+  </div>
+  <script is:inline>
+    (function () {
+      /* Landing page always opens at the top: take restoration off the
+         browser so a reload never glides back to a stale position. */
+      try { history.scrollRestoration = 'manual'; } catch (e) {}
+      function topNow() { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }
+      if (!location.hash) {
+        topNow();
+        document.addEventListener('DOMContentLoaded', topNow);
+      }
+      var veil = document.getElementById('veil');
+      if (!veil) return;
+      /* Play the veil once per tab session; later returns to /home skip it. */
+      try {
+        if (sessionStorage.getItem('cc25-veil-seen') === '1') { veil.hidden = true; return; }
+        sessionStorage.setItem('cc25-veil-seen', '1');
+      } catch (e) {}
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var num = veil.querySelector('[data-veil-num]');
+      var bar = veil.querySelector('.veil-rule i');
+      document.body.style.overflow = 'hidden';
+      function done() {
+        veil.classList.add('is-done');
+        document.body.style.overflow = '';
+        setTimeout(function () { veil.hidden = true; }, reduce ? 0 : 1100);
+      }
+      if (reduce) { done(); return; }
+      var t0 = performance.now(), finished = false;
+      function tick(now) {
+        var p = Math.min(1, (now - t0) / 1400);
+        var v = Math.round(p * 100);
+        if (num) num.textContent = (v < 10 ? '0' : '') + v;
+        if (bar) bar.style.transform = 'scaleX(' + p + ')';
+        if (!finished && (document.readyState === 'complete' || now - t0 >= 2800)) { finished = true; done(); return; }
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })();
+  </script>
+  <SiteNav active="home" isHome={true} />
+
+  <main id="main">
+    <!-- Section 01: Hero — 3D Hardware Stage (Arduino UNO R3 & ESP8266) -->
+    <HeroSection titleStyle="sans" registerHref="/register" statusHref="/status" />
+
+    <!-- Section 02: What you'll actually do — editorial chapter list -->
+    <section id="experience" class="ed-sec" aria-labelledby="experience-title">
+      <div class="wrap exp">
+        <header class="exp-intro">
+          <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">ประสบการณ์ในค่าย · <span class="ed-en">LAB 01–04</span></span></p>
+          <h2 id="experience-title" class="exp-title">สิ่งที่จะได้ทำจริงในค่าย</h2>
+          <p class="exp-lead">เรียนรู้จากการลงมือปฏิบัติจริง ตั้งแต่การต่อวงจรและควบคุมฮาร์ดแวร์ระดับไมโครคอนโทรลเลอร์ ไปจนถึงการสร้างเว็บอินเทอร์เฟซที่สั่งงานผ่านสมาร์ตโฟนได้โดยตรง</p>
+        </header>
+
+        <ol class="exp-list">
+          <li class="exp-item">
+            <span class="exp-num" aria-hidden="true">01</span>
+            <div class="exp-body">
+              <h3 class="exp-item-title">ปล่อยสัญญาณ Wi-Fi จากบอร์ด</h3>
+              <p class="exp-item-text">ทดลองตั้งค่า ESP8266 ในโหมด Access Point (AP Mode) เพื่อให้สมาร์ตโฟนเกาะสัญญาณและส่งคำสั่งควบคุมอุปกรณ์ได้โดยตรงไม่ต้องพึ่งเราเตอร์</p>
+              <p class="exp-spec"><span class="exp-key">MODE</span><span class="exp-val">SoftAP / 192.168.4.1</span></p>
+            </div>
+          </li>
+
+          <li class="exp-item">
+            <span class="exp-num" aria-hidden="true">02</span>
+            <div class="exp-body">
+              <h3 class="exp-item-title">ประกอบวงจรและอ่านค่าเซนเซอร์</h3>
+              <p class="exp-item-text">ต่อวงจรจริงบน Breadboard ร่วมกับเซนเซอร์ Ultrasonic HC-SR04, LDR วัดแสง และ Active Buzzer เพื่อเข้าใจกระบวนการ Input, Process และ Output</p>
+              <p class="exp-spec"><span class="exp-key">I/O</span><span class="exp-val">HC-SR04 / LDR / Buzzer</span></p>
+            </div>
+          </li>
+
+          <li class="exp-item">
+            <span class="exp-num" aria-hidden="true">03</span>
+            <div class="exp-body">
+              <h3 class="exp-item-title">ควบคุมฮาร์ดแวร์ผ่านหน้าเว็บ</h3>
+              <p class="exp-item-text">เขียนโปรแกรมสร้าง Embedded Web Server บนตัวชิป และเปิดหน้า Mobile Dashboard เพื่อกดสวิตช์สั่งงานฮาร์ดแวร์ผ่านเครือข่ายท้องถิ่นทันที</p>
+              <p class="exp-spec"><span class="exp-key">PROTOCOL</span><span class="exp-val">HTTP Server / Local LAN</span></p>
+            </div>
+          </li>
+
+          <li class="exp-item">
+            <span class="exp-num" aria-hidden="true">04</span>
+            <div class="exp-body">
+              <h3 class="exp-item-title">เริ่มต้นง่ายแม้ไม่มีพื้นฐาน</h3>
+              <p class="exp-item-text">ฝึกจำลองการต่อวงจรบน Autodesk Tinkercad Circuits เพื่อป้องกันการลัดวงจร และเรียนรู้วิธีใช้ AI ช่วยขึ้นโครงสร้าง Web Interface อย่างเป็นระบบ</p>
+              <p class="exp-spec"><span class="exp-key">TOOLING</span><span class="exp-val">Tinkercad / Code Assist</span></p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Section 03: Camp Essentials -->
+    <section id="essentials" class="ed-sec" aria-labelledby="essentials-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="ed-index"><span class="ed-index__no">03</span><span class="ed-index__label">ข้อมูลก่อนสมัคร · <span class="ed-en">Essentials</span></span></p>
+          <h2 id="essentials-title" class="section-title">ข้อมูลที่ควรรู้ก่อนสมัคร</h2>
+          <p class="body">สรุปคุณสมบัติ อุปกรณ์ จำนวนที่นั่ง สถานที่ และค่าใช้จ่าย เพื่อให้ตัดสินใจและเตรียมตัวได้ในหน้าเดียว</p>
+        </div>
+        <div class="bento" role="list">
+          <article role="listitem" class="card">
+            <div class="card-top"><span class="bento-tag">Eligibility</span></div>
+            <h3>คุณสมบัติผู้สมัคร</h3>
+            <p>ม.4–ม.6 และ ปวช.1–ปวช.3 ทุกสายการเรียน ไม่จำเป็นต้องมีพื้นฐานด้านการเขียนโปรแกรมหรือวงจรไฟฟ้ามาก่อน</p>
+          </article>
+          <article role="listitem" class="card">
+            <div class="card-top"><span class="bento-tag">Hardware</span></div>
+            <h3>อุปกรณ์การเรียน</h3>
+            <p>มอบชุดฮาร์ดแวร์บอร์ดทดลองจริงครบเซต (Arduino UNO R3 + ESP8266 NodeMCU + เซนเซอร์) ให้น้อง ๆ ใช้งานทุกคน</p>
+          </article>
+          <article role="listitem" class="card">
+            <div class="card-top"><span class="bento-tag">Lab</span></div>
+            <h3>คอมพิวเตอร์ห้องปฏิบัติการ</h3>
+            <p>จัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC สำหรับผู้เข้าร่วมทุกคน ไม่บังคับนำโน้ตบุ๊กส่วนตัวมา</p>
+          </article>
+          <article role="listitem" class="card bento-feature">
+            <div class="card-top"><span class="bento-tag">Seats</span></div>
+            <div id="bento-seats-num" class="bento-big">30<small>ที่นั่ง</small></div>
+            <p id="bento-seats-caption">จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</p>
+          </article>
+          <article role="listitem" class="card">
+            <div class="card-top"><span class="bento-tag">Venue</span></div>
+            <h3>สถานที่จัดกิจกรรม</h3>
+            <p>อาคารเรียนสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ อ.สันทราย จ.เชียงใหม่</p>
+          </article>
+          <article role="listitem" class="card">
+            <div class="card-top"><span class="bento-tag">Fee</span></div>
+            <h3>ค่าใช้จ่ายในการเข้าร่วม</h3>
+            <p><span class="font-mono tabular-nums fee-num">1,000</span> บาท</p>
+            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — รายการที่รวมในค่าสมัคร (ที่พัก/อาหาร/ชุดอุปกรณ์) — ยอด 1,000 บาท ยืนยันแล้ว -->
+            <p class="todo">รายการที่รวมในค่าสมัครรอประกาศ</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 04: Learning Journey -->
+    <section id="journey" class="ed-sec" aria-labelledby="journey-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">เส้นทางเรียนรู้ · <span class="ed-en">Journey</span></span></p>
+          <h2 id="journey-title" class="section-title">4 ขั้นตอนตลอด 3 วัน 2 คืน</h2>
+          <p class="body">จากการจำลองวงจรและพื้นฐาน Input → Process → Output สู่การต่อฮาร์ดแวร์จริง เชื่อมต่อ IoT และนำเสนอโปรเจกต์บนเวที</p>
+        </div>
+        <div class="journey" role="list">
+          <div class="journey-rail" aria-hidden="true"></div>
+          <article role="listitem" class="step">
+            <div class="step-marker" aria-hidden="true"><span class="step-dot"></span></div>
+            <div class="step-content">
+              <div class="step-num">Step 01 · Sense &amp; Simulate</div>
+              <h3>ปูพื้นฐานและจำลองวงจร</h3>
+              <div class="day">Day 1</div>
+              <p>ทำความเข้าใจแนวคิด Input → Process → Output และจำลองวงจรไฟกระพริบกับเซนเซอร์วัดแสง LDR บน Autodesk Tinkercad Circuits</p>
+            </div>
+          </article>
+          <article role="listitem" class="step">
+            <div class="step-marker" aria-hidden="true"><span class="step-dot"></span></div>
+            <div class="step-content">
+              <div class="step-num">Step 02 · Wired Logic</div>
+              <h3>คุมบอร์ด Arduino UNO R3</h3>
+              <div class="day">Day 1</div>
+              <p>ประกอบวงจรจริง อัปโหลดโค้ดภาษา C/C++ สั่งงานเซนเซอร์ Ultrasonic HC-SR04 วัดระยะ และขับเสียงเตือนด้วย Active Buzzer</p>
+            </div>
+          </article>
+          <article role="listitem" class="step">
+            <div class="step-marker" aria-hidden="true"><span class="step-dot"></span></div>
+            <div class="step-content">
+              <div class="step-num">Step 03 · Wireless IoT</div>
+              <h3>เชื่อม ESP8266 และเว็บควบคุม</h3>
+              <div class="day">Day 2</div>
+              <p>ตั้งค่า Wi-Fi AP Mode สร้าง Local Web Server และออกแบบ Mobile Dashboard เพื่อสั่งงานฮาร์ดแวร์ผ่านสมาร์ตโฟน</p>
+            </div>
+          </article>
+          <article role="listitem" class="step">
+            <div class="step-marker" aria-hidden="true"><span class="step-dot"></span></div>
+            <div class="step-content">
+              <div class="step-num">Step 04 · Prototype &amp; Pitch</div>
+              <h3>พัฒนาโปรเจกต์และนำเสนอ</h3>
+              <div class="day">Day 2–3</div>
+              <p>รวมทีมทำ Hackathon ตามโจทย์ท้าทาย สาธิตผลงานสดบนเวทีทีมละ 3 นาที และรับมอบเกียรติบัตรเมื่อจบกิจกรรม</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 06: Timeline & Parental Peace-of-Mind -->
+    <section id="timeline" class="ed-sec" aria-labelledby="timeline-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="ed-index"><span class="ed-index__no">05</span><span class="ed-index__label">ไทม์ไลน์และการดูแล · <span class="ed-en">Timeline</span></span></p>
+          <h2 id="timeline-title" class="section-title">ไทม์ไลน์การสมัครและการดูแลผู้เข้าร่วม</h2>
+          <p class="body">คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served) พร้อมมาตรการดูแลความปลอดภัยสำหรับผู้ปกครอง</p>
+        </div>
+        <div class="tm-bento" role="group" aria-label="ขั้นตอนการสมัครและการดูแลผู้เข้าร่วม">
+          <article class="tm-tile tm-tile--01">
+            <span class="tm-num"><span class="font-mono tabular-nums">01</span> · เปิดรับสมัคร</span>
+            <p class="tm-figure">16 พ.ย. 69 <small><span class="font-mono tabular-nums">30</span> ที่นั่ง</small></p>
+            <p><a href="/register">สมัครออนไลน์ผ่านหน้าเว็บไซต์</a> ตั้งแต่เวลา <span class="font-mono tabular-nums">00:00:00</span> น. <span style="white-space:nowrap">(เวลาไทย)</span></p>
+          </article>
+          <article class="tm-tile tm-tile--02">
+            <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
+            <h3><a href="/status">แนบสลิปโอนเงินยืนยันสิทธิ์</a></h3>
+            <p>ผู้สมัครที่ผ่านการคัดเลือกโอนเงินค่าธรรมเนียมและอัปโหลดรูปสลิปในหน้าตรวจสอบสถานะ</p>
+          </article>
+          <article class="tm-tile tm-tile--03">
+            <span class="tm-num"><span class="font-mono tabular-nums">03</span> · ยืนยันสิทธิ์</span>
+            <h3>พี่ค่ายตรวจสอบสลิป</h3>
+            <p>ทีมงานตรวจสอบความถูกต้องของหลักฐานและยืนยันสิทธิ์เข้าร่วมค่ายอย่างเป็นทางการ</p>
+          </article>
+          <article class="tm-tile tm-tile--04 tm-tile--feature">
+            <span class="tm-num"><span class="font-mono tabular-nums">04</span> · วันจัดค่าย</span>
+            <h3>3 วัน 2 คืน ณ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</h3>
+            <p>เดินทางเข้าร่วมกิจกรรมและเข้าพักตามกำหนดการที่ค่ายประกาศ</p>
+            <p class="todo">รอประกาศวันจัดค่ายอย่างเป็นทางการ</p>
+          </article>
+          <article class="tm-tile tm-tile--care-a">
+            <h3>การดูแลตลอด 24 ชั่วโมง</h3>
+            <p>มีอาจารย์และพี่เลี้ยงนักศึกษาประจำกลุ่มดูแลความปลอดภัยตลอดระยะเวลากิจกรรม</p>
+          </article>
+          <article class="tm-tile tm-tile--care-b">
+            <h3>การพักค้างคืนแยกตามสัดส่วน</h3>
+            <p>จัดการแยกหอพักชายและหญิงเป็นสัดส่วนชัดเจน พร้อมระบบดูแลการเข้า-ออก</p>
+            <p class="todo">รายละเอียดหอพักรอประกาศ</p>
+          </article>
+          <article class="tm-tile tm-tile--care-c">
+            <h3>สุขภาพและอาหาร</h3>
+            <p>มีมาตรการด้านการพยาบาลเบื้องต้น และการจัดการเมนูอาหารสำหรับผู้ที่มีอาการแพ้อาหารหรือโรคประจำตัวอย่างเคร่งครัด</p>
+          </article>
+          <article class="tm-tile tm-tile--care-d">
+            <h3>ช่องทางติดต่อผู้รับผิดชอบ</h3>
+            <p>มีเบอร์โทรศัพท์และช่องทางติดต่ออาจารย์ผู้รับผิดชอบโครงการโดยตรงตลอดระยะเวลาจัดค่าย</p>
+            <p class="todo">รอประกาศช่องทางติดต่อ</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 07: FAQ -->
+    <section id="faq" class="ed-sec" aria-labelledby="faq-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="ed-index"><span class="ed-index__no">06</span><span class="ed-index__label">คำถามที่พบบ่อย · <span class="ed-en">FAQ</span></span></p>
+          <h2 id="faq-title" class="section-title">คำถามที่พบบ่อย</h2>
+        </div>
+        <div class="faq">
+          <details class="faq-item"><summary>ต้องมีพื้นฐานการเขียนโปรแกรมหรืออิเล็กทรอนิกส์มาก่อนหรือไม่</summary><div class="faq-body">ไม่จำเป็น ค่ายออกแบบสำหรับผู้เริ่มต้น และมีการเรียนรู้แบบลงมือปฏิบัติจากการจำลองวงจรไปสู่การต่อฮาร์ดแวร์จริง พร้อมชุดอุปกรณ์ที่ค่ายจัดเตรียมให้</div></details>
+          <details class="faq-item"><summary>ค่ายใช้บอร์ดและอุปกรณ์อะไรบ้าง</summary><div class="faq-body">ใช้ Arduino UNO R3 และ ESP8266 NodeMCU ร่วมกับเซนเซอร์และอุปกรณ์ฝึกปฏิบัติ เช่น Ultrasonic HC-SR04, LDR และ Active Buzzer ตามกิจกรรมในค่าย</div></details>
+          <details class="faq-item"><summary>รับกี่คน และคัดเลือกอย่างไร</summary><div class="faq-body">เปิดรับ <span class="font-mono tabular-nums">30</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</div></details>
+          <details class="faq-item"><summary>ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</summary><div class="faq-body">ไม่บังคับ ค่ายจัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC สำหรับผู้เข้าร่วมทุกคน ผู้ที่ต้องการนำโน้ตบุ๊กส่วนตัวมาก็สามารถระบุข้อมูลในแบบฟอร์มได้</div></details>
+          <details class="faq-item"><summary>สลิปโอนเงินไม่ชัดเจนหรือถูกแจ้งให้แก้ไขต้องทำอย่างไร</summary><div class="faq-body">สามารถเข้าสู่ <a href="/status">หน้าตรวจสอบสถานะ</a> เพื่ออัปโหลดรูปสลิปใหม่ได้ทันทีโดยไม่ต้องกรอกใบสมัครใหม่ โดยค้นหาข้อมูลจากเลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span class="font-mono" style="letter-spacing:0">CC25-XXXXXX</span>)</div></details>
+          <details class="faq-item"><summary>สามารถสมัครและตรวจสอบสถานะผ่านโทรศัพท์มือถือได้หรือไม่</summary><div class="faq-body">สามารถกรอกใบสมัครและอัปโหลดสลิปผ่านสมาร์ตโฟนได้ทุกระบบ รวมถึงเปิดใช้งานผ่านลิงก์ในแอปพลิเคชัน Facebook และ LINE ได้โดยตรง</div></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seamless fade from the page surface into the dark gallery -->
+    <div class="mt-fade" aria-hidden="true"></div>
+
+    <!-- Section 05: Last Year Gallery — Memory Tunnel -->
+    <section id="gallery" class="mt" aria-labelledby="gallery-title">
+      <div class="mt__sticky">
+        <h2 id="gallery-title" class="sr-only">บรรยากาศค่ายปีที่แล้ว ComCamp #24</h2>
+
+        <div class="mt__intro" data-mt="intro">
+          <div class="mt__intro-content" data-mt="intro-content">
+            <p  class="mt__eyebrow mt__reveal"   style="--d:0" data-mt="intro-eyebrow"></p>
+            <p  class="mt__intro-title mt__reveal" style="--d:1" data-mt="intro-title"></p>
+            <p  class="mt__intro-sub mt__reveal"  style="--d:2" data-mt="intro-subtitle"></p>
+          </div>
+          <div class="mt__scroll-hint mt__reveal" style="--d:3" aria-hidden="true"></div>
+        </div>
+
+        <div class="mt__stage" data-mt="stage" aria-hidden="true"></div>
+
+        <div class="mt__outro" data-mt="outro" aria-hidden="true">
+          <p  class="mt__eyebrow mt__outro-eyebrow" data-mt="outro-eyebrow"></p>
+          <p  class="mt__outro-title" data-mt="outro-title"></p>
+          <p  class="mt__outro-sub" data-mt="outro-subtitle"></p>
+          <a class="mt__cta" data-mt="cta" href="#" tabindex="-1">
+            <span data-mt="cta-label"></span>
+            <svg class="mt__cta-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Section 08: Footer -->
+  <footer class="ed-footer">
+    <div class="wrap footer-grid">
+      <div>
+        <p class="ed-index"><span class="ed-index__no">©</span><span class="ed-index__label">Colophon</span></p>
+        <div class="footer-title">ComCamp #25 — โครงการค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25</div>
+        <p class="footer-meta">สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</p>
+      </div>
+      <div>
+        <p class="footer-meta">© <span class="font-mono tabular-nums">2569</span> สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ · สอบถามข้อมูลเพิ่มเติมผ่านเพจ Facebook โครงการค่ายยุวชนคอมพิวเตอร์</p>
+      </div>
+    </div>
+  </footer>
+
+  <BackToTop />
+
+
+<script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha384-Z3REaz79l2IaAZqJsSABtTbhjgOUYyV3p90XNnAPCSHg3EMTz1fouunq9WZRtj3d" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script is:inline src="/theme/main.js" defer></script>
+</body>
+</html>

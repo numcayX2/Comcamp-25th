@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
+  ApiHttpError,
   adminLogin,
+  fetchAdminSlip,
+  hasSlip,
   listApplications,
   updateApplicationStatus,
   verifyPaymentSlip,
-  getSlipImageUrl,
-  getSlipUrl,
   type Application,
   type ApplicationStatus,
   type ApiSource,
@@ -13,12 +15,14 @@ import {
 
 const STATUSES: ApplicationStatus[] = ['PENDING', 'PASSED', 'RESERVE', 'CONFIRMED', 'REJECTED'];
 
-const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
-  PASSED: 'bg-blue-100 text-blue-800 border-blue-200',
-  RESERVE: 'bg-purple-100 text-purple-800 border-purple-200',
-  CONFIRMED: 'bg-green-100 text-green-800 border-green-200',
-  REJECTED: 'bg-red-100 text-red-800 border-red-200',
+/* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
+   appears only as a small status dot (AGENTS §4.1 master tokens). */
+const STATUS_DOT: Record<ApplicationStatus, string> = {
+  PENDING: '#B45309',
+  PASSED: '#1A5FE0',
+  RESERVE: '#62666E',
+  CONFIRMED: '#029E00',
+  REJECTED: '#C62828',
 };
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -29,9 +33,60 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   REJECTED: 'ไม่ผ่าน',
 };
 
+const INK = '#121316';
+const INK_2 = '#4A4D55';
+const INK_3 = '#62666E';
+const RULE = 'rgba(18,19,22,0.14)';
+const INPUT_BORDER = '#8A8D93';
+
+/* The admin JWT lives in sessionStorage: it survives a refresh but not closing the tab, so it is
+   gone from shared camp-office computers once the browser closes (8h expiry server-side). */
+const TOKEN_KEY = 'comcamp-admin-token';
+const tokenStore = {
+  get: (): string | null => {
+    try {
+      return sessionStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (t: string) => {
+    try {
+      sessionStorage.setItem(TOKEN_KEY, t);
+    } catch {
+      /* storage blocked: the session lasts until refresh */
+    }
+  },
+  clear: () => {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY); // older builds kept it in localStorage
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+/** Shared focus treatment: blue-600 ring on every interactive element (AGENTS §11.3). */
+const FOCUS =
+  'outline-none focus-visible:ring-2 focus-visible:ring-[#1A5FE0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F9F8F4]';
+
+function StatusMark({ status }: { status: ApplicationStatus }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[status] }}>
+        ●
+      </span>
+      <span className="text-sm leading-7" style={{ color: INK }}>
+        {STATUS_LABELS[status]}
+      </span>
+    </span>
+  );
+}
+
 export function AdminSection() {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('strong_password');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [token, setToken] = useState<string | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
@@ -41,10 +96,24 @@ export function AdminSection() {
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // Slip modal state
+  // Slip review state (an inline panel under the row, not a modal)
   const [inspectingApp, setInspectingApp] = useState<Application | null>(null);
   const [verificationNote, setVerificationNote] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [slipImage, setSlipImage] = useState<{ url: string | null; error: string | null }>({ url: null, error: null });
+
+  /** Expired or deactivated session: drop the token and show the login form again. */
+  function handleAuthError(err: unknown): boolean {
+    if (err instanceof ApiHttpError && err.status === 401) {
+      tokenStore.clear();
+      setToken(null);
+      setApps([]);
+      setInspectingApp(null);
+      setError('เซสชันหมดอายุหรือบัญชีถูกระงับ กรุณาเข้าสู่ระบบอีกครั้ง');
+      return true;
+    }
+    return false;
+  }
 
   async function refresh(t: string) {
     setBusy(true);
@@ -54,6 +123,7 @@ export function AdminSection() {
       setSource(res.source);
       setError(null);
     } catch (err) {
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : 'โหลดรายการใบสมัครไม่สำเร็จ');
     } finally {
       setBusy(false);
@@ -67,6 +137,7 @@ export function AdminSection() {
     setActionSuccess(null);
     try {
       const res = await adminLogin(username, password);
+      setPassword('');
       setToken(res.data.token);
       setSource(res.source);
       await refresh(res.data.token);
@@ -86,8 +157,9 @@ export function AdminSection() {
       const res = await updateApplicationStatus(token, id, status);
       setApps((prev) => prev.map((a) => (a.id === id ? res.data : a)));
       setSource(res.source);
-      setActionSuccess(`เปลี่ยนสถานะของ ${id} เป็น ${status} สำเร็จ`);
+      setActionSuccess(`เปลี่ยนสถานะของ ${id} เป็น ${STATUS_LABELS[status]} สำเร็จ`);
     } catch (err) {
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : 'เปลี่ยนสถานะไม่สำเร็จ');
     } finally {
       setPatching(null);
@@ -114,14 +186,32 @@ export function AdminSection() {
       setInspectingApp(null);
       setVerificationNote('');
     } catch (err) {
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : 'การตรวจสอบสลิปล้มเหลว');
     } finally {
       setVerifying(false);
     }
   }
 
+  function openSlip(a: Application) {
+    setInspectingApp((cur) => (cur?.id === a.id ? null : a));
+    setVerificationNote('');
+  }
+
+  function logout() {
+    setToken(null);
+    setApps([]);
+    setInspectingApp(null);
+    tokenStore.clear();
+  }
+
   useEffect(() => {
-    const saved = localStorage.getItem('comcamp-admin-token');
+    try {
+      localStorage.removeItem(TOKEN_KEY); // migrate away from the old persistent token
+    } catch {
+      /* ignore */
+    }
+    const saved = tokenStore.get();
     if (saved) {
       setToken(saved);
       refresh(saved);
@@ -129,361 +219,422 @@ export function AdminSection() {
   }, []);
 
   useEffect(() => {
-    if (token) localStorage.setItem('comcamp-admin-token', token);
+    if (token) tokenStore.set(token);
   }, [token]);
 
-  const filtered = filter === 'ALL' ? apps : apps.filter((a) => a.status === filter);
+  /* Slips are served only to an authenticated admin, so fetch the image with the token and show
+     it from an object URL (revoked when the panel closes). */
+  useEffect(() => {
+    if (!token || !inspectingApp) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setSlipImage({ url: null, error: null });
+    fetchAdminSlip(token, inspectingApp.id)
+      .then((url) => {
+        if (cancelled) return URL.revokeObjectURL(url);
+        objectUrl = url;
+        setSlipImage({ url, error: null });
+      })
+      .catch((err) => {
+        if (cancelled || handleAuthError(err)) return;
+        setSlipImage({ url: null, error: err instanceof Error ? err.message : 'โหลดรูปสลิปไม่สำเร็จ' });
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [token, inspectingApp?.id]);
 
-  const inputCls =
-    'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100';
+  /* Escape closes the open slip panel. */
+  useEffect(() => {
+    if (!inspectingApp) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInspectingApp(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inspectingApp]);
+
+  /* Newest first, ties broken by id, so the order is stable across refreshes whatever the API returns. */
+  const sorted = [...apps].sort(
+    (x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? '') || x.id.localeCompare(y.id),
+  );
+  const filtered = filter === 'ALL' ? sorted : sorted.filter((a) => a.status === filter);
+  const count = (s: ApplicationStatus) => apps.filter((a) => a.status === s).length;
+  const withSlip = apps.filter((a) => hasSlip(a)).length;
+
+  const inputCls = `w-full rounded-xl border bg-white px-3.5 py-3 text-base leading-6 transition-colors ${FOCUS}`;
+  const pillGhost = `rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[#F2F0E8] disabled:opacity-50 ${FOCUS}`;
+
+  const tabs: { key: string; label: string; n: number }[] = [
+    { key: 'ALL', label: 'ทั้งหมด', n: apps.length },
+    ...STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s], n: count(s) })),
+  ];
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6" style={{ fontFamily: 'Kanit, sans-serif' }}>
-      <header className="mb-8 text-center">
-        <p className="text-sm font-semibold tracking-widest text-blue-700 uppercase">ComCamp #25 · Admin Portal</p>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">ระบบจัดการใบสมัครและตรวจสอบสลิป</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          <code>POST /api/auth/login</code> · <code>GET /api/admin/applications</code> · <code>PATCH /api/admin/applications/:id/verify-slip</code>
-        </p>
+    <div className="mx-auto w-full max-w-5xl px-5 pb-24 pt-14 selection:bg-[#EAF1FF] sm:px-8 sm:pt-20">
+      {/* ── Masthead ─────────────────────────────────────────── */}
+      <header>
+        <h1
+          className="text-balance text-[2.25rem] font-bold leading-[1.22] sm:text-[3.25rem]"
+          style={{ color: INK }}
+        >
+          {token ? 'ใบสมัครและสลิป' : 'สำหรับพี่ค่าย'}
+        </h1>
+        {token ? (
+          <p className="mt-4 max-w-[60ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
+            ผู้สมัคร <span className="font-mono tabular-nums" style={{ color: INK }}>{apps.length}</span> คน
+            {' · '}รอพิจารณา <span className="font-mono tabular-nums" style={{ color: INK }}>{count('PENDING')}</span>
+            {' · '}ยืนยันสิทธิ์แล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{count('CONFIRMED')}</span>
+            {' · '}แนบสลิปแล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{withSlip}</span>
+          </p>
+        ) : (
+          <p className="mt-4 max-w-[46ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
+            เข้าสู่ระบบเพื่อตรวจรายชื่อใบสมัคร เปลี่ยนสถานะ และอนุมัติหลักฐานการชำระเงิน
+          </p>
+        )}
       </header>
 
+      {/* ── Notices: one ruled line, announced to assistive tech ── */}
       {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-xs text-red-500 hover:text-red-800">ปิด</button>
+        <div
+          role="alert"
+          className="mt-8 flex items-baseline justify-between gap-4 border-y py-3"
+          style={{ borderColor: RULE }}
+        >
+          <p className="text-sm leading-7" style={{ color: '#C62828' }}>
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-sm underline underline-offset-4 ${FOCUS}`}
+            style={{ color: INK_2 }}
+          >
+            ปิด
+          </button>
         </div>
       )}
 
       {actionSuccess && (
-        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-center justify-between">
-          <span>✓ {actionSuccess}</span>
-          <button type="button" onClick={() => setActionSuccess(null)} className="text-xs text-green-600 hover:text-green-900">ปิด</button>
+        <div
+          role="status"
+          className="mt-8 flex items-baseline justify-between gap-4 border-y py-3"
+          style={{ borderColor: RULE }}
+        >
+          <p className="text-sm leading-7" style={{ color: INK }}>
+            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: STATUS_DOT.CONFIRMED }}>
+              ●
+            </span>
+            {actionSuccess}
+          </p>
+          <button
+            type="button"
+            onClick={() => setActionSuccess(null)}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-sm underline underline-offset-4 ${FOCUS}`}
+            style={{ color: INK_2 }}
+          >
+            ปิด
+          </button>
         </div>
       )}
 
       {!token ? (
-        <form onSubmit={onLogin} className="mx-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-4">
-            <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="admin-user">ชื่อผู้ใช้ (Username)</label>
-            <input
-              id="admin-user"
-              className={inputCls}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin"
-              required
-            />
-          </div>
-          <div className="mb-5">
-            <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="admin-pass">รหัสผ่าน (Password)</label>
-            <input
-              id="admin-pass"
-              className={inputCls}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="strong_password หรือ admin123"
-              required
-            />
-            <p className="mt-1.5 text-xs text-gray-500">
-              ค่าเริ่มต้น Go Backend: บัญชี <code>admin</code> รหัสผ่าน <code>strong_password</code> หรือ <code>admin123</code>
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-base font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
-          >
-            {busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบผู้ดูแล'}
-          </button>
-        </form>
+        /* ── Login: a single quiet column ─────────────────────── */
+        <section className="mt-14 max-w-sm">
+          <form onSubmit={onLogin} aria-busy={busy}>
+            <div>
+              <label className="mb-2 block text-sm font-semibold" style={{ color: INK }} htmlFor="admin-user">
+                ชื่อผู้ใช้
+              </label>
+              <input
+                id="admin-user"
+                className={inputCls}
+                style={{ borderColor: INPUT_BORDER, color: INK }}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="mt-6">
+              <label className="mb-2 block text-sm font-semibold" style={{ color: INK }} htmlFor="admin-pass">
+                รหัสผ่าน
+              </label>
+              <input
+                id="admin-pass"
+                className={inputCls}
+                style={{ borderColor: INPUT_BORDER, color: INK }}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={busy}
+              className={`mt-10 w-full rounded-full px-5 py-3.5 text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+              style={{ backgroundColor: INK, color: '#F9F8F4' }}
+            >
+              {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+            </button>
+          </form>
+
+          <p className="mt-10 border-t pt-4 text-sm leading-[1.75]" style={{ borderColor: RULE, color: INK_3 }}>
+            เซสชันอยู่ได้ไม่เกิน 8 ชั่วโมงและสิ้นสุดเมื่อปิดแท็บ ทุกการเปลี่ยนสถานะและการเปิดดูสลิปถูกบันทึกพร้อมบัญชีผู้ใช้และ IP
+          </p>
+        </section>
       ) : (
-        <section>
-          {/* Action Toolbar */}
-          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-gray-600">
-                สถานะการเชื่อมต่อ:
-              </span>
-              {source && (
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${source === 'LIVE GO API' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                  {source}
-                </span>
-              )}
-              {busy && <span className="text-xs text-gray-400">กำลังโหลด...</span>}
+        /* ── Ledger ───────────────────────────────────────────── */
+        <section className="mt-12" aria-busy={busy}>
+          {/* Filter as text tabs; refresh / sign out as quiet pills */}
+          <div className="flex flex-col gap-4 border-b pb-3 md:flex-row md:items-end md:justify-between" style={{ borderColor: INK }}>
+            <div role="group" aria-label="กรองตามสถานะ" className="-mx-1 flex gap-x-6 gap-y-1 overflow-x-auto px-1 pb-1">
+              {tabs.map((t) => {
+                const active = filter === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setFilter(t.key)}
+                    className={`shrink-0 whitespace-nowrap rounded-none border-b-2 py-1 text-sm transition-colors ${FOCUS}`}
+                    style={{
+                      color: active ? INK : INK_3,
+                      fontWeight: active ? 600 : 400,
+                      borderColor: active ? INK : 'transparent',
+                    }}
+                  >
+                    {t.label}{' '}
+                    <span className="font-mono text-xs tabular-nums">{t.n}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
-              >
-                <option value="ALL">สถานะ: ทั้งหมด ({apps.length})</option>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    สถานะ: {STATUS_LABELS[s]} ({apps.filter((a) => a.status === s).length})
-                  </option>
-                ))}
-              </select>
-
+            <div className="flex shrink-0 items-center gap-2">
+              {busy && (
+                <span className="mr-1 text-xs" style={{ color: INK_3 }}>
+                  กำลังโหลด…
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => token && refresh(token)}
-                className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm transition-colors"
+                disabled={busy}
+                className={pillGhost}
+                style={{ borderColor: RULE, color: INK }}
               >
                 รีเฟรช
               </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setToken(null);
-                  setApps([]);
-                  localStorage.removeItem('comcamp-admin-token');
-                }}
-                className="rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-700 hover:bg-red-50 shadow-sm transition-colors"
-              >
+              <button type="button" onClick={logout} className={pillGhost} style={{ borderColor: RULE, color: INK_2 }}>
                 ออกจากระบบ
               </button>
             </div>
           </div>
 
-          <p className="mb-3 text-sm text-gray-500">
-            แสดง {filtered.length} จาก {apps.length} รายการ
-          </p>
-
-          {/* Desktop Table View */}
-          <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1020px] text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3.5">ID</th>
-                    <th className="px-4 py-3.5">ชื่อ-นามสกุล</th>
-                    <th className="px-4 py-3.5">การติดต่อ</th>
-                    <th className="px-4 py-3.5">โรงเรียน / ชั้น</th>
-                    <th className="px-4 py-3.5">สถานะ</th>
-                    <th className="px-4 py-3.5">หลักฐานสลิป</th>
-                    <th className="px-4 py-3.5">จัดการสถานะ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filtered.map((a) => {
-                    const slip = getSlipUrl(a);
-                    return (
-                      <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-700">{a.id}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          {a.fullName}
-                          <div className="text-xs text-gray-400 font-normal">ชื่อเล่น: {a.nickname || '-'}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">
-                          <div>{a.phone}</div>
-                          <div className="text-gray-400">{a.email || '-'}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">
-                          <div>{a.school}</div>
-                          <div className="text-gray-400">{a.grade} · ไซส์ {a.shirtSize}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[a.status]}`}>
-                            {a.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {slip ? (
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setInspectingApp(a);
-                                  setVerificationNote('');
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 shadow-xs transition-colors"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                                ตรวจสอบสลิป
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">ไม่มีสลิป</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {STATUSES.map((s) => (
-                              <button
-                                key={s}
-                                type="button"
-                                disabled={patching === a.id || s === a.status}
-                                onClick={() => onStatus(a.id, s)}
-                                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                                  s === a.status
-                                    ? 'bg-gray-800 text-white font-semibold'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                } disabled:opacity-40`}
-                              >
-                                {s}
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="grid gap-4 md:hidden">
+          {/* Rows */}
+          <ul>
             {filtered.map((a) => {
-              const slip = getSlipUrl(a);
+              const slip = hasSlip(a);
+              const open = inspectingApp?.id === a.id;
               return (
-                <article key={a.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-2 border-b border-gray-100 pb-3">
-                    <div>
-                      <p className="font-semibold text-gray-900">{a.fullName}</p>
-                      <p className="font-mono text-xs text-gray-400">{a.id} (ชื่อเล่น: {a.nickname || '-'})</p>
+                <li key={a.id} className="border-b" style={{ borderColor: RULE }}>
+                  <div className="grid gap-x-8 gap-y-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.2fr)_13.5rem] md:items-start">
+                    {/* Who */}
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
+                        {a.id}
+                      </p>
+                      <p className="mt-1 text-base font-semibold leading-7" style={{ color: INK }}>
+                        {a.fullName}
+                        {a.nickname ? (
+                          <span className="font-normal" style={{ color: INK_3 }}>
+                            {' '}({a.nickname})
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                        <span className="font-mono tabular-nums">{a.phone}</span>
+                        {a.email ? <span style={{ color: INK_3 }}> · {a.email}</span> : null}
+                      </p>
                     </div>
-                    <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[a.status]}`}>
-                      {a.status}
-                    </span>
+
+                    {/* Where */}
+                    <div className="min-w-0 text-sm leading-7" style={{ color: INK_2 }}>
+                      <p>{a.school}</p>
+                      <p style={{ color: INK_3 }}>
+                        {a.grade}
+                        {a.province ? ` · ${a.province}` : ''} · ไซส์ {a.shirtSize}
+                      </p>
+                    </div>
+
+                    {/* State + actions */}
+                    <div className="flex flex-col items-start gap-2">
+                      <label className="relative inline-flex items-center gap-2">
+                        <span className="sr-only">เปลี่ยนสถานะของ {a.id}</span>
+                        <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
+                          ●
+                        </span>
+                        <select
+                          value={a.status}
+                          disabled={patching === a.id}
+                          onChange={(e) => onStatus(a.id, e.target.value as ApplicationStatus)}
+                          className={`cursor-pointer appearance-none rounded-sm border-b bg-transparent py-0.5 pr-6 text-sm leading-7 disabled:opacity-50 ${FOCUS}`}
+                          style={{ borderColor: RULE, color: INK }}
+                        >
+                          {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {STATUS_LABELS[s]}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          aria-hidden="true"
+                          strokeWidth={1.5}
+                          size={16}
+                          className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2"
+                          style={{ color: INK_3 }}
+                        />
+                      </label>
+
+                      {slip ? (
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => openSlip(a)}
+                          className={`rounded-sm py-0.5 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                          style={{ color: '#1A5FE0' }}
+                        >
+                          {open ? 'ซ่อนสลิป' : 'ตรวจสอบสลิป'}
+                        </button>
+                      ) : (
+                        <span className="text-sm leading-7" style={{ color: INK_3 }}>
+                          ยังไม่มีสลิป
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="mt-3 text-xs text-gray-600 space-y-1">
-                    <p><span className="text-gray-400">โทร:</span> {a.phone}</p>
-                    <p><span className="text-gray-400">โรงเรียน:</span> {a.school} ({a.grade})</p>
-                  </div>
+                  {/* Slip review: expands under its own row */}
+                  {open && (
+                    <div
+                      className="grid gap-8 border-t py-6 md:grid-cols-[minmax(0,20rem)_1fr]"
+                      style={{ borderColor: RULE }}
+                      role="region"
+                      aria-label={`ตรวจสอบหลักฐานการชำระเงิน ${a.id}`}
+                    >
+                      <div>
+                        <div className="flex min-h-48 items-center justify-center" style={{ backgroundColor: '#F2F0E8' }}>
+                          {slipImage.url ? (
+                            <img src={slipImage.url} alt={`สลิปโอนเงินของ ${a.id}`} className="max-h-96 w-full object-contain" />
+                          ) : (
+                            <p
+                              className="px-4 py-10 text-center text-sm leading-7"
+                              role={slipImage.error ? 'alert' : undefined}
+                              style={{ color: slipImage.error ? '#C62828' : INK_3 }}
+                            >
+                              {slipImage.error ?? 'กำลังโหลดรูปสลิป…'}
+                            </p>
+                          )}
+                        </div>
+                        {slipImage.url && (
+                          <a
+                            href={slipImage.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`mt-2 inline-block rounded-sm text-sm underline underline-offset-4 ${FOCUS}`}
+                            style={{ color: '#1A5FE0' }}
+                          >
+                            เปิดรูปขนาดเต็ม
+                          </a>
+                        )}
+                      </div>
 
-                  {slip && (
-                    <div className="mt-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInspectingApp(a);
-                          setVerificationNote('');
-                        }}
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        ดูสลิปและดำเนินการตรวจสอบ
-                      </button>
+                      <div className="flex min-w-0 flex-col">
+                        <h2 className="text-lg font-bold leading-[1.35]" style={{ color: INK }}>
+                          หลักฐานการชำระเงิน
+                        </h2>
+                        <p className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
+                          อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นผ่านการคัดเลือกเพื่อให้ส่งสลิปใหม่
+                        </p>
+
+                        <label className="mb-2 mt-6 block text-sm font-semibold" style={{ color: INK }} htmlFor="verify-note">
+                          หมายเหตุเจ้าหน้าที่
+                        </label>
+                        <input
+                          id="verify-note"
+                          className={inputCls}
+                          style={{ borderColor: INPUT_BORDER, color: INK }}
+                          placeholder="เช่น ยอดเงินถูกต้องครบถ้วน"
+                          value={verificationNote}
+                          onChange={(e) => setVerificationNote(e.target.value)}
+                        />
+
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={verifying}
+                            onClick={() => handleVerifySlip(true)}
+                            className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                            style={{ backgroundColor: INK, color: '#F9F8F4' }}
+                          >
+                            {verifying ? 'กำลังบันทึก…' : 'อนุมัติสลิป'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={verifying}
+                            onClick={() => handleVerifySlip(false)}
+                            className={`rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[#F2F0E8] disabled:opacity-50 ${FOCUS}`}
+                            style={{ borderColor: '#C62828', color: '#C62828' }}
+                          >
+                            ปฏิเสธสลิป
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInspectingApp(null)}
+                            className={`rounded-full px-3 py-2.5 text-sm underline underline-offset-4 ${FOCUS}`}
+                            style={{ color: INK_2 }}
+                          >
+                            ปิด
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
-
-                  <div className="mt-3 border-t border-gray-100 pt-3 flex flex-wrap gap-1">
-                    {STATUSES.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={patching === a.id || s === a.status}
-                        onClick={() => onStatus(a.id, s)}
-                        className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                          s === a.status
-                            ? 'bg-gray-800 text-white font-semibold'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        } disabled:opacity-40`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </article>
+                </li>
               );
             })}
-          </div>
+          </ul>
 
-          {filtered.length === 0 && (
-            <p className="mt-8 text-center text-sm text-gray-400">ไม่พบใบสมัครที่ตรงกับเงื่อนไขการค้นหา</p>
+          {/* Loading skeleton (first load only) */}
+          {busy && apps.length === 0 && (
+            <div aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="border-b py-5" style={{ borderColor: RULE }}>
+                  <div className="h-3 w-24 animate-pulse rounded-sm motion-reduce:animate-none" style={{ backgroundColor: '#F2F0E8' }} />
+                  <div className="mt-3 h-4 w-56 animate-pulse rounded-sm motion-reduce:animate-none" style={{ backgroundColor: '#F2F0E8' }} />
+                </div>
+              ))}
+            </div>
           )}
 
-          {/* Slip Inspection & Verification Modal */}
-          {inspectingApp && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-              <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-start justify-between border-b border-gray-100 pb-3">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">ตรวจสอบหลักฐานการชำระเงิน</h3>
-                    <p className="text-xs text-gray-500 font-mono">
-                      {inspectingApp.id} · {inspectingApp.fullName}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setInspectingApp(null)}
-                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+          {!busy && filtered.length === 0 && (
+            <p className="py-16 text-base leading-[1.75]" style={{ color: INK_3 }}>
+              {apps.length === 0
+                ? 'ยังไม่มีใบสมัครเข้ามา เมื่อมีผู้สมัครรายชื่อจะแสดงที่นี่'
+                : 'ไม่มีใบสมัครในสถานะนี้'}
+            </p>
+          )}
 
-                <div className="mt-4">
-                  <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-2">
-                    <img
-                      src={getSlipImageUrl(getSlipUrl(inspectingApp))}
-                      alt="สลิปโอนเงิน"
-                      className="max-h-72 w-full object-contain mx-auto rounded"
-                    />
-                  </div>
-                  <div className="mt-2 text-right">
-                    <a
-                      href={getSlipImageUrl(getSlipUrl(inspectingApp))}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-1"
-                    >
-                      เปิดดูรูปภาพสลิปขนาดเต็ม &rarr;
-                    </a>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-1" htmlFor="verify-note">
-                    หมายเหตุเจ้าหน้าที่ (ส่งไปกับ Verify Request)
-                  </label>
-                  <input
-                    id="verify-note"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100"
-                    placeholder="เช่น ยอดเงิน 300 บาท ถูกต้องครบถ้วน หรือ สลิปไม่ชัดเจน"
-                    value={verificationNote}
-                    onChange={(e) => setVerificationNote(e.target.value)}
-                  />
-                </div>
-
-                <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:justify-end">
-                  <button
-                    type="button"
-                    disabled={verifying}
-                    onClick={() => handleVerifySlip(false)}
-                    className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                  >
-                    {verifying ? 'กำลังบันทึก...' : 'ปฏิเสธสลิป (Reject Slip)'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={verifying}
-                    onClick={() => handleVerifySlip(true)}
-                    className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 shadow-sm disabled:opacity-50 transition-colors"
-                  >
-                    {verifying ? 'กำลังบันทึก...' : 'อนุมัติสลิป (Approve Slip)'}
-                  </button>
-                </div>
-                <p className="mt-3 text-center text-xs text-gray-400">
-                  Endpoint: <code>PATCH /api/admin/applications/{inspectingApp.id}/verify-slip</code>
-                </p>
-              </div>
-            </div>
+          {source && (
+            <p className="mt-8 text-xs" style={{ color: INK_3 }}>
+              แหล่งข้อมูล <span className="font-mono tabular-nums">{source}</span>
+            </p>
           )}
         </section>
       )}

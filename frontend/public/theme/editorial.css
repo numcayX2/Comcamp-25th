@@ -1,0 +1,507 @@
+/* ==========================================================================
+   ComCamp #25 — Editorial Minimalism (HomePage sections 02–06 + footer)
+   Loaded after styles.css / page.css. Gallery (#gallery, .mt*) is untouched.
+
+   Principles
+   - Structure: every section is a 12-col spread. Left = sticky index + title,
+     right = content. Hairline rules instead of cards, shadows or fills.
+   - Type: Thai sans for reading, IBM Plex Mono only for indexes / specs.
+   - Colour: ink on canvas. Blue is reserved for the active step + link hover.
+   ========================================================================== */
+
+.ed-sec,
+.ed-footer {
+  --ed-gap: clamp(32px, 6vw, 112px);
+  --ed-pad: clamp(72px, 10vw, 144px);
+  --ed-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.ed-sec {
+  padding: var(--ed-pad) 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+}
+
+.ed-sec > .wrap,
+.ed-footer > .wrap {
+  width: min(1240px, calc(100% - 48px));
+}
+
+/* ---------- Shared index label  "03 ── ข้อมูลก่อนสมัคร" ---------- */
+.ed-index {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 clamp(18px, 2.2vw, 28px);
+  font-family: var(--font-thai);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.ed-index__no {
+  font-family: var(--ed-mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+/* English-only fragments keep the mono spec voice (never Thai) */
+.ed-en {
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ed-index__label::before {
+  content: "";
+  display: inline-block;
+  width: 28px;
+  height: 1px;
+  margin-right: 14px;
+  vertical-align: middle;
+  background: var(--rule-strong);
+}
+
+/* ---------- Spread layout ---------- */
+.ed-sec > .wrap:not(.exp),
+#experience .exp {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(36px, 5vw, 56px);
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .ed-sec > .wrap:not(.exp),
+  #experience .exp {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    column-gap: var(--ed-gap);
+  }
+  .ed-sec .section-head,
+  #experience .exp-intro {
+    position: sticky;
+    top: calc(var(--nav-h) + 32px);
+  }
+}
+
+/* ---------- Titles + lead ---------- */
+.ed-sec .section-head {
+  margin: 0;
+}
+.ed-sec .section-title,
+#experience .exp-title {
+  max-width: 14ch;
+  font-size: clamp(1.9rem, 2.6vw + 0.9rem, 3.1rem);
+  line-height: 1.22;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-wrap: balance;
+  color: var(--ink);
+}
+.ed-sec .section-head .body,
+#experience .exp-lead {
+  max-width: 34ch;
+  margin-top: clamp(16px, 2vw, 24px);
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--ink-2);
+}
+
+/* ---------- 02 Experience: align with the spread ---------- */
+#experience {
+  padding: var(--ed-pad) 0;
+}
+#experience .exp-list {
+  border-top: 1px solid var(--ink);
+}
+#experience .exp-item {
+  grid-template-columns: 56px minmax(0, 1fr);
+  padding: clamp(24px, 3vw, 36px) 0;
+}
+#experience .exp-item:last-child {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: clamp(24px, 3vw, 36px);
+}
+#experience .exp-item-title {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ---------- 03 Essentials: ruled spec sheet (no cards) ---------- */
+.ed-sec .bento {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--ink);
+}
+@media (min-width: 640px) {
+  .ed-sec .bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: clamp(28px, 4vw, 56px);
+  }
+}
+.ed-sec .bento .card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(22px, 2.6vw, 30px) 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--rule) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--ink);
+}
+.ed-sec .bento .bento-icon {
+  display: none;
+}
+.ed-sec .bento .card-top {
+  display: block;
+}
+.ed-sec .bento .bento-tag {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.ed-sec .bento .card h3 {
+  margin: 0 !important;
+  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.3rem);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink) !important;
+}
+.ed-sec .bento .card p {
+  max-width: 40ch;
+  color: var(--ink-2) !important;
+}
+/* Seats: big mono figure, same ink — no inverted block */
+.ed-sec .bento .bento-feature {
+  grid-column: auto;
+}
+.ed-sec .bento .bento-feature .bento-tag {
+  color: var(--ink-3);
+}
+.ed-sec .bento .bento-big {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: var(--ed-mono);
+  font-size: clamp(3.5rem, 8vw, 6.5rem);
+  font-weight: 500;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+.ed-sec .bento .bento-big small {
+  margin: 0;
+  font-family: var(--font-thai);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.ed-sec .bento .todo,
+.ed-sec .tm-tile .todo {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  font-family: var(--font-thai);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--amber);
+}
+.ed-sec .tm-tile .todo::before,
+.ed-sec .bento .todo::before {
+  content: "— ";
+}
+
+/* ---------- 04 Journey: hairline rail, square markers ---------- */
+.ed-sec .journey {
+  --jx: 12px;
+  border-top: 1px solid var(--ink);
+}
+.ed-sec .journey-rail {
+  left: calc(var(--jx) - 0.5px);
+  top: 44px;
+  bottom: 44px;
+  width: 1px;
+  border-radius: 0;
+  background: var(--rule-strong);
+}
+.ed-sec .journey-rail::after {
+  background: var(--ink);
+  border-radius: 0;
+}
+.ed-sec .step {
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 0 clamp(18px, 3vw, 40px);
+  padding: clamp(26px, 3vw, 36px) 0;
+  border-bottom: 1px solid var(--rule) !important;
+}
+.ed-sec .step:last-child {
+  border-bottom: 0 !important;
+}
+.ed-sec .step-marker {
+  padding-top: 6px;
+}
+.ed-sec .step-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 0;
+  border: 1px solid var(--ink-3);
+  background: var(--canvas-0);
+}
+.ed-sec .step-dot::after {
+  display: none;
+}
+.ed-sec .step.is-active .step-dot {
+  background: var(--blue-600);
+  border-color: var(--blue-600);
+  transform: none;
+  box-shadow: none;
+}
+.ed-sec .step.is-done .step-dot {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.ed-sec .step-num {
+  margin-bottom: 8px;
+  letter-spacing: 0.08em;
+}
+.ed-sec .step h3 {
+  margin: 0 0 6px;
+  font-size: clamp(1.15rem, 0.9vw + 0.95rem, 1.4rem);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.ed-sec .step .day {
+  padding: 0;
+  margin: 0 0 12px;
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ed-sec .step p {
+  max-width: 54ch;
+}
+
+/* ---------- 05 Timeline & care: ruled table ---------- */
+.ed-sec .tm-bento {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(24px, 4vw, 56px);
+  border-top: 1px solid var(--ink);
+}
+.ed-sec .tm-tile {
+  grid-column: span 2;
+  gap: 8px;
+  padding: clamp(20px, 2.4vw, 28px) 0;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--rule) !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+@media (min-width: 640px) {
+  .ed-sec .tm-tile--01,
+  .ed-sec .tm-tile--04 { grid-column: span 2; }
+  .ed-sec .tm-tile--02,
+  .ed-sec .tm-tile--03,
+  .ed-sec .tm-tile--care-a,
+  .ed-sec .tm-tile--care-b,
+  .ed-sec .tm-tile--care-c,
+  .ed-sec .tm-tile--care-d { grid-column: span 1; }
+}
+.ed-sec .tm-num {
+  font-family: var(--font-thai);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.ed-sec .tm-num .font-mono { font-family: var(--ed-mono); letter-spacing: 0.04em; }
+.ed-sec .tm-tile h3 {
+  margin: 0;
+  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.3rem);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+.ed-sec .tm-tile p {
+  max-width: 44ch;
+  color: var(--ink-2);
+}
+.ed-sec .tm-tile .tm-figure {
+  font-size: clamp(2.25rem, 4.5vw, 3.75rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+.ed-sec .tm-tile .tm-figure small {
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+/* Feature tile: same ink, larger — no inverted fill */
+html .ed-sec .tm-tile.tm-tile--feature {
+  background: transparent !important;
+  border-color: var(--rule) !important;
+}
+.ed-sec .tm-tile--01 .tm-figure,
+.ed-sec .tm-tile--01 .tm-figure * {
+  color: var(--ink);
+}
+.ed-sec .tm-tile--feature h3 {
+  font-size: clamp(1.4rem, 1.6vw + 0.9rem, 2rem);
+  line-height: 1.3;
+  color: var(--ink);
+}
+.ed-sec .tm-tile--feature .tm-num,
+.ed-sec .tm-tile--feature p {
+  color: var(--ink-2);
+}
+.ed-sec .tm-tile--feature .todo {
+  color: var(--amber);
+}
+.ed-sec .tm-tile a {
+  text-decoration-color: var(--ink-3);
+}
+
+/* ---------- 06 FAQ ---------- */
+.ed-sec .faq {
+  max-width: none;
+  margin: 0;
+  border-top: 1px solid var(--ink);
+}
+.ed-sec details.faq-item summary {
+  padding: clamp(20px, 2.4vw, 28px) 0;
+  font-size: clamp(1.05rem, 0.6vw + 0.95rem, 1.25rem);
+  font-weight: 500;
+  letter-spacing: 0;
+  transition: color 0.18s ease;
+}
+.ed-sec details.faq-item summary:hover {
+  color: var(--blue-600);
+}
+.ed-sec details.faq-item summary::after {
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+.ed-sec .faq-body {
+  max-width: 58ch;
+  padding-bottom: clamp(22px, 2.6vw, 32px);
+  font-size: 0.9375rem;
+}
+
+/* ---------- Footer / colophon ---------- */
+.ed-footer {
+  padding: clamp(56px, 8vw, 104px) 0 calc(32px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ink);
+}
+.ed-footer .footer-grid {
+  gap: clamp(28px, 4vw, 48px);
+}
+@media (min-width: 900px) {
+  .ed-footer .footer-grid {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    column-gap: var(--ed-gap);
+  }
+}
+.ed-footer .footer-title {
+  max-width: 24ch;
+  font-size: clamp(1.25rem, 1.2vw + 1rem, 1.75rem);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.ed-footer .footer-meta {
+  font-size: 0.875rem;
+  color: var(--ink-3);
+}
+@media (min-width: 900px) {
+  .ed-footer .footer-grid > div:last-child {
+    padding-top: calc(0.75rem * 1.4 + clamp(18px, 2.2vw, 28px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ed-sec details.faq-item summary { transition: none; }
+}
+
+/* ==========================================================================
+   Motion layer (driven by initEditorialMotion() in main.js)
+   ========================================================================== */
+
+/* Top rules draw in via --rule-p (0 → 1). Defaults to 1 so no-JS / reduced motion is fully drawn. */
+#experience .exp-list,
+.ed-sec .bento,
+.ed-sec .journey,
+.ed-sec .tm-bento,
+.ed-sec .faq {
+  --rule-p: 1;
+  border-top: 0 !important;
+  background: linear-gradient(var(--ink), var(--ink)) 0 0 / calc(var(--rule-p) * 100%) 1px no-repeat;
+}
+
+/* Fee numeral (was inline style) */
+.ed-sec .fee-num { font-weight: 600; font-size: 1.125rem; color: var(--ink); }
+
+/* Big-figure parallax rides the individual `translate` property via --py so it
+   never fights the reveal tween's transform / clearProps. */
+.ed-sec .bento-big,
+.ed-sec .tm-figure { translate: 0 calc(var(--py, 0) * 1px); }
+
+/* Dark theme: lighter amber/blue so small text clears AA (scoped; hero/gallery untouched) */
+html.dark .ed-sec,
+html.dark .ed-footer,
+html[data-theme="dark"] .ed-sec,
+html[data-theme="dark"] .ed-footer {
+  --amber: #F5A524;
+  --blue-600: #7FA8FF;
+}
+
+/* Page progress hairline */
+.ed-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 120;
+  pointer-events: none;
+  background: #fff;
+  mix-blend-mode: difference;
+}
+
+/* Active step nudges forward */
+.ed-sec .step h3,
+.ed-sec .step .step-num {
+  transition: transform 0.5s var(--ease-out), color 0.3s ease;
+}
+.ed-sec .step.is-active h3,
+.ed-sec .step.is-active .step-num {
+  transform: translateX(10px);
+}
+.ed-sec .step.is-active .step-num {
+  color: var(--ink);
+}
+
+/* Experience rows: number brightens + title slides on hover */
+#experience .exp-item-title {
+  transition: transform 0.4s var(--ease-out);
+}
+#experience .exp-item:hover .exp-item-title {
+  transform: translateX(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ed-progress { display: none; }
+  .ed-sec .step h3,
+  .ed-sec .step .step-num,
+  #experience .exp-item-title { transition: none; transform: none !important; }
+}

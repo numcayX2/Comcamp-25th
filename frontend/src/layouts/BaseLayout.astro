@@ -1,15 +1,26 @@
----
+﻿---
 import { ClientRouter } from 'astro:transitions';
+import '../styles/fonts.css';
 import '../styles/global.css';
+import BackToTop from '../components/BackToTop.astro';
 
 interface Props {
   title?: string;
   description?: string;
+  /** The floating back-to-top button collides with pages that own a sticky bottom bar (e.g. /register). */
+  backToTop?: boolean;
+  /** Extra class on <body> for pages that need to override the shared body defaults. */
+  bodyClass?: string;
+  /** Browser UI colour on mobile; match whatever sits at the top edge of the page. */
+  themeColor?: string;
 }
 
 const {
   title = 'ComCamp #25 // ค่ายวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้',
   description = 'เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (16 พ.ย. 2026)',
+  backToTop = true,
+  bodyClass,
+  themeColor = '#F9F8F4',
 } = Astro.props;
 ---
 
@@ -18,7 +29,7 @@ const {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#FFFFFC" />
+    <meta name="theme-color" content={themeColor} />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -26,37 +37,35 @@ const {
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Momo+Trust+Display&family=Kanit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
-      rel="stylesheet"
-    />
     
-    {/* Anti-FOUC instant inline background style */}
-    <style is:inline>
-      html, body {
-        background-color: #FFFFFC;
-        margin: 0;
-        padding: 0;
-      }
-      html.dark, html.dark body,
-      html[data-theme="dark"], html[data-theme="dark"] body {
-        background-color: #06070A;
-      }
-    </style>
-
-    {/* Theme persistence & anti-flash script */}
+    {/* Anti-FOUC instant inline theme detection & background style */}
     <script is:inline>
       (function() {
-        const savedTheme = localStorage.getItem('comcamp-theme');
-        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark');
-          document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
+        try {
+          var stored = localStorage.getItem('comcamp-theme');
+          var isDark = stored ? stored === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
+          }
+        } catch (e) {}
+
+        document.addEventListener('astro:after-swap', function() {
+          try {
+            var s = localStorage.getItem('comcamp-theme');
+            var d = s ? s === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (d) {
+              document.documentElement.classList.add('dark');
+              document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+              document.documentElement.setAttribute('data-theme', 'light');
+            }
+          } catch (e) {}
+        });
       })();
 
       // Unregister any stale legacy service workers on port 4321
@@ -75,9 +84,24 @@ const {
         });
       }
     </script>
+    <style is:inline>
+      html, body {
+        margin: 0;
+        padding: 0;
+      }
+      html:not(.dark), html:not(.dark) body {
+        background-color: #F9F8F4;
+        color: #121316;
+      }
+      html.dark, html.dark body {
+        background-color: #111316;
+        color: #F5F4EF;
+      }
+    </style>
     <ClientRouter />
   </head>
-  <body class="min-h-dvh w-full overflow-x-clip overflow-y-auto bg-[var(--bg-canvas)] text-[var(--color-ink)] transition-colors duration-500 relative select-none scroll-smooth">
+  <body class:list={['min-h-dvh w-full overflow-x-clip overflow-y-auto bg-[var(--bg-canvas)] text-[var(--color-ink)] relative select-none scroll-smooth', bodyClass]}>
     <slot />
+    {backToTop && <BackToTop />}
   </body>
 </html>

@@ -21,7 +21,7 @@ export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   isOpen: false,
   currentCount: 0,
   maxCapacity: 30,
-  campFee: 300,
+  campFee: 1000,
   isCertificateReleased: false,
 };
 
@@ -32,12 +32,12 @@ let isSynced: boolean = false;
  * Fetch public settings from backend API (/api/settings/public).
  * Smoothly falls back to realistic default specifications if backend is offline.
  */
-export async function fetchPublicSettings(): Promise<{ settings: PublicSettings; offsetMs: number }> {
+export async function fetchPublicSettings(): Promise<{ settings: PublicSettings; offsetMs: number; live: boolean }> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-    const response = await fetch('/api/settings/public', {
+    const response = await fetch(`${API_BASE}/settings/public`, {
       signal: controller.signal,
       headers: {
         'Accept': 'application/json',
@@ -58,7 +58,7 @@ export async function fetchPublicSettings(): Promise<{ settings: PublicSettings;
     cachedOffsetMs = offsetMs;
     isSynced = true;
 
-    return { settings: data, offsetMs };
+    return { settings: data, offsetMs, live: true };
   } catch (error) {
     // Graceful offline fallback
     const clientEpoch = Date.now();
@@ -69,7 +69,8 @@ export async function fetchPublicSettings(): Promise<{ settings: PublicSettings;
     cachedOffsetMs = 0;
     isSynced = true;
 
-    return { settings: fallbackSettings, offsetMs: 0 };
+    // `live: false` lets callers tell "server says closed" apart from "server unreachable".
+    return { settings: fallbackSettings, offsetMs: 0, live: false };
   }
 }
 
@@ -114,9 +115,15 @@ export interface ApplicationPayload {
   province?: string;
 }
 
+export type SlipStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 /**
- * Applicant record matching Go Backend DTO schema.
- * Supports both camelCase and snake_case keys gracefully.
+ * Applicant record matching the Go backend DTO.
+ *
+ * Public endpoints (status lookup, confirm, submit) return identifiers masked by the server
+ * (AGENTS.md §13.5): nationalId `1-5099-XXXXX-XX-X`, phone `XXX-XXX-5678`, email `s***@x.com`,
+ * and never a slip URL. Only /admin endpoints return full values and `slipUrl`, which is an
+ * authenticated API path — load it with fetchAdminSlip, not an <img src>.
  */
 export interface ApplicantRecord {
   id: string;
@@ -132,10 +139,9 @@ export interface ApplicantRecord {
   province?: string;
   status: ApplicationStatus;
   attendanceConfirmed: boolean;
+  hasSlip?: boolean;
+  slipStatus?: SlipStatus | null;
   slipUrl?: string | null;
-  slip_url?: string | null;
-  slipStatus?: string | null;
-  slip_status?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -144,8 +150,9 @@ export type Application = ApplicantRecord;
 
 export interface SlipUploadResult {
   id: string;
-  slipUrl: string;
   status: string;
+  hasSlip: boolean;
+  slipStatus: SlipStatus;
   message: string;
 }
 
@@ -167,31 +174,57 @@ export interface LoginResult {
   token: string;
 }
 
-/**
- * Helper to retrieve slip URL regardless of camelCase or snake_case keying.
- */
-export function getSlipUrl(app?: Partial<ApplicantRecord> | null): string | undefined {
-  if (!app) return undefined;
-  return (app.slipUrl || app.slip_url || undefined) as string | undefined;
+/* ── Input cleaning (AGENTS.md §9.2.2) ─────────────────────────────────────
+   IDs and phone numbers copied from a LINE / Facebook chat carry invisible characters
+   (U+200B–U+200D zero-width space/joiners, U+2060 word joiner, U+FEFF BOM) and are often written
+   with hyphens ("081-234-5678"). The Go backend strips the same characters; cleaning here as well
+   keeps the client-side validation and the payload in agreement. */
+
+const ZERO_WIDTH_RE = /[\u200B-\u200D\u2060\uFEFF]/g;
+
+/** Removes zero-width characters only. */
+export function stripZeroWidth(value: string): string {
+  return value.replace(ZERO_WIDTH_RE, '');
+}
+
+/** National ID / phone as the API expects them: digits only (drops zero-width chars, hyphens, spaces). */
+export function sanitizeDigits(value: string): string {
+  return value.replace(/\D/g, '');
 }
 
 /**
- * Resolves relative /uploads/slips/... paths against the backend origin (e.g. http://localhost:8000).
- * Strips any trailing '/api' from API_BASE to obtain the server host/origin.
+ * Status lookup query: an ID or phone written with hyphens/spaces becomes digits only; anything
+ * else is treated as an application ID (CC25-XXXXXX), whose own hyphen is kept.
  */
-export function getSlipImageUrl(slipUrl?: string | null): string {
-  if (!slipUrl) return '';
-  if (
-    slipUrl.startsWith('http://') ||
-    slipUrl.startsWith('https://') ||
-    slipUrl.startsWith('data:') ||
-    slipUrl.startsWith('blob:')
-  ) {
-    return slipUrl;
+export function normalizeLookupQuery(raw: string): string {
+  const q = stripZeroWidth(raw).trim();
+  const digits = q.replace(/[\s\-\u2010-\u2015\u2212]/g, '');
+  return /^\d+$/.test(digits) ? digits : q.toUpperCase();
+}
+
+/** Whether the applicant has uploaded a payment slip. */
+export function hasSlip(app?: Partial<ApplicantRecord> | null): boolean {
+  if (!app) return false;
+  return Boolean(app.hasSlip ?? app.slipUrl);
+}
+
+/** The server answered with a non-2xx status. Anything else thrown by fetchJson is a network/timeout failure. */
+export class ApiHttpError extends Error {
+  readonly status: number;
+  /** Machine-readable code from the backend, e.g. QUOTA_FULL, DUPLICATE_APPLICATION, RATE_LIMITED. */
+  readonly code?: string;
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+    this.code = code;
   }
-  const origin = API_BASE.replace(/\/api\/?$/, '');
-  const cleanPath = slipUrl.startsWith('/') ? slipUrl : `/${slipUrl}`;
-  return `${origin}${cleanPath}`;
+}
+
+async function toApiError(res: Response): Promise<ApiHttpError> {
+  const errData = await res.json().catch(() => null);
+  const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
+  return new ApiHttpError(res.status, errMsg, typeof errData?.code === 'string' ? errData.code : undefined);
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -207,11 +240,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
         ...(init.headers || {}),
       },
     });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => null);
-      const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-      throw new Error(errMsg);
-    }
+    if (!res.ok) throw await toApiError(res);
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   } finally {
@@ -219,12 +248,21 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
+/**
+ * Runs the live call; falls back to mock data only in `astro dev` and only when the server could
+ * not be reached at all. An HTTP error (401 wrong password, 409, 403 …) is always re-thrown:
+ * a mock answer there would, for example, tell staff a slip was approved when the server
+ * refused, or show a student a made-up status (AGENTS.md §8 "never guess the state").
+ */
 async function withFallback<T>(live: () => Promise<T>, mock: () => T): Promise<ApiResult<T>> {
   try {
     const data = await live();
     return { data, source: 'LIVE GO API' };
-  } catch {
-    return { data: mock(), source: 'MOCK FALLBACK' };
+  } catch (err) {
+    if (import.meta.env.DEV && !(err instanceof ApiHttpError)) {
+      return { data: mock(), source: 'MOCK FALLBACK' };
+    }
+    throw err;
   }
 }
 
@@ -248,23 +286,45 @@ export function checkHealth(): Promise<ApiResult<HealthResponse>> {
   );
 }
 
-/** POST /applications */
-export function submitApplication(payload: ApplicationPayload): Promise<ApiResult<Application>> {
-  return withFallback(
-    () =>
-      fetchJson<Application>('/applications', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-    () => ({
-      id: mockId(),
-      ...payload,
-      status: 'PENDING' as ApplicationStatus,
-      attendanceConfirmed: false,
-      slipUrl: null,
-      createdAt: new Date().toISOString(),
-    }),
-  );
+/**
+ * POST /applications
+ *
+ * `idempotencyKey` (a UUID kept in sessionStorage until a successful response) is sent as
+ * X-Idempotency-Key, so resending after a dropped connection, a timeout or a 5xx returns the
+ * application that was already saved instead of creating a duplicate (AGENTS.md §9.2.4 / §13.4).
+ * The server answers 201 the first time and 200 + Idempotent-Replayed for a replay.
+ *
+ * Unlike the other calls this never masks a real failure in production: a mock receipt would
+ * tell a student they applied when nothing was saved. The offline mock is a dev-only convenience
+ * and only kicks in when the server could not be reached at all — an HTTP error is always thrown.
+ */
+export async function submitApplication(
+  payload: ApplicationPayload,
+  idempotencyKey: string,
+): Promise<ApiResult<Application>> {
+  try {
+    const data = await fetchJson<Application>('/applications', {
+      method: 'POST',
+      headers: { 'X-Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload),
+    });
+    return { data, source: 'LIVE GO API' };
+  } catch (err) {
+    if (import.meta.env.DEV && !(err instanceof ApiHttpError)) {
+      return {
+        data: {
+          id: mockId(),
+          ...payload,
+          status: 'PENDING' as ApplicationStatus,
+          attendanceConfirmed: false,
+          hasSlip: false,
+          createdAt: new Date().toISOString(),
+        },
+        source: 'MOCK FALLBACK',
+      };
+    }
+    throw err;
+  }
 }
 
 /** GET /applications/status?q=... */
@@ -276,45 +336,48 @@ export function getApplicationStatus(query: string): Promise<ApiResult<Applicati
       id: query.toUpperCase().startsWith('CC25') ? query.toUpperCase() : 'CC25-MOCK01',
       fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
       nickname: 'เกียรติ',
-      nationalId: query || '1509900112233',
-      phone: '0819876543',
-      email: 'somkiat@school.ac.th',
+      nationalId: '1-5099-XXXXX-XX-X',
+      phone: 'XXX-XXX-6543',
+      email: 's***@school.ac.th',
       school: 'โรงเรียนแม่โจ้วิทยาคม',
       grade: 'ม.5',
       shirtSize: 'XL',
-      motivation: 'อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard',
       province: 'เชียงใหม่',
       status: 'PASSED' as ApplicationStatus,
       attendanceConfirmed: false,
-      slipUrl: null,
+      hasSlip: false,
       createdAt: new Date().toISOString(),
     }),
   );
 }
 
-/** POST /applications/:id/confirm — body { confirmed: boolean } */
-export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiResult<Application>> {
+/**
+ * POST /applications/:id/confirm — body { confirmed, verifyCode }.
+ * `verifyCode` is the last 4 digits of the applicant's national ID (AGENTS.md §13.5): the server
+ * answers 403 INVALID_VERIFY_CODE when it does not match, so knowing an application ID alone is
+ * not enough to act on someone else's application.
+ */
+export function confirmAttendance(id: string, confirmed: boolean, verifyCode: string): Promise<ApiResult<Application>> {
   return withFallback(
     () =>
       fetchJson<Application>(`/applications/${encodeURIComponent(id)}/confirm`, {
         method: 'POST',
-        body: JSON.stringify({ confirmed }),
+        body: JSON.stringify({ confirmed, verifyCode }),
       }),
     () => ({
       id,
       fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
       nickname: 'เกียรติ',
-      nationalId: '1509900112233',
-      phone: '0819876543',
-      email: 'somkiat@school.ac.th',
+      nationalId: '1-5099-XXXXX-XX-X',
+      phone: 'XXX-XXX-6543',
+      email: 's***@school.ac.th',
       school: 'โรงเรียนแม่โจ้วิทยาคม',
       grade: 'ม.5',
       shirtSize: 'XL',
-      motivation: 'อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard',
       province: 'เชียงใหม่',
       status: (confirmed ? 'CONFIRMED' : 'PASSED') as ApplicationStatus,
       attendanceConfirmed: confirmed,
-      slipUrl: null,
+      hasSlip: false,
       createdAt: new Date().toISOString(),
     }),
   );
@@ -322,13 +385,17 @@ export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiRe
 
 /**
  * POST /applications/:id/slip
- * Uploads a payment slip image file (multipart/form-data with key 'slip').
+ * Uploads a payment slip image (multipart/form-data: 'verifyCode' + 'slip'). The server checks the
+ * magic bytes, caps the image at 4096×4096 px (400 INVALID_IMAGE_DIMENSIONS) and requires
+ * `verifyCode`, the last 4 digits of the applicant's national ID (403 INVALID_VERIFY_CODE).
  */
 export function uploadPaymentSlip(
   id: string,
   file: File,
+  verifyCode: string,
 ): Promise<ApiResult<SlipUploadResult>> {
   const formData = new FormData();
+  formData.append('verifyCode', verifyCode);
   formData.append('slip', file);
 
   return withFallback(
@@ -344,28 +411,19 @@ export function uploadPaymentSlip(
             Accept: 'application/json',
           },
         });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => null);
-          const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-          throw new Error(errMsg);
-        }
+        if (!res.ok) throw await toApiError(res);
         return (await res.json()) as SlipUploadResult;
       } finally {
         clearTimeout(timeoutId);
       }
     },
-    () => {
-      const mockBlobUrl =
-        typeof URL !== 'undefined' && URL.createObjectURL
-          ? URL.createObjectURL(file)
-          : '/uploads/slips/mock_slip.jpg';
-      return {
-        id,
-        slipUrl: mockBlobUrl,
-        status: 'PASSED',
-        message: 'อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่ (Mock Mode)',
-      };
-    },
+    () => ({
+      id,
+      status: 'PASSED',
+      hasSlip: true,
+      slipStatus: 'PENDING' as SlipStatus,
+      message: 'อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่ (Mock Mode)',
+    }),
   );
 }
 
@@ -404,7 +462,9 @@ export function listApplications(
         province: 'เชียงใหม่',
         status: 'PASSED' as ApplicationStatus,
         attendanceConfirmed: true,
-        slipUrl: '/uploads/slips/demo_slip_1.jpg',
+        hasSlip: true,
+        slipStatus: 'PENDING' as SlipStatus,
+        slipUrl: '/api/admin/applications/CC25-9A8B1C/slip',
         createdAt: new Date(Date.now() - 86400000).toISOString(),
       },
       {
@@ -421,7 +481,9 @@ export function listApplications(
         province: 'เชียงใหม่',
         status: 'CONFIRMED' as ApplicationStatus,
         attendanceConfirmed: true,
-        slipUrl: '/uploads/slips/demo_slip_2.jpg',
+        hasSlip: true,
+        slipStatus: 'APPROVED' as SlipStatus,
+        slipUrl: '/api/admin/applications/CC25-4D5E6F/slip',
         createdAt: new Date(Date.now() - 172800000).toISOString(),
       },
       {
@@ -438,7 +500,7 @@ export function listApplications(
         province: 'เชียงใหม่',
         status: 'PENDING' as ApplicationStatus,
         attendanceConfirmed: false,
-        slipUrl: null,
+        hasSlip: false,
         createdAt: new Date(Date.now() - 259200000).toISOString(),
       },
     ],
@@ -473,7 +535,7 @@ export function updateApplicationStatus(
       province: 'เชียงใหม่',
       status,
       attendanceConfirmed: status === 'CONFIRMED',
-      slipUrl: null,
+      hasSlip: false,
       createdAt: new Date().toISOString(),
     }),
   );
@@ -506,4 +568,24 @@ export function verifyPaymentSlip(
         : 'ปฏิเสธสลิปสำเร็จ (Mock Mode)',
     }),
   );
+}
+
+/**
+ * GET /admin/applications/:id/slip — the slip image is only served to an authenticated admin
+ * (AGENTS.md §13.3/§13.5), so it cannot be an <img src>. Returns an object URL for the image;
+ * the caller must URL.revokeObjectURL it when done.
+ */
+export async function fetchAdminSlip(token: string, id: string): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(`${API_BASE}/admin/applications/${encodeURIComponent(id)}/slip`, {
+      headers: authHeader(token),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw await toApiError(res);
+    return URL.createObjectURL(await res.blob());
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
