@@ -47,6 +47,7 @@ import { Receipt } from './register/Receipt';
 import {
   clearDraft,
   clearIdempotencyKey,
+  clearReceipt,
   loadDraft,
   loadIdempotencyKey,
   loadReceipt,
@@ -100,16 +101,27 @@ function describeSubmitError(err: unknown): string {
       case 'RATE_LIMITED':
         return 'มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอสักครู่แล้วกดส่งอีกครั้ง';
       case 'QUOTA_FULL':
-        return 'ที่นั่งเต็มจำนวนแล้ว ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
+        return 'ที่นั่งเต็มจำนวนแล้ว (30 ที่นั่ง) ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
       case 'SERVICE_UNAVAILABLE':
         // 503: the midnight queue timed out or settings were unreachable. Nothing was saved.
         return 'มีผู้สมัครพร้อมกันจำนวนมาก ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+      case 'VALIDATION_ERROR':
+        if (err.message.includes('national ID') || err.message.includes('check digit')) {
+          return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
+        }
+        if (err.message.includes('phone')) {
+          return 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
+        }
+        if (err.message.includes('shirt')) {
+          return 'ขนาดเสื้อไม่ถูกต้อง กรุณาเลือกไซส์ใหม่อีกครั้ง';
+        }
+        return 'ข้อมูลที่กรอกไม่ผ่านการตรวจสอบ กรุณาตรวจทานข้อมูลในแต่ละขั้นตอนแล้วลองส่งอีกครั้ง';
     }
     if (err.status === 403) return 'ระบบปิดรับใบสมัครในขณะนี้ ใบสมัครยังไม่ถูกบันทึก';
     if (err.status >= 400 && err.status < 500)
-      return `ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจข้อมูลแล้วส่งอีกครั้ง (${err.message})`;
+      return 'ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจทานข้อมูลแล้วลองส่งใหม่อีกครั้ง';
   }
-  return 'ส่งใบสมัครไม่สำเร็จเพราะการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+  return 'ส่งใบสมัครไม่สำเร็จเนื่องจากการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กรุณากดส่งอีกครั้ง ระบบจะไม่บันทึกใบสมัครซ้ำ';
 }
 
 const ICON = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const;
@@ -269,6 +281,10 @@ export function RegisterSection() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [typing, setTyping] = useState(false);
   const [live, setLive] = useState('');
+  /** Success notice after a self-service withdrawal. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const noticeFocus = useRef(false);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const submittingRef = useRef(false);
@@ -468,6 +484,7 @@ export function RegisterSection() {
       clearIdempotencyKey();
       idemKeyRef.current = '';
       clearDraft();
+      setNotice(null);
       saveReceipt(app.id, src);
       pending.current = { heading: true };
       setAppId(app.id);
@@ -546,6 +563,37 @@ export function RegisterSection() {
     setStep(0);
   }
 
+  /** The applicant withdrew from the receipt: the seat is free, so start over with a clean form. */
+  function onWithdrawn(id: string) {
+    clearReceipt();
+    clearIdempotencyKey();
+    idemKeyRef.current = '';
+    clearDraft();
+    setForm(EMPTY_FORM);
+    setConsent(false);
+    setErrors({});
+    setError(null);
+    setFurthest(0);
+    setReturnTo(null);
+    setRestoredAt(null);
+    setConfirmClear(false);
+    setAppId(null);
+    setSource(null);
+    setStep(0);
+    noticeFocus.current = true;
+    setNotice(`ยกเลิกใบสมัคร ${id} เรียบร้อยแล้ว คืนโควตาที่นั่งแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`);
+    window.scrollTo({ top: 0 });
+    checkGate(); // the freed seat may reopen a full camp
+  }
+
+  /* The receipt (and the focused button) is gone: move focus to the notice that replaced it, once
+     the gate re-check has settled (the notice re-mounts when the view switches to the form). */
+  useEffect(() => {
+    if (!notice || !noticeFocus.current || gate === 'checking') return;
+    noticeFocus.current = false;
+    noticeRef.current?.focus({ preventScroll: true });
+  }, [notice, gate]);
+
   /* Phones: while the keyboard is up, let the top bar scroll away so the field keeps the room. */
   function onFormFocus(ev: FocusEvent<HTMLFormElement>) {
     if (isTextEntry(ev.target)) setTyping(true);
@@ -583,6 +631,8 @@ export function RegisterSection() {
 
   /* ───────────────────────── Step bodies ───────────────────────── */
 
+  const formIsEmpty = JSON.stringify(form) === JSON.stringify(EMPTY_FORM);
+
   function renderStep(): ReactNode {
     switch (step) {
       case 0:
@@ -604,6 +654,11 @@ export function RegisterSection() {
             ) : (
               <>
                 <p className="rw-draft__text">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6.5" />
+                    <path d="M8 4.5V8l2.2 1.4" />
+                  </svg>
+                  <span>
                   {restoredAt ? (
                     <>
                       กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.)
@@ -612,10 +667,13 @@ export function RegisterSection() {
                   ) : (
                     'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้ในเครื่องนี้ 24 ชั่วโมง ยกเว้นเลขบัตรประชาชน'
                   )}
+                  </span>
                 </p>
-                <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setConfirmClear(true)}>
-                  ล้างข้อมูลร่าง
-                </button>
+                {!formIsEmpty && (
+                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--quiet" onClick={() => setConfirmClear(true)}>
+                    ล้างข้อมูลร่าง
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -645,7 +703,8 @@ export function RegisterSection() {
             <TextField
               id="nationalId"
               label="เลขบัตรประชาชน"
-              hint={<><span className="font-mono">13</span> หลัก</>}
+              hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
+              groups={[1, 4, 5, 2, 1]}
               span={3}
               mono
               digits={13}
@@ -655,12 +714,13 @@ export function RegisterSection() {
               error={errors.nationalId}
               onChange={(v) => set('nationalId', v)}
               onBlur={() => blur('nationalId')}
-              placeholder="0000000000000"
+              placeholder="X-XXXX-XXXXX-XX-X"
             />
             <TextField
               id="phone"
               label="เบอร์โทรศัพท์มือถือ"
-              hint={<><span className="font-mono">10</span> หลัก</>}
+              hint={<span className={form.phone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.phone.length}/10</span> หลัก</span>}
+              groups={[3, 3, 4]}
               span={3}
               mono
               digits={10}
@@ -671,7 +731,7 @@ export function RegisterSection() {
               error={errors.phone}
               onChange={(v) => set('phone', v)}
               onBlur={() => blur('phone')}
-              placeholder="0800000000"
+              placeholder="08X-XXX-XXXX"
             />
             <TextField
               id="email"
@@ -936,6 +996,18 @@ export function RegisterSection() {
     </div>
   );
 
+  const noticeBanner = notice && (
+    <div ref={noticeRef} className="rw-banner rw-banner--ok" role="status" tabIndex={-1}>
+      <p>
+        <Check {...ICON} />
+        <span>{notice}</span>
+      </p>
+      <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setNotice(null)}>
+        ปิด
+      </button>
+    </div>
+  );
+
   return (
     <div className={`rw${typing ? ' is-typing' : ''}`}>
       <p className="sr-only" role="status" aria-live="polite">
@@ -1005,6 +1077,7 @@ export function RegisterSection() {
         >
           <div className="rw-content" id="rw-content" tabIndex={-1}>
             {devBar}
+            {noticeBanner}
             {errorBanner}
             <div className="rw-step-view" key={step}>
               <StepHeader no={stepNo + 1} title={STEPS[stepNo].title} lead={STEPS[stepNo].lead} headingRef={headingRef} />
@@ -1036,9 +1109,10 @@ export function RegisterSection() {
         <div className="rw-main">
           <div className="rw-content" id="rw-content" tabIndex={-1}>
             {devBar}
+            {noticeBanner}
             {errorBanner}
             {appId ? (
-              <Receipt appId={appId} source={source} showSource={isDev} headingRef={headingRef} />
+              <Receipt appId={appId} source={source} showSource={isDev} headingRef={headingRef} onWithdrawn={onWithdrawn} />
             ) : gate === 'checking' ? (
               <p className="rw-checking" role="status">
                 กำลังตรวจสอบสถานะการรับสมัคร…

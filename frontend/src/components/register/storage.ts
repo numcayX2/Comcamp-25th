@@ -137,6 +137,15 @@ export function loadReceipt(): { id: string; source: ApiSource } | null {
   }
 }
 
+/** After the applicant withdraws: the receipt no longer describes a live application. */
+export function clearReceipt(): void {
+  try {
+    sessionStorage.removeItem(RECEIPT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function saveReceipt(id: string, source: ApiSource): void {
   try {
     sessionStorage.setItem(RECEIPT_KEY, JSON.stringify({ id, source }));
