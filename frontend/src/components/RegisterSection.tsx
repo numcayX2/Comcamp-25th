@@ -24,6 +24,9 @@ import {
   EMPTY_FORM,
   FEE_TEXT,
   GRADES,
+  GRADE_OTHER,
+  GRADE_OTHER_MAX,
+  gradeValue,
   LAST_FORM_STEP,
   MOCK_FORM,
   RECEIPT_META,
@@ -504,7 +507,7 @@ export function RegisterSection() {
         email: form.email.trim(),
         school: form.school.trim(),
         province: form.province.trim(),
-        grade: form.grade,
+        grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
         motivation: form.motivation.trim(),
       };
@@ -794,8 +797,22 @@ export function RegisterSection() {
                   </option>
                 ))}
               </select>
+                <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
             </FieldShell>
           </div>
+            {form.grade === GRADE_OTHER && (
+              <TextField
+                id="gradeOther"
+                label="ระบุระดับชั้น"
+                hint={<span className="font-mono">{form.gradeOther.trim().length}/{GRADE_OTHER_MAX}</span>}
+                span={6}
+                value={form.gradeOther}
+                error={errors.gradeOther}
+                onChange={(v) => set('gradeOther', v)}
+                onBlur={() => blur('gradeOther')}
+                placeholder="เช่น ปวส.1, ม.3, กำลังรอเข้าเรียน"
+              />
+            )}
         );
 
       case 2:
@@ -903,7 +920,7 @@ export function RegisterSection() {
                 rows={[
                   ['สถานศึกษา', form.school.trim()],
                   ['จังหวัด', form.province.trim()],
-                  ['ระดับชั้น', form.grade],
+                  ['ระดับชั้น', gradeValue(form)],
                 ]}
               />
               <ReviewGroup

@@ -28,6 +28,7 @@ const DRAFT_FIELDS = [
   'school',
   'province',
   'grade',
+  'gradeOther',
   'shirtSize',
 ] as const satisfies readonly (keyof FormState)[];
 

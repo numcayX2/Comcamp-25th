@@ -9,6 +9,9 @@ export const FEE_TEXT = '1,000';
 export const FB_URL = 'https://www.facebook.com/CCCSMJU';
 
 export const GRADES = ['ม.4', 'ม.5', 'ม.6', 'ปวช.1', 'ปวช.2', 'ปวช.3'] as const;
+/** Select value for "other"; the applicant then types their own level, which is what gets submitted. */
+export const GRADE_OTHER = 'อื่นๆ';
+export const GRADE_OTHER_MAX = 20; // grade column is VARCHAR(20)
 export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 
 /**
@@ -30,7 +33,13 @@ export const SIZE_CHEST: Record<ShirtSize, number | null> = {
 export interface FormState extends Omit<ApplicationPayload, 'shirtSize' | 'province'> {
   shirtSize: ShirtSize | '';
   province: string;
+  /** Free-text level, used only while `grade` is GRADE_OTHER. */
+  gradeOther: string;
 }
+
+/** The grade string the API receives. */
+export const gradeValue = (f: Pick<FormState, 'grade' | 'gradeOther'>) =>
+  f.grade === GRADE_OTHER ? f.gradeOther.trim() : f.grade;
 
 export const EMPTY_FORM: FormState = {
   fullName: '',
@@ -41,6 +50,7 @@ export const EMPTY_FORM: FormState = {
   school: '',
   province: '',
   grade: '',
+  gradeOther: '',
   shirtSize: '',
   motivation: '',
 };
@@ -54,6 +64,7 @@ export const MOCK_FORM: FormState = {
   school: 'โรงเรียนเชียงใหม่วิทยาคม',
   province: 'เชียงใหม่',
   grade: 'ม.5',
+  gradeOther: '',
   shirtSize: 'L',
   motivation: 'สนใจการต่อวงจรเซนเซอร์และพัฒนา IoT Dashboard ผ่านบอร์ด ESP8266 ในค่าย ComCamp #25',
 };
@@ -81,7 +92,7 @@ export const STEPS: StepMeta[] = [
     label: 'ข้อมูลการศึกษา',
     title: 'ข้อมูลการศึกษา',
     lead: 'บอกเราว่าน้องเรียนอยู่ที่ไหนและอยู่ระดับชั้นใด',
-    fields: ['school', 'province', 'grade'],
+    fields: ['school', 'province', 'grade', 'gradeOther'],
   },
   {
     label: 'เสื้อค่าย',
@@ -150,7 +161,11 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     case 'province':
       return form.province.trim() ? undefined : 'กรุณากรอกจังหวัด';
     case 'grade':
-      return (GRADES as readonly string[]).includes(form.grade) ? undefined : 'กรุณาเลือกระดับชั้น';
+      return (GRADES as readonly string[]).includes(form.grade) || form.grade === GRADE_OTHER ? undefined : 'กรุณาเลือกระดับชั้น';
+    case 'gradeOther':
+      if (form.grade !== GRADE_OTHER) return undefined;
+      if (!form.gradeOther.trim()) return 'กรุณาระบุระดับชั้นของคุณ';
+      return form.gradeOther.trim().length > GRADE_OTHER_MAX ? `ระบุได้ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร` : undefined;
     case 'shirtSize':
       return form.shirtSize ? undefined : 'กรุณาเลือกไซส์เสื้อ';
     case 'consent':

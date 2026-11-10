@@ -37,7 +37,7 @@ var (
 	ErrInvalidPhone          = newValidationError("invalid phone number (must be 10 digits starting with 0)")
 	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose XS, S, M, L, XL, 2XL, 3XL)")
 	ErrInvalidEmail          = newValidationError("invalid email address")
-	ErrInvalidGrade          = newValidationError("invalid grade (choose ม.4–ม.6 or ปวช.1–ปวช.3)")
+	ErrInvalidGrade          = newValidationError("invalid grade (choose ม.4–ม.6 / ปวช.1–ปวช.3, or enter your own level, 2–20 characters)")
 	ErrRequiredFields        = newValidationError("required fields cannot be blank")
 	ErrInvalidStatus         = newValidationError("invalid status")
 	ErrInvalidIdempotencyKey = newValidationError("X-Idempotency-Key must be a UUID")
@@ -62,6 +62,24 @@ const (
 
 var allowedGrades = map[string]bool{
 	"ม.4": true, "ม.5": true, "ม.6": true, "ปวช.1": true, "ปวช.2": true, "ปวช.3": true,
+}
+
+// isValidGrade accepts the listed levels, or a short free-text level for applicants outside them
+// (the form's "อื่นๆ" option). The column is VARCHAR(20), so the text is capped at 20 characters.
+func isValidGrade(g string) bool {
+	if allowedGrades[g] {
+		return true
+	}
+	n := utf8.RuneCountInString(g)
+	if n < 2 || n > 20 || g == "อื่นๆ" {
+		return false
+	}
+	for _, r := range g {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }
 
 type ApplicationCreateRequest struct {
@@ -291,7 +309,7 @@ func validateRequest(req ApplicationCreateRequest) error {
 	if !isValidShirtSize(req.ShirtSize) {
 		return ErrInvalidShirtSize
 	}
-	if !allowedGrades[req.Grade] {
+	if !isValidGrade(req.Grade) {
 		return ErrInvalidGrade
 	}
 	if req.Email != "" {
