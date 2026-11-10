@@ -46,6 +46,7 @@ import {
   type FormState,
 } from './register/model';
 import { FieldShell, StepHeader, TextField } from './register/parts';
+import { SizeChips } from './register/SizeChips';
 import { Receipt } from './register/Receipt';
 import {
   clearDraft,
@@ -796,10 +797,9 @@ export function RegisterSection() {
                     {g}
                   </option>
                 ))}
-              </select>
                 <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
+              </select>
             </FieldShell>
-          </div>
             {form.grade === GRADE_OTHER && (
               <TextField
                 id="gradeOther"
@@ -813,6 +813,7 @@ export function RegisterSection() {
                 placeholder="เช่น ปวส.1, ม.3, กำลังรอเข้าเรียน"
               />
             )}
+          </div>
         );
 
       case 2:
@@ -823,25 +824,7 @@ export function RegisterSection() {
                 <legend className="rw-label">
                   <span>ไซส์เสื้อ</span>
                 </legend>
-                <div className="rw-chips">
-                  {SHIRT_SIZES.map((s, i) => {
-                    const id = i === 0 ? 'shirtSize' : `shirtSize-${s}`;
-                    return (
-                      <label key={s} className="rw-chip" htmlFor={id}>
-                        <input
-                          type="radio"
-                          id={id}
-                          name="shirtSize"
-                          value={s}
-                          checked={form.shirtSize === s}
-                          onChange={() => set('shirtSize', s)}
-                          aria-describedby={errors.shirtSize ? 'shirtSize-err' : undefined}
-                        />
-                        <span className="rw-chip__face font-mono">{s}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <SizeChips value={form.shirtSize} invalid={Boolean(errors.shirtSize)} onChange={(v) => set('shirtSize', v)} />
                 {errors.shirtSize && (
                   <p id="shirtSize-err" className="rw-err">
                     {errors.shirtSize}
