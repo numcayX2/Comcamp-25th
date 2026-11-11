@@ -1,0 +1,66 @@
+ComCamp CS MJU Source-Available License
+(Proprietary — Restricted to Authorized ComCamp Staff)
+
+Copyright (c) 2026 ComCamp #25 Development Team &
+Department of Computer Science, Faculty of Science, Maejo University (CS MJU).
+All Rights Reserved.
+
+================================================================================
+1. PUBLIC VIEWING (NON-OPEN-SOURCE)
+================================================================================
+This repository is made publicly visible for transparency and portfolio
+purposes. This is NOT an Open Source license. Making the source code visible
+does not grant any general public right to copy, reuse, deploy, or create
+derivative works, except as expressly stated below.
+
+================================================================================
+2. PERMITTED USE FOR FUTURE COMCAMP CS MJU STAFF
+================================================================================
+Official organizing staff, committee members, student developers, and faculty
+advisors of future editions of "ComCamp" (โครงการค่ายยุวชนคอมพิวเตอร์),
+hosted by the Department of Computer Science, Faculty of Science, Maejo
+University (CS MJU) — including ComCamp #26 and subsequent years — are hereby
+granted a free, non-exclusive, perpetual, royalty-free license to:
+
+  - Use this repository as a technical and design reference; and
+  - Copy, modify, adapt, build, and deploy this software (in whole or in part)
+    for organizing, promoting, and operating official ComCamp CS MJU events.
+
+Any modified or adapted versions created under this grant must retain this
+copyright notice and credit the ComCamp #25 Development Team (CS MJU).
+
+================================================================================
+3. RESTRICTIONS FOR NON-STAFF & THIRD PARTIES
+================================================================================
+All other individuals, external organizations, companies, and non-staff parties
+are strictly prohibited from copying, reproducing, modifying, redistributing,
+sublicensing, selling, hosting, or deploying this codebase (in whole or in part)
+for any commercial or non-commercial purpose without prior written permission
+from the copyright holders.
+
+================================================================================
+4. THIRD-PARTY LIBRARIES & ASSETS
+================================================================================
+Third-party packages (e.g., Astro, React, Tailwind CSS, GSAP, Three.js,
+Lucide Icons, Fontsource, Go modules) remain governed by their own respective
+licenses.
+
+================================================================================
+5. DISCLAIMER OF WARRANTY
+================================================================================
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+--------------------------------------------------------------------------------
+สรุปสาระสำคัญ (ภาษาไทย — เพื่อความเข้าใจตรงกัน)
+--------------------------------------------------------------------------------
+1. ทีมงานและคณะผู้จัดค่าย ComCamp รุ่นถัดไป (เช่น ComCamp #26 เป็นต้นไป) ของ
+   สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (CS MJU)
+   สามารถนำโค้ดและเอกสารในโปรเจกต์นี้ไปใช้อ้างอิง คัดลอก ดัดแปลง และติดตั้งใช้งาน
+   สำหรับจัดค่าย ComCamp ของสาขาได้ฟรีอย่างเต็มที่ โดยยังคงเครดิตทีมพัฒนาเดิมไว้
+2. บุคคลภายนอกหรือผู้ที่ไม่ใช่ทีมงานจัดค่าย ComCamp (CS MJU) ไม่อนุญาตให้นำโค้ด
+   ไปคัดลอก ทำซ้ำ ดัดแปลง เผยแพร่ต่อ หรือนำไปใช้งานในโครงการอื่นโดยไม่ได้รับ
+   อนุญาตเป็นลายลักษณ์อักษรจากเจ้าของลิขสิทธิ์
