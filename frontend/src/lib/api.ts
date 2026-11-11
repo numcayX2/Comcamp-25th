@@ -98,7 +98,24 @@ export interface ApiResult<T> {
   source: ApiSource;
 }
 
-export type ApplicationStatus = 'PENDING' | 'PASSED' | 'RESERVE' | 'CONFIRMED' | 'REJECTED';
+/**
+ * First come, first served: a new application starts as PASSED (the seat is theirs at once).
+ * REJECTED, REFUND_PENDING and REFUNDED release the seat (they are not counted in the quota) but
+ * stay in the staff ledger for accounting.
+ */
+export type ApplicationStatus =
+  | 'PENDING'
+  | 'PASSED'
+  | 'RESERVE'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'REFUND_PENDING'
+  | 'REFUNDED';
+
+/** Statuses that hold a seat. Mirrors the backend ApplicationStatus.IsActive. */
+export function holdsSeat(status: ApplicationStatus): boolean {
+  return status === 'PENDING' || status === 'PASSED' || status === 'RESERVE' || status === 'CONFIRMED';
+}
 
 export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL';
 
@@ -315,7 +332,7 @@ export async function submitApplication(
         data: {
           id: mockId(),
           ...payload,
-          status: 'PENDING' as ApplicationStatus,
+          status: 'PASSED' as ApplicationStatus,
           attendanceConfirmed: false,
           hasSlip: false,
           createdAt: new Date().toISOString(),
@@ -352,16 +369,11 @@ export function getApplicationStatus(query: string): Promise<ApiResult<Applicati
 }
 
 /**
- * POST /applications/:id/confirm — body { confirmed, verifyCode }.
- * `verifyCode` is the last 4 digits of the applicant's national ID (AGENTS.md §13.5): the server
- * answers 403 INVALID_VERIFY_CODE when it does not match, so knowing an application ID alone is
- * not enough to act on someone else's application.
- */
-/**
  * POST /api/applications/:id/withdraw — the applicant cancels their own application. Needs the
  * last 4 digits of the national ID. The server soft-deletes the row, which frees the seat and
- * lets the same person register again. 403 INVALID_VERIFY_CODE for a wrong code, 409 once the
- * place is confirmed (only staff can remove it then), 404 if it is already gone.
+ * lets the same person register again. 403 INVALID_VERIFY_CODE for a wrong code, 409 when the
+ * application cannot be cancelled online (CONFIRMED, a slip already sent or approved, or already
+ * REJECTED / REFUND_PENDING / REFUNDED: staff handle the refund), 404 if it is already gone.
  */
 export async function withdrawApplication(
   id: string,
@@ -375,6 +387,12 @@ export async function withdrawApplication(
   return { data, source: 'LIVE GO API' };
 }
 
+/**
+ * POST /applications/:id/confirm — body { confirmed, verifyCode }.
+ * `verifyCode` is the last 4 digits of the applicant's national ID (AGENTS.md §13.5): the server
+ * answers 403 INVALID_VERIFY_CODE when it does not match, so knowing an application ID alone is
+ * not enough to act on someone else's application.
+ */
 export function confirmAttendance(id: string, confirmed: boolean, verifyCode: string): Promise<ApiResult<Application>> {
   return withFallback(
     () =>
@@ -443,6 +461,66 @@ export function uploadPaymentSlip(
       message: 'อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่ (Mock Mode)',
     }),
   );
+}
+
+/** The fields an applicant may edit themselves from /status. Identity fields are staff-only. */
+export interface SelfProfilePayload {
+  nickname: string;
+  school: string;
+  province: string;
+  grade: string;
+  shirtSize: ShirtSize;
+}
+
+/**
+ * PATCH /applications/:id/profile — the applicant's own edit of nickname, school, province, grade
+ * and shirt size. Needs the last 4 digits of the national ID (403 INVALID_VERIFY_CODE). 409 when
+ * the application is REJECTED / REFUND_PENDING / REFUNDED, 400 for invalid values. Like every
+ * mutation, a failure is thrown, never answered with mock data. The answer is the masked record.
+ */
+export async function updateOwnProfile(
+  id: string,
+  verifyCode: string,
+  payload: SelfProfilePayload,
+): Promise<ApiResult<Application>> {
+  const data = await fetchJson<Application>(`/applications/${encodeURIComponent(id)}/profile`, {
+    method: 'PATCH',
+    body: JSON.stringify({ verifyCode, ...payload }),
+  });
+  return { data, source: 'LIVE GO API' };
+}
+
+/** Staff edit: any field may be sent; fields left out keep their stored value. */
+export interface AdminProfilePayload {
+  fullName?: string;
+  nickname?: string;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  school?: string;
+  province?: string;
+  grade?: string;
+  shirtSize?: ShirtSize;
+  motivation?: string;
+  reason?: string;
+}
+
+/**
+ * PATCH /admin/applications/:id/profile — full validation server-side (Mod-11 national ID, phone,
+ * email, shirt size, lengths). 409 DUPLICATE_APPLICATION when the national ID, phone or email
+ * belongs to another live applicant. Every change is written to audit_logs with old -> new values.
+ */
+export async function updateApplicantProfile(
+  token: string,
+  id: string,
+  payload: AdminProfilePayload,
+): Promise<ApiResult<Application>> {
+  const data = await fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}/profile`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify(payload),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /** POST /auth/login */
@@ -579,7 +657,7 @@ export function listApplications(
         shirtSize: 'L',
         motivation: 'อยากเริ่มต้นเรียนเขียนโปรแกรมภาษา Go และสร้าง Web App',
         province: 'เชียงใหม่',
-        status: 'PENDING' as ApplicationStatus,
+        status: 'PASSED' as ApplicationStatus,
         attendanceConfirmed: false,
         hasSlip: false,
         createdAt: new Date(Date.now() - 259200000).toISOString(),

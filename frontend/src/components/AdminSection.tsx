@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronDown, Download, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, Download, Pencil, Search, Trash2, X } from 'lucide-react';
 import {
   ApiHttpError,
   adminLogin,
   deleteApplication,
   fetchAdminSlip,
   hasSlip,
+  holdsSeat,
   listApplications,
   stripZeroWidth,
   updateApplicationStatus,
@@ -24,6 +25,7 @@ import {
   downloadCsv,
   matchesApplicantQuery,
 } from '../lib/applicant-tools';
+import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import {
   BTN_DARK,
@@ -43,7 +45,7 @@ import {
   WARNING,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PENDING', 'PASSED', 'RESERVE', 'CONFIRMED', 'REJECTED'];
+const STATUSES: ApplicationStatus[] = ['PENDING', 'PASSED', 'RESERVE', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
 
 /* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
    appears only as a small status dot (AGENTS §4.1 master tokens). */
@@ -53,6 +55,8 @@ const STATUS_DOT: Record<ApplicationStatus, string> = {
   RESERVE: INK_3,
   CONFIRMED: SUCCESS,
   REJECTED: DANGER,
+  REFUND_PENDING: WARNING,
+  REFUNDED: INK_3,
 };
 
 const SLIP_DOT: Record<SlipStatus, string> = {
@@ -173,8 +177,17 @@ function describeAdminError(err: unknown, fallback: string): string {
     if (err.status === 404 || err.code === 'NOT_FOUND') {
       return 'ไม่พบรายการใบสมัครนี้ในระบบ';
     }
-    if (err.status === 409 || err.code === 'QUOTA_FULL') {
-      return 'โควตาผู้สมัครเต็มแล้ว';
+    if (err.code === 'QUOTA_FULL') {
+      return 'ที่นั่งเต็มแล้ว จึงคืนใบสมัครนี้กลับเป็นสถานะที่ถือที่นั่งไม่ได้ ต้องมีที่นั่งว่างหรือเพิ่มโควตาก่อน (ใบสมัครยังคงสถานะเดิม)';
+    }
+    if (err.code === 'DUPLICATE_APPLICATION') {
+      return 'เลขบัตรประชาชน เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
+    }
+    if (err.code === 'ALREADY_VERIFIED') {
+      return 'สลิปนี้ถูกตรวจสอบไปแล้ว กรุณากดรีเฟรชรายการ';
+    }
+    if (err.status === 409) {
+      return 'สถานะของใบสมัครนี้ไม่อนุญาตให้ทำรายการนี้ (ใบสมัครที่รอคืนเงิน คืนเงินแล้ว หรือไม่ผ่านจะอนุมัติหรือปฏิเสธสลิปไม่ได้)';
     }
     if (err.code === 'VALIDATION_ERROR') {
       return 'ข้อมูลที่ส่งไม่ถูกต้องตามเงื่อนไข';
@@ -210,6 +223,8 @@ export function AdminSection() {
 
   // Slip review state (an inline panel under the row, not a modal)
   const [inspectingApp, setInspectingApp] = useState<Application | null>(null);
+  // Profile editor: an inline panel too. Only one panel (slip or editor) is open at a time.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [verificationNote, setVerificationNote] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [slipImage, setSlipImage] = useState<{ url: string | null; error: string | null }>({ url: null, error: null });
@@ -218,6 +233,7 @@ export function AdminSection() {
   // pending move to the ledger list after a delete (the deleted row's controls are gone).
   const prevSlipId = useRef<string | null>(null);
   const prevConfirmId = useRef<string | null>(null);
+  const prevEditId = useRef<string | null>(null);
   const focusListAfterDelete = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -228,6 +244,7 @@ export function AdminSection() {
       setToken(null);
       setApps([]);
       setInspectingApp(null);
+      setEditingId(null);
       setError('เซสชันหมดอายุหรือบัญชีถูกระงับ กรุณาเข้าสู่ระบบอีกครั้ง');
       return true;
     }
@@ -323,6 +340,7 @@ export function AdminSection() {
       setApps((prev) => prev.filter((a) => a.id !== id));
       focusListAfterDelete.current = true;
       if (inspectingApp?.id === id) setInspectingApp(null);
+      if (editingId === id) setEditingId(null);
       setConfirmDeleteId(null);
       setSource(res.source);
       setActionSuccess(`ลบใบสมัคร ${id} (${name}) สำเร็จ`);
@@ -335,14 +353,28 @@ export function AdminSection() {
   }
 
   function openSlip(a: Application) {
+    setEditingId(null);
     setInspectingApp((cur) => (cur?.id === a.id ? null : a));
     setVerificationNote('');
+  }
+
+  function toggleEdit(a: Application) {
+    setInspectingApp(null);
+    setConfirmDeleteId(null);
+    setEditingId((cur) => (cur === a.id ? null : a.id));
+  }
+
+  function onProfileSaved(updated: Application) {
+    setApps((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setActionSuccess(`บันทึกการแก้ไขข้อมูลของ ${updated.id} เรียบร้อยแล้ว`);
+    setEditingId(null);
   }
 
   function logout() {
     setToken(null);
     setApps([]);
     setInspectingApp(null);
+    setEditingId(null);
     setQuery('');
     tokenStore.clear();
   }
@@ -417,9 +449,13 @@ export function AdminSection() {
     if (prevConfirmId.current && !confirmDeleteId) {
       document.getElementById(`delete-btn-${prevConfirmId.current}`)?.focus();
     }
+    if (prevEditId.current && !editingId) {
+      document.getElementById(`edit-btn-${prevEditId.current}`)?.focus();
+    }
     prevSlipId.current = nowSlip;
     prevConfirmId.current = confirmDeleteId;
-  }, [inspectingApp, confirmDeleteId]);
+    prevEditId.current = editingId;
+  }, [inspectingApp, confirmDeleteId, editingId]);
 
   useEffect(() => {
     if (!focusListAfterDelete.current) return;
@@ -436,8 +472,10 @@ export function AdminSection() {
   const searching = stripZeroWidth(query).trim() !== '';
   const count = (s: ApplicationStatus) => apps.filter((a) => a.status === s).length;
   const withSlip = apps.filter((a) => hasSlip(a)).length;
-  /** Same rule the server uses for the seat quota: every applicant who has not been rejected. */
-  const currentCount = apps.filter((a) => a.status !== 'REJECTED').length;
+  /** Same rule the server uses for the seat quota: REJECTED, REFUND_PENDING and REFUNDED released theirs. */
+  const currentCount = apps.filter((a) => holdsSeat(a.status)).length;
+  /** First come, first served: a new application is PASSED and then waits for a slip or its review. */
+  const awaitingPayment = count('PASSED') + count('PENDING');
   const countLabel = searching
     ? `พบ ${visible.length} จาก ${byTab.length} รายการ`
     : `${byTab.length} รายการ`;
@@ -463,8 +501,9 @@ export function AdminSection() {
         {token ? (
           <p className="mt-4 max-w-[60ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
             ผู้สมัคร <span className="font-mono tabular-nums" style={{ color: INK }}>{apps.length}</span> คน
-            {' · '}รอพิจารณา <span className="font-mono tabular-nums" style={{ color: INK }}>{count('PENDING')}</span>
+            {' · '}รอชำระ/รอตรวจสลิป <span className="font-mono tabular-nums" style={{ color: INK }}>{awaitingPayment}</span>
             {' · '}ยืนยันสิทธิ์แล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{count('CONFIRMED')}</span>
+            {' · '}รอคืนเงิน <span className="font-mono tabular-nums" style={{ color: INK }}>{count('REFUND_PENDING')}</span>
             {' · '}แนบสลิปแล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{withSlip}</span>
           </p>
         ) : (
@@ -689,6 +728,9 @@ export function AdminSection() {
               {visible.map((a) => {
                 const slip = hasSlip(a);
                 const open = inspectingApp?.id === a.id;
+                const editing = editingId === a.id;
+                // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
+                const slipLocked = !holdsSeat(a.status);
                 return (
                   <li key={a.id} className="border-b" style={{ borderColor: RULE }}>
                     <div className="grid gap-x-8 gap-y-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.2fr)_13.5rem] md:items-start">
@@ -741,6 +783,17 @@ export function AdminSection() {
                               {open ? 'ซ่อนสลิป' : 'ตรวจสอบสลิป'}
                             </button>
                           )}
+                          <button
+                            id={`edit-btn-${a.id}`}
+                            type="button"
+                            aria-expanded={editing}
+                            onClick={() => toggleEdit(a)}
+                            className={`inline-flex items-center gap-1 rounded-sm py-0.5 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                            style={{ color: TECH }}
+                          >
+                            <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+                            {editing ? 'ซ่อนการแก้ไข' : 'แก้ไขข้อมูล'}
+                          </button>
                           {confirmDeleteId === a.id ? (
                             <div className="inline-flex items-center gap-1.5" role="group" aria-label={`ยืนยันการลบ ${a.id}`}>
                               <button
@@ -779,6 +832,17 @@ export function AdminSection() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Profile editor: expands under its own row */}
+                    {editing && token && (
+                      <AdminProfileEditor
+                        app={a}
+                        token={token}
+                        onSaved={onProfileSaved}
+                        onClose={() => setEditingId(null)}
+                        onAuthError={handleAuthError}
+                      />
+                    )}
 
                     {/* Slip review: expands under its own row */}
                     {open && (
@@ -830,9 +894,13 @@ export function AdminSection() {
                             <SlipBadge app={a} />
                           </div>
                           <p className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
-                            อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นผ่านการคัดเลือกเพื่อให้ส่งสลิปใหม่
+                            {slipLocked
+                              ? `ใบสมัครนี้อยู่ในสถานะ “${STATUS_LABELS[a.status]}” จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ ยังดูรูปสลิปเพื่อทำบัญชีได้ตามปกติ`
+                              : 'อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นได้รับสิทธิ์เพื่อให้ส่งสลิปใหม่'}
                           </p>
 
+                          {!slipLocked && (
+                          <>
                           <label
                             className="mb-2 mt-6 block text-sm font-semibold"
                             style={{ color: INK }}
@@ -890,6 +958,20 @@ export function AdminSection() {
                               ปิด
                             </button>
                           </div>
+                          </>
+                          )}
+                          {slipLocked && (
+                            <div className="mt-6">
+                              <button
+                                type="button"
+                                onClick={() => setInspectingApp(null)}
+                                className={`rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                                style={{ borderColor: RULE, color: INK }}
+                              >
+                                ปิด
+                              </button>
+                            </div>
+                          )}
                           <p className="mt-4 text-xs leading-6" style={{ color: INK_3 }}>
                             กด Esc เพื่อปิดหน้าตรวจสลิป
                           </p>

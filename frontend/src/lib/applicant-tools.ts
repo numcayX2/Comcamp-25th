@@ -13,10 +13,12 @@ import {
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   PENDING: 'รอพิจารณา',
-  PASSED: 'ผ่านการคัดเลือก',
+  PASSED: 'ได้สิทธิ์แล้ว',
   RESERVE: 'ตัวสำรอง',
   CONFIRMED: 'ยืนยันสิทธิ์สมบูรณ์',
   REJECTED: 'ไม่ผ่าน',
+  REFUND_PENDING: 'รอคืนเงิน',
+  REFUNDED: 'คืนเงินแล้ว',
 };
 
 /** Payment-slip state as staff read it. */

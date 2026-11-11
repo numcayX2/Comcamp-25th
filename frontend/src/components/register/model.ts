@@ -37,6 +37,23 @@ export interface FormState extends Omit<ApplicationPayload, 'shirtSize' | 'provi
   gradeOther: string;
 }
 
+/** Splits a stored grade back into the select value and the free-text part. */
+export function splitGrade(grade: string): { grade: string; gradeOther: string } {
+  return (GRADES as readonly string[]).includes(grade)
+    ? { grade, gradeOther: '' }
+    : { grade: grade ? GRADE_OTHER : '', gradeOther: grade };
+}
+
+/** Thai error for a grade select + free text pair, or undefined when valid (mirrors the backend). */
+export function validateGradeFields(grade: string, gradeOther: string): string | undefined {
+  if ((GRADES as readonly string[]).includes(grade)) return undefined;
+  if (grade !== GRADE_OTHER) return 'กรุณาเลือกระดับชั้น';
+  const text = gradeOther.trim();
+  if (text.length < 2) return 'กรุณาระบุระดับชั้นของคุณ (อย่างน้อย 2 ตัวอักษร)';
+  if (text.length > GRADE_OTHER_MAX) return `ระบุได้ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร`;
+  return undefined;
+}
+
 /** The grade string the API receives. */
 export const gradeValue = (f: Pick<FormState, 'grade' | 'gradeOther'>) =>
   f.grade === GRADE_OTHER ? f.gradeOther.trim() : f.grade;
