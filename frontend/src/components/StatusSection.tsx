@@ -16,7 +16,6 @@ import {
   ApiHttpError,
   getApplicationStatus,
   confirmAttendance,
-  uploadPaymentSlip,
   updateOwnProfile,
   withdrawApplication,
   hasSlip,
@@ -38,63 +37,10 @@ import {
   splitGrade,
   validateGradeFields,
 } from './register/model';
-
-/** Server limit on slip width and height (AGENTS.md §13.4). */
-const MAX_SLIP_PX = 4096;
-
-/** Thai copy keyed by the backend error code; never exposes raw English developer errors to users. */
-function describeError(err: unknown, fallback: string): string {
-  if (err instanceof ApiHttpError) {
-    switch (err.code) {
-      case 'NOT_FOUND':
-        return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
-      case 'INVALID_VERIFY_CODE':
-        return 'เลข 4 ตัวท้ายของบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
-      case 'INVALID_IMAGE_DIMENSIONS':
-        return `รูปสลิปมีขนาดใหญ่เกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} พิกเซล กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`;
-      case 'DUPLICATE_SLIP':
-        return 'สลิปนี้เคยถูกอัปโหลดในระบบแล้ว กรุณาใช้สลิปการโอนของใบสมัครนี้';
-      case 'ALREADY_VERIFIED':
-        return 'สลิปนี้ได้รับการตรวจสอบยืนยันเรียบร้อยแล้ว ไม่จำเป็นต้องอัปโหลดซ้ำ';
-      case 'PAYLOAD_TOO_LARGE':
-        return 'ขนาดไฟล์รูปภาพใหญ่เกิน 5 MB กรุณาเลือกรูปภาพที่มีขนาดเล็กลง';
-      case 'RATE_LIMITED':
-        return 'มีการทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
-      case 'VALIDATION_ERROR':
-        return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประชาชน 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
-      case 'SERVICE_UNAVAILABLE':
-        return 'ระบบกำลังมีผู้ใช้งานจำนวนมาก กรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
-      case 'REGISTRATION_CLOSED':
-        return 'ระบบปิดรับสมัครตามกำหนดการแล้ว หากมีข้อสงสัยกรุณาติดต่อทีมงานพี่ค่าย';
-      case 'FORBIDDEN':
-        return 'ใบสมัครนี้อยู่ในสถานะที่ดำเนินการขั้นตอนนี้ไม่ได้ หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ';
-    }
-    if (err.status === 404) {
-      return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
-    }
-    if (err.status === 403) {
-      return 'ไม่สามารถดำเนินการได้ในขณะนี้ กรุณาติดต่อทีมงานพี่ค่าย';
-    }
-    if (err.status === 413) {
-      return 'ขนาดไฟล์รูปภาพใหญ่เกิน 5 MB กรุณาเลือกรูปภาพที่มีขนาดเล็กลง';
-    }
-    if (err.status >= 500) {
-      return 'ระบบขัดข้องชั่วคราว กรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
-    }
-    return fallback;
-  }
-  return 'ไม่สามารถเชื่อมต่อกับระบบได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง';
-}
-
-/** Natural size of an image file, or null when the browser cannot decode it. */
-function readImageSize(url: string): Promise<{ width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
+import { describeApiError as describeError } from '../lib/slip-upload';
+import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
+import { SlipUploadPanel } from './slip/SlipUploadPanel';
+import { VerifyCodeField } from './slip/VerifyCodeField';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
 const STATUS_DOT: Record<ApplicationStatus, string> = {
@@ -127,15 +73,15 @@ const BORDER_INPUT = 'var(--color-border-input)';
 const BTN_DARK = 'var(--color-btn-dark)';
 const BTN_DARK_TEXT = 'var(--color-btn-dark-text)';
 
-/** Must match the backend allow-list (magic-byte checked server-side). */
-const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-
-/** Full-pill badge with a status dot (no side stripe, AGENTS.md section 6.1). */
+/**
+ * Full-pill badge with a status dot (no side stripe, AGENTS.md section 6.1). Borderless and tinted
+ * by the state colour: outlines are kept for clickable buttons. Ink text keeps >=4.5:1 in both themes.
+ */
 function DotPill({ color, mono, children }: { color: string; mono?: boolean; children: React.ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${mono ? 'font-mono tabular-nums' : ''}`}
-      style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${mono ? 'font-mono tabular-nums' : ''}`}
+      style={{ color: INK, backgroundColor: `color-mix(in srgb, ${color} 16%, ${SURFACE})` }}
     >
       <span aria-hidden="true" className="text-[10px] leading-none" style={{ color }}>
         ●
@@ -421,16 +367,12 @@ export function StatusSection() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const [uploadBusy, setUploadBusy] = useState(false);
   const [app, setApp] = useState<Application | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewLocalUrl, setPreviewLocalUrl] = useState<string | null>(null);
-  /** The slip sent in this visit, shown from the device. Uploaded slips are never served publicly. */
-  const [sentPreviewUrl, setSentPreviewUrl] = useState<string | null>(null);
+  /** A wrong verify code reported by the slip upload, shown beneath the shared #verify-code field. */
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
   const [verifyCode, setVerifyCode] = useState('');
   const codeReady = verifyCode.length === 4;
@@ -478,11 +420,7 @@ export function StatusSection() {
     if (!query) return;
     setBusy(true);
     setError(null);
-    setUploadMessage(null);
-    setUploadError(null);
-    setSelectedFile(null);
-    setPreviewLocalUrl(null);
-    setSentPreviewUrl(null);
+    setVerifyError(null);
     setVerifyCode('');
     setWithdrawOpen(false);
     setWithdrawnId(null);
@@ -594,11 +532,7 @@ export function StatusSection() {
       setSource(null);
       setVerifyCode('');
       setWithdrawOpen(false);
-      setUploadMessage(null);
-      setUploadError(null);
-      setSelectedFile(null);
-      setPreviewLocalUrl(null);
-      setSentPreviewUrl(null);
+      setVerifyError(null);
       setWithdrawnId(id);
     } catch (err) {
       if (err instanceof ApiHttpError && err.status === 409) {
@@ -616,56 +550,10 @@ export function StatusSection() {
   const onConfirm = () => setAttendance(true);
   const onCancelConfirm = () => setAttendance(false);
 
-  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setUploadError(null);
-    setUploadMessage(null);
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!SLIP_TYPES.includes(file.type)) {
-        setUploadError('กรุณาเลือกไฟล์รูปภาพ (JPG, PNG หรือ WebP)');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        setUploadError('ขนาดไฟล์รูปภาพต้องไม่เกิน 5 MB');
-        return;
-      }
-      const url = URL.createObjectURL(file);
-      // Same limit as the server, checked here so a doomed upload never uses mobile data.
-      const size = await readImageSize(url);
-      if (size && (size.width > MAX_SLIP_PX || size.height > MAX_SLIP_PX)) {
-        URL.revokeObjectURL(url);
-        setUploadError(
-          `รูปสลิปมีขนาด ${size.width}×${size.height} พิกเซล ซึ่งเกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`,
-        );
-        return;
-      }
-      setSelectedFile(file);
-      setPreviewLocalUrl(url);
-    }
-  }
-
-  async function onUploadSlip(e: React.FormEvent) {
-    e.preventDefault();
-    if (!app || !selectedFile || !codeReady) return;
-
-    setUploadBusy(true);
-    setUploadError(null);
-    setUploadMessage(null);
-
-    try {
-      const res = await uploadPaymentSlip(app.id, selectedFile, verifyCode);
-      setUploadMessage(res.data.message || 'อัปโหลดสลิปเรียบร้อยแล้ว รอเจ้าหน้าที่ตรวจสอบ');
-      setSource(res.source);
-
-      setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: res.data.slipStatus } : null));
-      setSentPreviewUrl(previewLocalUrl);
-      setSelectedFile(null);
-      setPreviewLocalUrl(null);
-    } catch (err) {
-      setUploadError(describeError(err, 'เกิดข้อผิดพลาดในการอัปโหลดสลิป'));
-    } finally {
-      setUploadBusy(false);
-    }
+  async function onCopyAccount() {
+    const ok = await copyText(PAY_ACCOUNT_DIGITS);
+    setAcctCopy(ok ? 'copied' : 'failed');
+    window.setTimeout(() => setAcctCopy('idle'), ok ? 2200 : 5000);
   }
 
   const slipUploaded = hasSlip(app);
@@ -767,29 +655,6 @@ export function StatusSection() {
         </div>
       )}
 
-      {uploadMessage && (
-        <div
-          role="status"
-          className="mt-6 flex items-baseline justify-between gap-4 rounded-xl border bg-[var(--bg-card)] px-4 py-3.5"
-          style={{ borderColor: RULE }}
-        >
-          <p className="text-sm leading-7" style={{ color: INK }}>
-            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: 'var(--color-success)' }}>
-              ●
-            </span>
-            {uploadMessage}
-          </p>
-          <button
-            type="button"
-            onClick={() => setUploadMessage(null)}
-            className="shrink-0 rounded-full px-2.5 py-0.5 text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
-            style={{ color: INK_MUTED }}
-          >
-            ปิด
-          </button>
-        </div>
-      )}
-
       {withdrawnId && (
         <div
           ref={withdrawnRef}
@@ -812,29 +677,6 @@ export function StatusSection() {
           <button
             type="button"
             onClick={() => setWithdrawnId(null)}
-            className="shrink-0 rounded-full px-2.5 py-0.5 text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
-            style={{ color: INK_MUTED }}
-          >
-            ปิด
-          </button>
-        </div>
-      )}
-
-      {uploadError && (
-        <div
-          role="alert"
-          className="mt-6 flex items-baseline justify-between gap-4 rounded-xl border bg-[var(--bg-card)] px-4 py-3.5"
-          style={{ borderColor: RULE }}
-        >
-          <p className="text-sm leading-7" style={{ color: INK }}>
-            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: 'var(--color-danger)' }}>
-              ●
-            </span>
-            {uploadError}
-          </p>
-          <button
-            type="button"
-            onClick={() => setUploadError(null)}
             className="shrink-0 rounded-full px-2.5 py-0.5 text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
             style={{ color: INK_MUTED }}
           >
@@ -891,24 +733,17 @@ export function StatusSection() {
                 the record above shows them. */}
             {needsVerifyCode && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
-                <label className="block text-base font-bold leading-7" style={{ color: INK }} htmlFor="verify-code">
-                  เลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชน
-                </label>
-                <p id="verify-code-hint" className="max-w-[60ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                  ใช้ยืนยันว่าเป็นเจ้าของใบสมัครก่อนยืนยันสิทธิ์ ส่งสลิป แก้ไขข้อมูล หรือยกเลิกใบสมัคร ระบบไม่บันทึกตัวเลขนี้ไว้ในเครื่อง
-                </p>
-                <input
+                <VerifyCodeField
                   id="verify-code"
                   value={verifyCode}
-                  // Digits only, max 4: also drops zero-width characters pasted from LINE.
-                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="0000"
-                  aria-describedby="verify-code-hint"
-                  className="mt-2 w-32 rounded-none border bg-[var(--bg-card)] px-3 py-2.5 font-mono text-base tabular-nums outline-none transition-colors focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30"
-                  style={{ borderColor: BORDER_INPUT, color: INK }}
+                  onChange={(v) => {
+                    setVerifyCode(v);
+                    if (verifyError) setVerifyError(null);
+                  }}
+                  error={verifyError}
+                  notPhone
+                  hintId="verify-code-hint"
+                  hint="ใช้ยืนยันว่าเป็นเจ้าของใบสมัครก่อนยืนยันสิทธิ์ ส่งสลิป แก้ไขข้อมูล หรือยกเลิกใบสมัคร"
                 />
               </div>
             )}
@@ -1236,14 +1071,12 @@ export function StatusSection() {
               className="scroll-mt-24 border bg-[var(--bg-card)] p-6 outline-none sm:p-8"
               style={{ borderColor: INK, backgroundColor: SURFACE }}
             >
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
+              {/* One container. Its zones are told apart by whitespace and 1px rules, never by inner boxes. */}
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-xs font-medium uppercase" style={{ color: INK_SUBTLE }}>
-                    Payment / Slip
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
+                  <h2 className="text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">1,000</span> บาท (รองรับไฟล์รูปภาพ JPG, PNG หรือ WebP ขนาดไม่เกิน <span className="font-mono tabular-nums">5</span> MB และไม่เกิน <span className="font-mono tabular-nums">{MAX_SLIP_PX}×{MAX_SLIP_PX}</span> พิกเซล)
+                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">1,000</span> บาท
                   </p>
                 </div>
                 {slipUploaded ? (
@@ -1259,80 +1092,46 @@ export function StatusSection() {
                 )}
               </div>
 
-              <div className="mt-6 grid grid-cols-1 items-start gap-6 md:grid-cols-2">
-                <div className="border p-2" style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}>
-                  {sentPreviewUrl ? (
-                    <div>
-                      <img
-                        src={sentPreviewUrl}
-                        alt="หลักฐานการโอนเงินที่เพิ่งส่ง"
-                        className="mx-auto max-h-72 w-full object-contain"
-                      />
-                      <p className="mt-2 bg-[var(--bg-card)] px-2 py-1 text-xs leading-6" style={{ color: INK_MUTED, backgroundColor: SURFACE }}>
-                        สลิปที่เพิ่งส่ง (แสดงจากเครื่องของคุณ)
-                      </p>
-                    </div>
-                  ) : slipUploaded ? (
-                    <p className="px-4 py-10 text-center text-sm leading-7" style={{ color: INK_MUTED }}>
-                      ได้รับสลิปของคุณแล้ว เพื่อความปลอดภัยของข้อมูลทางการเงิน รูปสลิปจะเปิดดูได้เฉพาะในระบบของเจ้าหน้าที่
-                    </p>
-                  ) : (
-                    <p className="py-10 text-center font-mono text-sm tabular-nums" style={{ color: INK_SUBTLE }}>
-                      — NO IMAGE
-                    </p>
-                  )}
-                </div>
-
-                {slipApproved ? (
+              {!slipApproved && (
+                <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }} aria-label="ข้อมูลการโอนเงิน" role="group">
                   <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ชำระเงินเรียบร้อยแล้ว ไม่ต้องอัปโหลดสลิปเพิ่ม
+                    โอนค่าสมัคร <span className="font-mono tabular-nums">1,000</span> บาท · {PAY_ACCOUNT.bank}
                   </p>
-                ) : (
-                <form onSubmit={onUploadSlip} className="flex flex-col gap-4">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="slipFile">
-                      {slipUploaded ? 'อัปโหลดสลิปใหม่เพื่อแทนที่' : 'เลือกไฟล์สลิปการโอนเงิน'}
-                    </label>
-                    <input
-                      id="slipFile"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={onFileChange}
-                      className="block w-full cursor-pointer border bg-[var(--bg-card)] p-1 text-sm"
-                      style={{ borderColor: BORDER_INPUT, color: INK_MUTED }}
-                    />
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <p className="font-mono text-2xl font-medium tabular-nums" style={{ color: INK }}>{PAY_ACCOUNT.number}</p>
+                    <button
+                      type="button"
+                      onClick={onCopyAccount}
+                      className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)]"
+                      style={{ borderColor: BORDER_INPUT, color: INK }}
+                    >
+                      {acctCopy === 'copied' ? 'คัดลอกเลขบัญชีแล้ว' : 'คัดลอกเลขบัญชี'}
+                    </button>
                   </div>
+                  <p role="status" aria-live="polite" className="min-h-[1.4em] text-sm" style={{ color: INK_MUTED }}>
+                    {acctCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่เลขบัญชีแล้วเลือกคัดลอก'}
+                  </p>
+                  <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
+                    ชื่อบัญชี {PAY_ACCOUNT.name} ({PAY_ACCOUNT.holders})
+                  </p>
+                  <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>{NO_QR_NOTE}</p>
+                </div>
+              )}
 
-                  {previewLocalUrl && (
-                    <div className="border p-3" style={{ borderColor: 'var(--color-tech)', backgroundColor: SURFACE }}>
-                      <p className="mb-2 text-xs font-semibold" style={{ color: INK }}>ตัวอย่างรูปภาพที่กำลังจะอัปโหลด</p>
-                      <img
-                        src={previewLocalUrl}
-                        alt="ตัวอย่างรูปภาพสลิปใหม่"
-                        className="mx-auto max-h-48 rounded-none object-contain"
-                      />
-                      <p className="mt-1 text-center font-mono text-xs tabular-nums" style={{ color: INK_SUBTLE }}>
-                        {selectedFile?.name} ({(selectedFile ? selectedFile.size / 1024 : 0).toFixed(1)} KB)
-                      </p>
-                    </div>
-                  )}
-
-                  {!codeReady && (
-                    <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                      กรอกเลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชนด้านบนก่อนส่งสลิป
-                    </p>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={uploadBusy || !selectedFile || !codeReady}
-                    className="w-full rounded-full px-4 py-3 text-sm font-semibold transition-opacity disabled:opacity-50"
-                    style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-                  >
-                    {uploadBusy ? 'กำลังอัปโหลด…' : 'ยืนยันและส่งหลักฐานสลิป'}
-                  </button>
-                  
-                </form>
-                )}
+              <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }}>
+                <SlipUploadPanel
+                  key={app.id}
+                  appId={app.id}
+                  slip={slipApproved ? 'APPROVED' : slipState}
+                  verifyCode={verifyCode}
+                  codeInputId="verify-code"
+                  onCodeInvalid={setVerifyError}
+                  submitLabel="ยืนยันและส่งหลักฐานสลิป"
+                  onUploaded={(status, _message, src) => {
+                    setSource(src);
+                    setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
+                  }}
+                />
               </div>
             </section>
           )}

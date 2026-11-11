@@ -445,12 +445,56 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-muted { color: var(--rw-ink-3); }
 .rw-pre { white-space: pre-wrap; }
 
-.rw-fee { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--rw-ink); }
-.rw-fee__row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.rw-fee__label { font-size: 1rem; font-weight: 600; }
-.rw-fee__amount { font-size: 1.5rem; font-weight: 700; line-height: 1.4; }
+/* Fee + first-come-first-served card: its own rounded surface (same edge as .rw-card), apart from
+   the review card above and the consent checkbox below, so it cannot be skimmed past. */
+.rw-fee {
+  margin-top: 28px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--rw-rule);
+  border-radius: 24px;
+  background: var(--rw-surface);
+}
+.rw-fee__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rw-ink);
+}
+.rw-fee__title { flex: 1 1 14rem; font-size: 1.125rem; font-weight: 700; line-height: 1.5; text-wrap: balance; }
+.rw-fee__amount { font-size: 1.75rem; font-weight: 700; line-height: 1.4; white-space: nowrap; }
 .rw-fee__amount .font-mono { font-weight: 600; }
-.rw-fee__note { margin-top: 6px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-fee__steps { margin: 0; padding: 0; list-style: none; counter-reset: fee; }
+.rw-fee__steps li {
+  counter-increment: fee;
+  position: relative;
+  padding: 14px 0 14px 44px;
+  border-bottom: 1px solid var(--rw-rule);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--rw-ink-2);
+}
+.rw-fee__steps li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rw-fee__steps li::before {
+  content: counter(fee);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rw-line);
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--rw-ink);
+}
+.rw-fee__steps li:last-child::before { top: 14px; }
+.rw-fee__steps strong { display: block; font-weight: 600; color: var(--rw-ink); }
 
 /* ---------- Consent ---------- */
 .rw-consent {
@@ -538,6 +582,18 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-btn--primary:hover:not(:disabled) { background: var(--rw-btn-hover); }
 .rw-btn--submit { background: var(--rw-fern); color: #121316; }
 .rw-btn--submit:hover:not(:disabled) { background: var(--rw-fern-hover); }
+/* Consent not ticked yet: pale green, still tappable (aria-disabled, never the disabled attribute) so a
+   tap runs the validation and moves focus to the checkbox. Light: ink on a pale green wash (~15:1);
+   dark: a muted deep green wash with the light ink (~12:1). The border is a darker green so the
+   button edge keeps >=3:1 against the canvas (WCAG 1.4.11). */
+.rw-btn--submit[aria-disabled='true'] {
+  background: color-mix(in srgb, var(--rw-fern) 22%, var(--rw-canvas));
+  color: var(--rw-ink);
+  border-color: color-mix(in srgb, var(--rw-fern) 55%, var(--rw-ink));
+}
+.rw-btn--submit[aria-disabled='true']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rw-fern) 32%, var(--rw-canvas));
+}
 .rw-btn--ghost { background: transparent; color: var(--rw-ink); border-color: var(--rw-line); }
 .rw-btn--ghost:hover:not(:disabled) { border-color: var(--rw-ink); }
 .rw-btn--danger { background: transparent; color: var(--rw-danger); border-color: var(--rw-danger); }
@@ -758,6 +814,31 @@ html[data-theme="dark"] .rw-ticket {
 .rw-withdraw__err { min-height: 1.6em; margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-danger); }
 .rw-withdraw__err:empty { min-height: 0; margin-top: 0; }
 .rw-actions--tight { margin-top: 8px; }
+
+/* ---------- Slip upload (receipt) ---------- */
+/* The upload itself is the shared SlipUploadPanel (styles/slip-upload.css). This block only adds the
+   heading row and copy; it stays flat on the receipt flow, separated by whitespace and hairlines. */
+.rw-slip__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.rw-slip__lead { margin-top: 8px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-slip__note { margin-top: 12px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-slip__panel { margin-top: 20px; }
+
+/* Status badge: borderless, soft-tinted by the state colour (--pill); ink text keeps >=4.5:1 in both themes. */
+.rw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 14px;
+  border: 0;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--pill, var(--rw-ink-3)) 16%, var(--rw-canvas));
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--rw-ink);
+}
+.rw-pill__dot { flex: none; width: 9px; height: 9px; border-radius: 9999px; background: var(--pill, var(--rw-ink-3)); }
 .rw-devnote { margin-top: 32px; font-size: 0.8125rem; color: var(--rw-ink-3); }
 
 /* ---------- Dev toolbar (dev builds only) ---------- */

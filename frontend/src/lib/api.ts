@@ -230,18 +230,78 @@ export class ApiHttpError extends Error {
   readonly status: number;
   /** Machine-readable code from the backend, e.g. QUOTA_FULL, DUPLICATE_APPLICATION, RATE_LIMITED. */
   readonly code?: string;
-  constructor(status: number, message: string, code?: string) {
+  /** Seconds from the Retry-After header (429 / 503), when the server sent a number. */
+  readonly retryAfterSeconds?: number;
+  constructor(status: number, message: string, code?: string, retryAfterSeconds?: number) {
     super(message);
     this.name = 'ApiHttpError';
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+/** Retry-After as whole seconds. An HTTP-date form is ignored (the backend sends seconds). */
+function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value || !/^\d+$/.test(value.trim())) return undefined;
+  const n = Number(value.trim());
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
 async function toApiError(res: Response): Promise<ApiHttpError> {
   const errData = await res.json().catch(() => null);
   const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-  return new ApiHttpError(res.status, errMsg, typeof errData?.code === 'string' ? errData.code : undefined);
+  return new ApiHttpError(
+    res.status,
+    errMsg,
+    typeof errData?.code === 'string' ? errData.code : undefined,
+    parseRetryAfter(res.headers.get('Retry-After')),
+  );
+}
+
+/** multipart POST through XMLHttpRequest, the only way to report upload progress. */
+function xhrUploadSlip(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<SlipUploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.timeout = 20000;
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (onProgress) {
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && ev.total > 0) onProgress(Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
+      };
+    }
+    // Network failure and timeout are plain Errors (not ApiHttpError), like a failed fetch.
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.onabort = () => reject(new Error('aborted'));
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON error page */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as SlipUploadResult);
+        return;
+      }
+      const errData = (body ?? {}) as { error?: string; code?: string };
+      reject(
+        new ApiHttpError(
+          xhr.status,
+          errData.error || `HTTP ${xhr.status} ${xhr.statusText}`,
+          typeof errData.code === 'string' ? errData.code : undefined,
+          parseRetryAfter(xhr.getResponseHeader('Retry-After')),
+        ),
+      );
+    };
+    xhr.send(formData);
+  });
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -429,30 +489,14 @@ export function uploadPaymentSlip(
   id: string,
   file: File,
   verifyCode: string,
+  onProgress?: (percent: number) => void,
 ): Promise<ApiResult<SlipUploadResult>> {
   const formData = new FormData();
   formData.append('verifyCode', verifyCode);
   formData.append('slip', file);
 
   return withFallback(
-    async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      try {
-        const res = await fetch(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, {
-          method: 'POST',
-          body: formData,
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json',
-          },
-        });
-        if (!res.ok) throw await toApiError(res);
-        return (await res.json()) as SlipUploadResult;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    },
+    () => xhrUploadSlip(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress),
     () => ({
       id,
       status: 'PASSED',

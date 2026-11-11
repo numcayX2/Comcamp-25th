@@ -918,17 +918,33 @@ export function RegisterSection() {
               />
             </div>
 
-            <div className="rw-fee">
-              <div className="rw-fee__row">
-                <p className="rw-fee__label">ค่าสมัครเข้าร่วมค่าย</p>
+            <section className="rw-fee" aria-labelledby="rw-fee-title">
+              <div className="rw-fee__head">
+                <h3 id="rw-fee-title" className="rw-fee__title">
+                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย
+                </h3>
                 <p className="rw-fee__amount">
-                  <span className="font-mono">{FEE_TEXT}</span> บาท
+                  <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท
                 </p>
               </div>
-              <p className="rw-fee__note">
-                ชำระหลังส่งใบสมัคร โดยโอนเงินและแนบสลิปที่หน้าตรวจสอบสถานะ เพื่อยืนยันสิทธิ์เข้าร่วมค่าย
-              </p>
-            </div>
+              <ol className="rw-fee__steps">
+                <li>
+                  <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที</strong>
+                  มาก่อนได้ก่อน จำกัด <span className="font-mono tabular-nums">{SEATS}</span> ที่นั่ง เมื่อส่งสำเร็จจะได้รหัส{' '}
+                  <span className="font-mono">CC25-XXXXXX</span>
+                </li>
+                <li>
+                  <strong>
+                    โอนค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท หลังส่งใบสมัคร
+                  </strong>
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) ยังไม่ต้องโอนก่อนกดส่ง
+                </li>
+                <li>
+                  <strong>แนบสลิปเพื่อยืนยันสิทธิ์สมบูรณ์</strong>
+                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับหลังกดส่ง หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>)
+                </li>
+              </ol>
+            </section>
 
             <label className="rw-consent" htmlFor="consent">
               <input
@@ -945,6 +961,7 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน และดำเนินกิจกรรมค่ายเท่านั้น
+                และรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท (ชำระหลังส่งใบสมัคร)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
@@ -1096,6 +1113,9 @@ export function RegisterSection() {
               <button
                 type="submit"
                 className={`rw-btn ${step === LAST_FORM_STEP ? 'rw-btn--submit' : 'rw-btn--primary'} rw-btn--next`}
+                // Not `disabled`: a tap before ticking the consent still runs handleNext(), which
+                // moves focus to #consent and shows its message instead of failing silently.
+                aria-disabled={step === LAST_FORM_STEP && !consent ? true : undefined}
                 disabled={busy}
                 aria-busy={busy || undefined}
               >
