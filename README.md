@@ -1,135 +1,177 @@
-# ComCamp #25 — Web Application & API System
+# ComCamp #25 — เว็บรับสมัครและระบบหลังบ้าน
 
-> **โครงการค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 (ComCamp #25)**  
-> **สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้**  
-> **Repository:** [https://github.com/numcayX2/Comcamp-25th.git](https://github.com/numcayX2/Comcamp-25th.git)
+เว็บไซต์ของค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
 
----
+น้องๆ เข้ามาดูรายละเอียดค่าย สมัคร เช็กสถานะ และส่งสลิปค่าสมัครได้ที่นี่ ส่วนพี่ค่ายใช้หน้า `/admin` ตรวจสลิป ปรับสถานะ และตั้งค่าโควตา โค้ดแบ่งเป็นสองส่วน:
 
-## 📌 ภาพรวมโครงการ (Project Overview)
+- **`frontend/`** — Astro + React + Tailwind v4 (หน้าแรก, `/register`, `/status`, `/admin`)
+- **`backend/`** — Go (Chi, pgx, JWT) เก็บข้อมูลใน PostgreSQL 16 และมีโหมด In-Memory ไว้ลองเล่นโดยไม่ต้องมีฐานข้อมูล
 
-ระบบเว็บแอปพลิเคชันสำหรับงานค่าย **ComCamp ครั้งที่ 25** แบ่งออกเป็น 2 ส่วนหลัก:
-1. **Frontend (`frontend/`):** พัฒนาด้วย Astro, React, Tailwind CSS และ Lucide Icons รองรับหน้าจอ Landing Page, Countdown Timer, ระบบส่งใบสมัคร, ตรวจสอบสถานะ และหน้าแดชบอร์ดพี่ค่าย
-2. **Backend (`backend/`):** พัฒนาด้วย Go 1.22+ (Chi Router, pgxpool v5, JWT, Swagger UI) ออกแบบตาม Clean Architecture รองรับการประมวลผลสูง ป้องกันการโกงสลิป และเปิดให้ปรับแก้การตั้งค่าค่าย/โควตาได้แบบไดนามิก
+Repository: <https://github.com/numcayX2/Comcamp-25th>
 
----
+## สิ่งที่ต้องมีในเครื่อง
 
-## 🚀 โครงสร้างโปรเจกต์ (Repository Structure)
+- Node.js 22.23.4 ขึ้นไป
+- Go (ตาม `backend/go.mod` ตอนนี้คือ 1.27.3)
+- Docker เฉพาะเมื่อจะรันกับ PostgreSQL จริง ถ้าแค่อยากดูหน้าเว็บหรือลองสมัคร ไม่ต้องมี
 
-```text
-Comcamp-25th/
-├── backend/                  # Go Backend API Service
-│   ├── cmd/api/main.go       # Entrypoint & Router
-│   ├── internal/             # Domain, Service, Repository, Handler, Middleware
-│   ├── migrations/           # Database Schema (PostgreSQL 16)
-│   ├── internal/docs/        # OpenAPI 3.0 Specification
-│   └── README.md             # คู่มือการพัฒนา Backend และ Swagger
-├── frontend/                 # Astro + React + Tailwind Frontend
-│   ├── src/                  # Components, Pages, Layouts
-│   └── README.md             # คู่มือการพัฒนา Frontend
-├── docker-compose.yml        # PostgreSQL 16 Service
-├── .env.example              # ตัวอย่างตัวแปรสภาพแวดล้อม
-├── AI_SETUP.md               # คู่มือและ Prompt ให้ Agentic AI ช่วย Set up & QA
-└── README.md                 # เอกสารภาพรวมโครงการ
+## เริ่มรันบนเครื่อง
+
+ทั้งสองทางเริ่มจากคัดลอกไฟล์ตัวแปรสภาพแวดล้อม ไฟล์เดียวที่ root ใช้ได้ทั้ง backend และ frontend (Astro ดึงตัวแปรที่ขึ้นต้นด้วย `PUBLIC_` จากไฟล์นี้ให้เอง)
+
+```bash
+cp .env.example .env
 ```
 
----
+เปิด `.env` แล้วเปลี่ยน `JWT_SECRET` เป็นสตริงสุ่มยาวอย่างน้อย 32 ตัว (ค่า `change_this...` จะถูกปฏิเสธ)
 
-## ⚡ เริ่มต้นใช้งานอย่างรวดเร็ว (Quick Start)
+### ทางที่ 1: ไม่ใช้ Docker (เร็วที่สุด)
 
-> 🤖 **อยากให้ AI ช่วยเซตอัพให้อัตโนมัติ?** เปิดโปรเจกต์ใน Claude Code, Antigravity, Codex, Cursor หรือ Gemini CLI แล้วส่งคำสั่งนี้ให้ AI ได้เลย (รายละเอียดครบอยู่ใน [`AI_SETUP.md`](./AI_SETUP.md)):
-> *"อ่าน `AI_SETUP.md` แล้วช่วยเซตอัพโปรเจกต์แบบโหมด A (In-Memory ไม่ใช้ Docker) พร้อม Cloudflare Turnstile Dummy Keys รันการทดสอบ และสตาร์ต Backend + Frontend ให้หน่อย"*
+ถ้าต่อ PostgreSQL ไม่ได้ในโหมด `development` backend จะสลับไปเก็บข้อมูลในหน่วยความจำให้เอง ข้อมูลจะหายเมื่อปิดโปรแกรม และโหมดนี้เปิดรับสมัครไว้ให้เลย ไม่ต้องรอวันที่ 16 พ.ย.
 
-### 1. ตั้งค่า Environment และเริ่มฐานข้อมูล (PostgreSQL 16)
+ถ้าอยากเข้า `/admin` ให้ตั้งรหัสผ่านทดสอบใน `.env` ก่อน เพราะโค้ดไม่มีบัญชีเริ่มต้น:
+
+```env
+DEV_ADMIN_USERNAME=admin
+DEV_ADMIN_PASSWORD=<ตั้งเอง>
+```
+
+### ทางที่ 2: ใช้ PostgreSQL 16
+
+ตั้ง `DB_PASSWORD` ใน `.env` (compose จะไม่ยอมสตาร์ตถ้าไม่ได้ตั้ง) แล้วรัน:
 
 ```powershell
-# คัดลอก Environment Variables (ใช้ได้ทั้ง Backend และ Frontend ผ่าน fallback ใน astro.config.mjs)
-cp .env.example .env
-# จากนั้นเปิด .env เพื่อตั้งค่า JWT_SECRET / DB_PASSWORD (และ DEV_ADMIN_PASSWORD สำหรับทดสอบ /admin)
-
-# เริ่มต้น Docker Container สำหรับ PostgreSQL
 docker compose up -d db
 
-# รัน Migration ทั้งหมดตามลำดับ (000001–000004) — PowerShell
+# Windows PowerShell: รัน migration 000001–000004 ตามลำดับ
 Get-ChildItem backend/migrations/*.up.sql | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw } | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
-
-# หรือบน macOS / Linux (Bash)
-# cat backend/migrations/*.up.sql | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
-
-*(หมายเหตุ: หากไม่มี Docker ระบบ Backend มี Thread-Safe In-Memory Fallback ให้นักพัฒนาสามารถรันทดสอบได้ทันที ส่วน Cloudflare Turnstile ในโหมด `development` สามารถเว้นว่างไว้เพื่อข้ามการตรวจ หรือใช้ Dummy Test Keys ที่ระบุไว้ท้ายไฟล์ `.env.example`)*
-
-### 2. รัน Backend API Service
 
 ```bash
-cd backend
-go run ./cmd/api
+# macOS / Linux
+cat backend/migrations/*.up.sql | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
-- API Base URL: `http://localhost:8000/api`
-- Interactive Swagger UI: `http://localhost:8000/swagger`
-- OpenAPI JSON Spec: `http://localhost:8000/api/docs/openapi.json`
 
-### 3. รัน Frontend
+ฐานข้อมูลตั้งเวลาเปิดรับสมัครเริ่มต้นไว้ที่ 16 พ.ย. 2569 เวลา 00:00 น. ถ้าอยากลองสมัครก่อนวันนั้น ให้ล็อกอิน `/admin` แล้วเลื่อนเวลาเปิดในหน้าตั้งค่า
+
+### สตาร์ตเซิร์ฟเวอร์
+
+เปิดสองเทอร์มินัล:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd backend && go run ./cmd/api              # http://localhost:8000
+cd frontend && npm install && npm run dev   # http://localhost:4321
 ```
-- Web Application: `http://localhost:4321`
 
----
+| ที่อยู่ | คืออะไร |
+|---|---|
+| `http://localhost:4321` | เว็บไซต์ |
+| `http://localhost:8000/api` | API |
+| `http://localhost:8000/swagger` | Swagger UI (เปิดเฉพาะโหมด development) |
 
-## 🔑 บัญชีผู้ดูแลระบบ (Admin Accounts)
+## Cloudflare Turnstile (กันบอทตอนส่งใบสมัคร)
 
-ระบบ **ไม่มีบัญชีหรือรหัสผ่านเริ่มต้น** ในโค้ด (AGENTS.md §13.7)
+ขั้นตอนสุดท้ายของ `/register` มี Turnstile และ backend ตรวจ token ทุกครั้งก่อนบันทึกใบสมัคร ตัวแปรมีสองตัว:
 
-* **Production / PostgreSQL:** สร้างบัญชีด้วยคำสั่งด้านล่าง ระบบจะถามรหัสผ่าน (อย่างน้อย 12 ตัวอักษร) และเก็บเป็น bcrypt
+- `PUBLIC_TURNSTILE_SITE_KEY` — key สาธารณะ ใช้ฝั่งหน้าเว็บ
+- `TURNSTILE_SECRET_KEY` — secret ฝั่งเซิร์ฟเวอร์ ห้ามเอาไปใส่ฝั่งหน้าเว็บหรือ commit
+
+บนเครื่องตัวเองมีสองทางเลือก:
+
+- **เว้นว่างทั้งคู่** ในโหมด development ระบบจะข้ามการตรวจ และหน้าสมัครจะมีป้าย `[DEV]` บอกไว้
+- **ใช้ dummy key ของ Cloudflare** (ต้องออนไลน์) ค่าอยู่ท้าย `.env.example` เช่น site key `1x00000000000000000000AA` คู่กับ secret `1x0000000000000000000000000000000AA` จะผ่านเสมอ ส่วนคู่ `2x...` จะไม่ผ่านเสมอ ไว้เทสต์หน้า error
+
+ตอนขึ้น production ต้องใช้ key จริงจาก Cloudflare Dashboard และเพิ่มชื่อโดเมนของเว็บในวิดเจ็ตด้วย dummy secret จะถูกปฏิเสธ
+
+## ตอนขึ้น production
+
+ค่าเริ่มต้นของ `APP_ENV` คือ `production` และ backend จะ **ไม่ยอมสตาร์ต** ถ้าขาดอย่างใดอย่างหนึ่งต่อไปนี้ ซึ่งตั้งใจให้เป็นแบบนั้น เพื่อไม่ให้ระบบรับสมัครทำงานโดยไม่มีการป้องกัน:
+
+- `JWT_SECRET` (อย่างน้อย 32 ตัว)
+- `DB_PASSWORD` และต่อฐานข้อมูลได้จริง (ไม่มีการสลับไปโหมด In-Memory)
+- `FRONTEND_URL` (ใช้กำหนด CORS และตรวจ hostname ของ Turnstile)
+- `TURNSTILE_SECRET_KEY` ที่เป็นของจริง
+
+ถ้า backend อยู่หลัง reverse proxy ให้ใส่ IP ของ proxy ใน `TRUSTED_PROXIES` ไม่อย่างนั้น rate limit จะนับ IP ของ proxy แทน IP ผู้ใช้
+
+## บัญชีผู้ดูแลระบบ
+
+โค้ดไม่มีบัญชีหรือรหัสผ่านเริ่มต้น
+
+- **บน PostgreSQL** สร้างด้วยคำสั่งนี้ ระบบจะถามรหัสผ่าน (12–72 ตัวอักษร) และเก็บเป็น bcrypt
   ```bash
   cd backend
   go run ./cmd/create-admin -username <ชื่อผู้ใช้> -name "<ชื่อที่แสดง>" -role superadmin
   ```
-* **Development (In-Memory, ไม่มี PostgreSQL):** ตั้ง `DEV_ADMIN_USERNAME` และ `DEV_ADMIN_PASSWORD` ใน `.env` ของเครื่องตัวเองเพื่อสร้างบัญชีทดสอบ `/admin` (ถ้าเว้นว่างไว้ API จะไม่ seed บัญชีให้; ตัวแปรนี้ไม่ถูกใช้ในโหมด production)
+  บทบาทที่ใช้ได้คือ `superadmin`, `staff`, `finance`, `reviewer` ถ้าไม่อยากพิมพ์รหัสผ่านตอนรัน ส่งผ่านตัวแปร `ADMIN_PASSWORD` ได้
+- **บนโหมด In-Memory** ใช้ `DEV_ADMIN_USERNAME` / `DEV_ADMIN_PASSWORD` ใน `.env` ตัวแปรนี้ใช้ได้เฉพาะ development ถ้าตั้งไว้ตอนรัน production backend จะไม่ยอมสตาร์ต
 
----
+## API คร่าวๆ
 
-## 📋 แผนผัง API หลัก (Key Endpoints)
+รายละเอียดเต็มดูที่ Swagger หรือ [`backend/README.md`](backend/README.md) ตารางนี้ไว้ดูภาพรวม
 
-| Method | Endpoint | สิทธิ์การเข้าถึง | วัตถุประสงค์ |
+| Method | Endpoint | ใครเรียกได้ | ใช้ทำอะไร |
 |---|---|---|---|
-| `GET` | `/api/health` | Public | ตรวจสอบสถานะของเซิร์ฟเวอร์ |
-| `GET` | `/api/settings/public` | Public | ดึงกำหนดการและเวลาปัจจุบันเพื่อป้องกัน Clock Tampering |
-| `POST` | `/api/applications` | Public | ส่งใบสมัครใหม่ (ล็อกโควตาตาม maxCapacity ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้ เต็มแล้วตอบ 409 QUOTA_FULL) |
-| `GET` | `/api/applications/status?q={query}` | Public | ตรวจสอบสถานะใบสมัคร (ค้นหาด้วยเลขบัตร 13 หลัก, เบอร์โทร หรือรหัส) |
-| `POST` | `/api/applications/:id/confirm` | Public | กดยืนยันสิทธิ์เข้าร่วมค่าย (สำหรับผู้ผ่านการคัดเลือก) |
-| `POST` | `/api/applications/:id/withdraw` | Public | ผู้สมัครยกเลิกใบสมัครเอง (ต้องส่ง verifyCode) ใช้ไม่ได้เมื่อยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน |
-| `PATCH` | `/api/applications/:id/profile` | Public | ผู้สมัครแก้ไขชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ (ต้องส่ง verifyCode) ห้ามแก้ชื่อ-นามสกุล เลขบัตร เบอร์ อีเมล |
-| `POST` | `/api/applications/:id/slip` | Public | อัปโหลดสลิปโอนเงิน (ระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
-| `POST` | `/api/auth/login` | Public | เข้าสู่ระบบผู้ดูแลเพื่อรับ JWT Token |
-| `GET` | `/api/admin/applications` | Admin | รายชื่อผู้สมัครทั้งหมดและรูปสลิป |
-| `PATCH` | `/api/admin/applications/:id` | Admin | ปรับสถานะผู้สมัคร (PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED) ผู้สมัครใหม่เริ่มที่ PASSED ตามหลักใครสมัครก่อนได้ก่อน สถานะ REJECTED / REFUND_PENDING / REFUNDED คืนที่นั่งทันที และการกลับมาถือที่นั่งต้องมีที่ว่าง |
-| `PATCH` | `/api/admin/applications/:id/verify-slip` | Admin | ตรวจสอบและอนุมัติสลิปเพื่อปรับสถานะเป็น CONFIRMED |
-| `PATCH` | `/api/admin/applications/:id/profile` | Admin | พี่ค่ายแก้ไขข้อมูลผู้สมัครทุกฟิลด์ (ตรวจสอบเต็มรูปแบบ, ซ้ำกับคนอื่น 409, บันทึก audit_logs) |
-| `GET` | `/api/admin/settings` | Admin | ดูการตั้งค่าค่าย โควตา และกำหนดการทั้งหมด |
-| `PATCH` | `/api/admin/settings` | Admin | ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), กำหนดการ หรือปิดรับสมัครฉุกเฉิน |
+| `GET` | `/api/health` | ทุกคน | เช็กว่าเซิร์ฟเวอร์ยังทำงานอยู่ |
+| `GET` | `/api/settings/public` | ทุกคน | เวลาเซิร์ฟเวอร์ วันเปิดรับ จำนวนที่นั่งที่ใช้ไป และค่าสมัคร |
+| `POST` | `/api/applications` | ทุกคน | ส่งใบสมัคร ต้องแนบ Turnstile token ถ้าที่นั่งเต็มตอบ `409 QUOTA_FULL` |
+| `GET` | `/api/applications/status?q=` | ทุกคน | ค้นหาด้วยเลขบัตร เบอร์โทร หรือรหัส `CC25-XXXXXX` ข้อมูลส่วนตัวถูกปิดบางส่วนก่อนส่งกลับ |
+| `POST` | `/api/applications/:id/confirm` | ทุกคน + `verifyCode` | ยืนยันสิทธิ์เข้าร่วม |
+| `POST` | `/api/applications/:id/slip` | ทุกคน + `verifyCode` | อัปโหลดสลิป (ไม่เกิน 5 MB, 4096×4096 px, สลิปซ้ำถูกปฏิเสธด้วย SHA-256) |
+| `POST` | `/api/applications/:id/withdraw` | ทุกคน + `verifyCode` | ยกเลิกใบสมัครเอง ใช้ไม่ได้หลังยืนยันสิทธิ์หรือส่งสลิปแล้ว ต้องติดต่อพี่ค่าย |
+| `PATCH` | `/api/applications/:id/profile` | ทุกคน + `verifyCode` | แก้ชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ (ชื่อ เลขบัตร เบอร์ อีเมล แก้เองไม่ได้) |
+| `POST` | `/api/auth/login` | ทุกคน | ล็อกอินพี่ค่ายเพื่อรับ JWT |
+| `GET` | `/api/admin/applications` | แอดมิน | รายชื่อผู้สมัครทั้งหมด |
+| `PATCH` | `/api/admin/applications/:id` | แอดมิน | เปลี่ยนสถานะ |
+| `PATCH` | `/api/admin/applications/:id/profile` | แอดมิน | แก้ข้อมูลผู้สมัครได้ทุกช่อง |
+| `GET` | `/api/admin/applications/:id/slip` | แอดมิน | ดูรูปสลิป (ไม่มี URL สาธารณะของสลิป) |
+| `PATCH` | `/api/admin/applications/:id/verify-slip` | แอดมิน | อนุมัติหรือปฏิเสธสลิป |
+| `GET` / `PATCH` | `/api/admin/settings` | แอดมิน | ดูและแก้โควตา กำหนดการ ค่าสมัคร หรือปิดรับสมัครฉุกเฉิน |
 
----
+`verifyCode` คือเลข 4 ตัวท้ายของบัตรประชาชน ใช้ยืนยันว่าคนที่กดคือเจ้าของใบสมัคร และไม่ได้เก็บไว้ในเบราว์เซอร์
 
-## 🧪 การทดสอบระบบ (Testing & Quality Assurance)
+ผู้สมัครที่ส่งสำเร็จจะได้สถานะ `PASSED` ทันทีตามหลักมาก่อนได้ก่อน (ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้) จากนั้นส่งสลิปให้พี่ค่ายอนุมัติเป็น `CONFIRMED` สถานะทั้งหมดที่ใช้คือ `PENDING`, `PASSED`, `RESERVE`, `CONFIRMED`, `REJECTED`, `REFUND_PENDING`, `REFUNDED`
+
+## การทดสอบ
 
 ```bash
-# Backend Automated Tests & Integration Suite
 cd backend
-go test -v ./...
+go vet ./...
+go test -count=1 ./...
+
+cd ../frontend
+npm run build
 ```
-- E2E Lifecycle Test Suite: ผ่านครบทุกขั้นตอน
-- Repository Integration with PostgreSQL 16: ผ่านครบทุกขั้นตอน
-- Unit Validation & Business Logic Tests: ผ่านครบ 100%
 
----
+ชุดทดสอบ backend มี unit test, การยิง API ตั้งแต่สมัครจนอนุมัติสลิป และการยิงพร้อมกันตอนโควตาใกล้เต็ม ชุดที่ต่อ PostgreSQL จริงอยู่ที่ `internal/repository/postgres` และจะรันก็ต่อเมื่อตั้ง `TEST_DATABASE_DSN` ถ้าไม่ตั้งจะถูกข้ามเฉยๆ
 
-## 📄 สิทธิ์การใช้งาน (License)
+## โครงสร้างโฟลเดอร์
 
-สงวนสิทธิ์ตาม [LICENSE](./LICENSE) (**Source-Available — Proprietary**):
-- **ทีมงานและคณะผู้จัดค่าย ComCamp (CS MJU) รุ่นถัดไป** (เช่น ComCamp #26 เป็นต้นไป) สามารถใช้อ้างอิง คัดลอก ดัดแปลง และติดตั้งใช้งานเพื่อจัดกิจกรรมค่ายของสาขาได้ฟรี (โปรดคงเครดิตทีมพัฒนา ComCamp #25 ไว้)
-- **บุคคลภายนอก (Non-Staff)** ไม่อนุญาตให้นำโค้ดไปคัดลอก ทำซ้ำ ดัดแปลง หรือเผยแพร่ใช้งานต่อโดยไม่ได้รับอนุญาตเป็นลายลักษณ์อักษร
+```text
+backend/
+  cmd/api/            จุดเริ่มต้นของ API
+  cmd/create-admin/   เครื่องมือสร้างบัญชีแอดมิน
+  internal/           config, domain, handler, middleware, repository, service
+  migrations/         SQL สำหรับ PostgreSQL (000001–000004)
+frontend/
+  src/pages/          หน้าเว็บ
+  src/components/     คอมโพเนนต์ของแต่ละหน้า
+  public/theme/       CSS/JS ของหน้าแรก
+docker-compose.yml    PostgreSQL 16 (ผูกที่ 127.0.0.1 เท่านั้น)
+AI_SETUP.md           ให้ AI ช่วยเซตอัพและตรวจระบบ
+```
+
+## ให้ AI ช่วยเซตอัพ
+
+ถ้าไม่อยากทำเอง เปิดโปรเจกต์ใน Claude Code, Codex, Cursor หรือ Gemini CLI แล้วสั่งว่า
+
+> อ่าน `AI_SETUP.md` แล้วเซตอัพโปรเจกต์แบบโหมด A (ไม่ใช้ Docker) ใช้ Turnstile dummy key รันเทสต์ แล้วเปิด backend กับ frontend ให้หน่อย
+
+รายละเอียดและคำสั่งแบบอื่นอยู่ใน [`AI_SETUP.md`](AI_SETUP.md)
+
+## สิทธิ์การใช้งาน
+
+ดูเงื่อนไขเต็มที่ [LICENSE](LICENSE) (source-available ไม่ใช่โอเพนซอร์ส) โดยสรุป:
+
+- ทีมงานและผู้จัดค่าย ComCamp ของ CS MJU รุ่นถัดไป (เช่น ComCamp #26) นำไปใช้ ดัดแปลง และติดตั้งเพื่อจัดค่ายของสาขาได้ฟรี ขอให้คงเครดิตทีมพัฒนา ComCamp #25 ไว้
+- บุคคลภายนอกทีมงานจะคัดลอก ดัดแปลง หรือเผยแพร่ต่อ ต้องได้รับอนุญาตเป็นลายลักษณ์อักษรก่อน
