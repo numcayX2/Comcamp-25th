@@ -36,20 +36,24 @@ Comcamp-25th/
 
 ## ⚡ เริ่มต้นใช้งานอย่างรวดเร็ว (Quick Start)
 
-### 1. ติดตั้งและเริ่มฐานข้อมูล (PostgreSQL 16)
+### 1. ตั้งค่า Environment และเริ่มฐานข้อมูล (PostgreSQL 16)
 
-```bash
-# คัดลอก Environment Variables
+```powershell
+# คัดลอก Environment Variables (ใช้ได้ทั้ง Backend และ Frontend ผ่าน fallback ใน astro.config.mjs)
 cp .env.example .env
+# จากนั้นเปิด .env เพื่อตั้งค่า JWT_SECRET / DB_PASSWORD (และ DEV_ADMIN_PASSWORD สำหรับทดสอบ /admin)
 
 # เริ่มต้น Docker Container สำหรับ PostgreSQL
 docker compose up -d db
 
-# รัน Migration
-Get-Content backend/migrations/000001_init_schema.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+# รัน Migration ทั้งหมดตามลำดับ (000001–000004) — PowerShell
+Get-ChildItem backend/migrations/*.up.sql | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw } | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+
+# หรือบน macOS / Linux (Bash)
+# cat backend/migrations/*.up.sql | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
-*(หมายเหตุ: หากไม่มี Docker ระบบ Backend มี Thread-Safe In-Memory Fallback ให้นักพัฒนา Front-end สามารถรันเซิร์ฟเวอร์ทดสอบได้ทันที)*
+*(หมายเหตุ: หากไม่มี Docker ระบบ Backend มี Thread-Safe In-Memory Fallback ให้นักพัฒนาสามารถรันทดสอบได้ทันที ส่วน Cloudflare Turnstile ในโหมด `development` สามารถเว้นว่างไว้เพื่อข้ามการตรวจ หรือใช้ Dummy Test Keys ที่ระบุไว้ท้ายไฟล์ `.env.example`)*
 
 ### 2. รัน Backend API Service
 
@@ -81,7 +85,7 @@ npm run dev
   cd backend
   go run ./cmd/create-admin -username <ชื่อผู้ใช้> -name "<ชื่อที่แสดง>" -role superadmin
   ```
-* **Development (In-Memory, ไม่มี PostgreSQL):** ตั้ง `DEV_ADMIN_USERNAME` และ `DEV_ADMIN_PASSWORD` ใน `.env` ของเครื่องตัวเอง (ไม่ถูกใช้ในโหมด production)
+* **Development (In-Memory, ไม่มี PostgreSQL):** ตั้ง `DEV_ADMIN_USERNAME` และ `DEV_ADMIN_PASSWORD` ใน `.env` ของเครื่องตัวเองเพื่อสร้างบัญชีทดสอบ `/admin` (ถ้าเว้นว่างไว้ API จะไม่ seed บัญชีให้; ตัวแปรนี้ไม่ถูกใช้ในโหมด production)
 
 ---
 
