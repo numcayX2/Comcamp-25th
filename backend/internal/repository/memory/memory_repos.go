@@ -523,6 +523,70 @@ func (m *MemoryPaymentRepo) Create(ctx context.Context, p *domain.Payment) error
 	return nil
 }
 
+// CreateReplacingPending mirrors the PostgreSQL implementation: one mutex section checks for an
+// approved slip, drops the applicant's PENDING slips (freeing their hashes) and inserts the new one.
+func (m *MemoryPaymentRepo) CreateReplacingPending(ctx context.Context, p *domain.Payment) ([]*domain.Payment, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var pending []*domain.Payment
+	for _, old := range m.data {
+		if old.ApplicantID != p.ApplicantID {
+			continue
+		}
+		switch old.Status {
+		case domain.PaymentApproved:
+			return nil, domain.ErrPaymentAlreadyVerified
+		case domain.PaymentPending:
+			pending = append(pending, old)
+		}
+	}
+
+	if p.TransRef != nil && *p.TransRef != "" && m.transRefs[*p.TransRef] {
+		return nil, domain.ErrDuplicateSlipHash
+	}
+	if p.SlipHash != nil && *p.SlipHash != "" && m.slipHashes[*p.SlipHash] {
+		// The hash of a slip that is being replaced right now would be free again, but the new
+		// upload is checked against the table as it stands, like the unique index does.
+		held := false
+		for _, old := range pending {
+			if old.SlipHash != nil && *old.SlipHash == *p.SlipHash {
+				held = true
+			}
+		}
+		if !held {
+			return nil, domain.ErrDuplicateSlipHash
+		}
+	}
+
+	superseded := make([]*domain.Payment, 0, len(pending))
+	for _, old := range pending {
+		clone := *old
+		superseded = append(superseded, &clone)
+		delete(m.data, old.ID)
+		if old.SlipHash != nil {
+			delete(m.slipHashes, *old.SlipHash)
+		}
+		if old.TransRef != nil {
+			delete(m.transRefs, *old.TransRef)
+		}
+	}
+
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	p.UploadedAt = time.Now().UTC()
+	clone := *p
+	m.data[p.ID] = &clone
+	if p.TransRef != nil && *p.TransRef != "" {
+		m.transRefs[*p.TransRef] = true
+	}
+	if p.SlipHash != nil && *p.SlipHash != "" {
+		m.slipHashes[*p.SlipHash] = true
+	}
+	return superseded, nil
+}
+
 func (m *MemoryPaymentRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Payment, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

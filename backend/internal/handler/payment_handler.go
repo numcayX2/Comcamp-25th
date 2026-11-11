@@ -116,6 +116,8 @@ func (h *PaymentHandler) GetSlip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", slip.ContentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", slip.Name))
 	w.Header().Set("Cache-Control", "private, no-store")
+	// The slip being shown: sent back as paymentId with the verdict (PATCH .../verify-slip).
+	w.Header().Set("X-Slip-Payment-Id", slip.PaymentID)
 	http.ServeContent(w, r, slip.Name, stat.ModTime(), f)
 }
 
@@ -129,6 +131,9 @@ func (h *PaymentHandler) VerifySlip(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Approved bool   `json:"approved"`
 		Note     string `json:"note"`
+		// PaymentID is the slip the admin inspected (slipPaymentId / X-Slip-Payment-Id). Optional;
+		// when set and no longer the latest slip the answer is 409 SLIP_CHANGED.
+		PaymentID string `json:"paymentId,omitempty"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -140,7 +145,7 @@ func (h *PaymentHandler) VerifySlip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.paymentService.VerifySlip(r.Context(), id, body.Approved, claims.AdminID, body.Note, middleware.RemoteIP(r)); err != nil {
+	if err := h.paymentService.VerifySlip(r.Context(), id, body.PaymentID, body.Approved, claims.AdminID, body.Note, middleware.RemoteIP(r)); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}

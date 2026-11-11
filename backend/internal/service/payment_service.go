@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -33,6 +34,10 @@ var (
 	// rejecting its slip would re-confirm a seat that was released. The slip stays viewable.
 	ErrSlipLocked          = errors.New("this application was refunded or rejected, so its payment slip can no longer be reviewed")
 	ErrSlipAlreadyVerified = domain.ErrPaymentAlreadyVerified
+	// ErrSlipChanged: the slip the admin looked at is no longer the applicant's current slip (a new
+	// one was uploaded in the meantime, or the paymentId is not theirs). Nothing was approved or
+	// rejected; reload the application and review the new slip.
+	ErrSlipChanged = errors.New("the applicant's slip has changed since you opened it, please reload and review the current slip")
 	// ErrInvalidImageDimensions: width or height is 0 or above MaxSlipDimension (image bomb guard).
 	ErrInvalidImageDimensions = fmt.Errorf("image must be between 1×1 and %d×%d pixels", MaxSlipDimension, MaxSlipDimension)
 )
@@ -189,12 +194,28 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 		SlipHash:      &slipHash,
 		VerifiedByAPI: false,
 	}
-	if err := s.paymentRepo.Create(ctx, payment); err != nil {
+	// An applicant has at most one slip waiting for review: the new upload supersedes the earlier
+	// PENDING one(s) in the same transaction, so repeated uploads cannot fill the disk or the
+	// table (each is up to 5 MB). The approved-slip check above is repeated inside the
+	// transaction, which closes the race with an admin approving at the same moment.
+	superseded, err := s.paymentRepo.CreateReplacingPending(ctx, payment)
+	if err != nil {
 		_ = os.Remove(destPath)
-		if errors.Is(err, domain.ErrDuplicateSlipHash) {
+		switch {
+		case errors.Is(err, domain.ErrDuplicateSlipHash):
 			return nil, ErrDuplicateSlip
+		case errors.Is(err, domain.ErrPaymentAlreadyVerified):
+			return nil, ErrSlipAlreadyApproved
 		}
 		return nil, fmt.Errorf("failed to save payment record: %w", err)
+	}
+	// The rows are gone; now their files. A failure here only leaves an orphan file behind (logged),
+	// it cannot revive the old slip.
+	for _, old := range superseded {
+		s.removeSlipFile(old)
+	}
+	if len(superseded) > 0 {
+		s.logSupersededSlips(ctx, applicant.ApplicationNo, payment.ID.String(), superseded, remoteIPFrom(ctx))
 	}
 
 	return &SlipUploadResult{
@@ -204,6 +225,52 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 		SlipStatus: domain.PaymentPending,
 		Message:    "อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่",
 	}, nil
+}
+
+// slipFileName returns the bare file name of a stored slip_url, or false when it does not name a
+// file inside the slip directory (a tampered row cannot point elsewhere). It also accepts rows
+// written by older builds ("/uploads/slips/<name>").
+func slipFileName(slipURL string) (string, bool) {
+	name := filepath.Base(filepath.FromSlash(slipURL))
+	if name == "." || name == string(filepath.Separator) || strings.HasPrefix(name, "..") {
+		return "", false
+	}
+	return name, true
+}
+
+// removeSlipFile deletes the image of a payment row that no longer exists.
+func (s *PaymentService) removeSlipFile(p *domain.Payment) {
+	name, ok := slipFileName(p.SlipURL)
+	if !ok {
+		log.Printf("superseded slip %s: unusable slip_url, file not removed", p.ID)
+		return
+	}
+	if err := os.Remove(filepath.Join(s.slipDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("superseded slip %s: cannot remove %s: %v", p.ID, name, err)
+	}
+}
+
+// logSupersededSlips records that an upload replaced a slip that was still waiting for review.
+func (s *PaymentService) logSupersededSlips(ctx context.Context, applicationNo, newPaymentID string, old []*domain.Payment, ip string) {
+	if s.auditRepo == nil {
+		return
+	}
+	ids := make([]string, len(old))
+	for i, p := range old {
+		ids[i] = p.ID.String()
+	}
+	entry := &domain.AuditEntry{
+		Action:     domain.AuditSlipSuperseded,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicationNo,
+		Details:    map[string]any{"newPaymentId": newPaymentID, "supersededPaymentIds": ids, "selfService": true},
+		IPAddress:  ip,
+	}
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	if err := s.auditRepo.Log(wctx, entry); err != nil {
+		log.Printf("audit log write failed (%s): %v", entry.Action, err)
+	}
 }
 
 // writeFileExclusive creates path (failing if it exists), writes data and flushes it to stable
@@ -236,6 +303,9 @@ type SlipFile struct {
 	Path        string
 	ContentType string
 	Name        string
+	// PaymentID identifies the slip being streamed. The admin UI sends it back with the verdict
+	// (VerifySlip) so a slip that was replaced meanwhile is not approved by mistake.
+	PaymentID string
 }
 
 // OpenLatestSlip resolves the applicant's latest slip on disk and records the access in the
@@ -255,8 +325,8 @@ func (s *PaymentService) OpenLatestSlip(ctx context.Context, applicationNo strin
 
 	// filepath.Base also accepts rows written by older builds ("/uploads/slips/<name>") and makes
 	// a tampered slip_url unable to point outside the slip directory.
-	name := filepath.Base(filepath.FromSlash(payment.SlipURL))
-	if name == "." || name == string(filepath.Separator) || strings.HasPrefix(name, "..") {
+	name, ok := slipFileName(payment.SlipURL)
+	if !ok {
 		return nil, ErrNoSlip
 	}
 	contentType, ok := slipContentTypes[strings.ToLower(filepath.Ext(name))]
@@ -278,12 +348,28 @@ func (s *PaymentService) OpenLatestSlip(ctx context.Context, applicationNo strin
 		}
 	}
 
-	return &SlipFile{Path: filepath.Join(s.slipDir, name), ContentType: contentType, Name: name}, nil
+	return &SlipFile{Path: filepath.Join(s.slipDir, name), ContentType: contentType, Name: name, PaymentID: payment.ID.String()}, nil
 }
 
 // VerifySlip approves or rejects the latest PENDING slip. Payment, applicant status, status log
 // and audit row are written in one transaction.
-func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo string, approved bool, adminID int64, note, ip string) error {
+//
+// paymentID is the slip the admin actually looked at (SlipFile.PaymentID / slipPaymentId of the
+// list). When given, it must still be the applicant's latest slip, otherwise ErrSlipChanged: an
+// applicant who uploads a new slip while staff are viewing the old one cannot get the new,
+// unseen image approved. Empty keeps the old behaviour (settle whatever is latest). Either way a
+// slip replaced after the read below no longer exists when Verify runs, which also ends in
+// ErrSlipChanged rather than settling the wrong image.
+func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentID string, approved bool, adminID int64, note, ip string) error {
+	var wantID uuid.UUID
+	if paymentID = strings.TrimSpace(paymentID); paymentID != "" {
+		id, err := uuid.Parse(paymentID)
+		if err != nil {
+			return newValidationError("paymentId must be a valid UUID")
+		}
+		wantID = id
+	}
+
 	note = strings.TrimSpace(note)
 	if utf8.RuneCountInString(note) > maxReasonRunes {
 		return newValidationError(fmt.Sprintf("note is too long (max %d characters)", maxReasonRunes))
@@ -305,6 +391,9 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo string, a
 	if err != nil {
 		return err
 	}
+	if wantID != uuid.Nil && wantID != latestPayment.ID {
+		return ErrSlipChanged
+	}
 
 	audit := &domain.AuditEntry{
 		AdminID:    &adminID,
@@ -323,6 +412,10 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo string, a
 	if err := s.paymentRepo.Verify(ctx, latestPayment.ID, approved, adminID, note, audit); err != nil {
 		if errors.Is(err, domain.ErrStateConflict) {
 			return ErrSlipLocked
+		}
+		if errors.Is(err, domain.ErrNotFound) {
+			// The slip was superseded by a newer upload between the read and the write.
+			return ErrSlipChanged
 		}
 		return err
 	}

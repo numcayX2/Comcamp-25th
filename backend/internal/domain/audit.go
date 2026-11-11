@@ -27,6 +27,10 @@ const (
 	AuditTargetSettings                = "settings"
 )
 
+// AuditSlipSuperseded is an applicant uploading a new slip that replaced one still waiting for
+// review (no admin). The replaced slip's row and file are deleted.
+const AuditSlipSuperseded AuditAction = "payment.slip.superseded"
+
 // Public identity-check events (AGENTS.md §13.5), written without an admin.
 const (
 	// AuditVerifyFailure is a repeated wrong verifyCode / nationalId for one application.

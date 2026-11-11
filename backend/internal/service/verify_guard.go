@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -28,6 +29,10 @@ const (
 	MaxVerifyFailures     = 5
 	VerifyFailureWindow   = 15 * time.Minute
 	VerifyLockoutDuration = 15 * time.Minute
+	// MaxVerifyEntries is a hard cap on tracked applications. Normally the map holds at most the
+	// applications that failed in the last window (a few dozen); the cap is a backstop so a bot
+	// flood can never grow it without limit.
+	MaxVerifyEntries = 50_000
 )
 
 // Endpoint names recorded in the audit details.
@@ -52,6 +57,7 @@ type VerifyGuardConfig struct {
 	MaxFailures int
 	Window      time.Duration
 	Lockout     time.Duration
+	MaxEntries  int
 	Now         func() time.Time
 }
 
@@ -87,6 +93,9 @@ func NewVerifyGuardWith(audit domain.AuditRepository, cfg VerifyGuardConfig) *Ve
 	}
 	if cfg.Lockout <= 0 {
 		cfg.Lockout = VerifyLockoutDuration
+	}
+	if cfg.MaxEntries <= 0 {
+		cfg.MaxEntries = MaxVerifyEntries
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -138,6 +147,7 @@ func (g *VerifyGuard) Check(ctx context.Context, applicationNo, action, ip strin
 	}
 
 	if st == nil {
+		g.makeRoomLocked(now)
 		st = &verifyState{firstFailure: now}
 		g.entries[applicationNo] = st
 	}
@@ -161,6 +171,11 @@ func (g *VerifyGuard) sweepLocked(now time.Time) {
 	if now.Sub(g.lastSweep) < g.cfg.Window {
 		return
 	}
+	g.dropExpiredLocked(now)
+}
+
+// dropExpiredLocked removes every entry whose window or lock has run out. Callers hold g.mu.
+func (g *VerifyGuard) dropExpiredLocked(now time.Time) {
 	g.lastSweep = now
 	for k, st := range g.entries {
 		if st.lockedUntil.IsZero() {
@@ -170,6 +185,51 @@ func (g *VerifyGuard) sweepLocked(now time.Time) {
 		} else if !now.Before(st.lockedUntil) {
 			delete(g.entries, k)
 		}
+	}
+}
+
+// makeRoomLocked keeps len(entries) below MaxEntries before a new entry is added. It first sweeps
+// expired entries right away (whatever lastSweep says); if the table is still full of live ones it
+// evicts the oldest. Callers hold g.mu.
+//
+// Eviction prefers entries that are only counting failures over entries that hold a lock (a
+// lock is the thing the guard exists to keep), oldest first within each group, and removes a
+// batch (1/16 of the cap) so a sustained flood pays the sort once per many inserts, not on every
+// request.
+func (g *VerifyGuard) makeRoomLocked(now time.Time) {
+	if len(g.entries) < g.cfg.MaxEntries {
+		return
+	}
+	g.dropExpiredLocked(now)
+	if len(g.entries) < g.cfg.MaxEntries {
+		return
+	}
+
+	type cand struct {
+		key    string
+		locked bool
+		since  time.Time
+	}
+	cands := make([]cand, 0, len(g.entries))
+	for k, st := range g.entries {
+		c := cand{key: k, locked: !st.lockedUntil.IsZero(), since: st.firstFailure}
+		if c.locked {
+			c.since = st.lockedUntil
+		}
+		cands = append(cands, c)
+	}
+	slices.SortFunc(cands, func(a, b cand) int {
+		if a.locked != b.locked {
+			if !a.locked {
+				return -1
+			}
+			return 1
+		}
+		return a.since.Compare(b.since)
+	})
+	n := max(len(g.entries)-g.cfg.MaxEntries+1, g.cfg.MaxEntries/16)
+	for _, c := range cands[:min(n, len(cands))] {
+		delete(g.entries, c.key)
 	}
 }
 

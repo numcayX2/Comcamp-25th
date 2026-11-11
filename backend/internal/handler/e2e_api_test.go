@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +34,10 @@ type testApp struct {
 	appRepo   *memory.MemoryApplicantRepo
 	adminRepo *memory.MemoryAdminRepo
 	setRepo   *memory.MemorySettingRepo
-	adminID   int64
+	payRepo   *memory.MemoryPaymentRepo
+	// slipDir is where uploaded slips land on disk (the service stores them under <upload>/slips).
+	slipDir string
+	adminID int64
 	// verifyCodes maps application ID → last 4 national-ID digits, filled by submit, so the
 	// public confirm / slip helpers can pass the /status second factor (AGENTS.md §13.5).
 	verifyCodes map[string]string
@@ -98,6 +102,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
 	clock := &testClock{}
 	// Wired like main: one lockout guard shared by every public verify-code endpoint.
+	uploadDir := t.TempDir()
 	guard := service.NewVerifyGuardWith(appRepo.Audit(), service.VerifyGuardConfig{Now: clock.Now})
 	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo).WithVerifyGuard(guard)
 	if captcha != nil {
@@ -107,7 +112,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
 		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(setRepo, appRepo, appRepo.Audit()),
-		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()).WithVerifyGuard(guard),
+		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithVerifyGuard(guard),
 	}
 
 	router := server.NewRouter(services, server.Options{
@@ -116,7 +121,8 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 	})
 
 	return &testApp{
-		Handler: router, appRepo: appRepo, adminRepo: admRepo, setRepo: setRepo, adminID: admin.ID,
+		Handler: router, appRepo: appRepo, adminRepo: admRepo, setRepo: setRepo, payRepo: payRepo,
+		slipDir: filepath.Join(uploadDir, "slips"), adminID: admin.ID,
 		verifyCodes: map[string]string{}, nationalIDs: map[string]string{}, clock: clock,
 	}
 }

@@ -40,6 +40,13 @@ type PaymentRepository interface {
 	GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*Payment, error)
 	CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error)
 	CheckDuplicateSlipHash(ctx context.Context, slipHash string) (bool, error)
+	// CreateReplacingPending stores p as the applicant's newest slip and, in the same transaction,
+	// deletes every earlier PENDING slip of that applicant (an applicant has at most one slip
+	// waiting for review, so uploads cannot pile up on disk and in the table). The removed rows
+	// are returned so the caller can delete their files. Uploads for one applicant are serialised.
+	// Returns ErrPaymentAlreadyVerified, creating nothing, when the applicant already has an
+	// APPROVED slip. REJECTED rows are history and are kept.
+	CreateReplacingPending(ctx context.Context, p *Payment) (superseded []*Payment, err error)
 	// Verify settles a PENDING payment and, in the same transaction, moves the applicant to
 	// CONFIRMED (approved) or back to PASSED (rejected, so they can re-upload), writing the
 	// status log and the audit entry. Returns ErrPaymentAlreadyVerified if it is not PENDING.

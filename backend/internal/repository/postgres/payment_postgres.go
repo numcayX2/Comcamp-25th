@@ -47,6 +47,85 @@ func (r *PaymentPostgresRepo) Create(ctx context.Context, p *domain.Payment) err
 	return mapPgError(err)
 }
 
+// CreateReplacingPending inserts p and deletes the applicant's earlier PENDING slips in one
+// transaction. A per-applicant advisory lock serialises concurrent uploads, so two racing uploads
+// cannot both leave a PENDING row behind. The slip rows are then locked FOR UPDATE: an admin
+// settling one of them (Verify holds the same row lock) is waited for, and the status is
+// re-read afterwards, so a slip approved a moment ago is seen as APPROVED here and refuses the
+// upload instead of being deleted. Verify never takes the advisory lock, so no lock cycle exists.
+func (r *PaymentPostgresRepo) CreateReplacingPending(ctx context.Context, p *domain.Payment) ([]*domain.Payment, error) {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	p.UploadedAt = now
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "payment-slip:"+p.ApplicantID.String()); err != nil {
+		return nil, fmt.Errorf("lock applicant slips: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `SELECT `+paymentColumns+` FROM payments
+		WHERE applicant_id = $1 AND status IN ('PENDING', 'APPROVED') FOR UPDATE`, p.ApplicantID)
+	if err != nil {
+		return nil, fmt.Errorf("lock slips: %w", err)
+	}
+	var pending []*domain.Payment
+	approved := false
+	for rows.Next() {
+		old, err := scanPayment(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if old.Status == domain.PaymentApproved {
+			approved = true
+		} else {
+			pending = append(pending, old)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if approved {
+		return nil, domain.ErrPaymentAlreadyVerified
+	}
+
+	if len(pending) > 0 {
+		ids := make([]uuid.UUID, len(pending))
+		for i, old := range pending {
+			ids[i] = old.ID
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM payments WHERE id = ANY($1) AND status = 'PENDING'`, ids); err != nil {
+			return nil, fmt.Errorf("remove superseded slips: %w", err)
+		}
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO payments (
+			id, applicant_id, slip_url, amount, status,
+			trans_ref, slip_hash, transfer_at, verified_by_api,
+			verified_by_admin_id, admin_note, rejection_reason, uploaded_at, verified_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		p.ID, p.ApplicantID, p.SlipURL, p.Amount, p.Status,
+		p.TransRef, p.SlipHash, p.TransferAt, p.VerifiedByAPI,
+		p.VerifiedByAdminID, p.AdminNote, p.RejectionReason, now, p.VerifiedAt,
+	)
+	if err != nil {
+		return nil, mapPgError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
+
 func (r *PaymentPostgresRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Payment, error) {
 	query := `SELECT ` + paymentColumns + ` FROM payments WHERE id = $1`
 	return r.scan(r.pool.QueryRow(ctx, query, id))

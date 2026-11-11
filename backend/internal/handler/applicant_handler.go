@@ -165,7 +165,14 @@ func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 		statusFilter = &st
 	}
 
-	apps, err := h.appService.ListAll(r.Context(), statusFilter)
+	// The caller's role decides whether national IDs come back in full: finance and reviewer get
+	// them masked (see service.CanSeeFullNationalID). No identity at all is treated as no role.
+	var role domain.AdminRole
+	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
+		role = claims.Role
+	}
+
+	apps, err := h.appService.ListAll(r.Context(), statusFilter, role)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

@@ -78,3 +78,46 @@ func TestRateLimiterWindowResets(t *testing.T) {
 		t.Fatal("window should reset")
 	}
 }
+
+func TestRateLimitKey(t *testing.T) {
+	cases := []struct {
+		name   string
+		remote string
+		want   string
+	}{
+		{"ipv4 is kept as is", "198.51.100.7:5000", "198.51.100.7"},
+		{"ipv4 without port", "198.51.100.7", "198.51.100.7"},
+		{"ipv6 is cut to its /64", "[2001:db8:1234:5678:9abc:def0:1234:5678]:443", "2001:db8:1234:5678::"},
+		{"ipv6 host bits do not matter", "[2001:db8:1234:5678:ffff:ffff:ffff:ffff]:443", "2001:db8:1234:5678::"},
+		{"ipv6 bare (as ClientIP leaves it)", "2001:db8:1234:5678::1", "2001:db8:1234:5678::"},
+		{"neighbouring /64 is a different key", "[2001:db8:1234:5679::1]:443", "2001:db8:1234:5679::"},
+		{"zone is dropped", "[fe80::1%eth0]:80", "fe80::"},
+		{"ipv4-mapped ipv6 counts as ipv4", "[::ffff:203.0.113.9]:80", "203.0.113.9"},
+		{"loopback v6", "[::1]:80", "::"},
+		{"garbage falls back to the raw value", "not-an-address", "not-an-address"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.RemoteAddr = tc.remote
+			if got := RateLimitKey(r); got != tc.want {
+				t.Fatalf("RateLimitKey(%q) = %q, want %q", tc.remote, got, tc.want)
+			}
+		})
+	}
+}
+
+// ClientIP leaves a bare address in RemoteAddr; the key must still be the /64 when the address
+// comes from a trusted proxy's X-Forwarded-For.
+func TestRateLimitKey_AfterClientIPWithForwardedIPv6(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	var got string
+	h := ClientIP(trusted)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got = RateLimitKey(r) }))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:5000"
+	req.Header.Set("X-Forwarded-For", "2001:db8:aaaa:bbbb:1:2:3:4")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got != "2001:db8:aaaa:bbbb::" {
+		t.Fatalf("got %q, want the /64 prefix", got)
+	}
+}

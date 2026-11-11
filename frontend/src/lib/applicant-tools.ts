@@ -94,6 +94,15 @@ function csvDigits(value: string): string {
   return d ? `"=""${d}"""` : '';
 }
 
+/**
+ * The national ID column. Finance and reviewer accounts receive a masked value (1-5099-XXXXX-XX-X)
+ * from the server; stripping that down to its digits would export the misleading number 15099, so
+ * a value with a mask in it is written as the text it is.
+ */
+function csvNationalId(value: string): string {
+  return /x/i.test(value) ? csvField(value) : csvDigits(value);
+}
+
 const BANGKOK_DATETIME = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Bangkok',
   year: 'numeric',
@@ -121,7 +130,7 @@ export function buildApplicantsCsv(rows: Application[]): string {
         csvField(a.id),
         csvField(a.fullName),
         csvField(a.nickname ?? ''),
-        csvDigits(a.nationalId),
+        csvNationalId(a.nationalId),
         csvDigits(a.phone),
         csvField(a.email ?? ''),
         csvField(a.school),

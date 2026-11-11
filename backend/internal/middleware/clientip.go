@@ -60,6 +60,22 @@ func RemoteIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+// RateLimitKey is the key the rate limiters count a request under. IPv4 addresses are used as they
+// are. An IPv6 address is reduced to its /64 prefix: a single subscriber normally owns a whole /64
+// (often a /48 or /56), so counting per /128 would let one client rotate through 2^64 addresses
+// and never hit a limit, and would also let it fill the limiter's table with distinct keys.
+// Zones are dropped and IPv4-mapped IPv6 addresses count as the IPv4 address they carry.
+func RateLimitKey(r *http.Request) string {
+	addr, ok := parseAddr(r.RemoteAddr)
+	if !ok {
+		return r.RemoteAddr
+	}
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().Addr().String()
+	}
+	return addr.String()
+}
+
 func parseAddr(s string) (netip.Addr, bool) {
 	if s == "" {
 		return netip.Addr{}, false

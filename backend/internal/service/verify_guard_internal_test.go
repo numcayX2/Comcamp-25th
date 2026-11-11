@@ -246,3 +246,105 @@ func TestCheckNationalID(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyGuard_DefaultCapIs50k(t *testing.T) {
+	if g := NewVerifyGuard(nil); g.cfg.MaxEntries != 50_000 {
+		t.Fatalf("default cap = %d, want 50000", g.cfg.MaxEntries)
+	}
+}
+
+func newCappedGuard(max int) (*VerifyGuard, *fakeClock, *recordingAudit) {
+	clock := &fakeClock{now: time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)}
+	audit := &recordingAudit{}
+	return NewVerifyGuardWith(audit, VerifyGuardConfig{MaxEntries: max, Now: clock.Now}), clock, audit
+}
+
+// A flood of wrong answers for ever-new application numbers cannot grow the map past the cap.
+func TestVerifyGuard_MapNeverExceedsTheCap(t *testing.T) {
+	g, clock, _ := newCappedGuard(64)
+	for i := 0; i < 5_000; i++ {
+		_ = check(g, fmt.Sprintf("CC25-%06d", i), wrong)
+		clock.Advance(time.Millisecond)
+		if n := g.tracked(); n > 64 {
+			t.Fatalf("after %d applications the guard tracks %d entries, cap is 64", i+1, n)
+		}
+	}
+}
+
+// Expired entries are swept at once when the table is full: live ones are not evicted for them,
+// even though the periodic sweep (once per window) would not have run yet.
+func TestVerifyGuard_FullTableSweepsExpiredBeforeEvicting(t *testing.T) {
+	g, clock, _ := newCappedGuard(4)
+	_ = check(g, "CC25-OLD001", wrong)
+	_ = check(g, "CC25-OLD002", wrong)
+	clock.Advance(VerifyFailureWindow - time.Minute)
+	_ = check(g, "CC25-LIVE01", wrong)
+	_ = check(g, "CC25-LIVE02", wrong) // full: 4/4
+	clock.Advance(2 * time.Minute)     // the two old ones are now past their window
+
+	_ = check(g, "CC25-NEW001", wrong)
+	if n := g.tracked(); n != 3 {
+		t.Fatalf("tracked = %d, want 3 (2 live + the new one; the 2 expired were swept)", n)
+	}
+	g.mu.Lock()
+	_, live1 := g.entries["CC25-LIVE01"]
+	_, live2 := g.entries["CC25-LIVE02"]
+	g.mu.Unlock()
+	if !live1 || !live2 {
+		t.Fatal("live entries must survive when expired ones can make room")
+	}
+}
+
+// When the table is full of live entries the oldest failure counter goes first, and an entry that
+// holds a lockout is the last to be evicted.
+func TestVerifyGuard_EvictionKeepsLocksAndDropsTheOldestCounters(t *testing.T) {
+	g, clock, _ := newCappedGuard(16) // batch = 16/16 = 1
+	for i := 0; i < MaxVerifyFailures; i++ {
+		_ = check(g, "CC25-LOCKED", wrong) // the oldest entry of all, and locked
+	}
+	clock.Advance(time.Second)
+	for i := 0; i < 15; i++ {
+		_ = check(g, fmt.Sprintf("CC25-N%05d", i), wrong)
+		clock.Advance(time.Second)
+	}
+	if n := g.tracked(); n != 16 {
+		t.Fatalf("tracked = %d, want 16 (full)", n)
+	}
+
+	_ = check(g, "CC25-NEWONE", wrong) // needs room
+
+	g.mu.Lock()
+	_, lockedKept := g.entries["CC25-LOCKED"]
+	_, oldestCounter := g.entries["CC25-N00000"]
+	_, newest := g.entries["CC25-NEWONE"]
+	g.mu.Unlock()
+	if !lockedKept {
+		t.Fatal("a locked application must not be evicted while unlocked counters exist")
+	}
+	if oldestCounter {
+		t.Fatal("the oldest failure counter should have been evicted")
+	}
+	if !newest || g.tracked() != 16 {
+		t.Fatalf("new entry kept=%v tracked=%d, want true/16", newest, g.tracked())
+	}
+	// The lock still works after the eviction round.
+	var locked *VerifyLockedError
+	if err := check(g, "CC25-LOCKED", right); !errors.As(err, &locked) {
+		t.Fatalf("expected the kept lock to still answer 429, got %v", err)
+	}
+}
+
+// Even when every slot holds a lock, a new application still gets tracked and the map stays capped.
+func TestVerifyGuard_AllLockedTableStillStaysBounded(t *testing.T) {
+	g, clock, _ := newCappedGuard(16)
+	for i := 0; i < 200; i++ {
+		app := fmt.Sprintf("CC25-L%05d", i)
+		for j := 0; j < MaxVerifyFailures; j++ {
+			_ = check(g, app, wrong)
+		}
+		clock.Advance(time.Millisecond)
+		if n := g.tracked(); n > 16 {
+			t.Fatalf("tracked = %d after %d locks, cap is 16", n, i+1)
+		}
+	}
+}

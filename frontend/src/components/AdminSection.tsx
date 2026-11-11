@@ -201,6 +201,9 @@ function describeAdminError(err: unknown, fallback: string): string {
     if (err.code === 'DUPLICATE_APPLICATION') {
       return 'เลขบัตรประชาชน เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
     }
+    if (err.code === 'SLIP_CHANGED') {
+      return 'ผู้สมัครเพิ่งอัปโหลดสลิปใหม่ จึงยังไม่ได้อนุมัติหรือปฏิเสธรายการนี้ รายการถูกโหลดใหม่แล้ว กรุณาเปิดดูสลิปล่าสุดก่อนตัดสินอีกครั้ง';
+    }
     if (err.code === 'ALREADY_VERIFIED') {
       return 'สลิปนี้ถูกตรวจสอบไปแล้ว กรุณากดรีเฟรชรายการ';
     }
@@ -334,7 +337,9 @@ export function AdminSection() {
     setError(null);
     setActionSuccess(null);
     try {
-      const res = await verifyPaymentSlip(token, inspectingApp.id, approved, verificationNote);
+      // slipPaymentId pins the verdict to the slip that is on screen: a slip swapped in meanwhile
+      // is refused (SLIP_CHANGED) instead of being approved unseen.
+      const res = await verifyPaymentSlip(token, inspectingApp.id, approved, verificationNote, inspectingApp.slipPaymentId);
       setSource(res.source);
 
       const newStatus: ApplicationStatus = approved ? 'CONFIRMED' : 'PASSED';
@@ -350,6 +355,14 @@ export function AdminSection() {
       setVerificationNote('');
     } catch (err) {
       if (handleAuthError(err)) return;
+      if (err instanceof ApiHttpError && err.code === 'SLIP_CHANGED') {
+        // Close the stale slip and reload the list, so the next open shows the new slip.
+        setInspectingApp(null);
+        setVerificationNote('');
+        listApplications(token)
+          .then((res) => setApps(Array.isArray(res.data) ? res.data : []))
+          .catch(() => undefined);
+      }
       setError(describeAdminError(err, 'การตรวจสอบสลิปล้มเหลว'));
     } finally {
       setVerifying(false);
@@ -745,16 +758,18 @@ export function AdminSection() {
                 <p role="status" aria-live="polite" className="text-sm tabular-nums" style={{ color: INK_2 }}>
                   {countLabel}
                 </p>
-                <button
-                  type="button"
-                  onClick={exportCsv}
-                  disabled={visible.length === 0}
-                  className={`inline-flex items-center gap-2 ${pillGhost}`}
-                  style={{ borderColor: RULE, color: INK }}
-                >
-                  <Download aria-hidden="true" strokeWidth={1.5} size={16} />
-                  ส่งออก CSV
-                </button>
+                {can.exportCsv && (
+                  <button
+                    type="button"
+                    onClick={exportCsv}
+                    disabled={visible.length === 0}
+                    className={`inline-flex items-center gap-2 ${pillGhost}`}
+                    style={{ borderColor: RULE, color: INK }}
+                  >
+                    <Download aria-hidden="true" strokeWidth={1.5} size={16} />
+                    ส่งออก CSV
+                  </button>
+                )}
               </div>
             </div>
 

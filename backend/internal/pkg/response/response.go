@@ -26,6 +26,7 @@ const (
 	CodeInternal           = "INTERNAL_ERROR"
 	CodeInvalidImageDims   = "INVALID_IMAGE_DIMENSIONS"
 	CodeInvalidVerifyCode  = "INVALID_VERIFY_CODE"
+	CodeSlipChanged        = "SLIP_CHANGED"
 	CodeCaptchaFailed      = "CAPTCHA_FAILED"
 )
 

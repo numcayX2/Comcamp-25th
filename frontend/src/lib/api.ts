@@ -161,6 +161,11 @@ export interface ApplicantRecord {
   hasSlip?: boolean;
   slipStatus?: SlipStatus | null;
   slipUrl?: string | null;
+  /**
+   * Admin only: id of the latest slip. Sent back with the verdict (verifyPaymentSlip) so a slip the
+   * applicant replaced while staff were looking at the old one is not approved by mistake.
+   */
+  slipPaymentId?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -205,6 +210,12 @@ export interface AdminPermissions {
   viewSlip: boolean;
   verifySlip: boolean;
   editSettings: boolean;
+  /**
+   * The CSV export. The server hands finance and reviewer accounts a masked national ID (they could
+   * otherwise use it to withdraw applications through the public endpoint), so the reviewer, who
+   * has no operational need for the file, does not get the button.
+   */
+  exportCsv: boolean;
 }
 
 /**
@@ -223,6 +234,7 @@ export function adminPermissions(role: string | null | undefined): AdminPermissi
     viewSlip: payments,
     verifySlip: payments,
     editSettings: superadmin,
+    exportCsv: payments,
   };
 }
 
@@ -790,13 +802,17 @@ export async function updateApplicationStatus(
 /**
  * PATCH /admin/applications/:id/verify-slip
  * Verifies or rejects the payment slip of an applicant.
- * Body: { approved: boolean, note: string }
+ * Body: { approved: boolean, note: string, paymentId?: string }
+ *
+ * paymentId is the `slipPaymentId` of the slip that was on screen. If the applicant has uploaded a
+ * newer slip since, the server answers 409 SLIP_CHANGED and changes nothing.
  */
 export async function verifyPaymentSlip(
   token: string,
   id: string,
   approved: boolean,
   note: string = '',
+  paymentId?: string | null,
 ): Promise<ApiResult<VerifySlipResponse>> {
   const data = await fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
     method: 'PATCH',
@@ -804,6 +820,7 @@ export async function verifyPaymentSlip(
     body: JSON.stringify({
       approved,
       note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
+      ...(paymentId ? { paymentId } : {}),
     }),
   });
   return { data, source: 'LIVE GO API' };

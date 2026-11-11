@@ -119,9 +119,12 @@ type ApplicationResponse struct {
 	HasSlip             bool                     `json:"hasSlip"`
 	SlipStatus          *domain.PaymentStatus    `json:"slipStatus,omitempty"`
 	// SlipURL is set only in admin responses: an authenticated API path, never a public file URL.
-	SlipURL   *string `json:"slipUrl,omitempty"`
-	CreatedAt string  `json:"createdAt"`
-	UpdatedAt string  `json:"updatedAt,omitempty"`
+	SlipURL *string `json:"slipUrl,omitempty"`
+	// SlipPaymentID (admin only) identifies the latest slip. The admin UI sends it back as
+	// paymentId with the verdict, so a slip replaced meanwhile is not settled by mistake.
+	SlipPaymentID *string `json:"slipPaymentId,omitempty"`
+	CreatedAt     string  `json:"createdAt"`
+	UpdatedAt     string  `json:"updatedAt,omitempty"`
 }
 
 type ApplicantService struct {
@@ -197,14 +200,11 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		}
 	}
 
-	// Bot check before any quota or database write. Fail closed: no verdict, no seat.
-	if s.captcha != nil {
-		if err := s.captcha.Verify(ctx, req.TurnstileToken, remoteIPFrom(ctx), idempotencyKey); err != nil {
-			return nil, false, err
-		}
-	}
-
 	// Fail closed: without settings we cannot know whether registration is open.
+	// This runs BEFORE the captcha on purpose. While registration is closed no Turnstile call is
+	// made at all, so a bot cannot pre-verify (token, idempotency key) pairs with Cloudflare in
+	// the seconds before 00:00:00 and replay them at midnight, and the API makes no outbound
+	// requests for traffic it is going to refuse anyway.
 	settings, err := s.settingRepo.Get(ctx)
 	if err != nil || settings == nil {
 		return nil, false, fmt.Errorf("%w: %v", ErrSettingsUnavailable, err)
@@ -212,6 +212,13 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	now := time.Now().UTC()
 	if settings.IsManualClosed || now.Before(settings.RegistrationOpenAt) || now.After(settings.RegistrationCloseAt) {
 		return nil, false, ErrRegistrationClosed
+	}
+
+	// Bot check before any quota or database write. Fail closed: no verdict, no seat.
+	if s.captcha != nil {
+		if err := s.captcha.Verify(ctx, req.TurnstileToken, remoteIPFrom(ctx), turnstileKey(key, req.NationalID)); err != nil {
+			return nil, false, err
+		}
 	}
 
 	firstName, lastName, err := splitFullName(req.FullName)
@@ -282,6 +289,19 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	default:
 		return nil, false, fmt.Errorf("failed to register applicant: %w", err)
 	}
+}
+
+// turnstileKey derives the idempotency key sent to Cloudflare from the client's X-Idempotency-Key
+// and the national ID being registered (a name-based UUID, so it is a valid UUID and stable for a
+// retry of the same submission). Cloudflare treats a repeated (token, key) pair as the same
+// request and answers from its cache, so binding the national ID into the key means a token that
+// was verified for one ID cannot be replayed for a different ID under the same client key.
+// No client key means no idempotency key for Cloudflare either.
+func turnstileKey(key *uuid.UUID, nationalID string) string {
+	if key == nil {
+		return ""
+	}
+	return uuid.NewSHA1(*key, []byte(nationalID)).String()
 }
 
 // replay returns the application stored under key, or (nil, nil) when there is none. A key that
@@ -514,7 +534,18 @@ func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo,
 	return s.toPublic(ctx, applicant), nil
 }
 
-func (s *ApplicantService) ListAll(ctx context.Context, status *domain.ApplicationStatus) ([]*ApplicationResponse, error) {
+// CanSeeFullNationalID reports whether an admin role may receive the raw 13-digit national ID.
+// Only superadmin and staff may. The ID authorises the public withdraw endpoint
+// (POST /api/applications/{id}/withdraw), so handing it to a finance or reviewer account would let
+// that account cancel applications, which the router reserves for superadmin. Fail closed: an
+// empty or unknown role gets the masked value.
+func CanSeeFullNationalID(role domain.AdminRole) bool {
+	return role == domain.RoleSuperadmin || role == domain.RoleStaff
+}
+
+// ListAll is the admin list. role is the caller's role: callers that may not see full national IDs
+// (see CanSeeFullNationalID) get them masked like the public status page.
+func (s *ApplicantService) ListAll(ctx context.Context, status *domain.ApplicationStatus, role domain.AdminRole) ([]*ApplicationResponse, error) {
 	if status != nil && !status.IsValid() {
 		return nil, ErrInvalidStatus
 	}
@@ -523,11 +554,15 @@ func (s *ApplicantService) ListAll(ctx context.Context, status *domain.Applicati
 		return nil, err
 	}
 
+	maskID := !CanSeeFullNationalID(role)
 	responses := make([]*ApplicationResponse, 0, len(list))
 	for _, a := range list {
 		res, err := s.toAdmin(ctx, a)
 		if err != nil {
 			return nil, err
+		}
+		if maskID {
+			res.NationalID = MaskNationalID(a.NationalID)
 		}
 		responses = append(responses, res)
 	}
@@ -946,6 +981,8 @@ func (s *ApplicantService) toAdmin(ctx context.Context, a *domain.Applicant) (*A
 		res.SlipStatus = &st
 		url := AdminSlipPath(a.ApplicationNo)
 		res.SlipURL = &url
+		pid := p.ID.String()
+		res.SlipPaymentID = &pid
 	}
 	return res, nil
 }

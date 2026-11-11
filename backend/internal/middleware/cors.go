@@ -13,7 +13,7 @@ func NewCORS(allowedOrigins []string) func(http.Handler) http.Handler {
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Idempotency-Key"},
-		ExposedHeaders:   []string{"Retry-After", "Idempotent-Replayed"},
+		ExposedHeaders:   []string{"Retry-After", "Idempotent-Replayed", "X-Slip-Payment-Id"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	})

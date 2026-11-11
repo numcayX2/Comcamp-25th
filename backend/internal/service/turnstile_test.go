@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"comcamp25-backend/internal/domain"
+	"comcamp25-backend/internal/repository/memory"
 	"comcamp25-backend/internal/service"
 )
 
@@ -329,5 +332,175 @@ func TestSubmit_SpentTokenWithoutAStoredRowIsRejected(t *testing.T) {
 	_, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(validTestNationalID(45), "token-A"), "9b2e7c14-3d5a-4e86-8f10-7a6c1d2e3f40")
 	if !errors.Is(err, service.ErrCaptchaFailed) {
 		t.Fatalf("expected ErrCaptchaFailed for a spent token, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// HIGH-03: the schedule is checked before Turnstile, and the Cloudflare key is bound to the ID.
+// ---------------------------------------------------------------------------------------------
+
+// recordingVerifier remembers what Cloudflare would be asked, and answers like Cloudflare's
+// idempotency does: a token verified under one key only verifies again under that same key.
+type recordingVerifier struct {
+	mu    sync.Mutex
+	keys  []string
+	bound map[string]string // token -> idempotency key it was first verified with
+}
+
+func (r *recordingVerifier) Verify(_ context.Context, token, _ string, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.keys = append(r.keys, key)
+	if token == "" {
+		return service.ErrCaptchaFailed
+	}
+	if r.bound == nil {
+		r.bound = map[string]string{}
+	}
+	if first, used := r.bound[token]; used && first != key {
+		return service.ErrCaptchaFailed // spent token, different request
+	}
+	r.bound[token] = key
+	return nil
+}
+
+func closeRegistration(t *testing.T, setRepo *memory.MemorySettingRepo, mode string) {
+	t.Helper()
+	now := time.Now().UTC()
+	s := &domain.Settings{ID: 1, RegistrationOpenAt: now.Add(-time.Hour), RegistrationCloseAt: now.Add(24 * time.Hour), MaxCapacity: 30}
+	switch mode {
+	case "not-open-yet":
+		s.RegistrationOpenAt, s.RegistrationCloseAt = now.Add(30*time.Second), now.Add(48*time.Hour)
+	case "ended":
+		s.RegistrationOpenAt, s.RegistrationCloseAt = now.Add(-48*time.Hour), now.Add(-time.Hour)
+	case "manual":
+		s.IsManualClosed = true
+	}
+	if err := setRepo.Update(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubmit_ClosedRegistrationNeverCallsTurnstile(t *testing.T) {
+	for _, mode := range []string{"not-open-yet", "ended", "manual"} {
+		t.Run(mode, func(t *testing.T) {
+			svc, appRepo, setRepo := setupTestServices()
+			v := &onceVerifier{}
+			svc.WithTurnstile(v)
+			closeRegistration(t, setRepo, mode)
+
+			// With and without a client idempotency key: a bot pre-verifying (token, key) pairs
+			// just before opening time must get nothing out of Cloudflare.
+			for _, key := range []string{"", testIdemKey} {
+				_, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(validTestNationalID(50), "pre-verified-token"), key)
+				if !errors.Is(err, service.ErrRegistrationClosed) {
+					t.Fatalf("key %q: expected ErrRegistrationClosed, got %v", key, err)
+				}
+			}
+			if v.calls != 0 {
+				t.Fatalf("a closed registration must not call Turnstile, got %d calls", v.calls)
+			}
+			if n, _ := appRepo.CountActive(context.Background()); n != 0 {
+				t.Fatalf("nothing may be stored, found %d", n)
+			}
+		})
+	}
+}
+
+func TestSubmit_ClosedRegistrationDoesNotSpendTheToken(t *testing.T) {
+	svc, _, setRepo := setupTestServices()
+	v := &onceVerifier{}
+	svc.WithTurnstile(v)
+	closeRegistration(t, setRepo, "not-open-yet")
+	if _, err := svc.Submit(context.Background(), captchaTestRequest(validTestNationalID(51), "token-1")); !errors.Is(err, service.ErrRegistrationClosed) {
+		t.Fatalf("expected ErrRegistrationClosed, got %v", err)
+	}
+
+	closeRegistration(t, setRepo, "open")
+	if _, err := svc.Submit(context.Background(), captchaTestRequest(validTestNationalID(51), "token-1")); err != nil {
+		t.Fatalf("the token was not spent by the refused attempt, so it must work once open: %v", err)
+	}
+}
+
+func TestSubmit_CloudflareKeyIsDerivedFromKeyAndNationalID(t *testing.T) {
+	svc, _, _ := setupTestServices()
+	v := &recordingVerifier{}
+	svc.WithTurnstile(v)
+
+	nidA, nidB := validTestNationalID(53), validTestNationalID(54)
+	clientKey := uuid.MustParse(testIdemKey)
+
+	if _, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(nidA, "tok-A"), testIdemKey); err != nil {
+		t.Fatal(err)
+	}
+	reqB := captchaTestRequest(nidB, "tok-B")
+	reqB.Phone, reqB.Email = "0899999999", "b@example.com"
+	if _, _, err := svc.SubmitWithKey(context.Background(), reqB, "9b2e7c14-3d5a-4e86-8f10-7a6c1d2e3f40"); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.keys) != 2 {
+		t.Fatalf("expected 2 Cloudflare calls, got %d", len(v.keys))
+	}
+	wantA := uuid.NewSHA1(clientKey, []byte(nidA)).String()
+	if v.keys[0] != wantA {
+		t.Fatalf("Cloudflare key = %q, want uuid.NewSHA1(clientKey, nationalId) = %q", v.keys[0], wantA)
+	}
+	if v.keys[0] == testIdemKey {
+		t.Fatal("the raw client key must not be what Cloudflare sees")
+	}
+	if _, err := uuid.Parse(v.keys[0]); err != nil {
+		t.Fatalf("the derived key must be a valid UUID for Cloudflare: %v", err)
+	}
+	other := uuid.NewSHA1(uuid.MustParse("9b2e7c14-3d5a-4e86-8f10-7a6c1d2e3f40"), []byte(nidB)).String()
+	if v.keys[1] != other {
+		t.Fatalf("second key = %q, want %q", v.keys[1], other)
+	}
+	// Same client key, different national ID, different Cloudflare key.
+	if uuid.NewSHA1(clientKey, []byte(nidA)) == uuid.NewSHA1(clientKey, []byte(nidB)) {
+		t.Fatal("derived keys must differ per national ID")
+	}
+}
+
+func TestSubmit_NoClientKeyMeansNoCloudflareKey(t *testing.T) {
+	svc, _, _ := setupTestServices()
+	v := &recordingVerifier{}
+	svc.WithTurnstile(v)
+	if _, err := svc.Submit(context.Background(), captchaTestRequest(validTestNationalID(55), "tok")); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.keys) != 1 || v.keys[0] != "" {
+		t.Fatalf("without X-Idempotency-Key Cloudflare gets no key, got %q", v.keys)
+	}
+}
+
+// The attack the binding stops: a (token, key) pair spent on a submission that did not get stored
+// (here: a duplicate) must not be replayable for a different national ID.
+func TestSubmit_SpentTokenAndKeyCannotBeReusedForAnotherNationalID(t *testing.T) {
+	svc, _, _ := setupTestServices()
+	nidA, nidB := validTestNationalID(56), validTestNationalID(57)
+
+	// A already holds a seat, registered earlier without a key.
+	if _, err := svc.Submit(context.Background(), captchaTestRequest(nidA, "")); err != nil {
+		t.Fatal(err)
+	}
+	v := &recordingVerifier{}
+	svc.WithTurnstile(v)
+
+	// Attempt 1: (token, key) with A verifies at Cloudflare, then fails as a duplicate: nothing stored.
+	if _, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(nidA, "tok"), testIdemKey); !errors.Is(err, service.ErrDuplicateApplicant) {
+		t.Fatalf("expected ErrDuplicateApplicant, got %v", err)
+	}
+	// Attempt 2: the same (token, key) for a different ID B. Before the binding Cloudflare saw an
+	// identical request and could answer from its idempotency cache; now the key differs.
+	if _, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(nidB, "tok"), testIdemKey); !errors.Is(err, service.ErrCaptchaFailed) {
+		t.Fatalf("expected ErrCaptchaFailed for a spent token under a new national ID, got %v", err)
+	}
+	if v.keys[0] == v.keys[1] {
+		t.Fatal("the two attempts must reach Cloudflare under different idempotency keys")
+	}
+
+	// A genuine retry (same token, same key, same ID) still gets the same key, so it keeps working.
+	if _, _, err := svc.SubmitWithKey(context.Background(), captchaTestRequest(nidA, "tok"), testIdemKey); !errors.Is(err, service.ErrDuplicateApplicant) {
+		t.Fatalf("retry for the same ID should pass the captcha and hit the duplicate again, got %v", err)
 	}
 }

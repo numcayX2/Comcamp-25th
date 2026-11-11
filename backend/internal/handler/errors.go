@@ -69,6 +69,8 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, err.Error())
 	case errors.Is(err, service.ErrSlipAlreadyApproved), errors.Is(err, service.ErrSlipAlreadyVerified):
 		response.ErrorCode(w, http.StatusConflict, response.CodeAlreadyVerified, err.Error())
+	case errors.Is(err, service.ErrSlipChanged):
+		response.ErrorCode(w, http.StatusConflict, response.CodeSlipChanged, err.Error())
 	case errors.Is(err, service.ErrNoSlip):
 		response.ErrorCode(w, http.StatusNotFound, response.CodeNotFound, err.Error())
 	default:
