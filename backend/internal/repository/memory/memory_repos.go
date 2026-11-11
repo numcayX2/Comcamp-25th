@@ -2,7 +2,9 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -31,7 +33,24 @@ func NewMemoryAuditRepo() *MemoryAuditRepo {
 	return &MemoryAuditRepo{}
 }
 
+// checkAuditDetails mirrors what the Postgres insertAudit does with Details (json.Marshal into a
+// jsonb column). A value that cannot be marshalled, such as a method value passed instead of the
+// result of calling it, fails there with HTTP 500, so the in-memory store must fail the same way
+// and let unit tests catch it.
+func checkAuditDetails(e *domain.AuditEntry) error {
+	if e == nil || e.Details == nil {
+		return nil
+	}
+	if _, err := json.Marshal(e.Details); err != nil {
+		return fmt.Errorf("audit details for %q are not JSON-serialisable: %w", e.Action, err)
+	}
+	return nil
+}
+
 func (m *MemoryAuditRepo) Log(ctx context.Context, e *domain.AuditEntry) error {
+	if err := checkAuditDetails(e); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	clone := *e
@@ -58,6 +77,11 @@ type MemoryApplicantRepo struct {
 	data  map[uuid.UUID]*domain.Applicant
 	logs  []*domain.ApplicantStatusLog
 	audit *MemoryAuditRepo
+
+	// payments is the payment store built on this repository (set by NewMemoryPaymentRepo), so a
+	// self-service withdrawal can check for slips under the same locks. Lock order everywhere:
+	// payments.mu before mu.
+	payments *MemoryPaymentRepo
 }
 
 func NewMemoryApplicantRepo() *MemoryApplicantRepo {
@@ -182,15 +206,23 @@ func (m *MemoryApplicantRepo) ListAll(ctx context.Context, status *domain.Applic
 }
 
 func (m *MemoryApplicantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry) error {
+	if err := checkAuditDetails(audit); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Mirrors Postgres: the caller chose this path on an unlocked read. If the seat was released
+	// meanwhile, this change would take it back without the quota check.
+	if a, ok := m.data[id]; ok && a.DeletedAt == nil && !a.Status.IsActive() && newStatus.IsActive() {
+		return domain.ErrStateConflict
+	}
 	oldStatus, err := m.setStatusLocked(id, newStatus, adminID, reason)
 	if err != nil {
 		return err
 	}
 	if audit != nil {
-		_ = m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
+		return m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
 	}
 	return nil
 }
@@ -198,6 +230,9 @@ func (m *MemoryApplicantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, ne
 // UpdateStatusWithinCapacity mirrors the Postgres version: one lock covers the status read, the
 // seat count and the write, so a restore can never exceed maxCapacity.
 func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	if err := checkAuditDetails(audit); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -213,7 +248,7 @@ func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id
 		return err
 	}
 	if audit != nil {
-		_ = m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
+		return m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
 	}
 	return nil
 }
@@ -221,6 +256,9 @@ func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id
 // UpdateProfile mirrors the Postgres version, including the duplicate check against the other
 // live applicants (the partial unique indexes of migration 000003).
 func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p domain.ProfileFields, requireActive bool, audit *domain.AuditEntry) error {
+	if err := checkAuditDetails(audit); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -251,7 +289,7 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 	a.UpdatedAt = time.Now().UTC()
 
 	if audit != nil {
-		_ = m.audit.Log(ctx, withDetail(audit, "status", a.Status))
+		return m.audit.Log(ctx, withDetail(audit, "status", a.Status))
 	}
 	return nil
 }
@@ -279,6 +317,15 @@ func (m *MemoryApplicantRepo) setStatusLocked(id uuid.UUID, newStatus domain.App
 }
 
 func (m *MemoryApplicantRepo) SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *domain.AuditEntry) error {
+	if err := checkAuditDetails(audit); err != nil {
+		return err
+	}
+	// Mirrors Postgres: the slip store is held for the whole step, so no slip can be added between
+	// the check and the delete (lock order payments.mu, then mu).
+	if p := m.payments; p != nil {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -286,15 +333,28 @@ func (m *MemoryApplicantRepo) SoftDelete(ctx context.Context, id uuid.UUID, admi
 	if !ok || a.DeletedAt != nil {
 		return domain.ErrNotFound
 	}
+	if adminID == nil {
+		if a.Status == domain.StatusConfirmed || !a.Status.IsActive() {
+			return domain.ErrStateConflict
+		}
+		if m.payments != nil && m.payments.holdsSlipLocked(id) {
+			return domain.ErrStateConflict
+		}
+	}
 	now := time.Now().UTC()
 	a.DeletedAt = &now
 	a.UpdatedAt = now
+	// Mirrors migration 000006: the deleted applicant's slips keep their status and hash, but no
+	// longer hold the hash against a new registration sending the same slip.
+	if m.payments != nil {
+		m.payments.releaseHashesLocked(id)
+	}
 
 	if audit != nil {
 		entry := withDetail(audit, "deletedAt", now)
 		entry.Details["oldStatus"] = a.Status
 		entry.Details["reason"] = reason
-		_ = m.audit.Log(ctx, entry)
+		return m.audit.Log(ctx, entry)
 	}
 	return nil
 }
@@ -488,12 +548,41 @@ type MemoryPaymentRepo struct {
 }
 
 func NewMemoryPaymentRepo(appRepo *MemoryApplicantRepo) *MemoryPaymentRepo {
-	return &MemoryPaymentRepo{
+	m := &MemoryPaymentRepo{
 		data:       make(map[uuid.UUID]*domain.Payment),
 		appRepo:    appRepo,
 		transRefs:  make(map[string]bool),
 		slipHashes: make(map[string]bool),
 	}
+	if appRepo != nil {
+		appRepo.mu.Lock()
+		appRepo.payments = m
+		appRepo.mu.Unlock()
+	}
+	return m
+}
+
+// releaseHashesLocked stops the applicant's slips from holding their hashes (the applicant was
+// soft-deleted). Payment rows, their status and their SlipHash are left as they are. A REJECTED
+// slip holds no hash already, and its hash may now belong to someone else's live slip, so it is
+// not touched. Caller holds m.mu.
+func (m *MemoryPaymentRepo) releaseHashesLocked(applicantID uuid.UUID) {
+	for _, p := range m.data {
+		if p.ApplicantID != applicantID || p.Status == domain.PaymentRejected || p.SlipHash == nil {
+			continue
+		}
+		delete(m.slipHashes, *p.SlipHash)
+	}
+}
+
+// holdsSlipLocked reports whether the applicant has a PENDING or APPROVED slip. Caller holds m.mu.
+func (m *MemoryPaymentRepo) holdsSlipLocked(applicantID uuid.UUID) bool {
+	for _, p := range m.data {
+		if p.ApplicantID == applicantID && (p.Status == domain.PaymentPending || p.Status == domain.PaymentApproved) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MemoryPaymentRepo) Create(ctx context.Context, p *domain.Payment) error {
@@ -528,6 +617,18 @@ func (m *MemoryPaymentRepo) Create(ctx context.Context, p *domain.Payment) error
 func (m *MemoryPaymentRepo) CreateReplacingPending(ctx context.Context, p *domain.Payment) ([]*domain.Payment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// A withdrawal holds m.mu for its whole step, so it either finished (the applicant is gone) or
+	// will see this slip.
+	if m.appRepo != nil {
+		m.appRepo.mu.RLock()
+		a, ok := m.appRepo.data[p.ApplicantID]
+		live := ok && a.DeletedAt == nil
+		m.appRepo.mu.RUnlock()
+		if !live {
+			return nil, domain.ErrNotFound
+		}
+	}
 
 	var pending []*domain.Payment
 	for _, old := range m.data {
@@ -655,14 +756,14 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 	if p.Status != domain.PaymentPending {
 		return domain.ErrPaymentAlreadyVerified
 	}
-	// A refunded or rejected application has left the camp: its slip can no longer be settled.
-	// Checked before anything is changed, so a refusal leaves payment and applicant untouched.
+	// A refunded, rejected, withdrawn or deleted application has left the camp: its slip can no
+	// longer be settled. The applicant store stays locked from this check to the status change
+	// (like the Postgres row lock), and a refusal leaves payment and applicant untouched.
 	if m.appRepo != nil {
-		m.appRepo.mu.RLock()
+		m.appRepo.mu.Lock()
+		defer m.appRepo.mu.Unlock()
 		a, found := m.appRepo.data[p.ApplicantID]
-		inactive := found && !a.Status.IsActive()
-		m.appRepo.mu.RUnlock()
-		if inactive {
+		if !found || a.DeletedAt != nil || !a.Status.IsActive() {
 			return domain.ErrStateConflict
 		}
 	}
@@ -675,22 +776,27 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 	} else {
 		p.Status = domain.PaymentRejected
 		p.RejectionReason = &note
+		// Like the partial unique index of migration 000005: a rejected slip no longer holds its
+		// hash, so the same image can be sent again.
+		if p.SlipHash != nil {
+			delete(m.slipHashes, *p.SlipHash)
+		}
 	}
 	p.VerifiedByAdminID = &adminID
 	p.AdminNote = &note
 	p.VerifiedAt = &now
 
 	if m.appRepo != nil {
-		m.appRepo.mu.Lock()
 		oldStatus, err := m.appRepo.setStatusLocked(p.ApplicantID, newStatus, &adminID, note)
-		m.appRepo.mu.Unlock()
 		if err != nil {
 			return err
 		}
 		if audit != nil {
 			entry := withDetail(audit, "oldStatus", oldStatus)
 			entry.Details["newStatus"] = newStatus
-			_ = m.appRepo.audit.Log(ctx, entry)
+			if err := m.appRepo.audit.Log(ctx, entry); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -85,7 +85,7 @@ TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
    docker compose up -d db
    docker exec comcamp_db pg_isready -U comcamp -d comcamp_db
    ```
-4. รัน migration ให้ครบตามลำดับ (`000001` ถึง `000004`)
+4. รัน migration ให้ครบตามลำดับ (`000001` ถึง `000006`)
    - PowerShell
      ```powershell
      Get-ChildItem backend/migrations/*.up.sql | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw } | docker exec -i comcamp_db psql -U comcamp -d comcamp_db

@@ -23,7 +23,10 @@ func setupUnlimitedApp(t *testing.T) *testApp {
 	t.Helper()
 	limits := server.DefaultRateLimits()
 	limits.Submit = middleware.NewRateLimiter(10_000, time.Minute)
-	limits.Mutations = middleware.NewRateLimiter(10_000, time.Minute)
+	limits.Slip = middleware.NewRateLimiter(10_000, time.Minute)
+	limits.Confirm = middleware.NewRateLimiter(10_000, time.Minute)
+	limits.Withdraw = middleware.NewRateLimiter(10_000, time.Minute)
+	limits.Profile = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Login = middleware.NewRateLimiter(10_000, time.Minute)
 	return setupTestAppWith(t, limits)
 }

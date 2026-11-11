@@ -79,7 +79,11 @@ backend/
 │   ├── 000003_soft_delete_identity.up.sql # national ID / phone / email unique among live rows only
 │   ├── 000003_soft_delete_identity.down.sql
 │   ├── 000004_refund_statuses.up.sql      # สถานะ REFUND_PENDING / REFUNDED และค่าเริ่มต้นสถานะเป็น PASSED (First-Come, First-Served)
-│   └── 000004_refund_statuses.down.sql
+│   ├── 000004_refund_statuses.down.sql
+│   ├── 000005_allow_rejected_slip_reupload.up.sql   # unique slip_hash เฉพาะสลิปที่ยังไม่ถูกปฏิเสธ
+│   ├── 000005_allow_rejected_slip_reupload.down.sql
+│   ├── 000006_release_deleted_applicant_slips.up.sql  # สลิปของใบสมัครที่ถูกลบ/ยกเลิกไม่กัน slip_hash (payments.applicant_deleted)
+│   └── 000006_release_deleted_applicant_slips.down.sql
 ├── go.mod
 └── go.sum
 ```
@@ -101,11 +105,13 @@ cp .env.example .env
 # 2. เริ่มต้นฐานข้อมูล PostgreSQL 16 ผ่าน Docker
 docker compose up -d db
 
-# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรันครบ 000001–000004 ไม่อย่างนั้น API จะ query หรือบันทึกสถานะใหม่ไม่ผ่าน)
+# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรันครบ 000001–000006 ไม่อย่างนั้น API จะ query หรือบันทึกสถานะใหม่ไม่ผ่าน)
 Get-Content backend/migrations/000001_init_schema.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000002_security_hardening.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000003_soft_delete_identity.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000004_refund_statuses.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+Get-Content backend/migrations/000005_allow_rejected_slip_reupload.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+Get-Content backend/migrations/000006_release_deleted_applicant_slips.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
 > **ย้ายจาก compose เวอร์ชันเก่า:** ไฟล์เดิม mount volume ไว้ที่ `/var/lib/pgsql/data` ซึ่งไม่ใช่ที่เก็บข้อมูลของ `postgres:16-alpine` ข้อมูลจึงไปอยู่ใน anonymous volume ตอนนี้แก้เป็น `/var/lib/postgresql/data` แล้ว ครั้งแรกที่ `docker compose up` จะได้ฐานข้อมูลว่าง ถ้ามีข้อมูลที่ต้องเก็บ ให้ `pg_dump` ออกมาก่อนอัปเดต แล้ว restore กลับ
@@ -158,7 +164,7 @@ Swagger UI documentation available at: http://localhost:8000/swagger
 cd backend
 go test ./...
 
-# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001–000004 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
+# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001–000006 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
 TEST_DATABASE_DSN="host=127.0.0.1 port=5432 user=comcamp password=... dbname=comcamp_db sslmode=disable" go test ./internal/repository/postgres/
 ```
 
@@ -184,7 +190,8 @@ Security regression tests อยู่ที่ `internal/handler/security_test.
 | **ยืนยันตัวตนที่ `/status`** | `POST /:id/confirm` (JSON `verifyCode`), `POST /:id/slip` (multipart `verifyCode`) และ `PATCH /:id/profile` ต้องส่งเลข 4 ตัวท้ายของบัตรประชาชน ไม่ส่ง → `400`, ไม่ตรง → `403 INVALID_VERIFY_CODE` ไม่รับเลขท้ายเบอร์โทร เพราะหน้าสถานะแสดงเลขนั้นอยู่แล้ว `POST /:id/withdraw` ต้องส่ง `nationalId` เต็ม 13 หลัก (เทียบแบบ constant-time) เพราะคนที่รู้แค่เบอร์โทรก็ค้นเจอใบสมัครได้ |
 | **ล็อกเมื่อเดาเลขยืนยัน** | นับการตอบผิดต่อใบสมัคร รวมทุก endpoint ข้างบน ผิด 5 ครั้งใน 15 นาที ล็อกการยืนยันตัวตนของใบสมัครนั้น 15 นาที (แม้ส่งค่าที่ถูก) → `429 RATE_LIMITED` + `Retry-After` ตอบถูกแล้วตัวนับเริ่มใหม่ บันทึก `application.verify.failure` (ตั้งแต่ครั้งที่ 2) และ `application.verify.lockout` ใน `audit_logs` ตัวนับอยู่ในหน่วยความจำของ process จึงทำงานเหมือนกันทั้ง In-Memory และ PostgreSQL (ถ้ารัน API หลาย replica ต้องย้ายไปเก็บที่ส่วนกลาง) |
 | **ทำความสะอาดข้อมูลที่ก๊อปจากแชต** | ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่างออกจากเลขบัตร/เบอร์ทั้งตอนสมัครและตอนค้นสถานะ รหัสใบสมัครพิมพ์ตัวเล็กหรือไม่มีขีดก็ค้นเจอ |
-| **สลิปซ้ำ** | SHA-256 + unique index `uq_payments_slip_hash` (กันกรณีอัปโหลดพร้อมกัน) → `409 DUPLICATE_SLIP` |
+| **สลิปซ้ำ** | SHA-256 + unique index `uq_payments_slip_hash` (กันกรณีอัปโหลดพร้อมกัน) → `409 DUPLICATE_SLIP` นับเฉพาะสลิปที่ยัง `PENDING` หรือ `APPROVED` ของใบสมัครที่ยังไม่ถูกลบ (migration 000005, 000006) สลิปที่ถูกปฏิเสธไม่กันรูปของตัวเอง ถ้าพี่ค่ายปฏิเสธสลิปจริงโดยไม่ตั้งใจ ผู้สมัครส่งรูปเดิมซ้ำได้ และเมื่อใบสมัครถูกลบหรือยกเลิก สลิปของใบนั้นเก็บสถานะและ hash ไว้ในบัญชีเหมือนเดิม (`payments.applicant_deleted = true`) แต่ไม่กันรูปอีก นักเรียนที่สมัครใหม่ส่งสลิปใบเดิมได้ |
+| **ล็อกก่อนตัดสินสถานะ** | ยกเลิกใบสมัครเอง (`/withdraw`) ตรวจซ้ำใต้ row lock ว่ายังไม่ `CONFIRMED` และไม่มีสลิป `PENDING`/`APPROVED` โดยถือ advisory lock เดียวกับการอัปโหลดสลิป จึงไม่มีสลิปตกค้างบนใบสมัครที่ยกเลิกแล้ว ตรวจสลิปของใบสมัครที่ถูกลบตอบ `409` และเปลี่ยนสถานะที่ทำให้ได้ที่นั่งคืน (เช่นอีกคนเพิ่งตั้ง `REJECTED`) ทำใต้ quota lock เสมอ ไม่เกิน 30 ที่นั่ง |
 | **สลิปรอตรวจใบเดียวต่อผู้สมัคร** | อัปโหลดใหม่ขณะมีสลิป `PENDING` อยู่จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียว บันทึก `payment.slip.superseded`) ส่งสลิปซ้ำๆ จึงไม่ทำให้ดิสก์เต็มด้วยไฟล์ 5 MB สลิปที่ถูกปฏิเสธเก็บเป็นประวัติ สลิปที่อนุมัติแล้วแทนที่ไม่ได้ |
 | **กันสลับสลิปตอนตรวจ** | รายชื่อแอดมินมี `slipPaymentId` และ `GET .../slip` ส่ง header `X-Slip-Payment-Id` พี่ค่ายส่งค่านี้กลับเป็น `paymentId` ใน `PATCH .../verify-slip` ถ้าผู้สมัครเพิ่งอัปโหลดใบใหม่ → `409 SLIP_CHANGED` และไม่เปลี่ยนอะไร (ไม่ส่ง `paymentId` = ตัดสินใบล่าสุดเหมือนเดิม) |
 | **โควตา 30 ที่นั่ง** | นับและบันทึกใน transaction เดียวกับ `pg_advisory_xact_lock` ช่วงคนแห่สมัครตอนเที่ยงคืนจึงไม่เกินโควตา รอ lock ได้ไม่เกิน `lock_timeout = '3s'` ถ้าเกินตอบ `503` + `Retry-After` (ยังไม่บันทึก ส่งซ้ำด้วย key เดิมได้) Connection pool: สูงสุด 40, เปิดค้างไว้ 20 |
@@ -193,7 +200,7 @@ Security regression tests อยู่ที่ `internal/handler/security_test.
 | **Masking** | `/applications/status`, `/confirm` และผลการสมัคร ส่งเลขบัตร `1-5099-XXXXX-XX-X`, เบอร์ `XXX-XXX-5678`, อีเมล `s***@…` เท่านั้น ข้อมูลเต็มอยู่ใน `/api/admin/*` |
 | **บัญชีแอดมิน** | ตรวจ `is_active` ทุก request (ระงับบัญชีแล้ว token ใช้ไม่ได้ทันที), token อายุ 8 ชม., login ผิดทุกกรณีตอบข้อความเดียวกัน |
 | **สิทธิ์ตามบทบาท (RBAC)** | ทุก route ใต้ `/api/admin/*` ระบุบทบาทที่เรียกได้ (`middleware.RequireRoles`) และอ่านบทบาทจากฐานข้อมูลทุก request: ดูรายชื่อ/การตั้งค่า = ทุกบทบาท, ดู/ตรวจสลิป = superadmin finance staff, เปลี่ยนสถานะ/แก้ข้อมูล = superadmin staff, ลบใบสมัคร/แก้การตั้งค่า = superadmin เท่านั้น นอกนั้น → `403 FORBIDDEN` |
-| **Rate limit (ต่อ IP)** | login 10 ครั้ง/5 นาที, ค้นสถานะ 60/นาที, ส่งใบสมัคร 20/นาที, ยืนยันสิทธิ์/อัปโหลดสลิป 20/นาที → `429` + `Retry-After` IPv6 นับรวมทั้ง prefix `/64` (หมุนที่อยู่ในบล็อกเดียวกันเพื่อเลี่ยงลิมิตไม่ได้) และตารางตัวนับมีเพดาน 50,000 รายการ เต็มแล้วตัดรายการเก่าสุดออก หน่วยความจำจึงไม่โตตามจำนวนบอท |
+| **Rate limit (ต่อ IP)** | login 10 ครั้ง/5 นาที, ค้นสถานะ 60/นาที, ส่งใบสมัคร 20/นาที, ยืนยันสิทธิ์ อัปโหลดสลิป แก้โปรไฟล์ และยกเลิกใบสมัคร อย่างละ 20/นาที (นับแยกรายเอนด์พอยต์ นักเรียนหลายคนหลัง NAT เดียวกันอัปโหลดสลิปแล้วจะไม่บล็อกเพื่อนที่กดยืนยันสิทธิ์) → `429` + `Retry-After` IPv6 นับรวมทั้ง prefix `/64` (หมุนที่อยู่ในบล็อกเดียวกันเพื่อเลี่ยงลิมิตไม่ได้) และตารางตัวนับมีเพดาน 50,000 รายการ เต็มแล้วตัดรายการเก่าสุดออก หน่วยความจำจึงไม่โตตามจำนวนบอท |
 | **เลขบัตรในรายชื่อแอดมิน** | `GET /api/admin/applications` ให้เลขเต็ม 13 หลักเฉพาะ superadmin และ staff ส่วน finance และ reviewer ได้ค่า mask (`1-5099-XXXXX-XX-X`) เพราะเลขเต็มใช้ยกเลิกใบสมัครผ่าน `POST /:id/withdraw` ได้ ซึ่งเป็นสิทธิ์ของ superadmin ปุ่มส่งออก CSV ไม่แสดงให้ reviewer |
 | **Turnstile ตรวจหลังกำหนดการ** | `POST /api/applications` ตรวจช่วงเปิดรับสมัครก่อนเรียก Cloudflare ช่วงที่ยังปิดไม่มีการเรียกและไม่ใช้ token (บอทเตรียม token ล่วงหน้าไว้ยิงตอนเที่ยงคืนไม่ได้) และ idempotency key ที่ส่งให้ Cloudflare ผูกกับเลขบัตรของใบสมัคร จึงเอา token+key ที่ใช้แล้วไปใช้กับเลขบัตรอื่นไม่ได้ |
 | **IP จริงของผู้ใช้** | เชื่อ `X-Forwarded-For` เฉพาะจาก `TRUSTED_PROXIES` เท่านั้น (ปลอม IP เพื่อหลบ rate limit หรือ audit log ไม่ได้) |

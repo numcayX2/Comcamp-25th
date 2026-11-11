@@ -596,7 +596,20 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 	// Taking a seat back (REJECTED / REFUND_PENDING / REFUNDED -> an active status) must respect
 	// the quota: those statuses released their seat, and someone else may have taken it. The
 	// repository re-checks under the quota lock, so this holds against concurrent registrations.
-	if !applicant.Status.IsActive() && newStatus.IsActive() {
+	retakesSeat := !applicant.Status.IsActive() && newStatus.IsActive()
+	if !retakesSeat {
+		err := s.appRepo.UpdateStatus(ctx, applicant.ID, newStatus, adminID, reason, audit)
+		switch {
+		case err == nil:
+		case errors.Is(err, domain.ErrStateConflict):
+			// The read above is not locked. Another admin released the seat meanwhile, so this
+			// change now takes it back: the repository refused, redo it under the quota lock.
+			retakesSeat = true
+		default:
+			return nil, notFoundOr(err)
+		}
+	}
+	if retakesSeat {
 		settings, err := s.settingRepo.Get(ctx)
 		if err != nil || settings == nil {
 			return nil, fmt.Errorf("%w: %v", ErrSettingsUnavailable, err)
@@ -611,8 +624,6 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 		default:
 			return nil, notFoundOr(err)
 		}
-	} else if err := s.appRepo.UpdateStatus(ctx, applicant.ID, newStatus, adminID, reason, audit); err != nil {
-		return nil, notFoundOr(err)
 	}
 	applicant.Status = newStatus
 
@@ -631,7 +642,7 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 		TargetType: domain.AuditTargetApplicant,
 		TargetID:   applicant.ApplicationNo,
 		Details: map[string]any{
-			"fullName":   applicant.FullName,
+			"fullName":   applicant.FullName(),
 			"nationalId": applicant.NationalID,
 			"reason":     reason,
 		},
@@ -696,7 +707,12 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, national
 		Details:    details,
 		IPAddress:  ip,
 	}
+	// The checks above ran on an unlocked read; the repository repeats them under its locks, so a
+	// slip uploaded or approved at the same moment still blocks the withdrawal.
 	if err := s.appRepo.SoftDelete(ctx, applicant.ID, nil, reason, audit); err != nil {
+		if errors.Is(err, domain.ErrStateConflict) {
+			return ErrCannotWithdraw
+		}
 		return notFoundOr(err)
 	}
 	return nil

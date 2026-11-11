@@ -297,7 +297,7 @@
       "post": {
         "tags": ["Payments"],
         "summary": "Upload Payment Slip",
-        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (JPEG/PNG/WebP ตรวจจาก magic bytes, สูงสุด 5 MB, ความกว้าง/สูงไม่เกิน 4096 px ตรวจจาก header ของภาพ, ป้องกันสลิปซ้ำผ่าน SHA-256) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ไฟล์ถูกเขียนและ fsync ก่อนบันทึกลงฐานข้อมูล และไม่ถูกเปิดเป็น URL สาธารณะ ผู้สมัครมีสลิปที่รอตรวจได้ครั้งละ 1 ใบ: อัปโหลดใหม่ขณะที่ยังมีสลิป PENDING จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียวกัน บันทึก audit payment.slip.superseded) สลิปที่ถูกปฏิเสธเก็บไว้เป็นประวัติ และสลิปที่อนุมัติแล้วแทนที่ไม่ได้ (409 ALREADY_VERIFIED)",
+        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (JPEG/PNG/WebP ตรวจจาก magic bytes, สูงสุด 5 MB, ความกว้าง/สูงไม่เกิน 4096 px ตรวจจาก header ของภาพ, ป้องกันสลิปซ้ำผ่าน SHA-256 เทียบเฉพาะสลิปที่ยัง PENDING หรือ APPROVED ของใบสมัครที่ยังไม่ถูกลบ: รูปของสลิปที่ถูกปฏิเสธ หรือของใบสมัครที่ถูกลบ/ยกเลิกแล้ว ส่งใหม่ได้) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ไฟล์ถูกเขียนและ fsync ก่อนบันทึกลงฐานข้อมูล และไม่ถูกเปิดเป็น URL สาธารณะ ผู้สมัครมีสลิปที่รอตรวจได้ครั้งละ 1 ใบ: อัปโหลดใหม่ขณะที่ยังมีสลิป PENDING จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียวกัน บันทึก audit payment.slip.superseded) สลิปที่ถูกปฏิเสธเก็บไว้เป็นประวัติ และสลิปที่อนุมัติแล้วแทนที่ไม่ได้ (409 ALREADY_VERIFIED)",
         "parameters": [
           {
             "name": "id",
@@ -350,7 +350,7 @@
           "400": { "description": "ไม่ใช่ไฟล์ JPEG/PNG/WebP หรืออ่าน header ภาพไม่ได้ (VALIDATION_ERROR), ภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS), ไม่ได้ส่ง verifyCode (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "verifyCode ไม่ตรง (INVALID_VERIFY_CODE) หรือผู้สมัครยังไม่ผ่านการคัดเลือก (FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
-            "description": "code DUPLICATE_SLIP = ใช้รูปสลิปเดิมซ้ำ, code ALREADY_VERIFIED = สลิปได้รับการอนุมัติแล้ว",
+            "description": "code DUPLICATE_SLIP = รูปสลิปนี้เป็นของสลิปที่รอตรวจหรืออนุมัติแล้วของใบสมัครที่ยังอยู่ (สลิปที่ถูกปฏิเสธและสลิปของใบสมัครที่ถูกลบไม่นับ), code ALREADY_VERIFIED = สลิปได้รับการอนุมัติแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "ไฟล์เกิน 5 MB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },

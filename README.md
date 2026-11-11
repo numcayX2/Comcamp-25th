@@ -46,7 +46,7 @@ DEV_ADMIN_PASSWORD=<ตั้งเอง>
 ```powershell
 docker compose up -d db
 
-# Windows PowerShell: รัน migration 000001–000004 ตามลำดับ
+# Windows PowerShell: รัน migration 000001–000006 ตามลำดับ
 Get-ChildItem backend/migrations/*.up.sql | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw } | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
@@ -159,7 +159,7 @@ backend/
   cmd/api/            จุดเริ่มต้นของ API
   cmd/create-admin/   เครื่องมือสร้างบัญชีแอดมิน
   internal/           config, domain, handler, middleware, repository, service
-  migrations/         SQL สำหรับ PostgreSQL (000001–000004)
+  migrations/         SQL สำหรับ PostgreSQL (000001–000006)
 frontend/
   src/pages/          หน้าเว็บ
   src/components/     คอมโพเนนต์ของแต่ละหน้า

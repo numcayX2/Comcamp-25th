@@ -66,8 +66,17 @@ func (r *PaymentPostgresRepo) CreateReplacingPending(ctx context.Context, p *dom
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "payment-slip:"+p.ApplicantID.String()); err != nil {
-		return nil, fmt.Errorf("lock applicant slips: %w", err)
+	if err := lockApplicantSlips(ctx, tx, p.ApplicantID); err != nil {
+		return nil, err
+	}
+	// SoftDelete takes the same lock, so a withdrawal either finishes first (and the upload finds
+	// no live application here) or waits for this upload and then sees its PENDING slip.
+	var live bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM applicants WHERE id = $1 AND deleted_at IS NULL)`, p.ApplicantID).Scan(&live); err != nil {
+		return nil, fmt.Errorf("check applicant: %w", err)
+	}
+	if !live {
+		return nil, domain.ErrNotFound
 	}
 
 	rows, err := tx.Query(ctx, `SELECT `+paymentColumns+` FROM payments
@@ -164,7 +173,11 @@ func (r *PaymentPostgresRepo) CheckDuplicateTransRef(ctx context.Context, transR
 
 func (r *PaymentPostgresRepo) CheckDuplicateSlipHash(ctx context.Context, slipHash string) (bool, error) {
 	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM payments WHERE slip_hash = $1)`
+	// Only a slip that still counts holds its hash, exactly like the partial unique index
+	// uq_payments_slip_hash: a REJECTED slip does not (000005, staff who reject a genuine slip by
+	// mistake can ask for the same image again), and neither does a slip of a deleted or withdrawn
+	// application (000006, the student may register again and send the same slip).
+	query := `SELECT EXISTS(SELECT 1 FROM payments WHERE slip_hash = $1 AND status <> 'REJECTED' AND NOT applicant_deleted)`
 	err := r.pool.QueryRow(ctx, query, slipHash).Scan(&exists)
 	return exists, err
 }
@@ -193,8 +206,13 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 		return domain.ErrPaymentAlreadyVerified
 	}
 
+	// A withdrawn or deleted application cannot have its slip settled either: approving it would
+	// confirm a seat for a row that no longer counts, rejecting it would revive it as PASSED.
 	var oldStatus domain.ApplicationStatus
-	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 FOR UPDATE`, applicantID).Scan(&oldStatus)
+	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, applicantID).Scan(&oldStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrStateConflict
+	}
 	if err != nil {
 		return fmt.Errorf("lock applicant: %w", err)
 	}
@@ -243,6 +261,17 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 	}
 
 	return tx.Commit(ctx)
+}
+
+// lockApplicantSlips serialises everything that adds a slip to, or removes, one applicant: slip
+// uploads (CreateReplacingPending) and withdrawals or deletions (SoftDelete). It is a transaction
+// level advisory lock and is always taken before any row lock, so it cannot join a lock cycle with
+// Verify (payment row, then applicant row).
+func lockApplicantSlips(ctx context.Context, tx pgx.Tx, applicantID uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "payment-slip:"+applicantID.String()); err != nil {
+		return fmt.Errorf("lock applicant slips: %w", err)
+	}
+	return nil
 }
 
 const paymentColumns = `

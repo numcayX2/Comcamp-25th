@@ -16,7 +16,7 @@ import (
 	"comcamp25-backend/internal/service"
 )
 
-// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001-000004 applied.
+// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001-000006 applied.
 
 func slipFor(applicantID uuid.UUID, hash string) *domain.Payment {
 	h := hash

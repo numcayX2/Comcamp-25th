@@ -17,7 +17,7 @@ import (
 	"comcamp25-backend/internal/repository/postgres"
 )
 
-// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001–000004 applied.
+// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001–000006 applied.
 
 func openTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()

@@ -121,3 +121,108 @@ func TestRateLimitKey_AfterClientIPWithForwardedIPv6(t *testing.T) {
 		t.Fatalf("got %q, want the /64 prefix", got)
 	}
 }
+
+// forwardedFor runs ClientIP for a request that carries X-Forwarded-For as separate header lines,
+// the way a proxy that appends its own line (instead of extending the first) forwards it.
+func forwardedFor(trusted []netip.Prefix, remote string, lines ...string) (ip, key string) {
+	h := ClientIP(trusted)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, key = RemoteIP(r), RateLimitKey(r)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = remote
+	for _, l := range lines {
+		req.Header.Add("X-Forwarded-For", l)
+	}
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	return ip, key
+}
+
+func TestClientIP_MultipleForwardedForLines(t *testing.T) {
+	proxy := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("10.0.0.0/8")}
+	cases := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		// The client's own first line says 6.6.6.6; the proxy appended the real address as a second line.
+		{"the proxy's last line wins over the client's first line", []string{"6.6.6.6", "203.0.113.5"}, "203.0.113.5"},
+		{"three lines, right-most untrusted", []string{"6.6.6.6", "7.7.7.7", "203.0.113.5"}, "203.0.113.5"},
+		{"a trusted proxy hop on the last line is skipped", []string{"203.0.113.5", "10.1.2.3"}, "203.0.113.5"},
+		{"the client cannot hide the proxy's line behind a comma list", []string{"6.6.6.6, 5.5.5.5", "203.0.113.5"}, "203.0.113.5"},
+		{"an empty first line is harmless", []string{"", "203.0.113.5"}, "203.0.113.5"},
+		{"an empty last line leaves nothing trustworthy to the right", []string{"203.0.113.5", ""}, "127.0.0.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, _ := forwardedFor(proxy, "127.0.0.1:5000", tc.lines...); got != tc.want {
+				t.Fatalf("want %s, got %s", tc.want, got)
+			}
+		})
+	}
+
+	// The same lines from a peer that is not a trusted proxy are ignored entirely.
+	if got, _ := forwardedFor(proxy, "198.51.100.7:5000", "6.6.6.6", "203.0.113.5"); got != "198.51.100.7" {
+		t.Fatalf("untrusted peer must not be able to name its own client IP, got %s", got)
+	}
+}
+
+func TestClientIP_MalformedHops(t *testing.T) {
+	proxy := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("10.0.0.0/8")}
+	cases := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		// A valid address written by the proxy, junk before it: the junk is never consulted.
+		{"junk to the left of the proxy's hop is ignored", []string{"garbage, 203.0.113.5"}, "203.0.113.5"},
+		// Junk at the right: nothing to the left of it can be trusted, so the earlier "client" is not used.
+		{"a malformed right-most hop does not let an earlier hop through", []string{"6.6.6.6, garbage"}, "127.0.0.1"},
+		{"a malformed hop after a trusted proxy hop stops the walk there", []string{"6.6.6.6, garbage, 10.1.2.3"}, "10.1.2.3"},
+		{"unknown (RFC 7239 style token) is malformed", []string{"unknown"}, "127.0.0.1"},
+		{"obfuscated identifier is malformed", []string{"_hidden, 203.0.113.5"}, "203.0.113.5"},
+		{"a port on an otherwise valid hop is accepted", []string{"203.0.113.5:4711"}, "203.0.113.5"},
+		{"a bracketed IPv6 hop is accepted", []string{"[2001:db8::5]"}, "2001:db8::5"},
+		{"overlong digits are malformed", []string{"6.6.6.6, 999.999.999.999"}, "127.0.0.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, _ := forwardedFor(proxy, "127.0.0.1:5000", tc.lines...); got != tc.want {
+				t.Fatalf("want %s, got %s", tc.want, got)
+			}
+		})
+	}
+}
+
+// A client that sends junk through a proxy which passes headers on unchanged ends up attributed to
+// the proxy address. That must not share a rate-limit bucket with the proxy's own traffic.
+func TestRateLimitKey_MalformedForwardedForDoesNotPoisonProxyBucket(t *testing.T) {
+	proxy := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("10.0.0.0/8")}
+
+	_, healthy := forwardedFor(proxy, "127.0.0.1:5000") // no header: the proxy itself (health checks)
+	if healthy != "127.0.0.1" {
+		t.Fatalf("the proxy's own traffic keeps its address as key, got %q", healthy)
+	}
+	for _, lines := range [][]string{{"garbage"}, {"6.6.6.6, garbage"}, {"unknown"}, {","}, {"10.9.9.9"}, {"garbage", "garbage"}} {
+		ip, key := forwardedFor(proxy, "127.0.0.1:5000", lines...)
+		if key == healthy {
+			t.Fatalf("XFF %q must not be counted in the proxy's own bucket (ip=%s key=%s)", lines, ip, key)
+		}
+		if ip != "127.0.0.1" && ip != "10.9.9.9" {
+			t.Fatalf("XFF %q: RemoteAddr must stay a real address for the audit log, got %s", lines, ip)
+		}
+	}
+	// A resolved client keeps its own key, even when junk sits further left.
+	if _, key := forwardedFor(proxy, "127.0.0.1:5000", "garbage, 203.0.113.5"); key != "203.0.113.5" {
+		t.Fatalf("a resolved client is counted under its own address, got %q", key)
+	}
+	// The same junk through one proxy is one shared bucket, not one per spoofed value.
+	_, k1 := forwardedFor(proxy, "127.0.0.1:5000", "garbage-1")
+	_, k2 := forwardedFor(proxy, "127.0.0.1:5000", "garbage-2")
+	if k1 != k2 {
+		t.Fatalf("junk values must not let a client mint buckets: %q vs %q", k1, k2)
+	}
+	// Without a trusted proxy nothing is "unresolved": the peer is the client.
+	if _, key := forwardedFor(nil, "198.51.100.7:5000", "garbage"); key != "198.51.100.7" {
+		t.Fatalf("direct clients are counted under their address, got %q", key)
+	}
+}

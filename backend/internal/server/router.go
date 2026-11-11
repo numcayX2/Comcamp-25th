@@ -39,7 +39,14 @@ type RateLimits struct {
 	Login       *middleware.RateLimiter
 	StatusQuery *middleware.RateLimiter
 	Submit      *middleware.RateLimiter
-	Mutations   *middleware.RateLimiter // public confirm + slip upload
+
+	// The public mutations each count on their own: behind one school or carrier NAT, a class
+	// uploading slips or editing profiles must not use up the allowance of classmates confirming
+	// attendance or withdrawing.
+	Slip     *middleware.RateLimiter
+	Confirm  *middleware.RateLimiter
+	Withdraw *middleware.RateLimiter
+	Profile  *middleware.RateLimiter
 }
 
 func DefaultRateLimits() RateLimits {
@@ -47,8 +54,11 @@ func DefaultRateLimits() RateLimits {
 		Login:       middleware.NewRateLimiter(10, 5*time.Minute),
 		StatusQuery: middleware.NewRateLimiter(60, time.Minute),
 		// Registration is the one endpoint a bot wants; 8/min per IP still fits a school NAT.
-		Submit:      middleware.NewRateLimiter(8, time.Minute),
-		Mutations:   middleware.NewRateLimiter(20, time.Minute),
+		Submit:   middleware.NewRateLimiter(8, time.Minute),
+		Slip:     middleware.NewRateLimiter(20, time.Minute),
+		Confirm:  middleware.NewRateLimiter(20, time.Minute),
+		Withdraw: middleware.NewRateLimiter(20, time.Minute),
+		Profile:  middleware.NewRateLimiter(20, time.Minute),
 	}
 }
 
@@ -97,7 +107,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 		api.Use(middleware.APIHeaders)
 
 		// Slip upload carries its own 5 MB cap; everything else is small JSON.
-		api.With(limits.Mutations.Middleware).Post("/applications/{id}/slip", paymentHandler.UploadSlip)
+		api.With(limits.Slip.Middleware).Post("/applications/{id}/slip", paymentHandler.UploadSlip)
 
 		api.Group(func(json chi.Router) {
 			json.Use(middleware.LimitBody(middleware.MaxJSONBodyBytes))
@@ -111,9 +121,9 @@ func NewRouter(svc Services, opt Options) http.Handler {
 
 			json.With(limits.Submit.Middleware).Post("/applications", appHandler.Submit)
 			json.With(limits.StatusQuery.Middleware).Get("/applications/status", appHandler.GetStatus)
-			json.With(limits.Mutations.Middleware).Post("/applications/{id}/confirm", appHandler.ConfirmAttendance)
-			json.With(limits.Mutations.Middleware).Post("/applications/{id}/withdraw", appHandler.Withdraw)
-			json.With(limits.Mutations.Middleware).Patch("/applications/{id}/profile", appHandler.UpdateOwnProfile)
+			json.With(limits.Confirm.Middleware).Post("/applications/{id}/confirm", appHandler.ConfirmAttendance)
+			json.With(limits.Withdraw.Middleware).Post("/applications/{id}/withdraw", appHandler.Withdraw)
+			json.With(limits.Profile.Middleware).Patch("/applications/{id}/profile", appHandler.UpdateOwnProfile)
 
 			json.With(limits.Login.Middleware).Post("/auth/login", authHandler.Login)
 

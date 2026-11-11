@@ -15,7 +15,7 @@ import (
 	"comcamp25-backend/internal/repository/postgres"
 )
 
-// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001–000004 applied.
+// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001–000006 applied.
 
 func statusOf(t *testing.T, repo *postgres.ApplicantPostgresRepo, a *domain.Applicant) domain.ApplicationStatus {
 	t.Helper()

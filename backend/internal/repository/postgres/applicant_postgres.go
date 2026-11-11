@@ -222,6 +222,14 @@ func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, 
 		return fmt.Errorf("lock applicant: %w", err)
 	}
 
+	// The caller picked UpdateStatus on an unlocked read that said the change keeps the seat count.
+	// If another admin released the seat in the meantime (REJECTED, REFUND_PENDING, REFUNDED), this
+	// change would now take a seat back without the quota check: refuse, and let the caller redo it
+	// with UpdateStatusWithinCapacity (quota lock first, then this row).
+	if !takeQuotaLock && !oldStatus.IsActive() && newStatus.IsActive() {
+		return domain.ErrStateConflict
+	}
+
 	// Only a change that takes a seat back is checked: moving between active statuses (or into a
 	// non-counting one) never changes the count.
 	if takeQuotaLock && maxCapacity > 0 && !oldStatus.IsActive() && newStatus.IsActive() {
@@ -310,12 +318,39 @@ func setStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, oldStatus, newSta
 	return nil
 }
 
+// SoftDelete hides the applicant (staff delete, adminID set) or records a self-service withdrawal
+// (adminID nil). A withdrawal re-checks its conditions here, under the locks, because the
+// service's checks ran on an unlocked read: the application must still be active and not
+// CONFIRMED, and no slip may be PENDING or APPROVED (money is involved, staff handle the refund).
+// Otherwise it returns domain.ErrStateConflict and changes nothing.
+//
+// Either way the applicant's payment rows are marked applicant_deleted in the same transaction.
+// Their status and slip_hash stay as they are (the ledger keeps what happened), but they stop
+// holding the hash in uq_payments_slip_hash (migration 000006), so the student can register again
+// and send the same genuine slip.
 func (r *ApplicantPostgresRepo) SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *domain.AuditEntry) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// Same lock as a slip upload, taken before the row lock: an upload cannot slip in between the
+	// payment check below and the commit, nor land on the row after it is deleted.
+	if err := lockApplicantSlips(ctx, tx, id); err != nil {
+		return err
+	}
+
+	// A staff delete may remove an applicant whose slip is PENDING while another admin is settling
+	// it. Verify locks the payment row and then the applicant row, so the payment rows are locked
+	// here first, in the same order, before the applicant row: the two queue up instead of
+	// deadlocking. (A withdrawal never gets this far with a PENDING or APPROVED slip, and Verify
+	// never waits for the applicant behind any other kind, so it keeps the snapshot check below.)
+	if adminID != nil {
+		if _, err := tx.Exec(ctx, `SELECT id FROM payments WHERE applicant_id = $1 AND NOT applicant_deleted ORDER BY id FOR UPDATE`, id); err != nil {
+			return fmt.Errorf("lock slips: %w", err)
+		}
+	}
 
 	var oldStatus domain.ApplicationStatus
 	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&oldStatus)
@@ -326,7 +361,24 @@ func (r *ApplicantPostgresRepo) SoftDelete(ctx context.Context, id uuid.UUID, ad
 		return fmt.Errorf("lock applicant: %w", err)
 	}
 
+	if adminID == nil {
+		if oldStatus == domain.StatusConfirmed || !oldStatus.IsActive() {
+			return domain.ErrStateConflict
+		}
+		var holdsSlip bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE applicant_id = $1 AND status IN ('PENDING', 'APPROVED'))`, id).Scan(&holdsSlip)
+		if err != nil {
+			return fmt.Errorf("check slips: %w", err)
+		}
+		if holdsSlip {
+			return domain.ErrStateConflict
+		}
+	}
+
 	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE payments SET applicant_deleted = true WHERE applicant_id = $1 AND NOT applicant_deleted`, id); err != nil {
+		return fmt.Errorf("release slips: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `UPDATE applicants SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, id); err != nil {
 		return fmt.Errorf("failed to soft delete applicant: %w", err)
 	}

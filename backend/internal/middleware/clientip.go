@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/netip"
@@ -11,6 +12,16 @@ import (
 // pick the IP that rate limits and audit logs see. Forwarding headers are honoured only when the
 // TCP peer is one of trustedProxies; the client is then the right-most address in
 // X-Forwarded-For that is not itself a trusted proxy.
+//
+// X-Forwarded-For may arrive as several header lines (a proxy that appends its own line instead of
+// extending the first). All of them are read, in order, as one list, so a client cannot hide behind
+// the first line it sent while the proxy's line is ignored.
+//
+// Walking the list from the right stops at the first malformed hop: nothing to its left was written
+// by a proxy we trust, so it is never used. If that leaves only a trusted proxy address (a client
+// that sent junk to a proxy which forwards headers unchanged), the request is marked unresolved and
+// RateLimitKey counts it under its own bucket rather than the proxy's, so junk headers cannot use
+// up the allowance of the proxy's own traffic.
 //
 // After this middleware r.RemoteAddr holds the bare client IP (no port).
 func ClientIP(trustedProxies []netip.Prefix) func(http.Handler) http.Handler {
@@ -28,8 +39,9 @@ func ClientIP(trustedProxies []netip.Prefix) func(http.Handler) http.Handler {
 			peer, ok := parseAddr(r.RemoteAddr)
 			client := peer
 			if ok && len(trustedProxies) > 0 && isTrusted(peer) {
-				if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+				if xff := strings.Join(r.Header.Values("X-Forwarded-For"), ","); strings.TrimSpace(xff) != "" {
 					hops := strings.Split(xff, ",")
+					resolved := false
 					for i := len(hops) - 1; i >= 0; i-- {
 						hop, valid := parseAddr(strings.TrimSpace(hops[i]))
 						if !valid {
@@ -37,8 +49,13 @@ func ClientIP(trustedProxies []netip.Prefix) func(http.Handler) http.Handler {
 						}
 						client = hop
 						if !isTrusted(hop) {
+							resolved = true
 							break
 						}
+					}
+					if !resolved && isTrusted(client) {
+						// Junk (or only trusted hops) in the header and no client address behind it.
+						r = r.WithContext(context.WithValue(r.Context(), unresolvedKey{}, true))
 					}
 				} else if xr, valid := parseAddr(strings.TrimSpace(r.Header.Get("X-Real-IP"))); valid {
 					client = xr
@@ -66,15 +83,21 @@ func RemoteIP(r *http.Request) string {
 // and never hit a limit, and would also let it fill the limiter's table with distinct keys.
 // Zones are dropped and IPv4-mapped IPv6 addresses count as the IPv4 address they carry.
 func RateLimitKey(r *http.Request) string {
-	addr, ok := parseAddr(r.RemoteAddr)
-	if !ok {
-		return r.RemoteAddr
+	key := r.RemoteAddr
+	if addr, ok := parseAddr(r.RemoteAddr); ok {
+		key = addr.String()
+		if addr.Is6() {
+			key = netip.PrefixFrom(addr, 64).Masked().Addr().String()
+		}
 	}
-	if addr.Is6() {
-		return netip.PrefixFrom(addr, 64).Masked().Addr().String()
+	if unresolved, _ := r.Context().Value(unresolvedKey{}).(bool); unresolved {
+		return "unresolved-xff:" + key
 	}
-	return addr.String()
+	return key
 }
+
+// unresolvedKey marks a request whose X-Forwarded-For held no usable client address, see ClientIP.
+type unresolvedKey struct{}
 
 func parseAddr(s string) (netip.Addr, bool) {
 	if s == "" {

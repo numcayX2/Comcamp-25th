@@ -206,6 +206,9 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 			return nil, ErrDuplicateSlip
 		case errors.Is(err, domain.ErrPaymentAlreadyVerified):
 			return nil, ErrSlipAlreadyApproved
+		case errors.Is(err, domain.ErrNotFound):
+			// Withdrawn or deleted while the file was being written.
+			return nil, ErrApplicantNotFound
 		}
 		return nil, fmt.Errorf("failed to save payment record: %w", err)
 	}
