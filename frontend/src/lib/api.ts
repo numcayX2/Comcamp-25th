@@ -185,8 +185,62 @@ export interface HealthResponse {
   time: string;
 }
 
+/** Admin roles (backend domain.AdminRole). */
+export type AdminRole = 'superadmin' | 'staff' | 'finance' | 'reviewer';
+
 export interface LoginResponse {
   token: string;
+  /**
+   * The account's role, so the dashboard can hide what it may not do. Only a UI hint: the server
+   * re-reads the role from the database on every /api/admin request and answers 403 FORBIDDEN.
+   */
+  role?: AdminRole | string;
+}
+
+/** What an admin role may do in the dashboard. */
+export interface AdminPermissions {
+  changeStatus: boolean;
+  editProfile: boolean;
+  deleteApplication: boolean;
+  viewSlip: boolean;
+  verifySlip: boolean;
+  editSettings: boolean;
+}
+
+/**
+ * Mirrors the route permissions in backend/internal/server/router.go. The server is the only
+ * check that counts; this keeps finance / staff / reviewer accounts from seeing buttons that would
+ * only answer 403. Every role (and only these four) may read the list and the settings.
+ */
+export function adminPermissions(role: string | null | undefined): AdminPermissions {
+  const superadmin = role === 'superadmin';
+  const editor = superadmin || role === 'staff';
+  const payments = editor || role === 'finance';
+  return {
+    changeStatus: editor,
+    editProfile: editor,
+    deleteApplication: superadmin,
+    viewSlip: payments,
+    verifySlip: payments,
+    editSettings: superadmin,
+  };
+}
+
+/**
+ * The `role` claim of a JWT, read without verifying the signature: a display hint for a token
+ * restored from sessionStorage after a refresh. null when the token has no readable payload.
+ */
+export function roleFromToken(token: string): string | null {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
+    const role = (JSON.parse(json) as { role?: unknown }).role;
+    return typeof role === 'string' ? role : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface LoginResult {
@@ -434,19 +488,23 @@ export function getApplicationStatus(query: string): Promise<ApiResult<Applicati
 
 /**
  * POST /api/applications/:id/withdraw — the applicant cancels their own application. Needs the
- * last 4 digits of the national ID. The server soft-deletes the row, which frees the seat and
- * lets the same person register again. 403 INVALID_VERIFY_CODE for a wrong code, 409 when the
- * application cannot be cancelled online (CONFIRMED, a slip already sent or approved, or already
- * REJECTED / REFUND_PENDING / REFUNDED: staff handle the refund), 404 if it is already gone.
+ * applicant's full 13-digit national ID (4 digits are not enough: anyone who knows the phone
+ * number can look the application up). The caller keeps it in component state only and never in
+ * localStorage / sessionStorage (AGENTS.md §9.2). The server soft-deletes the row, which frees the
+ * seat and lets the same person register again. 400 for a malformed ID, 403 INVALID_VERIFY_CODE
+ * for a wrong one, 429 RATE_LIMITED after 5 wrong answers in 15 minutes (the application is locked
+ * for 15 minutes, Retry-After), 409 when the application cannot be cancelled online (CONFIRMED, a
+ * slip already sent or approved, or already REJECTED / REFUND_PENDING / REFUNDED: staff handle
+ * the refund), 404 if it is already gone.
  */
 export async function withdrawApplication(
   id: string,
-  verifyCode: string,
+  nationalId: string,
   reason?: string,
 ): Promise<ApiResult<{ message: string; id: string }>> {
   const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
     method: 'POST',
-    body: JSON.stringify({ verifyCode, reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+    body: JSON.stringify({ nationalId, reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
   });
   return { data, source: 'LIVE GO API' };
 }
@@ -579,7 +637,7 @@ export function adminLogin(username: string, password: string): Promise<ApiResul
         method: 'POST',
         body: JSON.stringify({ username, password }),
       }),
-    () => ({ token: 'mock-jwt-token' }),
+    () => ({ token: 'mock-jwt-token', role: 'superadmin' }),
   );
 }
 

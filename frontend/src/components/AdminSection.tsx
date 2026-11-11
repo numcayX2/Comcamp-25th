@@ -3,11 +3,13 @@ import { ChevronDown, CircleCheck, Download, Pencil, Search, Trash2, TriangleAle
 import {
   ApiHttpError,
   adminLogin,
+  adminPermissions,
   deleteApplication,
   fetchAdminSlip,
   hasSlip,
   holdsSeat,
   listApplications,
+  roleFromToken,
   stripZeroWidth,
   updateApplicationStatus,
   verifyPaymentSlip,
@@ -46,6 +48,14 @@ import {
 } from './admin-ui';
 
 const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+
+/** What each role can do, in the words staff use. Mirrors adminPermissions() in lib/api.ts. */
+const ROLE_NOTE: Record<string, string> = {
+  superadmin: 'จัดการได้ทุกอย่าง รวมถึงลบใบสมัครและแก้การตั้งค่า',
+  staff: 'เปลี่ยนสถานะ แก้ข้อมูล และตรวจสลิปได้ ลบใบสมัครและแก้การตั้งค่าไม่ได้',
+  finance: 'ดูและตรวจสลิปได้ เปลี่ยนสถานะหรือแก้ข้อมูลผู้สมัครไม่ได้',
+  reviewer: 'ดูรายชื่อผู้สมัครและการตั้งค่าได้อย่างเดียว',
+};
 
 /* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
    appears only as a small status dot (AGENTS §4.1 master tokens). */
@@ -179,6 +189,9 @@ function describeAdminError(err: unknown, fallback: string): string {
     if (err.status === 401 || err.code === 'UNAUTHORIZED') {
       return 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือเซสชันหมดอายุ';
     }
+    if (err.status === 403) {
+      return 'บัญชีของคุณไม่มีสิทธิ์ทำรายการนี้ หากเพิ่งถูกเปลี่ยนบทบาท กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่';
+    }
     if (err.status === 404 || err.code === 'NOT_FOUND') {
       return 'ไม่พบรายการใบสมัครนี้ในระบบ';
     }
@@ -213,6 +226,8 @@ export function AdminSection() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState<string | null>(null);
+  /** The account's role, from the login response or the token payload: a UI hint only. */
+  const [role, setRole] = useState<string | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
   const [filter, setFilter] = useState<string>('ALL');
@@ -242,11 +257,16 @@ export function AdminSection() {
   const focusListAfterDelete = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
 
+  /* Hide what this role would only get 403 for (the server enforces it either way). A token with no
+     readable role, i.e. the dev mock token, keeps the full dashboard as before. */
+  const can = adminPermissions(role ?? 'superadmin');
+
   /** Expired or deactivated session: drop the token and show the login form again. */
   function handleAuthError(err: unknown): boolean {
     if (err instanceof ApiHttpError && err.status === 401) {
       tokenStore.clear();
       setToken(null);
+      setRole(null);
       setApps([]);
       setInspectingApp(null);
       setEditingId(null);
@@ -280,6 +300,7 @@ export function AdminSection() {
       const res = await adminLogin(username, password);
       setPassword('');
       setToken(res.data.token);
+      setRole(res.data.role ?? roleFromToken(res.data.token));
       setSource(res.source);
       await refresh(res.data.token);
     } catch (err) {
@@ -377,6 +398,7 @@ export function AdminSection() {
 
   function logout() {
     setToken(null);
+    setRole(null);
     setApps([]);
     setInspectingApp(null);
     setEditingId(null);
@@ -398,6 +420,7 @@ export function AdminSection() {
     const saved = tokenStore.get();
     if (saved) {
       setToken(saved);
+      setRole(roleFromToken(saved));
       refresh(saved);
     }
   }, []);
@@ -504,6 +527,7 @@ export function AdminSection() {
           {token ? 'ใบสมัครและสลิป' : 'สำหรับพี่ค่าย'}
         </h1>
         {token ? (
+          <>
           <p className="mt-4 max-w-[60ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
             ผู้สมัคร <span className="font-mono tabular-nums" style={{ color: INK }}>{apps.length}</span> คน
             {' · '}รอชำระ/รอตรวจสลิป <span className="font-mono tabular-nums" style={{ color: INK }}>{awaitingPayment}</span>
@@ -511,6 +535,14 @@ export function AdminSection() {
             {' · '}รอคืนเงิน <span className="font-mono tabular-nums" style={{ color: INK }}>{count('REFUND_PENDING')}</span>
             {' · '}แนบสลิปแล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{withSlip}</span>
           </p>
+          {role && (
+            <p className="mt-2 max-w-[60ch] text-sm leading-7" style={{ color: INK_3 }}>
+              เข้าสู่ระบบในบทบาท <span className="font-mono" style={{ color: INK }}>{role}</span>
+              {' · '}
+              {ROLE_NOTE[role] ?? 'บทบาทนี้ไม่มีสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ'}
+            </p>
+          )}
+          </>
         ) : (
           <p className="mt-4 max-w-[46ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
             เข้าสู่ระบบเพื่อตรวจรายชื่อใบสมัคร เปลี่ยนสถานะ และอนุมัติหลักฐานการชำระเงิน
@@ -612,6 +644,7 @@ export function AdminSection() {
         <>
           <AdminSettingsPanel
             token={token}
+            canEdit={can.editSettings}
             currentCount={currentCount}
             onAuthError={handleAuthError}
             onSettings={(s: AdminSettings) => setFeeBaht(Number(s.campFee))}
@@ -766,14 +799,23 @@ export function AdminSection() {
 
                       {/* State + actions */}
                       <div className="flex flex-col items-start gap-2">
-                        <StatusSelect
-                          app={a}
-                          disabled={patching === a.id || deletingId === a.id}
-                          onChange={(status) => onStatus(a.id, status)}
-                        />
+                        {can.changeStatus ? (
+                          <StatusSelect
+                            app={a}
+                            disabled={patching === a.id || deletingId === a.id}
+                            onChange={(status) => onStatus(a.id, status)}
+                          />
+                        ) : (
+                          <p className="inline-flex items-center gap-2 py-0.5 text-sm leading-7" style={{ color: INK }}>
+                            <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
+                              ●
+                            </span>
+                            {STATUS_LABELS[a.status]}
+                          </p>
+                        )}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <SlipBadge app={a} />
-                          {slip && (
+                          {slip && can.viewSlip && (
                             <button
                               id={`slip-btn-${a.id}`}
                               type="button"
@@ -785,6 +827,7 @@ export function AdminSection() {
                               {open ? 'ซ่อนสลิป' : 'ตรวจสอบสลิป'}
                             </button>
                           )}
+                          {can.editProfile && (
                           <button
                             id={`edit-btn-${a.id}`}
                             type="button"
@@ -796,7 +839,8 @@ export function AdminSection() {
                             <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
                             {editing ? 'ซ่อนการแก้ไข' : 'แก้ไขข้อมูล'}
                           </button>
-                          {confirmDeleteId === a.id ? (
+                          )}
+                          {can.deleteApplication && (confirmDeleteId === a.id ? (
                             <div className="inline-flex items-center gap-1.5" role="group" aria-label={`ยืนยันการลบ ${a.id}`}>
                               <button
                                 type="button"
@@ -830,13 +874,13 @@ export function AdminSection() {
                               <Trash2 size={13} strokeWidth={1.5} aria-hidden="true" />
                               ลบ
                             </button>
-                          )}
+                          ))}
                         </div>
                       </div>
                     </div>
 
                     {/* Profile editor: expands under its own row */}
-                    {editing && token && (
+                    {editing && token && can.editProfile && (
                       <AdminProfileEditor
                         app={a}
                         token={token}
@@ -847,7 +891,7 @@ export function AdminSection() {
                     )}
 
                     {/* Slip review: expands under its own row */}
-                    {open && (
+                    {open && can.viewSlip && (
                       <div
                         className="grid gap-8 border-t py-6 md:grid-cols-[minmax(0,20rem)_1fr]"
                         style={{ borderColor: RULE }}
@@ -901,7 +945,7 @@ export function AdminSection() {
                               : 'อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นได้รับสิทธิ์เพื่อให้ส่งสลิปใหม่'}
                           </p>
 
-                          {!slipLocked && (
+                          {!slipLocked && can.verifySlip && (
                           <>
                           <label
                             className="mb-2 mt-6 block text-sm font-semibold"
@@ -962,7 +1006,7 @@ export function AdminSection() {
                           </div>
                           </>
                           )}
-                          {slipLocked && (
+                          {(slipLocked || !can.verifySlip) && (
                             <div className="mt-6">
                               <button
                                 type="button"

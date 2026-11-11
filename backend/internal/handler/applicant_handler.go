@@ -75,7 +75,8 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	app, err := h.appService.ConfirmAttendance(r.Context(), id, body.VerifyCode, body.Confirmed)
+	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
+	app, err := h.appService.ConfirmAttendance(ctx, id, body.VerifyCode, body.Confirmed)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
@@ -85,7 +86,9 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 }
 
 // Withdraw is the applicant's own cancellation: POST /api/applications/{id}/withdraw with
-// { verifyCode, reason }. Wrong code 403 INVALID_VERIFY_CODE, confirmed place 409.
+// { nationalId, reason }. It needs the full 13-digit national ID (a 4-digit verifyCode is not
+// accepted here): missing or malformed 400, wrong 403 INVALID_VERIFY_CODE, too many wrong answers
+// 429 RATE_LIMITED + Retry-After, confirmed place 409.
 func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -94,15 +97,16 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		// VerifyCode is the last 4 digits of the applicant's national ID (AGENTS.md §13.5).
-		VerifyCode string `json:"verifyCode"`
+		// NationalID is the applicant's full 13-digit national ID. It is compared and dropped,
+		// never logged or echoed.
+		NationalID string `json:"nationalId"`
 		Reason     string `json:"reason,omitempty"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 
-	if err := h.appService.Withdraw(r.Context(), id, body.VerifyCode, body.Reason, middleware.RemoteIP(r)); err != nil {
+	if err := h.appService.Withdraw(r.Context(), id, body.NationalID, body.Reason, middleware.RemoteIP(r)); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}

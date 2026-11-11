@@ -5,16 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/pkg/response"
 )
 
-func (a *testApp) withdraw(t *testing.T, appID, verifyCode string) *http.Response {
+// withdraw posts /withdraw with the given full national ID (AGENTS.md §13.5: 4 digits are not
+// enough to give a seat away).
+func (a *testApp) withdraw(t *testing.T, appID, nationalID string) *http.Response {
 	t.Helper()
-	body := fmt.Sprintf(`{"verifyCode":%q,"reason":"เปลี่ยนใจ"}`, verifyCode)
-	return a.do(t, http.MethodPost, "/api/applications/"+appID+"/withdraw", bytes.NewBufferString(body), nil).Result()
+	return a.withdrawRec(t, appID, nationalID).Result()
+}
+
+func (a *testApp) withdrawRec(t *testing.T, appID, nationalID string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := fmt.Sprintf(`{"nationalId":%q,"reason":"เปลี่ยนใจ"}`, nationalID)
+	return a.do(t, http.MethodPost, "/api/applications/"+appID+"/withdraw", bytes.NewBufferString(body), nil)
 }
 
 func (a *testApp) publicCount(t *testing.T) int {
@@ -29,7 +37,7 @@ func (a *testApp) publicCount(t *testing.T) int {
 	return s.CurrentCount
 }
 
-// Self-service withdrawal: needs the national-ID verify code, frees the seat, and lets the same
+// Self-service withdrawal: needs the full 13-digit national ID, frees the seat, and lets the same
 // person register again with the same national ID, phone and email.
 func TestWithdraw_SelfServiceLifecycle(t *testing.T) {
 	app := setupTestApp(t)
@@ -37,19 +45,14 @@ func TestWithdraw_SelfServiceLifecycle(t *testing.T) {
 	created := app.submit(t, nid, "0810000031", "w1@example.com")
 	before := app.publicCount(t)
 
-	t.Run("missing code is 400", func(t *testing.T) {
+	t.Run("missing national ID is 400", func(t *testing.T) {
 		if res := app.withdraw(t, created.ID, ""); res.StatusCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", res.StatusCode)
 		}
 	})
 
-	t.Run("wrong code is 403 INVALID_VERIFY_CODE", func(t *testing.T) {
-		wrong := "0000"
-		if app.verifyCodes[created.ID] == wrong {
-			wrong = "1111"
-		}
-		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/withdraw",
-			bytes.NewBufferString(fmt.Sprintf(`{"verifyCode":%q}`, wrong)), nil)
+	t.Run("wrong national ID is 403 INVALID_VERIFY_CODE", func(t *testing.T) {
+		rec := app.withdrawRec(t, created.ID, validTestNationalID(9031))
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("expected 403, got %d (%s)", rec.Code, rec.Body.String())
 		}
@@ -59,13 +62,13 @@ func TestWithdraw_SelfServiceLifecycle(t *testing.T) {
 	})
 
 	t.Run("unknown application is 404", func(t *testing.T) {
-		if res := app.withdraw(t, "CC25-NOPE00", "1234"); res.StatusCode != http.StatusNotFound {
+		if res := app.withdraw(t, "CC25-NOPE00", validTestNationalID(9032)); res.StatusCode != http.StatusNotFound {
 			t.Fatalf("expected 404, got %d", res.StatusCode)
 		}
 	})
 
-	t.Run("correct code withdraws and frees the seat", func(t *testing.T) {
-		res := app.withdraw(t, created.ID, app.verifyCodes[created.ID])
+	t.Run("correct national ID withdraws and frees the seat", func(t *testing.T) {
+		res := app.withdraw(t, created.ID, nid)
 		if res.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", res.StatusCode)
 		}
@@ -75,7 +78,7 @@ func TestWithdraw_SelfServiceLifecycle(t *testing.T) {
 		if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil); rec.Code != http.StatusNotFound {
 			t.Fatalf("withdrawn application should not be found, got %d", rec.Code)
 		}
-		if res := app.withdraw(t, created.ID, app.verifyCodes[created.ID]); res.StatusCode != http.StatusNotFound {
+		if res := app.withdraw(t, created.ID, nid); res.StatusCode != http.StatusNotFound {
 			t.Fatalf("second withdraw should be 404, got %d", res.StatusCode)
 		}
 	})
@@ -113,7 +116,7 @@ func TestWithdraw_ConfirmedIsRejectedWith409(t *testing.T) {
 	created := app.submit(t, validTestNationalID(32), "0810000032", "w2@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusConfirmed)
 
-	if res := app.withdraw(t, created.ID, app.verifyCodes[created.ID]); res.StatusCode != http.StatusConflict {
+	if res := app.withdraw(t, created.ID, app.nationalIDs[created.ID]); res.StatusCode != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", res.StatusCode)
 	}
 	if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil); rec.Code != http.StatusOK {

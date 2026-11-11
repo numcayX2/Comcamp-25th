@@ -11,9 +11,9 @@ import {
   type ApplicationStatus,
   type SlipStatus,
 } from '../../lib/api';
-import { cleanVerifyCode } from '../../lib/slip-upload';
+import { cleanNationalIdInput, describeVerifyLock } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
-import { FB_URL, FEE_TEXT, RECEIPT_META, RECEIPT_STEP } from './model';
+import { FB_URL, FEE_TEXT, RECEIPT_META, RECEIPT_STEP, isValidThaiNationalID } from './model';
 import { SlipBlock } from './SlipBlock';
 import { StepHeader } from './parts';
 
@@ -21,30 +21,36 @@ type CopyState = 'idle' | 'copied' | 'failed';
 
 /** Thai copy for a failed withdrawal, keyed by the backend error code. */
 function describeWithdrawError(err: unknown): string {
+  const locked = describeVerifyLock(err);
+  if (locked) return locked;
   if (err instanceof ApiHttpError) {
-    if (err.code === 'INVALID_VERIFY_CODE') return 'เลข 4 ตัวท้ายไม่ตรงกับบัตรประชาชนที่ใช้สมัคร กรุณาตรวจสอบแล้วลองอีกครั้ง';
+    if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
     if (err.code === 'RATE_LIMITED') return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
     if (err.status === 409) return 'ใบสมัครนี้ยกเลิกเองไม่ได้แล้ว (ยืนยันสิทธิ์ ส่งสลิป หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน';
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
-    if (err.status === 400) return 'กรุณากรอกเลข 4 ตัวท้ายของบัตรประชาชนให้ครบ';
+    if (err.status === 400) return 'กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง';
   }
   return 'ยกเลิกใบสมัครไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง';
 }
 
 /**
- * Self-service withdrawal. Collapsed to one quiet link; opening it asks for the last 4 digits of
- * the national ID (same second factor as /status, AGENTS.md §13.5, kept in memory only).
+ * Self-service withdrawal. Collapsed to one quiet link; opening it asks for the applicant's full
+ * 13-digit national ID, because cancelling gives the seat away for good (AGENTS.md §13.5). The ID
+ * lives in this component's state only: never written to localStorage / sessionStorage (§9.2),
+ * and cleared on close, on success and when the block unmounts.
  */
 function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
+  const complete = code.length === 13;
+  const valid = complete && isValidThaiNationalID(code);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
   const uid = useId();
-  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, input: `${uid}-code`, err: `${uid}-err` };
+  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, input: `${uid}-code`, hint: `${uid}-hint`, err: `${uid}-err` };
 
   // A disabled input cannot take focus: after a failed attempt, refocus once busy has cleared.
   const refocusInput = useRef(false);
@@ -73,7 +79,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
-    if (busy || code.length !== 4) return;
+    if (busy || !valid) return;
     setBusy(true);
     setError(null);
     try {
@@ -128,31 +134,36 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
         ยกเลิกแล้วกู้คืนไม่ได้ แต่สมัครใหม่ได้หากยังมีที่นั่งว่าง
       </p>
       <label className="rw-label" htmlFor={ids.input}>
-        กรอกเลข 4 ตัวท้ายของบัตรประชาชนเพื่อยืนยัน
+        กรอกเลขบัตรประชาชน 13 หลักของผู้สมัครเพื่อยืนยัน
       </label>
       <input
         ref={inputRef}
         id={ids.input}
         className="rw-input rw-input--mono rw-withdraw__code"
         value={code}
-        // Digits only, max 4: also drops zero-width characters pasted from LINE (§9.2.2).
+        // Digits only, max 13: also drops dashes and zero-width characters pasted from LINE (§9.2.2).
         onChange={(e) => {
-          setCode(cleanVerifyCode(e.target.value));
+          setCode(cleanNationalIdInput(e.target.value));
           if (error) setError(null);
         }}
         inputMode="numeric"
         autoComplete="off"
         spellCheck={false}
-        placeholder="0000"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${ids.warn} ${ids.err}` : ids.warn}
+        placeholder="1234567890123"
+        aria-invalid={error || (complete && !valid) ? true : undefined}
+        aria-describedby={[ids.warn, ids.hint, error ? ids.err : ''].filter(Boolean).join(' ')}
         disabled={busy}
       />
+      <p id={ids.hint} className="rw-withdraw__hint">
+        {complete && !valid
+          ? 'เลขบัตรประชาชนนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
+          : <>ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{code.length}/13</span> หลัก) ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง</>}
+      </p>
       <p id={ids.err} className="rw-withdraw__err" role="alert">
         {error}
       </p>
       <div className="rw-actions rw-actions--tight">
-        <button type="submit" className="rw-btn rw-btn--danger rw-btn--sm" disabled={busy || code.length !== 4} aria-busy={busy || undefined}>
+        <button type="submit" className="rw-btn rw-btn--danger rw-btn--sm" disabled={busy || !valid} aria-busy={busy || undefined}>
           {busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกใบสมัคร'}
         </button>
         <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={close} disabled={busy}>

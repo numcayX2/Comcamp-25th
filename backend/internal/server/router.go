@@ -10,9 +10,27 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/handler"
 	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/service"
+)
+
+// Admin permissions (AGENTS.md §13.2). Every /api/admin/* route names the roles allowed to call
+// it; there is no route that any valid token can reach by default.
+//
+//	route                                          superadmin  staff  finance  reviewer
+//	GET    /admin/applications, /admin/settings        ✓         ✓       ✓        ✓
+//	GET    /admin/applications/{id}/slip               ✓         ✓       ✓
+//	PATCH  /admin/applications/{id}/verify-slip        ✓         ✓       ✓
+//	PATCH  /admin/applications/{id}, …/{id}/profile    ✓         ✓
+//	DELETE /admin/applications/{id}                    ✓
+//	PATCH  /admin/settings                             ✓
+var (
+	rolesAnyAdmin = domain.AllAdminRoles
+	rolesPayments = []domain.AdminRole{domain.RoleSuperadmin, domain.RoleFinance, domain.RoleStaff}
+	rolesEditors  = []domain.AdminRole{domain.RoleSuperadmin, domain.RoleStaff}
+	rolesSuper    = []domain.AdminRole{domain.RoleSuperadmin}
 )
 
 // RateLimits are per client IP. They are generous enough for a school computer lab or a mobile
@@ -101,14 +119,19 @@ func NewRouter(svc Services, opt Options) http.Handler {
 
 			json.Group(func(admin chi.Router) {
 				admin.Use(middleware.RequireAuth(svc.Auth))
-				admin.Get("/admin/applications", appHandler.AdminList)
-				admin.Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
-				admin.Patch("/admin/applications/{id}/profile", appHandler.AdminUpdateProfile)
-				admin.Delete("/admin/applications/{id}", appHandler.AdminDelete)
-				admin.Get("/admin/applications/{id}/slip", paymentHandler.GetSlip)
-				admin.Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
-				admin.Get("/admin/settings", settingHandler.GetAdmin)
-				admin.Patch("/admin/settings", settingHandler.UpdateAdmin)
+				anyAdmin := middleware.RequireRoles(rolesAnyAdmin...)
+				payments := middleware.RequireRoles(rolesPayments...)
+				editors := middleware.RequireRoles(rolesEditors...)
+				super := middleware.RequireRoles(rolesSuper...)
+
+				admin.With(anyAdmin).Get("/admin/applications", appHandler.AdminList)
+				admin.With(editors).Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
+				admin.With(editors).Patch("/admin/applications/{id}/profile", appHandler.AdminUpdateProfile)
+				admin.With(super).Delete("/admin/applications/{id}", appHandler.AdminDelete)
+				admin.With(payments).Get("/admin/applications/{id}/slip", paymentHandler.GetSlip)
+				admin.With(payments).Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
+				admin.With(anyAdmin).Get("/admin/settings", settingHandler.GetAdmin)
+				admin.With(super).Patch("/admin/settings", settingHandler.UpdateAdmin)
 			})
 		})
 	})

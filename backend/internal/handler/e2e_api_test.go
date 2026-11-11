@@ -13,7 +13,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/repository/memory"
@@ -35,6 +37,28 @@ type testApp struct {
 	// verifyCodes maps application ID → last 4 national-ID digits, filled by submit, so the
 	// public confirm / slip helpers can pass the /status second factor (AGENTS.md §13.5).
 	verifyCodes map[string]string
+	// nationalIDs maps application ID → full national ID, for /withdraw.
+	nationalIDs map[string]string
+	// clock drives the verify-code lockout; Advance it to expire a lock without sleeping.
+	clock *testClock
+}
+
+// testClock is real time plus an offset that tests can move forward.
+type testClock struct {
+	mu     sync.Mutex
+	offset time.Duration
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.offset)
+}
+
+func (c *testClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.offset += d
 }
 
 // setupTestApp builds the production router (server.NewRouter) over in-memory repositories, so
@@ -72,7 +96,10 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 	_ = admRepo.Create(context.Background(), admin)
 
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
-	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo)
+	clock := &testClock{}
+	// Wired like main: one lockout guard shared by every public verify-code endpoint.
+	guard := service.NewVerifyGuardWith(appRepo.Audit(), service.VerifyGuardConfig{Now: clock.Now})
+	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo).WithVerifyGuard(guard)
 	if captcha != nil {
 		applicantSvc.WithTurnstile(captcha)
 	}
@@ -80,7 +107,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
 		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(setRepo, appRepo, appRepo.Audit()),
-		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()),
+		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()).WithVerifyGuard(guard),
 	}
 
 	router := server.NewRouter(services, server.Options{
@@ -90,7 +117,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 
 	return &testApp{
 		Handler: router, appRepo: appRepo, adminRepo: admRepo, setRepo: setRepo, adminID: admin.ID,
-		verifyCodes: map[string]string{},
+		verifyCodes: map[string]string{}, nationalIDs: map[string]string{}, clock: clock,
 	}
 }
 
@@ -168,6 +195,7 @@ func (a *testApp) submit(t *testing.T, nationalID, phone, email string) service.
 	var app service.ApplicationResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &app)
 	a.verifyCodes[app.ID] = nationalID[len(nationalID)-4:]
+	a.nationalIDs[app.ID] = nationalID
 	return app
 }
 

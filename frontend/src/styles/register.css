@@ -833,7 +833,8 @@ html[data-theme="dark"] .rw-ticket {
 .rw-withdraw { margin-top: -8px; }
 .rw-withdraw--open { margin-top: 0; max-width: 520px; }
 .rw-withdraw__warn { margin: 8px 0 16px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
-.rw-withdraw__code { max-width: 160px; }
+.rw-withdraw__code { max-width: 260px; }
+.rw-withdraw__hint { margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-3); }
 .rw-withdraw__err { min-height: 1.6em; margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-danger); }
 .rw-withdraw__err:empty { min-height: 0; margin-top: 0; }
 .rw-actions--tight { margin-top: 8px; }

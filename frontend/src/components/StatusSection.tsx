@@ -34,10 +34,11 @@ import {
   SHIRT_SIZES,
   SIZE_CHEST,
   gradeValue,
+  isValidThaiNationalID,
   splitGrade,
   validateGradeFields,
 } from './register/model';
-import { describeApiError as describeError } from '../lib/slip-upload';
+import { cleanNationalIdInput, describeApiError as describeError, describeVerifyLock } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
 import { VerifyCodeField } from './slip/VerifyCodeField';
@@ -385,6 +386,15 @@ export function StatusSection() {
   const codeReady = verifyCode.length === 4;
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  /**
+   * The applicant's full 13-digit national ID, typed to confirm a withdrawal (4 digits are not
+   * enough to give a seat away, AGENTS.md §13.5). Component state only: never written to
+   * localStorage / sessionStorage (§9.2), cleared on close, on a new search and on success.
+   */
+  const [withdrawNid, setWithdrawNid] = useState('');
+  const [withdrawErr, setWithdrawErr] = useState<string | null>(null);
+  const withdrawNidComplete = withdrawNid.length === 13;
+  const withdrawNidValid = withdrawNidComplete && isValidThaiNationalID(withdrawNid);
   /** Set after a successful withdrawal; the record is cleared and this notice replaces it. */
   const [withdrawnId, setWithdrawnId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -398,12 +408,13 @@ export function StatusSection() {
   const editRestore = useRef(false);
   const withdrawToggleRef = useRef<HTMLButtonElement>(null);
   const withdrawConfirmRef = useRef<HTMLButtonElement>(null);
+  const withdrawNidRef = useRef<HTMLInputElement>(null);
   const withdrawnRef = useRef<HTMLDivElement>(null);
   /** Focus goes back to the toggle only when the panel was closed by the user. */
   const withdrawRestore = useRef(false);
 
   useEffect(() => {
-    if (withdrawOpen) withdrawConfirmRef.current?.focus();
+    if (withdrawOpen) withdrawNidRef.current?.focus();
     else if (withdrawRestore.current) {
       withdrawRestore.current = false;
       withdrawToggleRef.current?.focus();
@@ -430,6 +441,8 @@ export function StatusSection() {
     setVerifyError(null);
     setVerifyCode('');
     setWithdrawOpen(false);
+    setWithdrawNid('');
+    setWithdrawErr(null);
     setWithdrawnId(null);
     setEditOpen(false);
     setEditSaved(false);
@@ -526,23 +539,37 @@ export function StatusSection() {
     if (withdrawBusy) return;
     withdrawRestore.current = true;
     setWithdrawOpen(false);
+    setWithdrawNid('');
+    setWithdrawErr(null);
   }
 
   async function onWithdraw() {
-    if (!app || !codeReady || withdrawBusy) return;
+    if (!app || !withdrawNidValid || withdrawBusy) return;
     setWithdrawBusy(true);
     setError(null);
+    setWithdrawErr(null);
     try {
-      await withdrawApplication(app.id, verifyCode);
+      await withdrawApplication(app.id, withdrawNid);
       const id = app.id;
       setApp(null);
       setSource(null);
       setVerifyCode('');
+      setWithdrawNid('');
       setWithdrawOpen(false);
       setVerifyError(null);
       setWithdrawnId(id);
     } catch (err) {
-      if (err instanceof ApiHttpError && err.status === 409) {
+      // Problems with the typed ID (wrong, malformed, locked) are shown next to the field.
+      const locked = describeVerifyLock(err);
+      if (locked) {
+        setWithdrawErr(locked);
+      } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
+        setWithdrawErr('เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง');
+      } else if (err instanceof ApiHttpError && err.status === 400) {
+        setWithdrawErr('กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง');
+      } else if (err instanceof ApiHttpError && err.status === 429) {
+        setWithdrawErr(describeError(err, 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่'));
+      } else if (err instanceof ApiHttpError && err.status === 409) {
         setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน');
       } else if (err instanceof ApiHttpError && err.status === 404) {
         setError('ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ลองค้นหาอีกครั้ง');
@@ -980,7 +1007,7 @@ export function StatusSection() {
               </div>
             )}
 
-            {/* Self-service withdrawal: frees the seat; reuses the verify code above. */}
+            {/* Self-service withdrawal: frees the seat; asks for the full national ID (not the 4-digit code above). */}
             {canWithdraw && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
                 {withdrawOpen ? (
@@ -1001,19 +1028,62 @@ export function StatusSection() {
                       หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums">{app.id}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที ยกเลิกแล้วกู้คืนไม่ได้
                       {slipUploaded && ' หากโอนเงินไปแล้ว กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ'}
                     </p>
-                    {!codeReady && (
-                      <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                        กรอกเลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชนด้านบนก่อนยืนยัน
+                    <div className="mt-3 max-w-[22rem]">
+                      <label htmlFor="withdraw-nid" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
+                        กรอกเลขบัตรประชาชน 13 หลักของผู้สมัครเพื่อยืนยัน
+                      </label>
+                      <input
+                        id="withdraw-nid"
+                        ref={withdrawNidRef}
+                        value={withdrawNid}
+                        // Digits only, max 13: drops dashes and zero-width characters pasted from LINE (§9.2.2).
+                        onChange={(e) => {
+                          setWithdrawNid(cleanNationalIdInput(e.target.value));
+                          if (withdrawErr) setWithdrawErr(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void onWithdraw();
+                          }
+                        }}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="1234567890123"
+                        disabled={withdrawBusy}
+                        aria-invalid={withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? true : undefined}
+                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-nid-hint withdraw-nid-err' : 'withdraw-warn withdraw-nid-hint'}
+                        className={`${INPUT_CLS} mt-1 font-mono tabular-nums disabled:opacity-60`}
+                        style={{
+                          borderColor: withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? 'var(--color-danger)' : BORDER_INPUT,
+                          color: INK,
+                        }}
+                      />
+                      <p id="withdraw-nid-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
+                        {withdrawNidComplete && !withdrawNidValid ? (
+                          'เลขบัตรประชาชนนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
+                        ) : (
+                          <>
+                            ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{withdrawNid.length}/13</span> หลัก)
+                            ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง
+                          </>
+                        )}
                       </p>
-                    )}
+                      {withdrawErr && (
+                        <p id="withdraw-nid-err" role="alert" className="mt-1 text-sm font-semibold leading-7" style={{ color: 'var(--color-danger)' }}>
+                          {withdrawErr}
+                        </p>
+                      )}
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         ref={withdrawConfirmRef}
                         type="button"
                         onClick={onWithdraw}
-                        disabled={withdrawBusy || !codeReady}
+                        disabled={withdrawBusy || !withdrawNidValid}
                         aria-busy={withdrawBusy || undefined}
-                        aria-describedby={codeReady ? 'withdraw-warn' : 'withdraw-warn verify-code-hint'}
+                        aria-describedby="withdraw-warn withdraw-nid-hint"
                         className="rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
                         style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)', backgroundColor: SURFACE }}
                       >

@@ -34,6 +34,11 @@ type FieldErrors = { quota?: string; fee?: string };
 
 interface Props {
   token: string;
+  /**
+   * Whether this role may change the settings (superadmin only on the server). Others see the
+   * values read-only instead of a form that would answer 403.
+   */
+  canEdit?: boolean;
   /** Applicants who are not rejected. This is the count the server checks the quota against. */
   currentCount: number;
   /** Returns true when the error was an expired session, in which case the parent has logged out. */
@@ -44,6 +49,7 @@ interface Props {
 
 function errorText(err: unknown, fallback: string): string {
   if (err instanceof ApiHttpError) {
+    if (err.status === 403) return 'บัญชีนี้ไม่มีสิทธิ์แก้การตั้งค่า (ทำได้เฉพาะบทบาท superadmin)';
     if (err.code === 'VALIDATION_ERROR') {
       if (err.message.includes('capacity') || err.message.includes('quota')) {
         return 'จำนวนโควตาต้องไม่ต่ำกว่าจำนวนผู้สมัครปัจจุบัน และไม่เกิน 1,000 ที่นั่ง';
@@ -65,7 +71,7 @@ function errorText(err: unknown, fallback: string): string {
  * Collapsible control panel for camp staff: the seat quota, the camp fee and the emergency
  * switch. The summary row stays visible when collapsed so the status is always in view.
  */
-export function AdminSettingsPanel({ token, currentCount, onAuthError, onSettings }: Props) {
+export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuthError, onSettings }: Props) {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -146,6 +152,7 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
+    if (!canEdit) return;
     const values = checkInputs();
     if (!values) return;
     setSaving(true);
@@ -169,7 +176,7 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
 
   /** The emergency switch saves on its own, so it works even while the quota form has unsaved edits. */
   async function onToggleClosed() {
-    if (!settings) return;
+    if (!settings || !canEdit) return;
     const next = !settings.isManualClosed;
     setToggling(true);
     setNotice(null);
@@ -251,6 +258,7 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
 
           {settings && (
             <>
+              {canEdit ? (
               <form onSubmit={onSave} noValidate aria-busy={saving} className="flex flex-col gap-6">
                 <div>
                   <label htmlFor="quota-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
@@ -329,6 +337,30 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
                   </button>
                 </div>
               </form>
+              ) : (
+                <div className="flex flex-col gap-6">
+                  <div>
+                    <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                      โควตาที่นั่ง
+                    </p>
+                    <p className="font-mono text-2xl font-semibold leading-8 tabular-nums" style={{ color: INK }}>
+                      {numberFmt.format(settings.maxCapacity)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                      ค่าสมัคร (บาท)
+                    </p>
+                    <p className="font-mono text-2xl font-semibold leading-8 tabular-nums" style={{ color: INK }}>
+                      {feeShown}
+                    </p>
+                  </div>
+                  <p className="max-w-[46ch] text-sm leading-7" style={{ color: INK_3 }}>
+                    บัญชีของคุณดูการตั้งค่าได้อย่างเดียว การแก้โควตา ค่าสมัคร และการปิดรับสมัครฉุกเฉินทำได้เฉพาะบทบาท{' '}
+                    <span className="font-mono">superadmin</span>
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col">
                 <div className="border-b pb-6" style={{ borderColor: RULE }}>
@@ -362,9 +394,12 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
                     <p id="closed-desc" className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
                       {closed
                         ? 'กำลังปิดรับ ผู้สมัครใหม่จะถูกปฏิเสธจนกว่าจะปิดสวิตช์นี้'
-                        : 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'}
+                        : canEdit
+                          ? 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'
+                          : 'ยังรับใบสมัครตามกำหนดการ (เปิด/ปิดสวิตช์นี้ได้เฉพาะ superadmin)'}
                     </p>
                   </div>
+                  {canEdit ? (
                   <button
                     type="button"
                     role="switch"
@@ -387,6 +422,11 @@ export function AdminSettingsPanel({ token, currentCount, onAuthError, onSetting
                       style={{ backgroundColor: closed ? BTN_DARK_TEXT : INK_3 }}
                     />
                   </button>
+                  ) : (
+                    <p className="shrink-0 text-sm font-semibold leading-7" style={{ color: closed ? DANGER : INK_2 }}>
+                      {closed ? 'เปิดอยู่' : 'ไม่ได้เปิด'}
+                    </p>
+                  )}
                 </div>
               </div>
             </>

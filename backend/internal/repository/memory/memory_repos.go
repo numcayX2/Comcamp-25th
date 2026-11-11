@@ -445,6 +445,19 @@ func (m *MemoryAdminRepo) SetActive(id int64, active bool) error {
 	return nil
 }
 
+// SetRole changes an admin's role (used by tests).
+func (m *MemoryAdminRepo) SetRole(id int64, role domain.AdminRole) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	a.Role = role
+	return nil
+}
+
 func (m *MemoryAdminRepo) Create(ctx context.Context, a *domain.Admin) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

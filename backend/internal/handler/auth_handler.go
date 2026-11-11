@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/pkg/response"
 	"comcamp25-backend/internal/service"
@@ -25,6 +26,9 @@ type LoginRequest struct {
 
 type LoginResponse struct {
 	Token string `json:"token"`
+	// Role tells the dashboard which controls to show. It is only a UI hint: every /api/admin/*
+	// request re-reads the role from the database (RequireAuth + RequireRoles).
+	Role domain.AdminRole `json:"role"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +43,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := h.authService.Login(r.Context(), req.Username, req.Password, middleware.RemoteIP(r))
+	token, admin, err := h.authService.Login(r.Context(), req.Username, req.Password, middleware.RemoteIP(r))
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
 			response.ErrorCode(w, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
@@ -49,5 +53,5 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.OK(w, LoginResponse{Token: token})
+	response.OK(w, LoginResponse{Token: token, Role: admin.Role})
 }

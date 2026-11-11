@@ -131,6 +131,18 @@ type ApplicantService struct {
 	// captcha is nil only when Turnstile is deliberately off (development without a secret, tests).
 	// main always sets it in production; config refuses to start without TURNSTILE_SECRET_KEY.
 	captcha TurnstileVerifier
+	// verify locks an application after repeated wrong verifyCode / nationalId answers. main
+	// shares one guard with PaymentService (WithVerifyGuard) so the limit spans every endpoint.
+	verify *VerifyGuard
+}
+
+// WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
+// service.
+func (s *ApplicantService) WithVerifyGuard(g *VerifyGuard) *ApplicantService {
+	if g != nil {
+		s.verify = g
+	}
+	return s
 }
 
 // WithTurnstile enables captcha verification on registration and returns the service.
@@ -148,6 +160,8 @@ func NewApplicantService(
 		appRepo:     appRepo,
 		settingRepo: settingRepo,
 		paymentRepo: paymentRepo,
+		// Never without a lockout: a service nobody wired still counts failures on its own.
+		verify: NewVerifyGuard(nil),
 	}
 }
 
@@ -475,12 +489,16 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Appl
 
 // ConfirmAttendance is public, so it only accepts the application ID (not a phone number) and
 // requires verifyCode, the last 4 digits of the applicant's national ID (see CheckVerifyCode).
+// Repeated wrong codes lock the application (VerifyGuard); the client IP for the audit row comes
+// from WithRemoteIP.
 func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo, verifyCode string, confirmed bool) (*ApplicationResponse, error) {
 	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
 	if err != nil {
 		return nil, notFoundOr(err)
 	}
-	if err := CheckVerifyCode(applicant, verifyCode); err != nil {
+	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionConfirm, remoteIPFrom(ctx), func() error {
+		return CheckVerifyCode(applicant, verifyCode)
+	}); err != nil {
 		return nil, err
 	}
 
@@ -589,26 +607,34 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 }
 
 // Withdraw lets applicants cancel their own application from the receipt or /status page. It is
-// public, so it needs the application ID plus verifyCode (last 4 digits of the national ID, see
-// CheckVerifyCode). The row is soft-deleted, which frees the seat (CountActive ignores deleted
-// rows) and lets the same person register again.
+// public and gives a seat away for good, so it needs the application ID plus the applicant's full
+// 13-digit national ID (see CheckNationalID), not just the 4-digit verifyCode. Wrong IDs count
+// towards the same per-application lockout as verifyCode (VerifyGuard). The row is soft-deleted,
+// which frees the seat (CountActive ignores deleted rows) and lets the same person register again.
 //
 // Money may already have changed hands, and a soft-deleted row disappears from /admin, so only
 // applicants with nothing to settle can withdraw: no CONFIRMED place, no slip waiting for review
 // or already approved, and not an application that is already closed (REJECTED, REFUND_PENDING,
 // REFUNDED). Everyone else gets ErrCannotWithdraw and is told to contact staff, who record the
 // cancellation as REFUND_PENDING so the refund stays on the ledger.
-func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, verifyCode, reason, ip string) error {
+func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, nationalID, reason, ip string) error {
 	reason = strings.TrimSpace(stripZeroWidth(reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
 		return newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
+	}
+	// Checked before the lookup, so a malformed ID never reveals whether the application exists.
+	nid, err := ParseWithdrawNationalID(nationalID)
+	if err != nil {
+		return err
 	}
 
 	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
 	if err != nil {
 		return notFoundOr(err)
 	}
-	if err := CheckVerifyCode(applicant, verifyCode); err != nil {
+	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionWithdraw, ip, func() error {
+		return CheckNationalID(applicant, nid)
+	}); err != nil {
 		return err
 	}
 
@@ -740,7 +766,9 @@ func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo s
 		return nil, notFoundOr(err)
 	}
 	// Authenticate before revealing anything about the application state.
-	if err := CheckVerifyCode(applicant, req.VerifyCode); err != nil {
+	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionProfile, ip, func() error {
+		return CheckVerifyCode(applicant, req.VerifyCode)
+	}); err != nil {
 		return nil, err
 	}
 	if !applicant.Status.IsActive() {

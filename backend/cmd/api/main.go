@@ -96,11 +96,16 @@ func main() {
 		// silently ship an unprotected registration endpoint.
 		log.Fatal("Refusing to start: TURNSTILE_SECRET_KEY is empty in production")
 	}
+	// One lockout guard for every public endpoint that checks verifyCode / nationalId, so wrong
+	// answers count per application across confirm, slip, profile and withdraw (AGENTS.md §13.5).
+	verifyGuard := service.NewVerifyGuard(auditRepo)
+	applicantSvc.WithVerifyGuard(verifyGuard)
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(settingRepo, appRepo, auditRepo),
-		Payment:   service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir),
+		Payment: service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
+			WithVerifyGuard(verifyGuard),
 	}
 
 	// 3. Router (all security middleware lives in internal/server)

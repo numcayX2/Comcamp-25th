@@ -190,7 +190,7 @@ func TestRefundStatuses_ReleaseSeatAndGuardReactivation(t *testing.T) {
 	}
 
 	// Once B leaves, there is room again.
-	wantStatus(t, app.withdraw(t, b.ID, app.verifyCodes[b.ID]), http.StatusOK)
+	wantStatus(t, app.withdraw(t, b.ID, app.nationalIDs[b.ID]), http.StatusOK)
 	wantCode(t, app.patchStatus(t, token, a.ID, domain.StatusPassed), http.StatusOK, "")
 	if got := app.publicCount(t); got != 1 {
 		t.Fatalf("count should be 1 after the restore, got %d", got)
@@ -246,7 +246,7 @@ func TestWithdraw_BlockedWhenMoneyOrRefundIsInvolved(t *testing.T) {
 	// A slip is waiting for review: the applicant cannot make the row disappear.
 	withSlip := app.submit(t, validTestNationalID(131), "0810000131", "w1@example.com")
 	wantCode(t, app.uploadSlip(t, withSlip.ID, "s.jpg", uniqueSlip(1)), http.StatusOK, "")
-	wantStatus(t, app.withdraw(t, withSlip.ID, app.verifyCodes[withSlip.ID]), http.StatusConflict)
+	wantStatus(t, app.withdraw(t, withSlip.ID, app.nationalIDs[withSlip.ID]), http.StatusConflict)
 	if got := app.status(t, withSlip.ID); got.Status != domain.StatusPassed || !got.HasSlip {
 		t.Fatalf("a blocked withdrawal must leave the application untouched, got %+v", got)
 	}
@@ -256,7 +256,7 @@ func TestWithdraw_BlockedWhenMoneyOrRefundIsInvolved(t *testing.T) {
 		n := 140 + i
 		c := app.submit(t, validTestNationalID(n), fmt.Sprintf("08100001%02d", n%100), fmt.Sprintf("w%d@example.com", n))
 		wantCode(t, app.patchStatus(t, token, c.ID, st), http.StatusOK, "")
-		wantStatus(t, app.withdraw(t, c.ID, app.verifyCodes[c.ID]), http.StatusConflict)
+		wantStatus(t, app.withdraw(t, c.ID, app.nationalIDs[c.ID]), http.StatusConflict)
 		if app.status(t, c.ID).Status != st {
 			t.Fatalf("%s application must survive a withdrawal attempt", st)
 		}
@@ -266,7 +266,7 @@ func TestWithdraw_BlockedWhenMoneyOrRefundIsInvolved(t *testing.T) {
 	rejected := app.submit(t, validTestNationalID(150), "0810000150", "w150@example.com")
 	wantCode(t, app.uploadSlip(t, rejected.ID, "s.jpg", uniqueSlip(2)), http.StatusOK, "")
 	wantCode(t, app.verifySlip(t, token, rejected.ID, false), http.StatusOK, "")
-	wantStatus(t, app.withdraw(t, rejected.ID, app.verifyCodes[rejected.ID]), http.StatusOK)
+	wantStatus(t, app.withdraw(t, rejected.ID, app.nationalIDs[rejected.ID]), http.StatusOK)
 }
 
 func TestVerifySlip_BlockedForRefundedOrRejectedApplications(t *testing.T) {

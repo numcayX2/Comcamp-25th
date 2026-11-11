@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
@@ -17,7 +19,12 @@ import (
 // returned as a generic 500, so SQL errors and file paths never reach clients.
 func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	var ve *service.ValidationError
+	var locked *service.VerifyLockedError
 	switch {
+	case errors.As(err, &locked):
+		// Too many wrong verifyCode / nationalId answers for this application (AGENTS.md §13.5).
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(locked.RetryAfter.Seconds())))))
+		response.ErrorCode(w, http.StatusTooManyRequests, response.CodeRateLimited, locked.Error())
 	case errors.As(err, &ve):
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, ve.Error())
 	case errors.Is(err, service.ErrApplicantNotFound):
@@ -44,7 +51,7 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("[%s] %v", chimiddleware.GetReqID(r.Context()), err)
 		w.Header().Set("Retry-After", "3")
 		response.ErrorCode(w, http.StatusServiceUnavailable, response.CodeUnavailable, "captcha verification is temporarily unavailable, please try again")
-	case errors.Is(err, service.ErrInvalidVerifyCode):
+	case errors.Is(err, service.ErrInvalidVerifyCode), errors.Is(err, service.ErrNationalIDMismatch):
 		response.ErrorCode(w, http.StatusForbidden, response.CodeInvalidVerifyCode, err.Error())
 	case errors.Is(err, service.ErrInvalidImageDimensions):
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeInvalidImageDims, err.Error())

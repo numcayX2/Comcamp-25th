@@ -33,6 +33,18 @@ export function cleanVerifyCode(value: string): string {
     .slice(0, 4);
 }
 
+/**
+ * The same cleaning for the full 13-digit national ID asked for by self-service withdrawal: Thai
+ * digits become 0-9, separators and zero-width characters are dropped, capped at 13. Held in
+ * component state only, never in browser storage.
+ */
+export function cleanNationalIdInput(value: string): string {
+  return value
+    .replace(/[๐-๙]/g, (c) => String(THAI_DIGITS.indexOf(c)))
+    .replace(/\D/g, '')
+    .slice(0, 13);
+}
+
 /** True when the raw input holds Thai letters: the phone keyboard is still on Thai. Thai digits do not count. */
 export function hasThaiKeyboardChars(raw: string): boolean {
   return /[ก-๏]/.test(raw);
@@ -157,8 +169,23 @@ function clockAfter(seconds: number): string {
   return `${hh}:${mm} น.`;
 }
 
+/**
+ * The per-IP limit answers within a minute; a Retry-After longer than that means the application
+ * itself is locked after 5 wrong verify answers (backend VerifyGuard, 15 minutes).
+ */
+const VERIFY_LOCK_MIN_SECONDS = 60;
+
+/** Thai copy for the 15-minute lock after repeated wrong verify codes / national IDs, else null. */
+export function describeVerifyLock(err: unknown): string | null {
+  if (!(err instanceof ApiHttpError) || err.status !== 429) return null;
+  if (!err.retryAfterSeconds || err.retryAfterSeconds <= VERIFY_LOCK_MIN_SECONDS) return null;
+  return `กรอกเลขยืนยันตัวตนผิดหลายครั้ง เพื่อความปลอดภัยระบบจึงพักการยืนยันตัวตนของใบสมัครนี้ไว้ชั่วคราว กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`;
+}
+
 /** Thai copy keyed by the backend error code; never exposes raw English developer errors to users. */
 export function describeApiError(err: unknown, fallback: string): string {
+  const locked = describeVerifyLock(err);
+  if (locked) return locked;
   if (err instanceof ApiHttpError) {
     switch (err.code) {
       case 'NOT_FOUND':

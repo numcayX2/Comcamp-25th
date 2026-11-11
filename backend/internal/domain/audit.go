@@ -27,6 +27,14 @@ const (
 	AuditTargetSettings                = "settings"
 )
 
+// Public identity-check events (AGENTS.md §13.5), written without an admin.
+const (
+	// AuditVerifyFailure is a repeated wrong verifyCode / nationalId for one application.
+	AuditVerifyFailure AuditAction = "application.verify.failure"
+	// AuditVerifyLockout is the wrong answer that locked the application for 15 minutes.
+	AuditVerifyLockout AuditAction = "application.verify.lockout"
+)
+
 // AuditEntry is one row of the append-only audit_logs table.
 type AuditEntry struct {
 	ID         int64          `json:"id"`

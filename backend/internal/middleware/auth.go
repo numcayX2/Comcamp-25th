@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/pkg/response"
 	"comcamp25-backend/internal/service"
 )
@@ -39,6 +40,33 @@ func RequireAuth(authService *service.AuthService) func(http.Handler) http.Handl
 
 			ctx := context.WithValue(r.Context(), AdminContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// RequireRoles lets the request through only when the authenticated admin's role is one of
+// allowed. Mount it after RequireAuth, which re-reads the role from the database on every request,
+// so a demoted account loses access at once rather than when its token expires. Without claims
+// (RequireAuth missing) it fails closed with 401; a role outside allowed, or a role this build
+// does not know, gets 403 FORBIDDEN. The frontend hides what a role cannot do, but this is the
+// only check that counts.
+func RequireRoles(allowed ...domain.AdminRole) func(http.Handler) http.Handler {
+	set := make(map[domain.AdminRole]bool, len(allowed))
+	for _, role := range allowed {
+		set[role] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := GetAdminClaims(r.Context())
+			if claims == nil {
+				response.ErrorCode(w, http.StatusUnauthorized, response.CodeUnauthorized, "authentication required")
+				return
+			}
+			if !set[claims.Role] {
+				response.ErrorCode(w, http.StatusForbidden, response.CodeForbidden, "your admin role is not allowed to perform this action")
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

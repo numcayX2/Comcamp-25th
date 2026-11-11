@@ -58,6 +58,17 @@ type PaymentService struct {
 	settingRepo domain.SettingRepository
 	auditRepo   domain.AuditRepository
 	slipDir     string
+	// verify is the per-application lockout for wrong verifyCodes, shared with ApplicantService.
+	verify *VerifyGuard
+}
+
+// WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
+// service.
+func (s *PaymentService) WithVerifyGuard(g *VerifyGuard) *PaymentService {
+	if g != nil {
+		s.verify = g
+	}
+	return s
 }
 
 // NewPaymentService stores slips under uploadDir/slips. auditRepo may be nil.
@@ -78,6 +89,8 @@ func NewPaymentService(
 		settingRepo: settingRepo,
 		auditRepo:   auditRepo,
 		slipDir:     slipDir,
+		// Never without a lockout: a service nobody wired still counts failures on its own.
+		verify: NewVerifyGuard(auditRepo),
 	}
 }
 
@@ -90,8 +103,9 @@ type SlipUploadResult struct {
 }
 
 // UploadSlip stores a payment slip for an applicant identified by application ID and verifyCode
-// (the last 4 digits of the national ID, see CheckVerifyCode). The file is written to disk and
-// only its relative path goes into the database (AGENTS.md §13.3).
+// (the last 4 digits of the national ID, see CheckVerifyCode; repeated wrong codes lock the
+// application, see VerifyGuard). The file is written to disk and only its relative path goes into
+// the database (AGENTS.md §13.3).
 func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCode string, fileData []byte) (*SlipUploadResult, error) {
 	if len(fileData) == 0 {
 		return nil, ErrEmptySlip
@@ -104,7 +118,9 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 	if err != nil {
 		return nil, notFoundOr(err)
 	}
-	if err := CheckVerifyCode(applicant, verifyCode); err != nil {
+	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionSlip, remoteIPFrom(ctx), func() error {
+		return CheckVerifyCode(applicant, verifyCode)
+	}); err != nil {
 		return nil, err
 	}
 	if applicant.Status != domain.StatusPassed && applicant.Status != domain.StatusConfirmed {

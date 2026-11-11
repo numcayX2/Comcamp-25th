@@ -14,6 +14,9 @@ const (
 	RoleReviewer   AdminRole = "reviewer"
 )
 
+// AllAdminRoles are the roles an active admin account can hold (the admins.role CHECK).
+var AllAdminRoles = []AdminRole{RoleSuperadmin, RoleStaff, RoleFinance, RoleReviewer}
+
 type Admin struct {
 	ID           int64      `db:"id" json:"id"`
 	Username     string     `db:"username" json:"username"`

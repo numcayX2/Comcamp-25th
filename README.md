@@ -23,7 +23,10 @@ Repository: <https://github.com/numcayX2/Comcamp-25th>
 cp .env.example .env
 ```
 
-เปิด `.env` แล้วเปลี่ยน `JWT_SECRET` เป็นสตริงสุ่มยาวอย่างน้อย 32 ตัว (ค่า `change_this...` จะถูกปฏิเสธ)
+เปิด `.env` แล้วแก้สองค่านี้ก่อนรันในเครื่อง:
+
+- `APP_ENV=production` → `APP_ENV=development` ไฟล์ตัวอย่างตั้งเป็น `production` ไว้ เพื่อให้ค่าที่ลืมแก้ไม่เปิดเซิร์ฟเวอร์ที่ไม่มีการป้องกัน ในโหมด `production` backend จะไม่ยอมสตาร์ตถ้าไม่มีฐานข้อมูลและ secret จริง ทั้งสองทางด้านล่างใช้ `development`
+- `JWT_SECRET` เป็นสตริงสุ่มยาวอย่างน้อย 32 ตัว (ค่า `change_this...` จะถูกปฏิเสธ)
 
 ### ทางที่ 1: ไม่ใช้ Docker (เร็วที่สุด)
 
@@ -118,17 +121,21 @@ cd frontend && npm install && npm run dev   # http://localhost:4321
 | `GET` | `/api/applications/status?q=` | ทุกคน | ค้นหาด้วยเลขบัตร เบอร์โทร หรือรหัส `CC25-XXXXXX` ข้อมูลส่วนตัวถูกปิดบางส่วนก่อนส่งกลับ |
 | `POST` | `/api/applications/:id/confirm` | ทุกคน + `verifyCode` | ยืนยันสิทธิ์เข้าร่วม |
 | `POST` | `/api/applications/:id/slip` | ทุกคน + `verifyCode` | อัปโหลดสลิป (ไม่เกิน 5 MB, 4096×4096 px, สลิปซ้ำถูกปฏิเสธด้วย SHA-256) |
-| `POST` | `/api/applications/:id/withdraw` | ทุกคน + `verifyCode` | ยกเลิกใบสมัครเอง ใช้ไม่ได้หลังยืนยันสิทธิ์หรือส่งสลิปแล้ว ต้องติดต่อพี่ค่าย |
+| `POST` | `/api/applications/:id/withdraw` | ทุกคน + `nationalId` 13 หลัก | ยกเลิกใบสมัครเอง ใช้ไม่ได้หลังยืนยันสิทธิ์หรือส่งสลิปแล้ว ต้องติดต่อพี่ค่าย |
 | `PATCH` | `/api/applications/:id/profile` | ทุกคน + `verifyCode` | แก้ชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ (ชื่อ เลขบัตร เบอร์ อีเมล แก้เองไม่ได้) |
 | `POST` | `/api/auth/login` | ทุกคน | ล็อกอินพี่ค่ายเพื่อรับ JWT |
-| `GET` | `/api/admin/applications` | แอดมิน | รายชื่อผู้สมัครทั้งหมด |
-| `PATCH` | `/api/admin/applications/:id` | แอดมิน | เปลี่ยนสถานะ |
-| `PATCH` | `/api/admin/applications/:id/profile` | แอดมิน | แก้ข้อมูลผู้สมัครได้ทุกช่อง |
-| `GET` | `/api/admin/applications/:id/slip` | แอดมิน | ดูรูปสลิป (ไม่มี URL สาธารณะของสลิป) |
-| `PATCH` | `/api/admin/applications/:id/verify-slip` | แอดมิน | อนุมัติหรือปฏิเสธสลิป |
-| `GET` / `PATCH` | `/api/admin/settings` | แอดมิน | ดูและแก้โควตา กำหนดการ ค่าสมัคร หรือปิดรับสมัครฉุกเฉิน |
+| `GET` | `/api/admin/applications` | ทุกบทบาท | รายชื่อผู้สมัครทั้งหมด |
+| `PATCH` | `/api/admin/applications/:id` | superadmin, staff | เปลี่ยนสถานะ |
+| `PATCH` | `/api/admin/applications/:id/profile` | superadmin, staff | แก้ข้อมูลผู้สมัครได้ทุกช่อง |
+| `DELETE` | `/api/admin/applications/:id` | superadmin | ลบใบสมัคร (soft delete) |
+| `GET` | `/api/admin/applications/:id/slip` | superadmin, finance, staff | ดูรูปสลิป (ไม่มี URL สาธารณะของสลิป) |
+| `PATCH` | `/api/admin/applications/:id/verify-slip` | superadmin, finance, staff | อนุมัติหรือปฏิเสธสลิป |
+| `GET` | `/api/admin/settings` | ทุกบทบาท | ดูโควตา กำหนดการ และค่าสมัคร |
+| `PATCH` | `/api/admin/settings` | superadmin | แก้โควตา กำหนดการ ค่าสมัคร หรือปิดรับสมัครฉุกเฉิน |
 
-`verifyCode` คือเลข 4 ตัวท้ายของบัตรประชาชน ใช้ยืนยันว่าคนที่กดคือเจ้าของใบสมัคร และไม่ได้เก็บไว้ในเบราว์เซอร์
+บทบาทที่ไม่มีสิทธิ์ได้ `403 FORBIDDEN` เซิร์ฟเวอร์อ่านบทบาทจากฐานข้อมูลทุกครั้ง เปลี่ยนบทบาทแล้วมีผลทันที หน้า `/admin` ซ่อนปุ่มที่บทบาทนั้นใช้ไม่ได้
+
+`verifyCode` คือเลข 4 ตัวท้ายของบัตรประชาชน ใช้ยืนยันว่าคนที่กดคือเจ้าของใบสมัคร และไม่ได้เก็บไว้ในเบราว์เซอร์ การยกเลิกใบสมัครต้องใช้เลขบัตรเต็ม 13 หลัก เพราะค้นใบสมัครด้วยเบอร์โทรได้ ถ้าตอบเลขยืนยันผิด 5 ครั้งใน 15 นาที ใบสมัครนั้นจะถูกล็อกการยืนยันตัวตน 15 นาที (`429 RATE_LIMITED`)
 
 ผู้สมัครที่ส่งสำเร็จจะได้สถานะ `PASSED` ทันทีตามหลักมาก่อนได้ก่อน (ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้) จากนั้นส่งสลิปให้พี่ค่ายอนุมัติเป็น `CONFIRMED` สถานะทั้งหมดที่ใช้คือ `PENDING`, `PASSED`, `RESERVE`, `CONFIRMED`, `REJECTED`, `REFUND_PENDING`, `REFUNDED`
 
