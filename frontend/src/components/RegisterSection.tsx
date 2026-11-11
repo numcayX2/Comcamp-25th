@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Check, Moon, RotateCw, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchPublicSettings,
@@ -48,6 +48,7 @@ import {
 import { FieldShell, StepHeader, TextField } from './register/parts';
 import { SizeChips } from './register/SizeChips';
 import { Receipt } from './register/Receipt';
+import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
 import {
   clearDraft,
   clearIdempotencyKey,
@@ -91,6 +92,19 @@ const isTextEntry = (el: EventTarget | null) =>
 const timeText = (ms: number) =>
   new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+/* Cloudflare Turnstile (bot check on submit). The public site key is inlined by Astro at build time.
+   widget: render it and require a token. dev-skip: `astro dev` without a key, the API bypasses the
+   check too. missing-key: a production build without a key can never pass the server's check. */
+const TURNSTILE_SITE_KEY = String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
+const CAPTCHA_MODE: 'widget' | 'dev-skip' | 'missing-key' = TURNSTILE_SITE_KEY
+  ? 'widget'
+  : import.meta.env.DEV
+    ? 'dev-skip'
+    : 'missing-key';
+const CAPTCHA_FAILED_MESSAGE = 'การยืนยันตัวตนไม่ผ่านหรือหมดอายุ กรุณายืนยันใหม่อีกครั้งแล้วกดส่งอีกครั้ง';
+const CAPTCHA_MISSING_MESSAGE = 'ยังไม่ได้ยืนยันตัวตน กรุณารอให้ช่องยืนยันด้านบนขึ้นเครื่องหมายถูก แล้วกดส่งใบสมัครอีกครั้ง';
+const CAPTCHA_UNAVAILABLE_MESSAGE = 'ระบบยืนยันตัวตนยังไม่พร้อมใช้งาน ใบสมัครจึงยังส่งไม่ได้ กรุณาแจ้งทีมงานค่าย';
+
 /**
  * Thai copy for a failed submit. A connection failure is always safe to retry: the resend carries
  * the same X-Idempotency-Key, so the server returns the saved application instead of a duplicate.
@@ -106,9 +120,12 @@ function describeSubmitError(err: unknown): string {
         return 'มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอสักครู่แล้วกดส่งอีกครั้ง';
       case 'QUOTA_FULL':
         return 'ที่นั่งเต็มจำนวนแล้ว (30 ที่นั่ง) ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
+      case 'CAPTCHA_FAILED':
+        return CAPTCHA_FAILED_MESSAGE;
       case 'SERVICE_UNAVAILABLE':
-        // 503: the midnight queue timed out or settings were unreachable. Nothing was saved.
-        return 'มีผู้สมัครพร้อมกันจำนวนมาก ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+        // 503: the midnight queue timed out, settings were unreachable, or Cloudflare could not be
+        // asked to verify the captcha. Nothing was saved.
+        return 'ระบบยุ่งหรือตรวจสอบการยืนยันตัวตนไม่ได้ชั่วคราว (อาจมีผู้สมัครพร้อมกันจำนวนมาก) ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
       case 'VALIDATION_ERROR':
         if (err.message.includes('national ID') || err.message.includes('check digit')) {
           return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
@@ -285,6 +302,9 @@ export function RegisterSection() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [typing, setTyping] = useState(false);
   const [live, setLive] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileFieldHandle>(null);
   /** Success notice after a self-service withdrawal. */
   const [notice, setNotice] = useState<string | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -430,7 +450,17 @@ export function RegisterSection() {
       return;
     }
     const errs = validateStep(step, form, consent);
+    // The captcha is checked like the consent box: a clear inline message, never a silent no-op.
+    const captchaMissing = step === LAST_FORM_STEP && CAPTCHA_MODE !== 'dev-skip' && !turnstileToken;
+    if (captchaMissing) {
+      setCaptchaError(CAPTCHA_MODE === 'missing-key' ? CAPTCHA_UNAVAILABLE_MESSAGE : CAPTCHA_MISSING_MESSAGE);
+    }
     if (firstErrorKey(step, errs)) return failAt(step, errs);
+    if (captchaMissing) {
+      announce(CAPTCHA_MODE === 'missing-key' ? CAPTCHA_UNAVAILABLE_MESSAGE : CAPTCHA_MISSING_MESSAGE);
+      captchaRef.current?.focus();
+      return;
+    }
 
     setErrors({});
     if (step === LAST_FORM_STEP) {
@@ -482,6 +512,7 @@ export function RegisterSection() {
     submittingRef.current = true; // ref, not state: blocks a double tap before React re-renders
     setBusy(true);
     setError(null);
+    setCaptchaError(null);
 
     const finish = (app: Application, src: ApiSource) => {
       // Answered (201, or 200 replay): the attempt is settled; a next application gets a new key.
@@ -511,6 +542,7 @@ export function RegisterSection() {
         grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
         motivation: form.motivation.trim(),
+        turnstileToken: turnstileToken || undefined,
       };
       // Same key on every retry: if an earlier attempt was saved but its answer was lost (timeout,
       // dropped connection, 5xx), the server returns that application (200, Idempotent-Replayed)
@@ -521,8 +553,18 @@ export function RegisterSection() {
       const res = await submitApplication(payload, idemKeyRef.current);
       finish(res.data, res.source);
     } catch (err) {
-      setError(describeSubmitError(err));
-      window.scrollTo({ top: 0 });
+      // Turnstile tokens are single-use and the server may already have spent this one, so every
+      // failure asks for a fresh token. The idempotency key is unchanged: if the failed attempt
+      // was in fact saved, the next send is answered as a replay without a captcha.
+      setTurnstileToken('');
+      captchaRef.current?.reset();
+      if (err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED') {
+        setCaptchaError(CAPTCHA_FAILED_MESSAGE);
+        announce(CAPTCHA_FAILED_MESSAGE);
+      } else {
+        setError(describeSubmitError(err));
+        window.scrollTo({ top: 0 });
+      }
     } finally {
       submittingRef.current = false;
       setBusy(false);
@@ -970,6 +1012,30 @@ export function RegisterSection() {
                 {errors.consent}
               </p>
             )}
+
+            {CAPTCHA_MODE === 'widget' && (
+              <TurnstileField
+                ref={captchaRef}
+                siteKey={TURNSTILE_SITE_KEY}
+                errorId="captcha-err"
+                error={captchaError}
+                onToken={(token) => {
+                  setTurnstileToken(token ?? '');
+                  // Only the "verify first" hint clears itself; a rejection message stays until the next send.
+                  if (token) setCaptchaError((e) => (e === CAPTCHA_MISSING_MESSAGE ? null : e));
+                }}
+              />
+            )}
+            {CAPTCHA_MODE === 'dev-skip' && (
+              <p className="rw-captcha__hint rw-captcha__hint--dev">
+                [DEV] ยังไม่ได้ตั้ง <span className="font-mono">PUBLIC_TURNSTILE_SITE_KEY</span> จึงข้ามการยืนยันตัวตน (เซิร์ฟเวอร์ dev ที่ไม่มี secret ก็ข้ามเช่นกัน)
+              </p>
+            )}
+            {CAPTCHA_MODE === 'missing-key' && (
+              <p id="captcha-err" className="rw-err" role="alert">
+                {CAPTCHA_UNAVAILABLE_MESSAGE}
+              </p>
+            )}
           </>
         );
     }
@@ -1006,7 +1072,10 @@ export function RegisterSection() {
 
   const errorBanner = error && (
     <div className="rw-banner" role="alert">
-      <p>{error}</p>
+      <p>
+        <TriangleAlert {...ICON} />
+        <span>{error}</span>
+      </p>
       <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setError(null)}>
         ปิด
       </button>
@@ -1115,7 +1184,9 @@ export function RegisterSection() {
                 className={`rw-btn ${step === LAST_FORM_STEP ? 'rw-btn--submit' : 'rw-btn--primary'} rw-btn--next`}
                 // Not `disabled`: a tap before ticking the consent still runs handleNext(), which
                 // moves focus to #consent and shows its message instead of failing silently.
-                aria-disabled={step === LAST_FORM_STEP && !consent ? true : undefined}
+                aria-disabled={
+                  step === LAST_FORM_STEP && (!consent || (CAPTCHA_MODE !== 'dev-skip' && !turnstileToken)) ? true : undefined
+                }
                 disabled={busy}
                 aria-busy={busy || undefined}
               >

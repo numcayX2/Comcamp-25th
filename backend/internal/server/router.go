@@ -28,7 +28,8 @@ func DefaultRateLimits() RateLimits {
 	return RateLimits{
 		Login:       middleware.NewRateLimiter(10, 5*time.Minute),
 		StatusQuery: middleware.NewRateLimiter(60, time.Minute),
-		Submit:      middleware.NewRateLimiter(20, time.Minute),
+		// Registration is the one endpoint a bot wants; 8/min per IP still fits a school NAT.
+		Submit:      middleware.NewRateLimiter(8, time.Minute),
 		Mutations:   middleware.NewRateLimiter(20, time.Minute),
 	}
 }

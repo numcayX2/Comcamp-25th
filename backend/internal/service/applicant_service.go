@@ -95,6 +95,9 @@ type ApplicationCreateRequest struct {
 	ShirtSize  string `json:"shirtSize"`
 	Motivation string `json:"motivation"`
 	Province   string `json:"province,omitempty"`
+	// TurnstileToken is the single-use Cloudflare Turnstile response. It is verified, never
+	// stored, and never logged.
+	TurnstileToken string `json:"turnstileToken,omitempty"`
 }
 
 // ApplicationResponse is the applicant DTO. Public endpoints return the masked view (see
@@ -125,6 +128,15 @@ type ApplicantService struct {
 	appRepo     domain.ApplicantRepository
 	settingRepo domain.SettingRepository
 	paymentRepo domain.PaymentRepository
+	// captcha is nil only when Turnstile is deliberately off (development without a secret, tests).
+	// main always sets it in production; config refuses to start without TURNSTILE_SECRET_KEY.
+	captcha TurnstileVerifier
+}
+
+// WithTurnstile enables captcha verification on registration and returns the service.
+func (s *ApplicantService) WithTurnstile(v TurnstileVerifier) *ApplicantService {
+	s.captcha = v
+	return s
 }
 
 func NewApplicantService(
@@ -164,8 +176,17 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 
 		// Replays are answered before the schedule/quota checks: a student whose first attempt
 		// was saved just before the quota filled must still get their receipt.
+		// It also runs before the captcha: a Turnstile token is single-use, so a retry of an
+		// already-saved submission (the mobile network dropped the 201) carries a spent token.
 		if existing, err := s.replay(ctx, parsed, req.NationalID); existing != nil || err != nil {
 			return existing, existing != nil, err
+		}
+	}
+
+	// Bot check before any quota or database write. Fail closed: no verdict, no seat.
+	if s.captcha != nil {
+		if err := s.captcha.Verify(ctx, req.TurnstileToken, remoteIPFrom(ctx), idempotencyKey); err != nil {
+			return nil, false, err
 		}
 	}
 
@@ -314,6 +335,7 @@ func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 		FullName: p.FullName, Nickname: p.Nickname, NationalID: p.NationalID, Phone: p.Phone,
 		Email: p.Email, School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
 		Motivation: p.Motivation, Province: p.Province,
+		TurnstileToken: strings.TrimSpace(req.TurnstileToken),
 	}
 }
 

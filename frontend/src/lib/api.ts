@@ -130,6 +130,8 @@ export interface ApplicationPayload {
   shirtSize: ShirtSize;
   motivation: string;
   province?: string;
+  /** Cloudflare Turnstile response token (single-use). Verified by the server, never stored. */
+  turnstileToken?: string;
 }
 
 export type SlipStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -388,10 +390,12 @@ export async function submitApplication(
     return { data, source: 'LIVE GO API' };
   } catch (err) {
     if (import.meta.env.DEV && !(err instanceof ApiHttpError)) {
+      // The token is a transport detail: it must not end up in the mock application record.
+      const { turnstileToken: _token, ...fields } = payload;
       return {
         data: {
           id: mockId(),
-          ...payload,
+          ...fields,
           status: 'PASSED' as ApplicationStatus,
           attendanceConfirmed: false,
           hasSlip: false,

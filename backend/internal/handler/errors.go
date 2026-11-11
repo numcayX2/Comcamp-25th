@@ -37,6 +37,13 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		// Quota lock wait hit lock_timeout: nothing was saved, a retry with the same key is safe.
 		w.Header().Set("Retry-After", "2")
 		response.ErrorCode(w, http.StatusServiceUnavailable, response.CodeUnavailable, err.Error())
+	case errors.Is(err, service.ErrCaptchaFailed):
+		response.ErrorCode(w, http.StatusForbidden, response.CodeCaptchaFailed, err.Error())
+	case errors.Is(err, service.ErrCaptchaUnavailable):
+		// Cloudflare unreachable / timed out: fail closed, nothing was saved, a retry is safe.
+		log.Printf("[%s] %v", chimiddleware.GetReqID(r.Context()), err)
+		w.Header().Set("Retry-After", "3")
+		response.ErrorCode(w, http.StatusServiceUnavailable, response.CodeUnavailable, "captcha verification is temporarily unavailable, please try again")
 	case errors.Is(err, service.ErrInvalidVerifyCode):
 		response.ErrorCode(w, http.StatusForbidden, response.CodeInvalidVerifyCode, err.Error())
 	case errors.Is(err, service.ErrInvalidImageDimensions):

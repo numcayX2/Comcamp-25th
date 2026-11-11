@@ -48,6 +48,13 @@ func setupTestApp(t *testing.T) *testApp {
 // requests than the production per-IP limit allows.
 func setupTestAppWith(t *testing.T, limits server.RateLimits) *testApp {
 	t.Helper()
+	return setupTestAppFull(t, limits, nil)
+}
+
+// setupTestAppFull also installs a Turnstile verifier on the applicant service (nil = off, which
+// is what every test outside the captcha tests wants).
+func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.TurnstileVerifier) *testApp {
+	t.Helper()
 
 	appRepo := memory.NewMemoryApplicantRepo()
 	setRepo := memory.NewMemorySettingRepo()
@@ -65,9 +72,13 @@ func setupTestAppWith(t *testing.T, limits server.RateLimits) *testApp {
 	_ = admRepo.Create(context.Background(), admin)
 
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
+	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo)
+	if captcha != nil {
+		applicantSvc.WithTurnstile(captcha)
+	}
 	services := server.Services{
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
-		Applicant: service.NewApplicantService(appRepo, setRepo, payRepo),
+		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(setRepo, appRepo, appRepo.Audit()),
 		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()),
 	}

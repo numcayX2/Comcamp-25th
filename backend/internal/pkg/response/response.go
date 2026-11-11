@@ -26,6 +26,7 @@ const (
 	CodeInternal           = "INTERNAL_ERROR"
 	CodeInvalidImageDims   = "INVALID_IMAGE_DIMENSIONS"
 	CodeInvalidVerifyCode  = "INVALID_VERIFY_CODE"
+	CodeCaptchaFailed      = "CAPTCHA_FAILED"
 )
 
 type ErrorResponse struct {

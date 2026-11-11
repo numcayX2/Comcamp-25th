@@ -27,7 +27,8 @@ func (h *ApplicantHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app, replayed, err := h.appService.SubmitWithKey(r.Context(), req, r.Header.Get("X-Idempotency-Key"))
+	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
+	app, replayed, err := h.appService.SubmitWithKey(ctx, req, r.Header.Get("X-Idempotency-Key"))
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

@@ -538,6 +538,21 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-consent input[aria-invalid='true'] { border-color: var(--rw-danger); }
 .rw-consent__err { padding-left: 38px; }
 
+/* ---------- Turnstile (bot check) ----------
+   Hairline separation only, no box around the widget: Cloudflare's iframe already draws its own
+   field, so a second border would be card-in-card. min-height keeps the page from jumping when the
+   widget mounts (the managed widget is 65px tall). */
+.rw-captcha { margin-top: 20px; scroll-margin-bottom: 150px; } /* clears the sticky footer when focused / scrolled to */
+.rw-captcha__box, .rw-captcha .rw-err { scroll-margin-bottom: 150px; }
+.rw-captcha__label { margin: 0 0 10px; font-size: 0.9375rem; font-weight: 600; line-height: 1.6; color: var(--rw-ink); }
+.rw-captcha__box { min-height: 65px; max-width: 100%; outline: none; }
+.rw-captcha__box:focus-visible { outline: 2px solid var(--rw-focus); outline-offset: 3px; border-radius: 12px; }
+.rw-captcha__box[data-state='failed'] { min-height: 0; }
+.rw-captcha__hint { margin: 8px 0 0; font-size: 0.875rem; line-height: 1.7; color: var(--rw-ink-2); }
+.rw-captcha__hint--dev { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--rw-rule); }
+.rw-captcha__failed { display: grid; justify-items: start; gap: 10px; margin-top: 4px; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-captcha__failed p { margin: 0; }
+
 /* ---------- Footer nav ---------- */
 .rw-foot {
   position: sticky;
@@ -656,17 +671,25 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border: 1px solid var(--rw-danger);
   border-radius: 12px;
+  background: var(--rw-danger);
+  color: var(--rw-canvas);
   font-size: 0.9375rem;
+  font-weight: 600;
   line-height: 1.7;
 }
-.rw-banner p { color: var(--rw-ink); }
-.rw-banner--ok { border-color: var(--rw-line); }
-.rw-banner--ok p { display: flex; align-items: flex-start; gap: 10px; }
-.rw-banner--ok svg { flex: none; margin-top: 0.3em; color: var(--rw-ink); }
-.rw-banner:focus-visible { outline: 2px solid var(--rw-focus); outline-offset: 2px; }
+.rw-banner p { display: flex; align-items: flex-start; gap: 10px; color: inherit; }
+.rw-banner svg { flex: none; margin-top: 0.3em; color: inherit; }
+.rw-banner .rw-textlink--btn {
+  flex: none;
+  color: inherit;
+  text-decoration-color: currentColor;
+}
+.rw-banner .rw-textlink--btn:focus-visible { outline-color: currentColor; }
+.rw-banner--ok { background: var(--rw-ok); border-color: var(--rw-ok); color: var(--rw-canvas); }
+.rw-banner:focus-visible { outline: 2px solid var(--rw-ink); outline-offset: 2px; }
 
 /* ---------- Receipt ---------- */
 .rw-receipt .rw-block { padding-top: clamp(24px, 3.5vw, 36px); }

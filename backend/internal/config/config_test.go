@@ -11,7 +11,7 @@ func clearEnv(t *testing.T) {
 	for _, k := range []string{
 		"APP_ENV", "PORT", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "DB_SSLMODE",
 		"JWT_SECRET", "UPLOAD_DIR", "FRONTEND_URL", "TRUSTED_PROXIES", "ENABLE_SWAGGER",
-		"DEV_ADMIN_USERNAME", "DEV_ADMIN_PASSWORD",
+		"DEV_ADMIN_USERNAME", "DEV_ADMIN_PASSWORD", "TURNSTILE_SECRET_KEY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -25,7 +25,7 @@ func TestLoad_ProductionIsDefaultAndFailsClosed(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected production config without secrets to fail")
 	}
-	for _, want := range []string{"APP_ENV=production", "JWT_SECRET is required", "DB_PASSWORD is required", "FRONTEND_URL is required"} {
+	for _, want := range []string{"APP_ENV=production", "JWT_SECRET is required", "DB_PASSWORD is required", "FRONTEND_URL is required", "TURNSTILE_SECRET_KEY is required"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
@@ -53,6 +53,7 @@ func TestLoad_ProductionValid(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "a-real-password")
 	t.Setenv("JWT_SECRET", strongSecret)
 	t.Setenv("TRUSTED_PROXIES", "127.0.0.1, 10.0.0.0/8")
+	t.Setenv("TURNSTILE_SECRET_KEY", "0x4AAAAAAAreal-secret-from-dashboard")
 
 	cfg, err := Load()
 	if err != nil {
@@ -94,5 +95,56 @@ func TestLoad_DevelopmentGeneratesRandomSecret(t *testing.T) {
 	}
 	if !a.EnableSwagger {
 		t.Error("swagger should be on in development")
+	}
+}
+
+func TestLoad_ProductionRequiresARealTurnstileSecret(t *testing.T) {
+	base := func() {
+		clearEnv(t)
+		t.Setenv("FRONTEND_URL", "https://comcamp.example")
+		t.Setenv("DB_PASSWORD", "a-real-password")
+		t.Setenv("JWT_SECRET", strongSecret)
+	}
+	cases := map[string]struct{ secret, want string }{
+		"missing":     {"", "TURNSTILE_SECRET_KEY is required"},
+		"placeholder": {"change_this_turnstile_secret", "placeholder"},
+		"dummy pass":  {"1x0000000000000000000000000000000AA", "dummy test secret"},
+		"dummy fail":  {"2x0000000000000000000000000000000AA", "dummy test secret"},
+	}
+	for name, tc := range cases {
+		base()
+		t.Setenv("TURNSTILE_SECRET_KEY", tc.secret)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: expected %q, got %v", name, tc.want, err)
+		}
+	}
+	base()
+	t.Setenv("TURNSTILE_SECRET_KEY", "0x4AAAAAAAreal-secret-from-dashboard")
+	if cfg, err := Load(); err != nil || cfg.TurnstileSecretKey == "" {
+		t.Fatalf("a real secret must load, got %v", err)
+	}
+}
+
+func TestLoad_DevelopmentMayRunWithoutTurnstile(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("APP_ENV", "development")
+	cfg, err := Load()
+	if err != nil || cfg.TurnstileSecretKey != "" {
+		t.Fatalf("development without a Turnstile secret must load (bypass), got %v", err)
+	}
+	t.Setenv("TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")
+	if cfg, err = Load(); err != nil || cfg.TurnstileSecretKey == "" {
+		t.Fatalf("development may use Cloudflare's dummy secret, got %v", err)
+	}
+}
+
+func TestTurnstileAllowedHosts(t *testing.T) {
+	prod := &Config{Env: EnvProduction, FrontendURL: "https://comcamp.example/, https://www.comcamp.example:8443"}
+	if got := strings.Join(prod.TurnstileAllowedHosts(), ","); got != "comcamp.example,www.comcamp.example" {
+		t.Errorf("production hosts: %s", got)
+	}
+	dev := &Config{Env: EnvDevelopment, FrontendURL: "http://localhost:4321"}
+	if got := strings.Join(dev.TurnstileAllowedHosts(), ","); got != "localhost,localhost,127.0.0.1" {
+		t.Errorf("development hosts: %s", got)
 	}
 }

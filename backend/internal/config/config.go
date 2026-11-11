@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 
@@ -34,6 +35,11 @@ type Config struct {
 	UploadDir   string
 	FrontendURL string
 
+	// TurnstileSecretKey is the Cloudflare Turnstile server secret (TURNSTILE_SECRET_KEY) that
+	// guards POST /api/applications. Required in production; empty in development bypasses the
+	// check (with a warning) so the API can run without Cloudflare.
+	TurnstileSecretKey string
+
 	// AllowedOrigins is the CORS allow-list: FRONTEND_URL (comma separated), plus the local
 	// dev servers when running in development.
 	AllowedOrigins []string
@@ -48,6 +54,21 @@ type Config struct {
 }
 
 func (c *Config) IsProduction() bool { return c.Env == EnvProduction }
+
+// TurnstileAllowedHosts lists the hostnames a Turnstile token may have been issued for: the
+// FRONTEND_URL hosts, plus localhost / 127.0.0.1 in development.
+func (c *Config) TurnstileAllowedHosts() []string {
+	var hosts []string
+	for _, origin := range splitList(c.FrontendURL) {
+		if u, err := url.Parse(origin); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, strings.ToLower(u.Hostname()))
+		}
+	}
+	if !c.IsProduction() {
+		hosts = append(hosts, "localhost", "127.0.0.1")
+	}
+	return hosts
+}
 
 // Load reads configuration from the environment (and .env files when present).
 //
@@ -76,6 +97,7 @@ func Load() (*Config, error) {
 		JWTSecret:        os.Getenv("JWT_SECRET"),
 		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
 		FrontendURL:      strings.TrimSpace(os.Getenv("FRONTEND_URL")),
+		TurnstileSecretKey: strings.TrimSpace(os.Getenv("TURNSTILE_SECRET_KEY")),
 		DevAdminUsername: getEnv("DEV_ADMIN_USERNAME", "admin"),
 		DevAdminPassword: os.Getenv("DEV_ADMIN_PASSWORD"),
 	}
@@ -106,6 +128,16 @@ func Load() (*Config, error) {
 		if cfg.DevAdminPassword != "" {
 			problems = append(problems, "DEV_ADMIN_PASSWORD must not be set in production")
 		}
+		switch {
+		case cfg.TurnstileSecretKey == "":
+			problems = append(problems, "TURNSTILE_SECRET_KEY is required (Cloudflare Turnstile secret for the registration form)")
+		case isPlaceholder(cfg.TurnstileSecretKey):
+			problems = append(problems, "TURNSTILE_SECRET_KEY still has the placeholder value from .env.example")
+		case isTurnstileTestSecret(cfg.TurnstileSecretKey):
+			problems = append(problems, "TURNSTILE_SECRET_KEY is a Cloudflare dummy test secret, use the real secret in production")
+		}
+	} else if cfg.TurnstileSecretKey == "" {
+		log.Println("WARNING: TURNSTILE_SECRET_KEY not set; Turnstile verification is BYPASSED for local development (never do this in production)")
 	}
 
 	for _, origin := range splitList(cfg.FrontendURL) {
@@ -175,6 +207,12 @@ func parsePrefix(s string) (netip.Prefix, error) {
 // isPlaceholder catches the sample values shipped in .env.example being deployed as-is.
 func isPlaceholder(v string) bool {
 	return strings.HasPrefix(v, "change_this") || strings.HasPrefix(v, "CHANGE_ME")
+}
+
+// isTurnstileTestSecret matches Cloudflare's documented dummy secrets (1x / 2x / 3x + zeros + AA).
+func isTurnstileTestSecret(v string) bool {
+	const tail = "x0000000000000000000000000000000AA"
+	return len(v) == len(tail)+1 && strings.HasSuffix(v, tail) && strings.ContainsRune("123", rune(v[0]))
 }
 
 func randomSecret() string {

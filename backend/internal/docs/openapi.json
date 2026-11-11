@@ -134,7 +134,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "403": {
-            "description": "อยู่นอกช่วงเวลาเปิดรับสมัคร หรือระบบถูกปิดชั่วคราว",
+            "description": "code REGISTRATION_CLOSED = อยู่นอกช่วงเวลาเปิดรับสมัคร หรือระบบถูกปิดชั่วคราว, code CAPTCHA_FAILED = turnstileToken ไม่มี/ไม่ถูกต้อง/หมดอายุ/ถูกใช้ไปแล้ว หรือ hostname ไม่ตรงกับเว็บไซต์ (ให้ widget ออก token ใหม่แล้วส่งอีกครั้ง)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "200": {
@@ -147,8 +147,8 @@
           },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "422": { "description": "code IDEMPOTENCY_KEY_REUSED = key นี้ถูกใช้กับเลขบัตรประชาชนอื่นแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ส่งถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "503": { "description": "อ่านการตั้งค่าค่ายไม่ได้ชั่วคราว หรือรอคิวโควตาเกิน lock_timeout 3 วินาที (มี Retry-After) ใบสมัครยังไม่ถูกบันทึก ส่งซ้ำด้วย X-Idempotency-Key เดิมได้อย่างปลอดภัย", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ส่งถี่เกินไป (8 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "503": { "description": "อ่านการตั้งค่าค่ายไม่ได้ชั่วคราว, ติดต่อ Cloudflare Turnstile ไม่ได้/หมดเวลา (fail closed: ไม่รับใบสมัครโดยไม่ผ่านการตรวจ) หรือรอคิวโควตาเกิน lock_timeout 3 วินาที (มี Retry-After) ใบสมัครยังไม่ถูกบันทึก ส่งซ้ำด้วย X-Idempotency-Key เดิมได้อย่างปลอดภัย", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -692,7 +692,8 @@
           "grade": { "type": "string", "enum": ["ม.4", "ม.5", "ม.6", "ปวช.1", "ปวช.2", "ปวช.3"], "example": "ม.5" },
           "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "L" },
           "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
-          "province": { "type": "string", "example": "เชียงใหม่" }
+          "province": { "type": "string", "example": "เชียงใหม่" },
+          "turnstileToken": { "type": "string", "maxLength": 2048, "description": "Cloudflare Turnstile response token (single-use, ได้จาก widget ในหน้า /register). จำเป็นเมื่อเซิร์ฟเวอร์ตั้ง TURNSTILE_SECRET_KEY (production บังคับเสมอ) ไม่ถูกบันทึกลงฐานข้อมูลหรือ log. ถ้าส่งซ้ำด้วย X-Idempotency-Key เดิมที่บันทึกไว้แล้ว ระบบคืนใบสมัครเดิมโดยไม่ตรวจ token อีก" }
         }
       },
       "ApplicationResponse": {
@@ -820,7 +821,7 @@
           "code": {
             "type": "string",
             "description": "รหัสข้อผิดพลาดสำหรับโปรแกรม",
-            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_VERIFY_CODE", "INVALID_IMAGE_DIMENSIONS"]
+            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_VERIFY_CODE", "INVALID_IMAGE_DIMENSIONS", "CAPTCHA_FAILED"]
           }
         }
       },
