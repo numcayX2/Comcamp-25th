@@ -72,10 +72,16 @@ npm run dev
 
 ---
 
-## 🔑 ข้อมูลเข้าสู่ระบบเริ่มต้นสำหรับผู้ดูแล (Default Admin)
+## 🔑 บัญชีผู้ดูแลระบบ (Admin Accounts)
 
-* **Username:** `admin`
-* **Password:** `strong_password` (หรือ `admin123` ในโหมดทดสอบ)
+ระบบ **ไม่มีบัญชีหรือรหัสผ่านเริ่มต้น** ในโค้ด (AGENTS.md §13.7)
+
+* **Production / PostgreSQL:** สร้างบัญชีด้วยคำสั่งด้านล่าง ระบบจะถามรหัสผ่าน (อย่างน้อย 12 ตัวอักษร) และเก็บเป็น bcrypt
+  ```bash
+  cd backend
+  go run ./cmd/create-admin -username <ชื่อผู้ใช้> -name "<ชื่อที่แสดง>" -role superadmin
+  ```
+* **Development (In-Memory, ไม่มี PostgreSQL):** ตั้ง `DEV_ADMIN_USERNAME` และ `DEV_ADMIN_PASSWORD` ใน `.env` ของเครื่องตัวเอง (ไม่ถูกใช้ในโหมด production)
 
 ---
 
