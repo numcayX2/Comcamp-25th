@@ -43,6 +43,8 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeInvalidImageDims, err.Error())
 	case errors.Is(err, service.ErrCannotWithdraw):
 		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
+	case errors.Is(err, service.ErrProfileLocked), errors.Is(err, service.ErrSlipLocked):
+		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
 	case errors.Is(err, service.ErrCannotConfirm):
 		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
 	case errors.Is(err, service.ErrNotPassed):

@@ -109,6 +109,50 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, map[string]string{"message": "withdrawn successfully", "id": id})
 }
 
+// UpdateOwnProfile handles PATCH /api/applications/{id}/profile: the applicant own edit of
+// nickname, school, province, grade and shirt size, authorised by verifyCode.
+func (h *ApplicantHandler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
+		return
+	}
+	var body service.SelfProfileRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	app, err := h.appService.UpdateOwnProfile(r.Context(), id, body, middleware.RemoteIP(r))
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	response.OK(w, app)
+}
+
+// AdminUpdateProfile handles PATCH /api/admin/applications/{id}/profile: the staff edit of any
+// field of an application, including identifiers.
+func (h *ApplicantHandler) AdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
+		return
+	}
+	var body service.AdminProfileRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	var adminID *int64
+	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
+		adminID = &claims.AdminID
+	}
+	app, err := h.appService.AdminUpdateProfile(r.Context(), id, body, adminID, middleware.RemoteIP(r))
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	response.OK(w, app)
+}
+
 func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	var statusFilter *domain.ApplicationStatus
 	if statusParam := r.URL.Query().Get("status"); statusParam != "" {

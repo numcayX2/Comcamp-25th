@@ -195,6 +195,67 @@ func (m *MemoryApplicantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, ne
 	return nil
 }
 
+// UpdateStatusWithinCapacity mirrors the Postgres version: one lock covers the status read, the
+// seat count and the write, so a restore can never exceed maxCapacity.
+func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return domain.ErrNotFound
+	}
+	if maxCapacity > 0 && !a.Status.IsActive() && newStatus.IsActive() && m.countActiveLocked() >= maxCapacity {
+		return domain.ErrCapacityReached
+	}
+	oldStatus, err := m.setStatusLocked(id, newStatus, adminID, reason)
+	if err != nil {
+		return err
+	}
+	if audit != nil {
+		_ = m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
+	}
+	return nil
+}
+
+// UpdateProfile mirrors the Postgres version, including the duplicate check against the other
+// live applicants (the partial unique indexes of migration 000003).
+func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p domain.ProfileFields, requireActive bool, audit *domain.AuditEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok || a.DeletedAt != nil {
+		return domain.ErrNotFound
+	}
+	if requireActive && !a.Status.IsActive() {
+		return domain.ErrStateConflict
+	}
+	for _, other := range m.data {
+		if other.ID == id || other.DeletedAt != nil {
+			continue
+		}
+		if other.NationalID == p.NationalID || other.Phone == p.Phone ||
+			(p.Email != "" && other.Email == p.Email) {
+			return domain.ErrDuplicateApplicant
+		}
+	}
+
+	if a.EmergencyPhone == a.Phone {
+		a.EmergencyPhone = p.Phone
+	}
+	a.FirstName, a.LastName, a.Nickname = p.FirstName, p.LastName, p.Nickname
+	a.NationalID, a.Phone, a.Email = p.NationalID, p.Phone, p.Email
+	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
+	a.Motivation = p.Motivation
+	a.UpdatedAt = time.Now().UTC()
+
+	if audit != nil {
+		_ = m.audit.Log(ctx, withDetail(audit, "status", a.Status))
+	}
+	return nil
+}
+
 func (m *MemoryApplicantRepo) setStatusLocked(id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string) (domain.ApplicationStatus, error) {
 	a, ok := m.data[id]
 	if !ok || a.DeletedAt != nil {
@@ -260,7 +321,7 @@ func (m *MemoryApplicantRepo) CountActive(ctx context.Context) (int, error) {
 func (m *MemoryApplicantRepo) countActiveLocked() int {
 	count := 0
 	for _, a := range m.data {
-		if a.Status != domain.StatusRejected && a.DeletedAt == nil {
+		if a.Status.IsActive() && a.DeletedAt == nil {
 			count++
 		}
 	}
@@ -516,6 +577,17 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 	}
 	if p.Status != domain.PaymentPending {
 		return domain.ErrPaymentAlreadyVerified
+	}
+	// A refunded or rejected application has left the camp: its slip can no longer be settled.
+	// Checked before anything is changed, so a refusal leaves payment and applicant untouched.
+	if m.appRepo != nil {
+		m.appRepo.mu.RLock()
+		a, found := m.appRepo.data[p.ApplicantID]
+		inactive := found && !a.Status.IsActive()
+		m.appRepo.mu.RUnlock()
+		if inactive {
+			return domain.ErrStateConflict
+		}
 	}
 
 	now := time.Now().UTC()

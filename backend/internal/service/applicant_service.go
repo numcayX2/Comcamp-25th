@@ -44,7 +44,9 @@ var (
 	ErrInvalidQuery          = newValidationError("search query must be a national ID, phone number or application ID")
 	ErrVerifyCodeRequired    = newValidationError("verifyCode must be the last 4 digits of the applicant's national ID")
 	ErrInvalidVerifyCode     = errors.New("verification code does not match this application")
-	ErrCannotWithdraw        = errors.New("cannot withdraw an already confirmed application, please contact staff")
+	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
+	ErrProfileLocked         = errors.New("this application can no longer be edited, please contact staff")
+	ErrIdentityLocked        = newValidationError("full name, national ID, phone, email and motivation cannot be changed here, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
@@ -177,15 +179,9 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		return nil, false, ErrRegistrationClosed
 	}
 
-	// Split full name into first and last name if possible
-	parts := strings.SplitN(req.FullName, " ", 2)
-	firstName := parts[0]
-	lastName := ""
-	if len(parts) > 1 {
-		lastName = strings.TrimSpace(parts[1])
-	}
-	if utf8.RuneCountInString(firstName) > maxNameRunes || utf8.RuneCountInString(lastName) > maxNameRunes {
-		return nil, false, newValidationError("full name is too long")
+	firstName, lastName, err := splitFullName(req.FullName)
+	if err != nil {
+		return nil, false, err
 	}
 
 	province := req.Province
@@ -194,25 +190,27 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	}
 
 	applicant := &domain.Applicant{
-		ID:                  uuid.New(),
-		NationalID:          req.NationalID,
-		Prefix:              "",
-		FirstName:           firstName,
-		LastName:            lastName,
-		Nickname:            req.Nickname,
-		BirthDate:           time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
-		Gender:              "unspecified",
-		School:              req.School,
-		Grade:               req.Grade,
-		Phone:               req.Phone,
-		Email:               req.Email,
-		Province:            province,
-		EmergencyContact:    "ผู้ปกครอง",
-		EmergencyPhone:      req.Phone,
-		ShirtSize:           req.ShirtSize,
-		HasLaptop:           true,
-		Motivation:          &req.Motivation,
-		Status:              domain.StatusPending,
+		ID:               uuid.New(),
+		NationalID:       req.NationalID,
+		Prefix:           "",
+		FirstName:        firstName,
+		LastName:         lastName,
+		Nickname:         req.Nickname,
+		BirthDate:        time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
+		Gender:           "unspecified",
+		School:           req.School,
+		Grade:            req.Grade,
+		Phone:            req.Phone,
+		Email:            req.Email,
+		Province:         province,
+		EmergencyContact: "ผู้ปกครอง",
+		EmergencyPhone:   req.Phone,
+		ShirtSize:        req.ShirtSize,
+		HasLaptop:        true,
+		Motivation:       &req.Motivation,
+		// First come, first served: the quota check above is the selection, so the applicant holds
+		// a seat (and may upload a slip) straight away, with no staff step in between.
+		Status:              domain.StatusPassed,
 		AttendanceConfirmed: false,
 		IdempotencyKey:      key,
 	}
@@ -267,20 +265,69 @@ func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID
 	return s.toPublic(ctx, existing), nil
 }
 
-func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
+// profileInput is the set of editable text fields shared by registration, the applicant's own
+// profile edit and the staff profile edit, so all three normalise and validate the same way.
+type profileInput struct {
+	FullName, Nickname, NationalID, Phone, Email string
+	School, Province, Grade, ShirtSize           string
+	Motivation                                   string
+}
+
+// cleanText normalises a single-line field: invisible characters pasted from LINE / Facebook are
+// dropped and runs of whitespace collapse to one space.
+func cleanText(s string) string {
+	return strings.Join(strings.Fields(stripZeroWidth(s)), " ")
+}
+
+func cleanEmail(s string) string {
+	return strings.ToLower(strings.Map(func(r rune) rune {
+		if isZeroWidth(r) || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s))
+}
+
+func normalizeProfile(p profileInput) profileInput {
 	// IDs and phone numbers pasted from LINE / Facebook chats carry zero-width characters and
 	// are often written 081-234-5678 (AGENTS.md §9.2.2). Strip them before validation.
-	req.NationalID = cleanNumber(req.NationalID)
-	req.Phone = cleanNumber(req.Phone)
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	req.FullName = strings.Join(strings.Fields(req.FullName), " ")
-	req.Nickname = strings.TrimSpace(req.Nickname)
-	req.School = strings.TrimSpace(req.School)
-	req.Grade = strings.TrimSpace(req.Grade)
-	req.Province = strings.TrimSpace(req.Province)
-	req.Motivation = strings.TrimSpace(req.Motivation)
-	req.ShirtSize = strings.ToUpper(strings.TrimSpace(req.ShirtSize))
-	return req
+	p.NationalID = cleanNumber(p.NationalID)
+	p.Phone = cleanNumber(p.Phone)
+	p.Email = cleanEmail(p.Email)
+	p.FullName = cleanText(p.FullName)
+	p.Nickname = cleanText(p.Nickname)
+	p.School = cleanText(p.School)
+	p.Grade = cleanText(p.Grade)
+	p.Province = cleanText(p.Province)
+	p.Motivation = strings.TrimSpace(stripZeroWidth(p.Motivation))
+	p.ShirtSize = strings.ToUpper(strings.TrimSpace(stripZeroWidth(p.ShirtSize)))
+	return p
+}
+
+func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
+	p := normalizeProfile(profileInput{
+		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
+		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
+		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
+	})
+	return ApplicationCreateRequest{
+		FullName: p.FullName, Nickname: p.Nickname, NationalID: p.NationalID, Phone: p.Phone,
+		Email: p.Email, School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
+		Motivation: p.Motivation, Province: p.Province,
+	}
+}
+
+// splitFullName splits "first last" at the first space; the surname may be empty.
+func splitFullName(full string) (first, last string, err error) {
+	parts := strings.SplitN(full, " ", 2)
+	first = parts[0]
+	if len(parts) > 1 {
+		last = strings.TrimSpace(parts[1])
+	}
+	if utf8.RuneCountInString(first) > maxNameRunes || utf8.RuneCountInString(last) > maxNameRunes {
+		return "", "", newValidationError("full name is too long")
+	}
+	return first, last, nil
 }
 
 // isValidThaiNationalID reports whether id is 13 digits whose last digit is the Thai Mod-11
@@ -296,45 +343,97 @@ func isValidThaiNationalID(id string) bool {
 	return (11-sum%11)%10 == int(id[12]-'0')
 }
 
-func validateRequest(req ApplicationCreateRequest) error {
-	if !isValidThaiNationalID(req.NationalID) {
+func checkNationalID(id string) error {
+	if !isValidThaiNationalID(id) {
 		return ErrInvalidNationalID
 	}
-	if len(req.Phone) != 10 || !strings.HasPrefix(req.Phone, "0") || !isNumeric(req.Phone) {
+	return nil
+}
+
+func checkPhone(phone string) error {
+	if len(phone) != 10 || !strings.HasPrefix(phone, "0") || !isNumeric(phone) {
 		return ErrInvalidPhone
 	}
-	if req.FullName == "" || req.Nickname == "" || req.School == "" || req.Grade == "" {
-		return ErrRequiredFields
+	return nil
+}
+
+// checkEmail: empty is allowed (the field is optional); otherwise a bare address within the limit.
+func checkEmail(email string) error {
+	if email == "" {
+		return nil
 	}
-	if !isValidShirtSize(req.ShirtSize) {
-		return ErrInvalidShirtSize
+	if utf8.RuneCountInString(email) > maxEmailRunes {
+		return ErrInvalidEmail
 	}
-	if !isValidGrade(req.Grade) {
-		return ErrInvalidGrade
+	if addr, err := mail.ParseAddress(email); err != nil || addr.Address != email {
+		return ErrInvalidEmail
 	}
-	if req.Email != "" {
-		if utf8.RuneCountInString(req.Email) > maxEmailRunes {
-			return ErrInvalidEmail
-		}
-		if addr, err := mail.ParseAddress(req.Email); err != nil || addr.Address != req.Email {
-			return ErrInvalidEmail
-		}
-	}
+	return nil
+}
+
+func checkLengths(p profileInput) error {
 	for _, f := range []struct {
 		value string
 		max   int
 		name  string
 	}{
-		{req.Nickname, maxNicknameRunes, "nickname"},
-		{req.School, maxSchoolRunes, "school"},
-		{req.Province, maxProvinceRunes, "province"},
-		{req.Motivation, maxMotivationRunes, "motivation"},
+		{p.Nickname, maxNicknameRunes, "nickname"},
+		{p.School, maxSchoolRunes, "school"},
+		{p.Province, maxProvinceRunes, "province"},
+		{p.Motivation, maxMotivationRunes, "motivation"},
 	} {
 		if utf8.RuneCountInString(f.value) > f.max {
 			return newValidationError(fmt.Sprintf("%s is too long (max %d characters)", f.name, f.max))
 		}
 	}
 	return nil
+}
+
+// validateProfile checks every field of a normalised profile (registration and staff edit).
+// Province may be blank here: registration fills in a default for it.
+func validateProfile(p profileInput) error {
+	if err := checkNationalID(p.NationalID); err != nil {
+		return err
+	}
+	if err := checkPhone(p.Phone); err != nil {
+		return err
+	}
+	if p.FullName == "" || p.Nickname == "" || p.School == "" || p.Grade == "" {
+		return ErrRequiredFields
+	}
+	if !isValidShirtSize(p.ShirtSize) {
+		return ErrInvalidShirtSize
+	}
+	if !isValidGrade(p.Grade) {
+		return ErrInvalidGrade
+	}
+	if err := checkEmail(p.Email); err != nil {
+		return err
+	}
+	return checkLengths(p)
+}
+
+// validateSecondary checks only the fields an applicant may edit themselves. Nothing here is an
+// identifier, so there is no way to use it to swap who the application belongs to.
+func validateSecondary(p profileInput) error {
+	if p.Nickname == "" || p.School == "" || p.Province == "" || p.Grade == "" {
+		return ErrRequiredFields
+	}
+	if !isValidShirtSize(p.ShirtSize) {
+		return ErrInvalidShirtSize
+	}
+	if !isValidGrade(p.Grade) {
+		return ErrInvalidGrade
+	}
+	return checkLengths(p)
+}
+
+func validateRequest(req ApplicationCreateRequest) error {
+	return validateProfile(profileInput{
+		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
+		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
+		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
+	})
 }
 
 // QueryStatus is the public lookup by national ID, phone or application ID. It returns the
@@ -419,8 +518,26 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 		Details:    map[string]any{"newStatus": newStatus, "reason": reason},
 		IPAddress:  ip,
 	}
-	if err := s.appRepo.UpdateStatus(ctx, applicant.ID, newStatus, adminID, reason, audit); err != nil {
-		return nil, err
+	// Taking a seat back (REJECTED / REFUND_PENDING / REFUNDED -> an active status) must respect
+	// the quota: those statuses released their seat, and someone else may have taken it. The
+	// repository re-checks under the quota lock, so this holds against concurrent registrations.
+	if !applicant.Status.IsActive() && newStatus.IsActive() {
+		settings, err := s.settingRepo.Get(ctx)
+		if err != nil || settings == nil {
+			return nil, fmt.Errorf("%w: %v", ErrSettingsUnavailable, err)
+		}
+		err = s.appRepo.UpdateStatusWithinCapacity(ctx, applicant.ID, newStatus, adminID, reason, audit, settings.MaxCapacity)
+		switch {
+		case err == nil:
+		case errors.Is(err, domain.ErrCapacityReached):
+			return nil, ErrQuotaExceeded
+		case errors.Is(err, domain.ErrLockTimeout):
+			return nil, ErrRegistrationBusy
+		default:
+			return nil, notFoundOr(err)
+		}
+	} else if err := s.appRepo.UpdateStatus(ctx, applicant.ID, newStatus, adminID, reason, audit); err != nil {
+		return nil, notFoundOr(err)
 	}
 	applicant.Status = newStatus
 
@@ -452,8 +569,13 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 // Withdraw lets applicants cancel their own application from the receipt or /status page. It is
 // public, so it needs the application ID plus verifyCode (last 4 digits of the national ID, see
 // CheckVerifyCode). The row is soft-deleted, which frees the seat (CountActive ignores deleted
-// rows) and lets the same person register again. Once the place is confirmed (status CONFIRMED or
-// an approved slip) money has changed hands, so only staff can remove it (ErrCannotWithdraw).
+// rows) and lets the same person register again.
+//
+// Money may already have changed hands, and a soft-deleted row disappears from /admin, so only
+// applicants with nothing to settle can withdraw: no CONFIRMED place, no slip waiting for review
+// or already approved, and not an application that is already closed (REJECTED, REFUND_PENDING,
+// REFUNDED). Everyone else gets ErrCannotWithdraw and is told to contact staff, who record the
+// cancellation as REFUND_PENDING so the refund stays on the ledger.
 func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, verifyCode, reason, ip string) error {
 	reason = strings.TrimSpace(stripZeroWidth(reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
@@ -468,20 +590,20 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, verifyCo
 		return err
 	}
 
-	if applicant.Status == domain.StatusConfirmed {
+	if applicant.Status == domain.StatusConfirmed || !applicant.Status.IsActive() {
 		return ErrCannotWithdraw
 	}
 	payment, err := s.latestPayment(ctx, applicant.ID)
 	if err != nil {
 		return err
 	}
-	if payment != nil && payment.Status == domain.PaymentApproved {
+	if payment != nil && (payment.Status == domain.PaymentPending || payment.Status == domain.PaymentApproved) {
 		return ErrCannotWithdraw
 	}
 
 	details := map[string]any{"reason": reason, "ip": ip, "selfService": true}
 	if payment != nil {
-		// Staff need to know a slip was sent, in case a refund is due.
+		// Only a rejected slip gets here: staff still want to know one was sent.
 		details["slipStatus"] = payment.Status
 	}
 	audit := &domain.AuditEntry{
@@ -495,6 +617,219 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, verifyCo
 		return notFoundOr(err)
 	}
 	return nil
+}
+
+// SelfProfileRequest is the applicant's own edit of the secondary fields. The identity fields
+// are declared only so that a request which tries to change them is refused (ErrIdentityLocked)
+// instead of having them silently dropped: changing who an application belongs to is staff-only
+// (anti-scalping, PDPA).
+type SelfProfileRequest struct {
+	// VerifyCode is the last 4 digits of the applicant national ID (AGENTS.md section 13.5).
+	VerifyCode string `json:"verifyCode"`
+	Nickname   string `json:"nickname"`
+	School     string `json:"school"`
+	Province   string `json:"province"`
+	Grade      string `json:"grade"`
+	ShirtSize  string `json:"shirtSize"`
+
+	FullName   *string `json:"fullName,omitempty"`
+	NationalID *string `json:"nationalId,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
+	Email      *string `json:"email,omitempty"`
+	Motivation *string `json:"motivation,omitempty"`
+}
+
+// AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send
+// only what changed; the merged result is validated as a whole.
+type AdminProfileRequest struct {
+	FullName   *string `json:"fullName,omitempty"`
+	Nickname   *string `json:"nickname,omitempty"`
+	NationalID *string `json:"nationalId,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
+	Email      *string `json:"email,omitempty"`
+	School     *string `json:"school,omitempty"`
+	Province   *string `json:"province,omitempty"`
+	Grade      *string `json:"grade,omitempty"`
+	ShirtSize  *string `json:"shirtSize,omitempty"`
+	Motivation *string `json:"motivation,omitempty"`
+	Reason     string  `json:"reason,omitempty"`
+}
+
+// profileOf is the stored profile as the shared validators see it.
+func profileOf(a *domain.Applicant) profileInput {
+	full := a.FirstName
+	if a.LastName != "" {
+		full += " " + a.LastName
+	}
+	p := profileInput{
+		FullName: full, Nickname: a.Nickname, NationalID: a.NationalID, Phone: a.Phone, Email: a.Email,
+		School: a.School, Province: a.Province, Grade: a.Grade, ShirtSize: a.ShirtSize,
+	}
+	if a.Motivation != nil {
+		p.Motivation = *a.Motivation
+	}
+	return p
+}
+
+// profileChanges lists the fields whose value differs, as {"field": {"old": ..., "new": ...}} for
+// the audit log.
+func profileChanges(before, after profileInput) map[string]map[string]string {
+	changes := map[string]map[string]string{}
+	for _, f := range []struct{ name, old, new string }{
+		{"fullName", before.FullName, after.FullName},
+		{"nickname", before.Nickname, after.Nickname},
+		{"nationalId", before.NationalID, after.NationalID},
+		{"phone", before.Phone, after.Phone},
+		{"email", before.Email, after.Email},
+		{"school", before.School, after.School},
+		{"province", before.Province, after.Province},
+		{"grade", before.Grade, after.Grade},
+		{"shirtSize", before.ShirtSize, after.ShirtSize},
+		{"motivation", before.Motivation, after.Motivation},
+	} {
+		if f.old != f.new {
+			changes[f.name] = map[string]string{"old": f.old, "new": f.new}
+		}
+	}
+	return changes
+}
+
+// profileFieldsOf converts a validated profile to the repository column set.
+func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
+	first, last, err := splitFullName(p.FullName)
+	if err != nil {
+		return domain.ProfileFields{}, err
+	}
+	motivation := p.Motivation
+	return domain.ProfileFields{
+		FirstName: first, LastName: last, Nickname: p.Nickname, NationalID: p.NationalID,
+		Phone: p.Phone, Email: p.Email, School: p.School, Province: p.Province, Grade: p.Grade,
+		ShirtSize: p.ShirtSize, Motivation: &motivation,
+	}, nil
+}
+
+// UpdateOwnProfile lets an applicant fix their nickname, school, province, grade and shirt size
+// from /status. Public, so it needs the application ID plus verifyCode, only works while the
+// application still holds a seat, and refuses any attempt to touch identity fields. The change
+// and its audit row (application.profile.update.self, no admin) commit together.
+func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo string, req SelfProfileRequest, ip string) (*ApplicationResponse, error) {
+	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	if err != nil {
+		return nil, notFoundOr(err)
+	}
+	// Authenticate before revealing anything about the application state.
+	if err := CheckVerifyCode(applicant, req.VerifyCode); err != nil {
+		return nil, err
+	}
+	if !applicant.Status.IsActive() {
+		return nil, ErrProfileLocked
+	}
+	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil || req.Motivation != nil {
+		return nil, ErrIdentityLocked
+	}
+
+	before := profileOf(applicant)
+	after := normalizeProfile(profileInput{
+		FullName: before.FullName, NationalID: before.NationalID, Phone: before.Phone, Email: before.Email,
+		Motivation: before.Motivation,
+		Nickname:   req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
+	})
+	if err := validateSecondary(after); err != nil {
+		return nil, err
+	}
+
+	changes := profileChanges(before, after)
+	if len(changes) == 0 {
+		return s.toPublic(ctx, applicant), nil
+	}
+	fields, err := profileFieldsOf(after)
+	if err != nil {
+		return nil, err
+	}
+	audit := &domain.AuditEntry{
+		Action:     domain.AuditProfileUpdateSelf,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicant.ApplicationNo,
+		Details:    map[string]any{"changes": changes, "ip": ip, "selfService": true},
+		IPAddress:  ip,
+	}
+	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, true, audit); err != nil {
+		if errors.Is(err, domain.ErrStateConflict) {
+			return nil, ErrProfileLocked
+		}
+		return nil, notFoundOr(err)
+	}
+
+	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
+	if err != nil {
+		return nil, notFoundOr(err)
+	}
+	return s.toPublic(ctx, updated), nil
+}
+
+// AdminUpdateProfile is the staff edit of any application (any status). The merged profile gets
+// the same full validation as registration, a collision with another live applicant national
+// ID, phone or email is ErrDuplicateApplicant, and keeping the applicant own identifiers is
+// fine. The change and its audit row (old -> new per field, plus the reason) commit together.
+func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo string, req AdminProfileRequest, adminID *int64, ip string) (*ApplicationResponse, error) {
+	reason := strings.TrimSpace(stripZeroWidth(req.Reason))
+	if utf8.RuneCountInString(reason) > maxReasonRunes {
+		return nil, newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
+	}
+
+	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	if err != nil {
+		return nil, notFoundOr(err)
+	}
+
+	before := profileOf(applicant)
+	merged := before
+	for _, f := range []struct {
+		dst *string
+		src *string
+	}{
+		{&merged.FullName, req.FullName}, {&merged.Nickname, req.Nickname}, {&merged.NationalID, req.NationalID},
+		{&merged.Phone, req.Phone}, {&merged.Email, req.Email}, {&merged.School, req.School},
+		{&merged.Province, req.Province}, {&merged.Grade, req.Grade}, {&merged.ShirtSize, req.ShirtSize},
+		{&merged.Motivation, req.Motivation},
+	} {
+		if f.src != nil {
+			*f.dst = *f.src
+		}
+	}
+	after := normalizeProfile(merged)
+	if err := validateProfile(after); err != nil {
+		return nil, err
+	}
+	if after.Province == "" {
+		return nil, ErrRequiredFields
+	}
+
+	changes := profileChanges(before, after)
+	if len(changes) == 0 {
+		return s.toAdmin(ctx, applicant)
+	}
+	fields, err := profileFieldsOf(after)
+	if err != nil {
+		return nil, err
+	}
+	audit := &domain.AuditEntry{
+		AdminID:    adminID,
+		Action:     domain.AuditProfileUpdate,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicant.ApplicationNo,
+		Details:    map[string]any{"changes": changes, "reason": reason, "ip": ip},
+		IPAddress:  ip,
+	}
+	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, false, audit); err != nil {
+		return nil, notFoundOr(err)
+	}
+
+	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
+	if err != nil {
+		return nil, notFoundOr(err)
+	}
+	return s.toAdmin(ctx, updated)
 }
 
 func (s *ApplicantService) latestPayment(ctx context.Context, applicantID uuid.UUID) (*domain.Payment, error) {

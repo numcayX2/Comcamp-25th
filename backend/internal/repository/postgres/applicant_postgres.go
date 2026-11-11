@@ -180,11 +180,35 @@ func (r *ApplicantPostgresRepo) ListAll(ctx context.Context, status *domain.Appl
 // UpdateStatus changes the status and writes applicant_status_logs and audit_logs in the same
 // transaction (AGENTS.md §13.6): either everything is recorded or nothing changes.
 func (r *ApplicantPostgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry) error {
+	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, 0, false)
+}
+
+// UpdateStatusWithinCapacity is UpdateStatus for a change that may take a seat back. It takes the
+// same advisory lock as CreateWithinCapacity (before the count, AGENTS.md §13.7) so a refunded or
+// rejected applicant being restored can never push the camp past maxCapacity while new
+// applicants are registering.
+func (r *ApplicantPostgresRepo) UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, maxCapacity, true)
+}
+
+func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int, takeQuotaLock bool) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	if takeQuotaLock {
+		if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout = '3s'`); err != nil {
+			return fmt.Errorf("set lock_timeout: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, quotaLockKey); err != nil {
+			if mapped := mapPgError(err); mapped != err {
+				return mapped
+			}
+			return fmt.Errorf("acquire quota lock: %w", err)
+		}
+	}
 
 	var oldStatus domain.ApplicationStatus
 	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&oldStatus)
@@ -192,7 +216,22 @@ func (r *ApplicantPostgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, 
 		return domain.ErrNotFound
 	}
 	if err != nil {
+		if mapped := mapPgError(err); mapped != err {
+			return mapped
+		}
 		return fmt.Errorf("lock applicant: %w", err)
+	}
+
+	// Only a change that takes a seat back is checked: moving between active statuses (or into a
+	// non-counting one) never changes the count.
+	if takeQuotaLock && maxCapacity > 0 && !oldStatus.IsActive() && newStatus.IsActive() {
+		var count int
+		if err := tx.QueryRow(ctx, countActiveSQL).Scan(&count); err != nil {
+			return fmt.Errorf("count active applicants: %w", err)
+		}
+		if count >= maxCapacity {
+			return domain.ErrCapacityReached
+		}
 	}
 
 	if err := setStatusTx(ctx, tx, id, oldStatus, newStatus, adminID, reason); err != nil {
@@ -205,6 +244,53 @@ func (r *ApplicantPostgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, 
 		}
 	}
 
+	return tx.Commit(ctx)
+}
+
+// UpdateProfile rewrites the editable profile columns and the audit row in one transaction. The
+// row is locked first, so requireActive is checked against the status that is actually stored.
+// emergency_phone mirrors the applicant's phone at registration (the form has no separate
+// contact), so it follows a phone change only while it still equals the old phone.
+func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p domain.ProfileFields, requireActive bool, audit *domain.AuditEntry) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var status domain.ApplicationStatus
+	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock applicant: %w", err)
+	}
+	if requireActive && !status.IsActive() {
+		return domain.ErrStateConflict
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE applicants SET
+			first_name = $1, last_name = $2, nickname = $3,
+			emergency_phone = CASE WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
+			national_id = $4, phone = $5, email = $6, school = $7, province = $8, grade = $9,
+			shirt_size = $10, motivation = $11, updated_at = $12
+		WHERE id = $13
+	`, p.FirstName, p.LastName, p.Nickname, p.NationalID, p.Phone, p.Email, p.School, p.Province,
+		p.Grade, p.ShirtSize, p.Motivation, time.Now().UTC(), id)
+	if err != nil {
+		if mapped := mapPgError(err); mapped != err {
+			return mapped
+		}
+		return fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	if audit != nil {
+		if err := insertAudit(ctx, tx, withAuditDetail(audit, "status", status)); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -266,7 +352,10 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 	return nil
 }
 
-const countActiveSQL = `SELECT count(*) FROM applicants WHERE status != 'REJECTED' AND deleted_at IS NULL`
+// countActiveSQL is the quota count: every live row that holds a seat. REJECTED, REFUND_PENDING
+// and REFUNDED release theirs immediately but stay in the table for the ledger. Keep in step
+// with domain.ApplicationStatus.IsActive.
+const countActiveSQL = `SELECT count(*) FROM applicants WHERE status NOT IN ('REJECTED', 'REFUND_PENDING', 'REFUNDED') AND deleted_at IS NULL`
 
 func (r *ApplicantPostgresRepo) CountActive(ctx context.Context) (int, error) {
 	var count int

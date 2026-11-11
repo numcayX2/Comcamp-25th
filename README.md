@@ -94,11 +94,14 @@ npm run dev
 | `POST` | `/api/applications` | Public | ส่งใบสมัครใหม่ (ล็อกโควตาตาม maxCapacity ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้ เต็มแล้วตอบ 409 QUOTA_FULL) |
 | `GET` | `/api/applications/status?q={query}` | Public | ตรวจสอบสถานะใบสมัคร (ค้นหาด้วยเลขบัตร 13 หลัก, เบอร์โทร หรือรหัส) |
 | `POST` | `/api/applications/:id/confirm` | Public | กดยืนยันสิทธิ์เข้าร่วมค่าย (สำหรับผู้ผ่านการคัดเลือก) |
+| `POST` | `/api/applications/:id/withdraw` | Public | ผู้สมัครยกเลิกใบสมัครเอง (ต้องส่ง verifyCode) ใช้ไม่ได้เมื่อยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน |
+| `PATCH` | `/api/applications/:id/profile` | Public | ผู้สมัครแก้ไขชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ (ต้องส่ง verifyCode) ห้ามแก้ชื่อ-นามสกุล เลขบัตร เบอร์ อีเมล |
 | `POST` | `/api/applications/:id/slip` | Public | อัปโหลดสลิปโอนเงิน (ระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
 | `POST` | `/api/auth/login` | Public | เข้าสู่ระบบผู้ดูแลเพื่อรับ JWT Token |
 | `GET` | `/api/admin/applications` | Admin | รายชื่อผู้สมัครทั้งหมดและรูปสลิป |
-| `PATCH` | `/api/admin/applications/:id` | Admin | ปรับสถานะผู้สมัคร (เช่น PASSED, RESERVE, REJECTED) |
+| `PATCH` | `/api/admin/applications/:id` | Admin | ปรับสถานะผู้สมัคร (PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED) ผู้สมัครใหม่เริ่มที่ PASSED ตามหลักใครสมัครก่อนได้ก่อน สถานะ REJECTED / REFUND_PENDING / REFUNDED คืนที่นั่งทันที และการกลับมาถือที่นั่งต้องมีที่ว่าง |
 | `PATCH` | `/api/admin/applications/:id/verify-slip` | Admin | ตรวจสอบและอนุมัติสลิปเพื่อปรับสถานะเป็น CONFIRMED |
+| `PATCH` | `/api/admin/applications/:id/profile` | Admin | พี่ค่ายแก้ไขข้อมูลผู้สมัครทุกฟิลด์ (ตรวจสอบเต็มรูปแบบ, ซ้ำกับคนอื่น 409, บันทึก audit_logs) |
 | `GET` | `/api/admin/settings` | Admin | ดูการตั้งค่าค่าย โควตา และกำหนดการทั้งหมด |
 | `PATCH` | `/api/admin/settings` | Admin | ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), กำหนดการ หรือปิดรับสมัครฉุกเฉิน |
 

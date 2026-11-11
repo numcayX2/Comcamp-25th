@@ -41,6 +41,13 @@ type testApp struct {
 // these tests run through the same security middleware as the deployed API.
 func setupTestApp(t *testing.T) *testApp {
 	t.Helper()
+	return setupTestAppWith(t, server.DefaultRateLimits())
+}
+
+// setupTestAppWith is setupTestApp with explicit rate limits, for tests that make more mutating
+// requests than the production per-IP limit allows.
+func setupTestAppWith(t *testing.T, limits server.RateLimits) *testApp {
+	t.Helper()
 
 	appRepo := memory.NewMemoryApplicantRepo()
 	setRepo := memory.NewMemorySettingRepo()
@@ -67,7 +74,7 @@ func setupTestApp(t *testing.T) *testApp {
 
 	router := server.NewRouter(services, server.Options{
 		AllowedOrigins: []string{"http://localhost:4321"},
-		RateLimits:     server.DefaultRateLimits(),
+		RateLimits:     limits,
 	})
 
 	return &testApp{
@@ -255,8 +262,9 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		if created.ID == "" {
 			t.Errorf("expected generated Application ID")
 		}
-		if created.Status != domain.StatusPending {
-			t.Errorf("expected status PENDING, got %s", created.Status)
+		// First come, first served: a registration that fits the quota starts as PASSED.
+		if created.Status != domain.StatusPassed {
+			t.Errorf("expected status PASSED, got %s", created.Status)
 		}
 	})
 
@@ -298,8 +306,13 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("8. PATCH /api/admin/applications/{id} -> PASSED", func(t *testing.T) {
-		app.setStatus(t, token, created.ID, domain.StatusPassed)
+	t.Run("8. admin sees the applicant as PASSED without any staff step", func(t *testing.T) {
+		rec := app.do(t, http.MethodGet, "/api/admin/applications?status=PASSED", nil, bearer(token))
+		var list []service.ApplicationResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &list)
+		if rec.Code != http.StatusOK || len(list) != 1 || list[0].ID != created.ID {
+			t.Fatalf("expected the new applicant in the PASSED list, got %d %+v", rec.Code, list)
+		}
 	})
 
 	t.Run("9. POST /api/applications/{id}/confirm", func(t *testing.T) {

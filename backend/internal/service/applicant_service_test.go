@@ -44,8 +44,8 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	if res.ID == "" {
 		t.Errorf("expected non-empty application ID")
 	}
-	if res.Status != domain.StatusPending {
-		t.Errorf("expected status %s, got %s", domain.StatusPending, res.Status)
+	if res.Status != domain.StatusPassed {
+		t.Errorf("expected status %s (first come, first served), got %s", domain.StatusPassed, res.Status)
 	}
 	if res.FullName != "สมชาย ใจดี" {
 		t.Errorf("expected full name 'สมชาย ใจดี', got '%s'", res.FullName)
@@ -216,8 +216,8 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("after raising capacity: expected person 2 to be accepted, got %v", err)
 	}
-	if res2.Status != domain.StatusPending {
-		t.Errorf("expected person 2 status PENDING, got %s", res2.Status)
+	if res2.Status != domain.StatusPassed {
+		t.Errorf("expected person 2 status PASSED, got %s", res2.Status)
 	}
 
 	// Two seats are taken: the quota cannot drop below that, but may equal it.
@@ -272,7 +272,10 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 		t.Errorf("expected ID %s, got %s", created.ID, byPhone.ID)
 	}
 
-	// 3. Confirm attendance while still PENDING should fail
+	// 3. Confirm attendance while PENDING should fail (staff can still park an application there)
+	if _, err := svc.UpdateStatus(context.Background(), created.ID, domain.StatusPending, nil, "hold", "127.0.0.1"); err != nil {
+		t.Fatalf("failed to set PENDING: %v", err)
+	}
 	_, err = svc.ConfirmAttendance(context.Background(), created.ID, verify, true)
 	if err != service.ErrCannotConfirm {
 		t.Fatalf("expected ErrCannotConfirm while PENDING, got %v", err)

@@ -29,6 +29,9 @@ var (
 	ErrEmptySlip           = newValidationError("slip file is empty")
 	ErrSlipAlreadyApproved = errors.New("payment for this application has already been approved")
 	ErrNoSlip              = errors.New("no payment slip found for this applicant")
+	// ErrSlipLocked: the application is REFUND_PENDING, REFUNDED or REJECTED, so approving or
+	// rejecting its slip would re-confirm a seat that was released. The slip stays viewable.
+	ErrSlipLocked          = errors.New("this application was refunded or rejected, so its payment slip can no longer be reviewed")
 	ErrSlipAlreadyVerified = domain.ErrPaymentAlreadyVerified
 	// ErrInvalidImageDimensions: width or height is 0 or above MaxSlipDimension (image bomb guard).
 	ErrInvalidImageDimensions = fmt.Errorf("image must be between 1×1 and %d×%d pixels", MaxSlipDimension, MaxSlipDimension)
@@ -275,6 +278,10 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo string, a
 		return notFoundOr(err)
 	}
 
+	if !applicant.Status.IsActive() {
+		return ErrSlipLocked
+	}
+
 	latestPayment, err := s.paymentRepo.GetLatestByApplicantID(ctx, applicant.ID)
 	if errors.Is(err, domain.ErrNotFound) {
 		return ErrNoSlip
@@ -295,5 +302,13 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo string, a
 		},
 		IPAddress: ip,
 	}
-	return s.paymentRepo.Verify(ctx, latestPayment.ID, approved, adminID, note, audit)
+	// The repository re-checks the status under the row lock, so a refund recorded after the read
+	// above still wins.
+	if err := s.paymentRepo.Verify(ctx, latestPayment.ID, approved, adminID, note, audit); err != nil {
+		if errors.Is(err, domain.ErrStateConflict) {
+			return ErrSlipLocked
+		}
+		return err
+	}
+	return nil
 }

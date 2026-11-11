@@ -76,7 +76,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Submit New Application",
-        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง) ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask",
+        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง) ใครสมัครก่อนได้ก่อน: ใบสมัครที่ผ่านการตรวจโควตาจะมีสถานะ PASSED ทันที (ไม่ต้องรอพี่ค่าย) และอัปโหลดสลิปได้เลย ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask",
         "parameters": [
           {
             "name": "X-Idempotency-Key",
@@ -121,7 +121,7 @@
                   "school": "โรงเรียนแม่โจ้วิทยาคม",
                   "grade": "ม.5",
                   "shirtSize": "L",
-                  "status": "PENDING",
+                  "status": "PASSED",
                   "attendanceConfirmed": false,
                   "hasSlip": false,
                   "createdAt": "2026-11-16T00:01:23Z"
@@ -222,6 +222,73 @@
             "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/applications/{id}/withdraw": {
+      "post": {
+        "tags": ["Applications"],
+        "summary": "Withdraw Own Application",
+        "description": "ผู้สมัครยกเลิกใบสมัครของตัวเอง (soft delete คืนที่นั่งทันที และสมัครใหม่ด้วยเลขบัตรเดิมได้) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ยกเลิกเองไม่ได้เมื่อสถานะเป็น CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED หรือมีสลิปที่รอตรวจ (PENDING) / อนุมัติแล้ว (APPROVED) ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WithdrawRequest" },
+              "example": { "verifyCode": "2233", "reason": "ไม่สะดวกเข้าร่วม" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "ยกเลิกสำเร็จ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } },
+          "400": { "description": "ไม่ได้ส่ง verifyCode หรือไม่ใช่ตัวเลข 4 หลัก (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "ยกเลิกเองไม่ได้ (CONFIRMED, ปิดรายการแล้ว หรือมีสลิปรอตรวจ/อนุมัติแล้ว) ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/applications/{id}/profile": {
+      "patch": {
+        "tags": ["Applications"],
+        "summary": "Edit Own Secondary Profile Fields",
+        "description": "ผู้สมัครแก้ไขข้อมูลทั่วไปของตัวเอง ได้เฉพาะ nickname, school, province, grade (ม.4–ม.6, ปวช.1–ปวช.3 หรือกรอกเอง 2–20 ตัวอักษร) และ shirtSize ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ใช้ได้เมื่อสถานะ PENDING, PASSED, RESERVE หรือ CONFIRMED เท่านั้น ห้ามแก้ fullName, nationalId, phone, email และ motivation ผ่าน endpoint นี้ (ส่งมาจะได้ 400) ต้องติดต่อพี่ค่าย ทุกการแก้ไขบันทึกใน audit_logs (application.profile.update.self) ผลลัพธ์เป็นข้อมูลแบบ mask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SelfProfileRequest" },
+              "example": { "verifyCode": "2233", "nickname": "ชาย", "school": "โรงเรียนแม่โจ้วิทยาคม", "province": "เชียงใหม่", "grade": "ม.6", "shirtSize": "XL" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "แก้ไขสำเร็จ (หรือไม่มีอะไรเปลี่ยน)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } },
+          "400": { "description": "verifyCode ไม่ครบ, ค่าที่ส่งไม่ถูกต้อง หรือพยายามแก้ fullName / nationalId / phone / email / motivation (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "สถานะ REJECTED, REFUND_PENDING หรือ REFUNDED แก้ไขเองไม่ได้ ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
@@ -338,7 +405,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "กรองตามสถานะ เช่น PENDING, PASSED, RESERVE, CONFIRMED, REJECTED",
+            "description": "กรองตามสถานะ เช่น PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED",
             "schema": { "type": "string" }
           }
         ],
@@ -365,7 +432,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Update Application Status",
-        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ประกาศผลเป็นตัวจริง (PASSED) หรือตัวสำรอง (RESERVE)",
+        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ตัวสำรอง (RESERVE), รอคืนเงิน (REFUND_PENDING) หรือคืนเงินแล้ว (REFUNDED) การเปลี่ยนจาก REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่ง จะตรวจโควตาแบบ atomic ถ้าเต็มตอบ 409 QUOTA_FULL (ใบสมัครคงสถานะเดิม)",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -396,7 +463,69 @@
                 "schema": { "$ref": "#/components/schemas/ApplicationResponse" }
               }
             }
+          },
+          "400": { "description": "สถานะไม่ถูกต้อง (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "code QUOTA_FULL = ที่นั่งเต็ม ไม่สามารถคืนใบสมัครที่ REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่งได้", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Delete Application",
+        "description": "ลบใบสมัคร (soft delete: คืนที่นั่งและปล่อยเลขบัตร/เบอร์/อีเมลให้สมัครใหม่ได้) body เป็นทางเลือก { reason } บันทึก audit_logs ถ้าผู้สมัครจ่ายเงินแล้ว ให้ใช้สถานะ REFUND_PENDING แทนเพื่อไม่ให้หายจากบัญชี",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
           }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "reason": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ลบสำเร็จ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } },
+          "400": { "description": "body ไม่ใช่ JSON ที่ถูกต้อง (ใบสมัครไม่ถูกลบ)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/applications/{id}/profile": {
+      "patch": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Edit Application Profile",
+        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ XS–3XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสใบสมัคร เช่น CC25-8A4B2C",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AdminProfileRequest" },
+              "example": { "nationalId": "1509900000000", "phone": "0812345678", "reason": "ผู้ปกครองแจ้งว่ากรอกเลขบัตรผิด" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "แก้ไขสำเร็จ (ข้อมูลเต็ม ไม่ mask)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } },
+          "400": { "description": "ข้อมูลไม่ถูกต้อง เช่น เลขบัตรไม่ผ่าน Mod-11, เบอร์ไม่ครบ 10 หลัก, อีเมล/ไซส์/ระดับชั้นผิด (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "code DUPLICATE_APPLICATION = เลขบัตร / เบอร์ / อีเมลซ้ำกับผู้สมัครอื่น", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -467,7 +596,7 @@
             }
           },
           "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "409": { "description": "code ALREADY_VERIFIED = สลิปนี้ถูกตรวจไปแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "409": { "description": "code ALREADY_VERIFIED = สลิปนี้ถูกตรวจไปแล้ว, code FORBIDDEN = ใบสมัครเป็น REJECTED / REFUND_PENDING / REFUNDED จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ (ยังดูรูปสลิปได้เพื่อทำบัญชี)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -582,8 +711,9 @@
           "motivation": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "status": {
             "type": "string",
-            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED"],
-            "example": "PENDING"
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"],
+            "description": "PENDING / PASSED / RESERVE / CONFIRMED ถือที่นั่งอยู่ ส่วน REJECTED, REFUND_PENDING (รอคืนเงิน) และ REFUNDED (คืนเงินแล้ว) คืนที่นั่งทันทีและไม่นับในโควตา แต่ยังอยู่ในระบบเพื่อทำบัญชี",
+            "example": "PASSED"
           },
           "attendanceConfirmed": { "type": "boolean", "example": false },
           "hasSlip": { "type": "boolean", "example": true },
@@ -599,6 +729,44 @@
         "properties": {
           "confirmed": { "type": "boolean", "example": true },
           "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (AGENTS.md §13.5)" }
+        }
+      },
+      "WithdrawRequest": {
+        "type": "object",
+        "required": ["verifyCode"],
+        "properties": {
+          "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (AGENTS.md §13.5)" },
+          "reason": { "type": "string", "maxLength": 500, "example": "ไม่สะดวกเข้าร่วม" }
+        }
+      },
+      "SelfProfileRequest": {
+        "type": "object",
+        "required": ["verifyCode", "nickname", "school", "province", "grade", "shirtSize"],
+        "description": "ฟิลด์ fullName, nationalId, phone, email, motivation ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
+        "properties": {
+          "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร" },
+          "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
+          "school": { "type": "string", "maxLength": 150, "example": "โรงเรียนแม่โจ้วิทยาคม" },
+          "province": { "type": "string", "maxLength": 100, "example": "เชียงใหม่" },
+          "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.6" },
+          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "XL" }
+        }
+      },
+      "AdminProfileRequest": {
+        "type": "object",
+        "description": "ทุกฟิลด์เป็นทางเลือก: ฟิลด์ที่ไม่ส่งคงค่าเดิม ค่าที่รวมกันแล้วต้องผ่านการตรวจสอบเต็มรูปแบบ",
+        "properties": {
+          "fullName": { "type": "string", "maxLength": 201, "example": "สมชาย ใจดี" },
+          "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
+          "nationalId": { "type": "string", "example": "1509900000000", "description": "13 หลัก ผ่าน Mod-11" },
+          "phone": { "type": "string", "example": "0812345678" },
+          "email": { "type": "string", "format": "email", "description": "ส่งสตริงว่างเพื่อลบอีเมล" },
+          "school": { "type": "string", "maxLength": 150 },
+          "province": { "type": "string", "maxLength": 100 },
+          "grade": { "type": "string", "example": "ม.6" },
+          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"] },
+          "motivation": { "type": "string", "maxLength": 2000 },
+          "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเลขบัตรผิด" }
         }
       },
       "SlipUploadResponse": {
@@ -631,7 +799,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED"],
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"],
             "example": "PASSED"
           },
           "reason": { "type": "string", "example": "คะแนนคัดกรองผ่านเกณฑ์" }

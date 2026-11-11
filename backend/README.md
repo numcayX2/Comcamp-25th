@@ -77,7 +77,9 @@ backend/
 │   ├── 000002_security_hardening.up.sql   # audit_logs, idempotency_key, unique slip_hash
 │   ├── 000002_security_hardening.down.sql
 │   ├── 000003_soft_delete_identity.up.sql # national ID / phone / email unique among live rows only
-│   └── 000003_soft_delete_identity.down.sql
+│   ├── 000003_soft_delete_identity.down.sql
+│   ├── 000004_refund_statuses.up.sql      # สถานะ REFUND_PENDING / REFUNDED และค่าเริ่มต้นสถานะเป็น PASSED (First-Come, First-Served)
+│   └── 000004_refund_statuses.down.sql
 ├── go.mod
 └── go.sum
 ```
@@ -99,9 +101,11 @@ cp .env.example .env
 # 2. เริ่มต้นฐานข้อมูล PostgreSQL 16 ผ่าน Docker
 docker compose up -d db
 
-# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรัน 000002 ด้วย ไม่อย่างนั้น API จะ query ไม่ผ่าน)
+# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรันครบ 000001–000004 ไม่อย่างนั้น API จะ query หรือบันทึกสถานะใหม่ไม่ผ่าน)
 Get-Content backend/migrations/000001_init_schema.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000002_security_hardening.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+Get-Content backend/migrations/000003_soft_delete_identity.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+Get-Content backend/migrations/000004_refund_statuses.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
 > **ย้ายจาก compose เวอร์ชันเก่า:** ไฟล์เดิม mount volume ไว้ที่ `/var/lib/pgsql/data` ซึ่งไม่ใช่ที่เก็บข้อมูลของ `postgres:16-alpine` ข้อมูลจึงไปอยู่ใน anonymous volume ตอนนี้แก้เป็น `/var/lib/postgresql/data` แล้ว ครั้งแรกที่ `docker compose up` จะได้ฐานข้อมูลว่าง ถ้ามีข้อมูลที่ต้องเก็บ ให้ `pg_dump` ออกมาก่อนอัปเดต แล้ว restore กลับ
@@ -154,7 +158,7 @@ Swagger UI documentation available at: http://localhost:8000/swagger
 cd backend
 go test ./...
 
-# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001 + 000002 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
+# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001–000004 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
 TEST_DATABASE_DSN="host=127.0.0.1 port=5432 user=comcamp password=... dbname=comcamp_db sslmode=disable" go test ./internal/repository/postgres/
 ```
 

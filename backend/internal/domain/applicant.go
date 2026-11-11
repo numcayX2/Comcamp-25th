@@ -15,11 +15,27 @@ const (
 	StatusReserve   ApplicationStatus = "RESERVE"
 	StatusConfirmed ApplicationStatus = "CONFIRMED"
 	StatusRejected  ApplicationStatus = "REJECTED"
+	// StatusRefundPending / StatusRefunded: the applicant paid and then cancelled. The seat is
+	// released straight away (see IsActive) while the row stays in the ledger for accounting.
+	StatusRefundPending ApplicationStatus = "REFUND_PENDING"
+	StatusRefunded      ApplicationStatus = "REFUNDED"
 )
 
 func (s ApplicationStatus) IsValid() bool {
 	switch s {
-	case StatusPending, StatusPassed, StatusReserve, StatusConfirmed, StatusRejected:
+	case StatusPending, StatusPassed, StatusReserve, StatusConfirmed, StatusRejected,
+		StatusRefundPending, StatusRefunded:
+		return true
+	}
+	return false
+}
+
+// IsActive reports whether an application in this status holds a seat: every status except
+// REJECTED, REFUND_PENDING and REFUNDED. The quota count, self-service editing and slip review
+// all follow this one definition. (The SQL twin is countActiveSQL in the postgres package.)
+func (s ApplicationStatus) IsActive() bool {
+	switch s {
+	case StatusPending, StatusPassed, StatusReserve, StatusConfirmed:
 		return true
 	}
 	return false
@@ -73,6 +89,21 @@ func (a *Applicant) FullName() string {
 	return a.FirstName + " " + a.LastName
 }
 
+// ProfileFields are the applicant columns that can be edited after registration.
+type ProfileFields struct {
+	FirstName  string
+	LastName   string
+	Nickname   string
+	NationalID string
+	Phone      string
+	Email      string
+	School     string
+	Province   string
+	Grade      string
+	ShirtSize  string
+	Motivation *string
+}
+
 type ApplicantStatusLog struct {
 	ID               int64             `db:"id" json:"id"`
 	ApplicantID      uuid.UUID         `db:"applicant_id" json:"applicantId"`
@@ -98,6 +129,16 @@ type ApplicantRepository interface {
 	// UpdateStatus changes the status and writes applicant_status_logs plus the audit entry
 	// (when non-nil) in one transaction.
 	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry) error
+	// UpdateStatusWithinCapacity is UpdateStatus for a change that may take a seat back (from
+	// REJECTED / REFUND_PENDING / REFUNDED to an active status). Under the same advisory lock as
+	// CreateWithinCapacity it re-reads the status and returns ErrCapacityReached when the camp is
+	// full. maxCapacity <= 0 means unlimited.
+	UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry, maxCapacity int) error
+	// UpdateProfile rewrites the editable profile columns, bumps updated_at and writes the audit
+	// entry in one transaction. With requireActive the row is locked first and the write is
+	// refused with ErrStateConflict unless the application still holds a seat. Identifier
+	// collisions with other live rows return ErrDuplicateApplicant.
+	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfileFields, requireActive bool, audit *AuditEntry) error
 	SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *AuditEntry) error
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error
 	CountActive(ctx context.Context) (int, error)
