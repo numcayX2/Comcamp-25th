@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Check, Moon, RotateCw, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchPublicSettings,
@@ -24,6 +24,9 @@ import {
   EMPTY_FORM,
   FEE_TEXT,
   GRADES,
+  GRADE_OTHER,
+  GRADE_OTHER_MAX,
+  gradeValue,
   LAST_FORM_STEP,
   MOCK_FORM,
   RECEIPT_META,
@@ -43,10 +46,13 @@ import {
   type FormState,
 } from './register/model';
 import { FieldShell, StepHeader, TextField } from './register/parts';
+import { SizeChips } from './register/SizeChips';
 import { Receipt } from './register/Receipt';
+import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
 import {
   clearDraft,
   clearIdempotencyKey,
+  clearReceipt,
   loadDraft,
   loadIdempotencyKey,
   loadReceipt,
@@ -86,6 +92,19 @@ const isTextEntry = (el: EventTarget | null) =>
 const timeText = (ms: number) =>
   new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+/* Cloudflare Turnstile (bot check on submit). The public site key is inlined by Astro at build time.
+   widget: render it and require a token. dev-skip: `astro dev` without a key, the API bypasses the
+   check too. missing-key: a production build without a key can never pass the server's check. */
+const TURNSTILE_SITE_KEY = String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
+const CAPTCHA_MODE: 'widget' | 'dev-skip' | 'missing-key' = TURNSTILE_SITE_KEY
+  ? 'widget'
+  : import.meta.env.DEV
+    ? 'dev-skip'
+    : 'missing-key';
+const CAPTCHA_FAILED_MESSAGE = 'การยืนยันตัวตนไม่ผ่านหรือหมดอายุ กรุณายืนยันใหม่อีกครั้งแล้วกดส่งอีกครั้ง';
+const CAPTCHA_MISSING_MESSAGE = 'ยังไม่ได้ยืนยันตัวตน กรุณารอให้ช่องยืนยันด้านบนขึ้นเครื่องหมายถูก แล้วกดส่งใบสมัครอีกครั้ง';
+const CAPTCHA_UNAVAILABLE_MESSAGE = 'ระบบยืนยันตัวตนยังไม่พร้อมใช้งาน ใบสมัครจึงยังส่งไม่ได้ กรุณาแจ้งทีมงานค่าย';
+
 /**
  * Thai copy for a failed submit. A connection failure is always safe to retry: the resend carries
  * the same X-Idempotency-Key, so the server returns the saved application instead of a duplicate.
@@ -100,16 +119,30 @@ function describeSubmitError(err: unknown): string {
       case 'RATE_LIMITED':
         return 'มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอสักครู่แล้วกดส่งอีกครั้ง';
       case 'QUOTA_FULL':
-        return 'ที่นั่งเต็มจำนวนแล้ว ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
+        return 'ที่นั่งเต็มจำนวนแล้ว (30 ที่นั่ง) ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
+      case 'CAPTCHA_FAILED':
+        return CAPTCHA_FAILED_MESSAGE;
       case 'SERVICE_UNAVAILABLE':
-        // 503: the midnight queue timed out or settings were unreachable. Nothing was saved.
-        return 'มีผู้สมัครพร้อมกันจำนวนมาก ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+        // 503: the midnight queue timed out, settings were unreachable, or Cloudflare could not be
+        // asked to verify the captcha. Nothing was saved.
+        return 'ระบบยุ่งหรือตรวจสอบการยืนยันตัวตนไม่ได้ชั่วคราว (อาจมีผู้สมัครพร้อมกันจำนวนมาก) ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+      case 'VALIDATION_ERROR':
+        if (err.message.includes('national ID') || err.message.includes('check digit')) {
+          return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
+        }
+        if (err.message.includes('phone')) {
+          return 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
+        }
+        if (err.message.includes('shirt')) {
+          return 'ขนาดเสื้อไม่ถูกต้อง กรุณาเลือกไซส์ใหม่อีกครั้ง';
+        }
+        return 'ข้อมูลที่กรอกไม่ผ่านการตรวจสอบ กรุณาตรวจทานข้อมูลในแต่ละขั้นตอนแล้วลองส่งอีกครั้ง';
     }
     if (err.status === 403) return 'ระบบปิดรับใบสมัครในขณะนี้ ใบสมัครยังไม่ถูกบันทึก';
     if (err.status >= 400 && err.status < 500)
-      return `ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจข้อมูลแล้วส่งอีกครั้ง (${err.message})`;
+      return 'ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจทานข้อมูลแล้วลองส่งใหม่อีกครั้ง';
   }
-  return 'ส่งใบสมัครไม่สำเร็จเพราะการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+  return 'ส่งใบสมัครไม่สำเร็จเนื่องจากการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กรุณากดส่งอีกครั้ง ระบบจะไม่บันทึกใบสมัครซ้ำ';
 }
 
 const ICON = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const;
@@ -269,6 +302,13 @@ export function RegisterSection() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [typing, setTyping] = useState(false);
   const [live, setLive] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const captchaRef = useRef<TurnstileFieldHandle>(null);
+  /** Success notice after a self-service withdrawal. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const noticeFocus = useRef(false);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const submittingRef = useRef(false);
@@ -410,7 +450,17 @@ export function RegisterSection() {
       return;
     }
     const errs = validateStep(step, form, consent);
+    // The captcha is checked like the consent box: a clear inline message, never a silent no-op.
+    const captchaMissing = step === LAST_FORM_STEP && CAPTCHA_MODE !== 'dev-skip' && !turnstileToken;
+    if (captchaMissing) {
+      setCaptchaError(CAPTCHA_MODE === 'missing-key' ? CAPTCHA_UNAVAILABLE_MESSAGE : CAPTCHA_MISSING_MESSAGE);
+    }
     if (firstErrorKey(step, errs)) return failAt(step, errs);
+    if (captchaMissing) {
+      announce(CAPTCHA_MODE === 'missing-key' ? CAPTCHA_UNAVAILABLE_MESSAGE : CAPTCHA_MISSING_MESSAGE);
+      captchaRef.current?.focus();
+      return;
+    }
 
     setErrors({});
     if (step === LAST_FORM_STEP) {
@@ -462,12 +512,14 @@ export function RegisterSection() {
     submittingRef.current = true; // ref, not state: blocks a double tap before React re-renders
     setBusy(true);
     setError(null);
+    setCaptchaError(null);
 
     const finish = (app: Application, src: ApiSource) => {
       // Answered (201, or 200 replay): the attempt is settled; a next application gets a new key.
       clearIdempotencyKey();
       idemKeyRef.current = '';
       clearDraft();
+      setNotice(null);
       saveReceipt(app.id, src);
       pending.current = { heading: true };
       setAppId(app.id);
@@ -487,9 +539,10 @@ export function RegisterSection() {
         email: form.email.trim(),
         school: form.school.trim(),
         province: form.province.trim(),
-        grade: form.grade,
+        grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
         motivation: form.motivation.trim(),
+        turnstileToken: turnstileToken || undefined,
       };
       // Same key on every retry: if an earlier attempt was saved but its answer was lost (timeout,
       // dropped connection, 5xx), the server returns that application (200, Idempotent-Replayed)
@@ -500,8 +553,18 @@ export function RegisterSection() {
       const res = await submitApplication(payload, idemKeyRef.current);
       finish(res.data, res.source);
     } catch (err) {
-      setError(describeSubmitError(err));
-      window.scrollTo({ top: 0 });
+      // Turnstile tokens are single-use and the server may already have spent this one, so every
+      // failure asks for a fresh token. The idempotency key is unchanged: if the failed attempt
+      // was in fact saved, the next send is answered as a replay without a captcha.
+      setTurnstileToken('');
+      captchaRef.current?.reset();
+      if (err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED') {
+        setCaptchaError(CAPTCHA_FAILED_MESSAGE);
+        announce(CAPTCHA_FAILED_MESSAGE);
+      } else {
+        setError(describeSubmitError(err));
+        window.scrollTo({ top: 0 });
+      }
     } finally {
       submittingRef.current = false;
       setBusy(false);
@@ -546,6 +609,37 @@ export function RegisterSection() {
     setStep(0);
   }
 
+  /** The applicant withdrew from the receipt: the seat is free, so start over with a clean form. */
+  function onWithdrawn(id: string) {
+    clearReceipt();
+    clearIdempotencyKey();
+    idemKeyRef.current = '';
+    clearDraft();
+    setForm(EMPTY_FORM);
+    setConsent(false);
+    setErrors({});
+    setError(null);
+    setFurthest(0);
+    setReturnTo(null);
+    setRestoredAt(null);
+    setConfirmClear(false);
+    setAppId(null);
+    setSource(null);
+    setStep(0);
+    noticeFocus.current = true;
+    setNotice(`ยกเลิกใบสมัคร ${id} เรียบร้อยแล้ว คืนโควตาที่นั่งแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`);
+    window.scrollTo({ top: 0 });
+    checkGate(); // the freed seat may reopen a full camp
+  }
+
+  /* The receipt (and the focused button) is gone: move focus to the notice that replaced it, once
+     the gate re-check has settled (the notice re-mounts when the view switches to the form). */
+  useEffect(() => {
+    if (!notice || !noticeFocus.current || gate === 'checking') return;
+    noticeFocus.current = false;
+    noticeRef.current?.focus({ preventScroll: true });
+  }, [notice, gate]);
+
   /* Phones: while the keyboard is up, let the top bar scroll away so the field keeps the room. */
   function onFormFocus(ev: FocusEvent<HTMLFormElement>) {
     if (isTextEntry(ev.target)) setTyping(true);
@@ -583,6 +677,8 @@ export function RegisterSection() {
 
   /* ───────────────────────── Step bodies ───────────────────────── */
 
+  const formIsEmpty = JSON.stringify(form) === JSON.stringify(EMPTY_FORM);
+
   function renderStep(): ReactNode {
     switch (step) {
       case 0:
@@ -604,18 +700,26 @@ export function RegisterSection() {
             ) : (
               <>
                 <p className="rw-draft__text">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6.5" />
+                    <path d="M8 4.5V8l2.2 1.4" />
+                  </svg>
+                  <span>
                   {restoredAt ? (
                     <>
                       กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.)
-                      เลขบัตรประชาชนไม่ถูกเก็บในร่าง กรุณากรอกอีกครั้ง
+                      {' '}เลขบัตรประชาชนไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกอีกครั้ง
                     </>
                   ) : (
-                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้ในเครื่องนี้ 24 ชั่วโมง ยกเว้นเลขบัตรประชาชน'
+                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้ในเครื่องนี้ 24 ชม. ยกเว้นเลขบัตรประชาชนและข้อมูลสุขภาพตาม PDPA'
                   )}
+                  </span>
                 </p>
-                <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setConfirmClear(true)}>
-                  ล้างข้อมูลร่าง
-                </button>
+                {!formIsEmpty && (
+                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--quiet" onClick={() => setConfirmClear(true)}>
+                    ล้างข้อมูลร่าง
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -645,7 +749,8 @@ export function RegisterSection() {
             <TextField
               id="nationalId"
               label="เลขบัตรประชาชน"
-              hint={<><span className="font-mono">13</span> หลัก</>}
+              hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
+              groups={[1, 4, 5, 2, 1]}
               span={3}
               mono
               digits={13}
@@ -655,12 +760,13 @@ export function RegisterSection() {
               error={errors.nationalId}
               onChange={(v) => set('nationalId', v)}
               onBlur={() => blur('nationalId')}
-              placeholder="0000000000000"
+              placeholder="X-XXXX-XXXXX-XX-X"
             />
             <TextField
               id="phone"
               label="เบอร์โทรศัพท์มือถือ"
-              hint={<><span className="font-mono">10</span> หลัก</>}
+              hint={<span className={form.phone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.phone.length}/10</span> หลัก</span>}
+              groups={[3, 3, 4]}
               span={3}
               mono
               digits={10}
@@ -671,7 +777,7 @@ export function RegisterSection() {
               error={errors.phone}
               onChange={(v) => set('phone', v)}
               onBlur={() => blur('phone')}
-              placeholder="0800000000"
+              placeholder="08X-XXX-XXXX"
             />
             <TextField
               id="email"
@@ -733,8 +839,22 @@ export function RegisterSection() {
                     {g}
                   </option>
                 ))}
+                <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
               </select>
             </FieldShell>
+            {form.grade === GRADE_OTHER && (
+              <TextField
+                id="gradeOther"
+                label="ระบุระดับชั้น"
+                hint={<span className="font-mono">{form.gradeOther.trim().length}/{GRADE_OTHER_MAX}</span>}
+                span={6}
+                value={form.gradeOther}
+                error={errors.gradeOther}
+                onChange={(v) => set('gradeOther', v)}
+                onBlur={() => blur('gradeOther')}
+                placeholder="เช่น ปวส.1, ม.3, กำลังรอเข้าเรียน"
+              />
+            )}
           </div>
         );
 
@@ -746,25 +866,7 @@ export function RegisterSection() {
                 <legend className="rw-label">
                   <span>ไซส์เสื้อ</span>
                 </legend>
-                <div className="rw-chips">
-                  {SHIRT_SIZES.map((s, i) => {
-                    const id = i === 0 ? 'shirtSize' : `shirtSize-${s}`;
-                    return (
-                      <label key={s} className="rw-chip" htmlFor={id}>
-                        <input
-                          type="radio"
-                          id={id}
-                          name="shirtSize"
-                          value={s}
-                          checked={form.shirtSize === s}
-                          onChange={() => set('shirtSize', s)}
-                          aria-describedby={errors.shirtSize ? 'shirtSize-err' : undefined}
-                        />
-                        <span className="rw-chip__face font-mono">{s}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <SizeChips value={form.shirtSize} invalid={Boolean(errors.shirtSize)} onChange={(v) => set('shirtSize', v)} />
                 {errors.shirtSize && (
                   <p id="shirtSize-err" className="rw-err">
                     {errors.shirtSize}
@@ -843,7 +945,7 @@ export function RegisterSection() {
                 rows={[
                   ['สถานศึกษา', form.school.trim()],
                   ['จังหวัด', form.province.trim()],
-                  ['ระดับชั้น', form.grade],
+                  ['ระดับชั้น', gradeValue(form)],
                 ]}
               />
               <ReviewGroup
@@ -858,17 +960,33 @@ export function RegisterSection() {
               />
             </div>
 
-            <div className="rw-fee">
-              <div className="rw-fee__row">
-                <p className="rw-fee__label">ค่าสมัครเข้าร่วมค่าย</p>
+            <section className="rw-fee" aria-labelledby="rw-fee-title">
+              <div className="rw-fee__head">
+                <h3 id="rw-fee-title" className="rw-fee__title">
+                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย
+                </h3>
                 <p className="rw-fee__amount">
-                  <span className="font-mono">{FEE_TEXT}</span> บาท
+                  <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท
                 </p>
               </div>
-              <p className="rw-fee__note">
-                ชำระหลังส่งใบสมัคร โดยโอนเงินและแนบสลิปที่หน้าตรวจสอบสถานะ เพื่อยืนยันสิทธิ์เข้าร่วมค่าย
-              </p>
-            </div>
+              <ol className="rw-fee__steps">
+                <li>
+                  <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที</strong>
+                  มาก่อนได้ก่อน จำกัด <span className="font-mono tabular-nums">{SEATS}</span> ที่นั่ง เมื่อส่งสำเร็จจะได้รหัส{' '}
+                  <span className="font-mono">CC25-XXXXXX</span>
+                </li>
+                <li>
+                  <strong>
+                    โอนค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท หลังส่งใบสมัคร
+                  </strong>
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) ยังไม่ต้องโอนก่อนกดส่ง
+                </li>
+                <li>
+                  <strong>แนบสลิปเพื่อยืนยันสิทธิ์สมบูรณ์</strong>
+                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับหลังกดส่ง หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>)
+                </li>
+              </ol>
+            </section>
 
             <label className="rw-consent" htmlFor="consent">
               <input
@@ -885,12 +1003,37 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน และดำเนินกิจกรรมค่ายเท่านั้น
+                และรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท (ชำระหลังส่งใบสมัคร)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
             {errors.consent && (
               <p id="consent-err" className="rw-err rw-consent__err">
                 {errors.consent}
+              </p>
+            )}
+
+            {CAPTCHA_MODE === 'widget' && (
+              <TurnstileField
+                ref={captchaRef}
+                siteKey={TURNSTILE_SITE_KEY}
+                errorId="captcha-err"
+                error={captchaError}
+                onToken={(token) => {
+                  setTurnstileToken(token ?? '');
+                  // Only the "verify first" hint clears itself; a rejection message stays until the next send.
+                  if (token) setCaptchaError((e) => (e === CAPTCHA_MISSING_MESSAGE ? null : e));
+                }}
+              />
+            )}
+            {CAPTCHA_MODE === 'dev-skip' && (
+              <p className="rw-captcha__hint rw-captcha__hint--dev">
+                [DEV] ยังไม่ได้ตั้ง <span className="font-mono">PUBLIC_TURNSTILE_SITE_KEY</span> จึงข้ามการยืนยันตัวตน (เซิร์ฟเวอร์ dev ที่ไม่มี secret ก็ข้ามเช่นกัน)
+              </p>
+            )}
+            {CAPTCHA_MODE === 'missing-key' && (
+              <p id="captcha-err" className="rw-err" role="alert">
+                {CAPTCHA_UNAVAILABLE_MESSAGE}
               </p>
             )}
           </>
@@ -929,8 +1072,23 @@ export function RegisterSection() {
 
   const errorBanner = error && (
     <div className="rw-banner" role="alert">
-      <p>{error}</p>
+      <p>
+        <TriangleAlert {...ICON} />
+        <span>{error}</span>
+      </p>
       <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setError(null)}>
+        ปิด
+      </button>
+    </div>
+  );
+
+  const noticeBanner = notice && (
+    <div ref={noticeRef} className="rw-banner rw-banner--ok" role="status" tabIndex={-1}>
+      <p>
+        <Check {...ICON} />
+        <span>{notice}</span>
+      </p>
+      <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setNotice(null)}>
         ปิด
       </button>
     </div>
@@ -1005,6 +1163,7 @@ export function RegisterSection() {
         >
           <div className="rw-content" id="rw-content" tabIndex={-1}>
             {devBar}
+            {noticeBanner}
             {errorBanner}
             <div className="rw-step-view" key={step}>
               <StepHeader no={stepNo + 1} title={STEPS[stepNo].title} lead={STEPS[stepNo].lead} headingRef={headingRef} />
@@ -1023,6 +1182,11 @@ export function RegisterSection() {
               <button
                 type="submit"
                 className={`rw-btn ${step === LAST_FORM_STEP ? 'rw-btn--submit' : 'rw-btn--primary'} rw-btn--next`}
+                // Not `disabled`: a tap before ticking the consent still runs handleNext(), which
+                // moves focus to #consent and shows its message instead of failing silently.
+                aria-disabled={
+                  step === LAST_FORM_STEP && (!consent || (CAPTCHA_MODE !== 'dev-skip' && !turnstileToken)) ? true : undefined
+                }
                 disabled={busy}
                 aria-busy={busy || undefined}
               >
@@ -1036,9 +1200,10 @@ export function RegisterSection() {
         <div className="rw-main">
           <div className="rw-content" id="rw-content" tabIndex={-1}>
             {devBar}
+            {noticeBanner}
             {errorBanner}
             {appId ? (
-              <Receipt appId={appId} source={source} showSource={isDev} headingRef={headingRef} />
+              <Receipt appId={appId} source={source} showSource={isDev} headingRef={headingRef} onWithdrawn={onWithdrawn} />
             ) : gate === 'checking' ? (
               <p className="rw-checking" role="status">
                 กำลังตรวจสอบสถานะการรับสมัคร…

@@ -28,7 +28,8 @@ func DefaultRateLimits() RateLimits {
 	return RateLimits{
 		Login:       middleware.NewRateLimiter(10, 5*time.Minute),
 		StatusQuery: middleware.NewRateLimiter(60, time.Minute),
-		Submit:      middleware.NewRateLimiter(20, time.Minute),
+		// Registration is the one endpoint a bot wants; 8/min per IP still fits a school NAT.
+		Submit:      middleware.NewRateLimiter(8, time.Minute),
 		Mutations:   middleware.NewRateLimiter(20, time.Minute),
 	}
 }
@@ -93,6 +94,8 @@ func NewRouter(svc Services, opt Options) http.Handler {
 			json.With(limits.Submit.Middleware).Post("/applications", appHandler.Submit)
 			json.With(limits.StatusQuery.Middleware).Get("/applications/status", appHandler.GetStatus)
 			json.With(limits.Mutations.Middleware).Post("/applications/{id}/confirm", appHandler.ConfirmAttendance)
+			json.With(limits.Mutations.Middleware).Post("/applications/{id}/withdraw", appHandler.Withdraw)
+			json.With(limits.Mutations.Middleware).Patch("/applications/{id}/profile", appHandler.UpdateOwnProfile)
 
 			json.With(limits.Login.Middleware).Post("/auth/login", authHandler.Login)
 
@@ -100,6 +103,8 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				admin.Use(middleware.RequireAuth(svc.Auth))
 				admin.Get("/admin/applications", appHandler.AdminList)
 				admin.Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
+				admin.Patch("/admin/applications/{id}/profile", appHandler.AdminUpdateProfile)
+				admin.Delete("/admin/applications/{id}", appHandler.AdminDelete)
 				admin.Get("/admin/applications/{id}/slip", paymentHandler.GetSlip)
 				admin.Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
 				admin.Get("/admin/settings", settingHandler.GetAdmin)

@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 
@@ -36,10 +37,21 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		// Quota lock wait hit lock_timeout: nothing was saved, a retry with the same key is safe.
 		w.Header().Set("Retry-After", "2")
 		response.ErrorCode(w, http.StatusServiceUnavailable, response.CodeUnavailable, err.Error())
+	case errors.Is(err, service.ErrCaptchaFailed):
+		response.ErrorCode(w, http.StatusForbidden, response.CodeCaptchaFailed, err.Error())
+	case errors.Is(err, service.ErrCaptchaUnavailable):
+		// Cloudflare unreachable / timed out: fail closed, nothing was saved, a retry is safe.
+		log.Printf("[%s] %v", chimiddleware.GetReqID(r.Context()), err)
+		w.Header().Set("Retry-After", "3")
+		response.ErrorCode(w, http.StatusServiceUnavailable, response.CodeUnavailable, "captcha verification is temporarily unavailable, please try again")
 	case errors.Is(err, service.ErrInvalidVerifyCode):
 		response.ErrorCode(w, http.StatusForbidden, response.CodeInvalidVerifyCode, err.Error())
 	case errors.Is(err, service.ErrInvalidImageDimensions):
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeInvalidImageDims, err.Error())
+	case errors.Is(err, service.ErrCannotWithdraw):
+		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
+	case errors.Is(err, service.ErrProfileLocked), errors.Is(err, service.ErrSlipLocked):
+		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
 	case errors.Is(err, service.ErrCannotConfirm):
 		response.ErrorCode(w, http.StatusConflict, response.CodeForbidden, err.Error())
 	case errors.Is(err, service.ErrNotPassed):
@@ -70,4 +82,23 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// decodeOptionalJSON decodes an optional request body. If the body is empty (e.g. io.EOF or ContentLength == 0),
+// it succeeds without writing an error. Malformed JSON or oversized payload still answers 400 or 413.
+func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if r.Body == nil || r.ContentLength == 0 {
+		return true
+	}
+	err := json.NewDecoder(r.Body).Decode(dst)
+	if err == nil || errors.Is(err, io.EOF) {
+		return true
+	}
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, "request body too large")
+	} else {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "invalid json payload")
+	}
+	return false
 }

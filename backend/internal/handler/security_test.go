@@ -28,7 +28,7 @@ func decodeErr(t *testing.T, body []byte) response.ErrorResponse {
 func TestSecurity_OversizedSlipRejectedWith413(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000001", "0810000001", "a1@example.com")
+	created := app.submit(t, validTestNationalID(1), "0810000001", "a1@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
 	big := make([]byte, 6<<20)
@@ -58,7 +58,7 @@ func TestSecurity_OversizedJSONRejectedWith413(t *testing.T) {
 func TestSecurity_SlipTypeAllowlist(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000002", "0810000002", "a2@example.com")
+	created := app.submit(t, validTestNationalID(2), "0810000002", "a2@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
 	for name, data := range map[string][]byte{"gif": gifBytes, "pdf": pdfBytes, "octet-stream": binBytes} {
@@ -81,7 +81,7 @@ func TestSecurity_SlipTypeAllowlist(t *testing.T) {
 func TestSecurity_SlipsNotPubliclyServed(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000003", "0810000003", "a3@example.com")
+	created := app.submit(t, validTestNationalID(3), "0810000003", "a3@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 	if rec := app.uploadSlip(t, created.ID, "slip.jpg", jpegBytes); rec.Code != http.StatusOK {
 		t.Fatalf("upload failed: %d", rec.Code)
@@ -114,15 +114,15 @@ func TestSecurity_SlipsNotPubliclyServed(t *testing.T) {
 // C5 — the public status API masks identifiers server-side and omits free text.
 func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 	app := setupTestApp(t)
-	created := app.submit(t, "1509900112233", "0819876543", "somkiat@school.ac.th")
+	created := app.submit(t, e2eNationalID, "0819876543", "somkiat@school.ac.th")
 
-	for _, q := range []string{"1509900112233", "0819876543", created.ID} {
+	for _, q := range []string{e2eNationalID, "0819876543", created.ID} {
 		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+q, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("q=%s: expected 200, got %d", q, rec.Code)
 		}
 		body := rec.Body.String()
-		for _, secret := range []string{"1509900112233", "0819876543", "somkiat@school.ac.th", "ESP8266"} {
+		for _, secret := range []string{e2eNationalID, "0819876543", "somkiat@school.ac.th", "ESP8266"} {
 			if strings.Contains(body, secret) {
 				t.Errorf("q=%s: public response contains %q: %s", q, secret, body)
 			}
@@ -224,11 +224,11 @@ func TestSecurity_IdempotentSubmit(t *testing.T) {
 	app := setupTestApp(t)
 	key := map[string]string{"X-Idempotency-Key": "4f1c2b8e-6a0d-4f7e-9a51-0c2d6b1e7a90"}
 
-	first := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000010", "0810000010", "k1@example.com"), key)
+	first := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(10), "0810000010", "k1@example.com"), key)
 	if first.Code != http.StatusCreated {
 		t.Fatalf("first submit: expected 201, got %d (%s)", first.Code, first.Body.String())
 	}
-	retry := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000010", "0810000010", "k1@example.com"), key)
+	retry := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(10), "0810000010", "k1@example.com"), key)
 	if retry.Code != http.StatusOK || retry.Header().Get("Idempotent-Replayed") != "true" {
 		t.Fatalf("retry: expected 200 + Idempotent-Replayed, got %d %v (%s)", retry.Code, retry.Header(), retry.Body.String())
 	}
@@ -239,12 +239,12 @@ func TestSecurity_IdempotentSubmit(t *testing.T) {
 		t.Fatalf("retry returned a different application: %s vs %s", a.ID, b.ID)
 	}
 
-	reuse := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000011", "0810000011", "k2@example.com"), key)
+	reuse := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(11), "0810000011", "k2@example.com"), key)
 	if reuse.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("key reused for another person: expected 422, got %d", reuse.Code)
 	}
 
-	bad := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000012", "0810000012", "k3@example.com"),
+	bad := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(12), "0810000012", "k3@example.com"),
 		map[string]string{"X-Idempotency-Key": "not-a-uuid"})
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("invalid key: expected 400, got %d", bad.Code)
@@ -253,9 +253,9 @@ func TestSecurity_IdempotentSubmit(t *testing.T) {
 
 func TestSecurity_DuplicateApplicantIsCleanConflict(t *testing.T) {
 	app := setupTestApp(t)
-	app.submit(t, "1509900000020", "0810000020", "d1@example.com")
+	app.submit(t, validTestNationalID(20), "0810000020", "d1@example.com")
 
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000020", "0810000021", "d2@example.com"), nil)
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(20), "0810000021", "d2@example.com"), nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", rec.Code)
 	}
@@ -264,8 +264,8 @@ func TestSecurity_DuplicateApplicantIsCleanConflict(t *testing.T) {
 	}
 
 	// Email is optional: two applicants without one must both be accepted.
-	app.submit(t, "1509900000022", "0810000022", "")
-	app.submit(t, "1509900000023", "0810000023", "")
+	app.submit(t, validTestNationalID(22), "0810000022", "")
+	app.submit(t, validTestNationalID(23), "0810000023", "")
 }
 
 // §13.4 quota lock — concurrent submits cannot exceed capacity.
@@ -283,7 +283,7 @@ func TestSecurity_QuotaHoldsUnderConcurrentSubmits(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			// Distinct client IPs so the per-IP submit limit does not interfere.
-			req := applicationJSON(fmt.Sprintf("15099%08d", i), fmt.Sprintf("08%08d", i), fmt.Sprintf("q%d@example.com", i))
+			req := applicationJSON(validTestNationalID(i), fmt.Sprintf("08%08d", i), fmt.Sprintf("q%d@example.com", i))
 			codes <- app.doFrom(t, fmt.Sprintf("198.51.100.%d:1000", i+1), http.MethodPost, "/api/applications", req)
 		}(i)
 	}
@@ -311,7 +311,7 @@ func TestSecurity_QuotaHoldsUnderConcurrentSubmits(t *testing.T) {
 func TestSecurity_AuditTrailAndSingleVerification(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000030", "0810000030", "au@example.com")
+	created := app.submit(t, validTestNationalID(30), "0810000030", "au@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 	if rec := app.uploadSlip(t, created.ID, "slip.jpg", jpegBytes); rec.Code != http.StatusOK {
 		t.Fatalf("upload failed: %d", rec.Code)

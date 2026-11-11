@@ -12,12 +12,19 @@ const (
 	AuditLoginSuccess    AuditAction = "admin.login.success"
 	AuditLoginFailure    AuditAction = "admin.login.failure"
 	AuditStatusUpdate    AuditAction = "application.status.update"
-	AuditSlipVerify      AuditAction = "payment.slip.verify"
-	AuditSlipViewed      AuditAction = "payment.slip.view"
-	AuditSettingsUpdate  AuditAction = "settings.update"
-	AuditTargetApplicant             = "applicant"
-	AuditTargetAdmin                 = "admin"
-	AuditTargetSettings              = "settings"
+	AuditApplicantDelete AuditAction = "application.delete"
+	// AuditApplicantWithdrawSelf is the applicant withdrawing their own application (no admin).
+	AuditApplicantWithdrawSelf AuditAction = "application.withdraw.self"
+	// AuditProfileUpdate is a staff edit of an application; AuditProfileUpdateSelf is the
+	// applicant editing their own secondary fields (no admin).
+	AuditProfileUpdate     AuditAction = "application.profile.update"
+	AuditProfileUpdateSelf AuditAction = "application.profile.update.self"
+	AuditSlipVerify        AuditAction = "payment.slip.verify"
+	AuditSlipViewed        AuditAction = "payment.slip.view"
+	AuditSettingsUpdate    AuditAction = "settings.update"
+	AuditTargetApplicant               = "applicant"
+	AuditTargetAdmin                   = "admin"
+	AuditTargetSettings                = "settings"
 )
 
 // AuditEntry is one row of the append-only audit_logs table.

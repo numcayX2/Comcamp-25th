@@ -98,7 +98,24 @@ export interface ApiResult<T> {
   source: ApiSource;
 }
 
-export type ApplicationStatus = 'PENDING' | 'PASSED' | 'RESERVE' | 'CONFIRMED' | 'REJECTED';
+/**
+ * First come, first served: a new application starts as PASSED (the seat is theirs at once).
+ * REJECTED, REFUND_PENDING and REFUNDED release the seat (they are not counted in the quota) but
+ * stay in the staff ledger for accounting.
+ */
+export type ApplicationStatus =
+  | 'PENDING'
+  | 'PASSED'
+  | 'RESERVE'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'REFUND_PENDING'
+  | 'REFUNDED';
+
+/** Statuses that hold a seat. Mirrors the backend ApplicationStatus.IsActive. */
+export function holdsSeat(status: ApplicationStatus): boolean {
+  return status === 'PENDING' || status === 'PASSED' || status === 'RESERVE' || status === 'CONFIRMED';
+}
 
 export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL';
 
@@ -113,6 +130,8 @@ export interface ApplicationPayload {
   shirtSize: ShirtSize;
   motivation: string;
   province?: string;
+  /** Cloudflare Turnstile response token (single-use). Verified by the server, never stored. */
+  turnstileToken?: string;
 }
 
 export type SlipStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -213,18 +232,78 @@ export class ApiHttpError extends Error {
   readonly status: number;
   /** Machine-readable code from the backend, e.g. QUOTA_FULL, DUPLICATE_APPLICATION, RATE_LIMITED. */
   readonly code?: string;
-  constructor(status: number, message: string, code?: string) {
+  /** Seconds from the Retry-After header (429 / 503), when the server sent a number. */
+  readonly retryAfterSeconds?: number;
+  constructor(status: number, message: string, code?: string, retryAfterSeconds?: number) {
     super(message);
     this.name = 'ApiHttpError';
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+/** Retry-After as whole seconds. An HTTP-date form is ignored (the backend sends seconds). */
+function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value || !/^\d+$/.test(value.trim())) return undefined;
+  const n = Number(value.trim());
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
 async function toApiError(res: Response): Promise<ApiHttpError> {
   const errData = await res.json().catch(() => null);
   const errMsg = errData?.error || `HTTP ${res.status} ${res.statusText}`;
-  return new ApiHttpError(res.status, errMsg, typeof errData?.code === 'string' ? errData.code : undefined);
+  return new ApiHttpError(
+    res.status,
+    errMsg,
+    typeof errData?.code === 'string' ? errData.code : undefined,
+    parseRetryAfter(res.headers.get('Retry-After')),
+  );
+}
+
+/** multipart POST through XMLHttpRequest, the only way to report upload progress. */
+function xhrUploadSlip(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<SlipUploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.timeout = 20000;
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (onProgress) {
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && ev.total > 0) onProgress(Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
+      };
+    }
+    // Network failure and timeout are plain Errors (not ApiHttpError), like a failed fetch.
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.onabort = () => reject(new Error('aborted'));
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        /* non-JSON error page */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as SlipUploadResult);
+        return;
+      }
+      const errData = (body ?? {}) as { error?: string; code?: string };
+      reject(
+        new ApiHttpError(
+          xhr.status,
+          errData.error || `HTTP ${xhr.status} ${xhr.statusText}`,
+          typeof errData.code === 'string' ? errData.code : undefined,
+          parseRetryAfter(xhr.getResponseHeader('Retry-After')),
+        ),
+      );
+    };
+    xhr.send(formData);
+  });
 }
 
 async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -311,11 +390,13 @@ export async function submitApplication(
     return { data, source: 'LIVE GO API' };
   } catch (err) {
     if (import.meta.env.DEV && !(err instanceof ApiHttpError)) {
+      // The token is a transport detail: it must not end up in the mock application record.
+      const { turnstileToken: _token, ...fields } = payload;
       return {
         data: {
           id: mockId(),
-          ...payload,
-          status: 'PENDING' as ApplicationStatus,
+          ...fields,
+          status: 'PASSED' as ApplicationStatus,
           attendanceConfirmed: false,
           hasSlip: false,
           createdAt: new Date().toISOString(),
@@ -349,6 +430,25 @@ export function getApplicationStatus(query: string): Promise<ApiResult<Applicati
       createdAt: new Date().toISOString(),
     }),
   );
+}
+
+/**
+ * POST /api/applications/:id/withdraw — the applicant cancels their own application. Needs the
+ * last 4 digits of the national ID. The server soft-deletes the row, which frees the seat and
+ * lets the same person register again. 403 INVALID_VERIFY_CODE for a wrong code, 409 when the
+ * application cannot be cancelled online (CONFIRMED, a slip already sent or approved, or already
+ * REJECTED / REFUND_PENDING / REFUNDED: staff handle the refund), 404 if it is already gone.
+ */
+export async function withdrawApplication(
+  id: string,
+  verifyCode: string,
+  reason?: string,
+): Promise<ApiResult<{ message: string; id: string }>> {
+  const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
+    method: 'POST',
+    body: JSON.stringify({ verifyCode, reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /**
@@ -393,30 +493,14 @@ export function uploadPaymentSlip(
   id: string,
   file: File,
   verifyCode: string,
+  onProgress?: (percent: number) => void,
 ): Promise<ApiResult<SlipUploadResult>> {
   const formData = new FormData();
   formData.append('verifyCode', verifyCode);
   formData.append('slip', file);
 
   return withFallback(
-    async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      try {
-        const res = await fetch(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, {
-          method: 'POST',
-          body: formData,
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json',
-          },
-        });
-        if (!res.ok) throw await toApiError(res);
-        return (await res.json()) as SlipUploadResult;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    },
+    () => xhrUploadSlip(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress),
     () => ({
       id,
       status: 'PASSED',
@@ -425,6 +509,66 @@ export function uploadPaymentSlip(
       message: 'อัปโหลดสลิปสำเร็จ รอดำเนินการตรวจสอบโดยเจ้าหน้าที่ (Mock Mode)',
     }),
   );
+}
+
+/** The fields an applicant may edit themselves from /status. Identity fields are staff-only. */
+export interface SelfProfilePayload {
+  nickname: string;
+  school: string;
+  province: string;
+  grade: string;
+  shirtSize: ShirtSize;
+}
+
+/**
+ * PATCH /applications/:id/profile — the applicant's own edit of nickname, school, province, grade
+ * and shirt size. Needs the last 4 digits of the national ID (403 INVALID_VERIFY_CODE). 409 when
+ * the application is REJECTED / REFUND_PENDING / REFUNDED, 400 for invalid values. Like every
+ * mutation, a failure is thrown, never answered with mock data. The answer is the masked record.
+ */
+export async function updateOwnProfile(
+  id: string,
+  verifyCode: string,
+  payload: SelfProfilePayload,
+): Promise<ApiResult<Application>> {
+  const data = await fetchJson<Application>(`/applications/${encodeURIComponent(id)}/profile`, {
+    method: 'PATCH',
+    body: JSON.stringify({ verifyCode, ...payload }),
+  });
+  return { data, source: 'LIVE GO API' };
+}
+
+/** Staff edit: any field may be sent; fields left out keep their stored value. */
+export interface AdminProfilePayload {
+  fullName?: string;
+  nickname?: string;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  school?: string;
+  province?: string;
+  grade?: string;
+  shirtSize?: ShirtSize;
+  motivation?: string;
+  reason?: string;
+}
+
+/**
+ * PATCH /admin/applications/:id/profile — full validation server-side (Mod-11 national ID, phone,
+ * email, shirt size, lengths). 409 DUPLICATE_APPLICATION when the national ID, phone or email
+ * belongs to another live applicant. Every change is written to audit_logs with old -> new values.
+ */
+export async function updateApplicantProfile(
+  token: string,
+  id: string,
+  payload: AdminProfilePayload,
+): Promise<ApiResult<Application>> {
+  const data = await fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}/profile`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify(payload),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /** POST /auth/login */
@@ -437,6 +581,69 @@ export function adminLogin(username: string, password: string): Promise<ApiResul
       }),
     () => ({ token: 'mock-jwt-token' }),
   );
+}
+
+/* ── Admin settings (GET/PATCH /api/admin/settings) ─────────────────────── */
+
+/** Staff view of the camp settings. `campFee` is a decimal string from the Go backend (e.g. "1000"). */
+export interface AdminSettings {
+  id: number;
+  campName: string;
+  registrationOpenAt: string;
+  registrationCloseAt: string;
+  announcementAt?: string;
+  paymentOpenAt?: string;
+  paymentDeadline?: string;
+  maxCapacity: number;
+  campFee: string | number;
+  isManualClosed: boolean;
+  isCertificateReleased?: boolean;
+  currentCount?: number;
+}
+
+/** Partial update, mirroring the Go `UpdateSettingsRequest`. Omitted fields are left unchanged. */
+export interface UpdateAdminSettingsPayload {
+  maxCapacity?: number;
+  campFee?: number;
+  isManualClosed?: boolean;
+  registrationOpenAt?: string;
+  registrationCloseAt?: string;
+}
+
+/** Offline-dev stand-in only, used when the server cannot be reached under `astro dev`. */
+const MOCK_ADMIN_SETTINGS: AdminSettings = {
+  id: 1,
+  campName: 'ComCamp #25 (Mock)',
+  registrationOpenAt: DEFAULT_TARGET_DATE,
+  // TODO(content): วันปิดรับสมัครยังไม่ประกาศ ใช้วันเปิดเป็นค่าชั่วคราวใน mock เท่านั้น
+  registrationCloseAt: DEFAULT_TARGET_DATE,
+  maxCapacity: 30,
+  campFee: 1000,
+  isManualClosed: false,
+};
+
+/** GET /admin/settings */
+export function fetchAdminSettings(token: string): Promise<ApiResult<AdminSettings>> {
+  return withFallback(
+    () => fetchJson<AdminSettings>('/admin/settings', { headers: authHeader(token) }),
+    () => MOCK_ADMIN_SETTINGS,
+  );
+}
+
+/**
+ * PATCH /admin/settings. The server checks the quota (1–1000, and not below the current applicant
+ * count, 400) and the fee range, and writes an audit entry for every change.
+ */
+export async function updateAdminSettings(
+  token: string,
+  payload: UpdateAdminSettingsPayload,
+): Promise<ApiResult<AdminSettings>> {
+  const data = await fetchJson<AdminSettings>('/admin/settings', {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify(payload),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /** GET /admin/applications */
@@ -498,7 +705,7 @@ export function listApplications(
         shirtSize: 'L',
         motivation: 'อยากเริ่มต้นเรียนเขียนโปรแกรมภาษา Go และสร้าง Web App',
         province: 'เชียงใหม่',
-        status: 'PENDING' as ApplicationStatus,
+        status: 'PASSED' as ApplicationStatus,
         attendanceConfirmed: false,
         hasSlip: false,
         createdAt: new Date(Date.now() - 259200000).toISOString(),
@@ -508,37 +715,18 @@ export function listApplications(
 }
 
 /** PATCH /admin/applications/:id — body { status: "...", reason: "..." } */
-export function updateApplicationStatus(
+export async function updateApplicationStatus(
   token: string,
   id: string,
   status: ApplicationStatus,
   reason?: string,
 ): Promise<ApiResult<Application>> {
-  return withFallback(
-    () =>
-      fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        headers: authHeader(token),
-        body: JSON.stringify({ status, reason }),
-      }),
-    () => ({
-      id,
-      fullName: 'ตัวอย่าง ผู้สมัคร (Mock)',
-      nickname: 'ตัวอย่าง',
-      nationalId: '1509900000000',
-      phone: '0800000000',
-      email: 'mock@example.com',
-      school: 'โรงเรียนตัวอย่าง',
-      grade: 'ม.5',
-      shirtSize: 'M',
-      motivation: '',
-      province: 'เชียงใหม่',
-      status,
-      attendanceConfirmed: status === 'CONFIRMED',
-      hasSlip: false,
-      createdAt: new Date().toISOString(),
-    }),
-  );
+  const data = await fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify({ status, reason }),
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /**
@@ -546,28 +734,21 @@ export function updateApplicationStatus(
  * Verifies or rejects the payment slip of an applicant.
  * Body: { approved: boolean, note: string }
  */
-export function verifyPaymentSlip(
+export async function verifyPaymentSlip(
   token: string,
   id: string,
   approved: boolean,
   note: string = '',
 ): Promise<ApiResult<VerifySlipResponse>> {
-  return withFallback(
-    () =>
-      fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
-        method: 'PATCH',
-        headers: authHeader(token),
-        body: JSON.stringify({
-          approved,
-          note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
-        }),
-      }),
-    () => ({
-      message: approved
-        ? 'อนุมัติสลิปสำเร็จ (Mock Mode)'
-        : 'ปฏิเสธสลิปสำเร็จ (Mock Mode)',
+  const data = await fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify({
+      approved,
+      note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
     }),
-  );
+  });
+  return { data, source: 'LIVE GO API' };
 }
 
 /**
@@ -588,4 +769,18 @@ export async function fetchAdminSlip(token: string, id: string): Promise<string>
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/** DELETE /admin/applications/:id — soft-deletes the applicant and writes an audit log */
+export async function deleteApplication(
+  token: string,
+  id: string,
+  reason?: string,
+): Promise<ApiResult<{ message: string }>> {
+  const data = await fetchJson<{ message: string }>(`/admin/applications/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeader(token),
+    body: JSON.stringify({ reason: reason || 'ลบโดยผู้ดูแลระบบ' }),
+  });
+  return { data, source: 'LIVE GO API' };
 }

@@ -64,7 +64,7 @@ func (a *testApp) status(t *testing.T, q string) service.ApplicationResponse {
 func TestSecurity_SlipDimensionsLimited(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000050", "0810000050", "dim@example.com")
+	created := app.submit(t, validTestNationalID(50), "0810000050", "dim@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
 	rejected := map[string][]byte{
@@ -111,7 +111,8 @@ func TestSecurity_SlipDimensionsLimited(t *testing.T) {
 func TestSecurity_StatusActionsRequireVerifyCode(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, "1509900000040", "0810004321", "vc@example.com")
+	nid := validTestNationalID(40)
+	created := app.submit(t, nid, "0810004321", "vc@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
 	confirm := func(code string) *httptest.ResponseRecorder {
@@ -136,7 +137,7 @@ func TestSecurity_StatusActionsRequireVerifyCode(t *testing.T) {
 	}
 
 	// Copied from a LINE chat: a zero-width space must not break the right code.
-	if rec := confirm("\u200B0040"); rec.Code != http.StatusOK {
+	if rec := confirm("\u200B" + nid[9:]); rec.Code != http.StatusOK {
 		t.Fatalf("confirm with the right code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 
@@ -148,7 +149,7 @@ func TestSecurity_StatusActionsRequireVerifyCode(t *testing.T) {
 	if res := app.status(t, created.ID); res.HasSlip {
 		t.Fatal("a slip was stored with a wrong verifyCode")
 	}
-	if rec := app.uploadSlipWithCode(t, created.ID, "0040", "slip.jpg", jpegBytes); rec.Code != http.StatusOK {
+	if rec := app.uploadSlipWithCode(t, created.ID, nid[9:], "slip.jpg", jpegBytes); rec.Code != http.StatusOK {
 		t.Fatalf("slip with the right code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
@@ -157,9 +158,10 @@ func TestSecurity_StatusActionsRequireVerifyCode(t *testing.T) {
 // are cleaned on submit and on lookup.
 func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	app := setupTestApp(t)
+	nid60 := validTestNationalID(60)
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
 		FullName: "ทดสอบ คัดลอก", Nickname: "ก็อป", School: "โรงเรียนทดสอบ", Grade: "ม.4", ShirtSize: "M",
-		NationalID: "\uFEFF1-5099-00000-06-0\u200B",
+		NationalID: "\uFEFF" + nid60[:1] + "-" + nid60[1:5] + "-" + nid60[5:10] + "-" + nid60[10:12] + "-" + nid60[12:] + "\u200B",
 		Phone:      "081\u200C-000\u200D-0060",
 	})
 	rec := app.do(t, http.MethodPost, "/api/applications", bytes.NewBuffer(body), nil)
@@ -173,12 +175,12 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.NationalID != "1509900000060" || stored.Phone != "0810000060" {
+	if stored.NationalID != nid60 || stored.Phone != "0810000060" {
 		t.Fatalf("stored identifiers not cleaned: %q / %q", stored.NationalID, stored.Phone)
 	}
 
 	noHyphen := strings.ToLower(strings.Replace(created.ID, "-", "", 1))
-	for _, q := range []string{"1-5099-00000-06-0", "081 000 0060", "\u200B0810000060", "\u200B" + created.ID, noHyphen} {
+	for _, q := range []string{nid60[:1] + "-" + nid60[1:5] + "-" + nid60[5:10] + "-" + nid60[10:12] + "-" + nid60[12:], "081 000 0060", "\u200B0810000060", "\u200B" + created.ID, noHyphen} {
 		if res := app.status(t, q); res.ID != created.ID {
 			t.Errorf("lookup %q: expected %s, got %q", q, created.ID, res.ID)
 		}
@@ -225,8 +227,8 @@ func TestSecurity_AdminSettingsQuota(t *testing.T) {
 		t.Error("expected a settings.update audit entry")
 	}
 
-	app.submit(t, "1509900000070", "0810000070", "")
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("1509900000071", "0810000071", ""), nil)
+	app.submit(t, validTestNationalID(70), "0810000070", "")
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(71), "0810000071", ""), nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("capacity 1 full: expected 409, got %d", rec.Code)
 	}

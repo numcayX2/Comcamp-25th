@@ -5,7 +5,9 @@ interface Props {
 }
 
 const { active = 'home', isHome = false } = Astro.props;
-const navLinks = [
+const isAdmin = active === 'admin';
+// Staff work on one page: the camp's marketing anchors, the sign-up CTA and the status lookup are noise there.
+const navLinks = isAdmin ? [] : [
   { n: '01', href: isHome ? '#experience' : '/#experience', label: 'กิจกรรม' },
   { n: '02', href: isHome ? '#essentials' : '/#essentials', label: 'ข้อมูล' },
   { n: '03', href: isHome ? '#journey' : '/#journey', label: 'เส้นทางเรียนรู้' },
@@ -33,6 +35,7 @@ const navLinks = [
         decoding="async"
       />
       <span class="brand-word">ComCamp <span class="font-mono tabular-nums">#25</span></span>
+      {isAdmin && <span class="brand-tag">Staff</span>}
     </a>
 
     <!-- Navigation Links -->
@@ -42,31 +45,28 @@ const navLinks = [
       ))}
 
       <!-- Mobile-only drawer items -->
-      <div class="nav-mobile-divider" aria-hidden="true"></div>
-      <a
-        href="/register"
-        data-nav-register
-        class:list={['nav-mobile-item', active === 'register' && 'is-active']}
-        aria-current={active === 'register' ? 'page' : undefined}
-      >
-        <span data-nav-register-label>เปิดรับ 16 พ.ย. 69</span>
-      </a>
-      <a
-        data-nav-status
-        href="/status"
-        class:list={['nav-mobile-item', active === 'status' && 'is-active']}
-        aria-current={active === 'status' ? 'page' : undefined}
-      >
-        ตรวจสอบสถานะ
-      </a>
-      {active === 'admin' && (
-        <a
-          href="/admin"
-          class="nav-mobile-item is-active"
-          aria-current="page"
-        >
-          ผู้ดูแลระบบ
-        </a>
+      {isAdmin ? (
+        <a href="/" class="nav-mobile-item">← กลับหน้าเว็บไซต์</a>
+      ) : (
+        <>
+          <div class="nav-mobile-divider" aria-hidden="true"></div>
+          <a
+            href="/register"
+            data-nav-register
+            class:list={['nav-mobile-item', active === 'register' && 'is-active']}
+            aria-current={active === 'register' ? 'page' : undefined}
+          >
+            <span data-nav-register-label>เปิดรับ 16 พ.ย. 69</span>
+          </a>
+          <a
+            data-nav-status
+            href="/status"
+            class:list={['nav-mobile-item', active === 'status' && 'is-active']}
+            aria-current={active === 'status' ? 'page' : undefined}
+          >
+            ตรวจสอบสถานะ
+          </a>
+        </>
       )}
 
       <!-- Mobile Theme Toggle row in drawer -->
@@ -94,12 +94,14 @@ const navLinks = [
           </svg>
         </span>
       </button>
-      <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย">
-        <p class="nav-overlay-label">[ ข้อมูลค่าย ]</p>
-        <p class="nav-overlay-text">คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</p>
-        <p class="nav-overlay-text">เปิดรับ <span class="font-mono tabular-nums">16.11.69 · 30</span> ที่นั่ง</p>
-        <p class="nav-overlay-copy">© 2569 ComCamp #25 · CS MJU</p>
-      </div>
+      {!isAdmin && (
+        <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย">
+          <p class="nav-overlay-label">[ ข้อมูลค่าย ]</p>
+          <p class="nav-overlay-text">คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</p>
+          <p class="nav-overlay-text">เปิดรับ <span class="font-mono tabular-nums">16.11.69 · 30</span> ที่นั่ง</p>
+          <p class="nav-overlay-copy">© 2569 ComCamp #25 · CS MJU</p>
+        </div>
+      )}
     </nav>
 
     {/* Mobile Controls: registration action (home) + menu toggle.
@@ -134,31 +136,28 @@ const navLinks = [
 
     <!-- Right-Side Action Area (Desktop >=768px) -->
     <div class="nav-actions">
-      {active === 'admin' && (
-        <a
-          class="nav-cta-link is-active"
-          href="/admin"
-          aria-current="page"
-        >
-          ผู้ดูแล
-        </a>
+      {isAdmin ? (
+        <a class="btn btn-secondary nav-cta" href="/">← กลับหน้าเว็บไซต์</a>
+      ) : (
+        <>
+          <a
+            data-nav-register
+            class:list={['btn btn-primary nav-cta', active === 'register' && 'is-active']}
+            href="/register"
+            aria-current={active === 'register' ? 'page' : undefined}
+          >
+            <span data-nav-register-label>เปิดรับ 16 พ.ย. 69</span>
+          </a>
+          <a
+            data-nav-status
+            class:list={['btn btn-secondary nav-cta', active === 'status' && 'is-active']}
+            href="/status"
+            aria-current={active === 'status' ? 'page' : undefined}
+          >
+            ตรวจสอบสถานะ
+          </a>
+        </>
       )}
-      <a
-        data-nav-register
-        class:list={['nav-cta-link', active === 'register' && 'is-active']}
-        href="/register"
-        aria-current={active === 'register' ? 'page' : undefined}
-      >
-        <span data-nav-register-label>เปิดรับ 16 พ.ย. 69</span>
-      </a>
-      <a
-        data-nav-status
-        class:list={['btn btn-secondary nav-cta', active === 'status' && 'is-active']}
-        href="/status"
-        aria-current={active === 'status' ? 'page' : undefined}
-      >
-        ตรวจสอบสถานะ
-      </a>
 
       <!-- Desktop Theme Toggle Button -->
       <button
@@ -400,6 +399,20 @@ const navLinks = [
     display: none;
   }
 
+  .brand-tag {
+    margin-left: 10px;
+    padding: 2px 10px;
+    border: 1px solid currentColor;
+    border-radius: 9999px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    vertical-align: middle;
+  }
+
   .nav-cta-link {
     display: inline-flex;
     align-items: center;
@@ -470,6 +483,34 @@ const navLinks = [
     background: #2A2D33;
     color: #F9F8F4;
     text-decoration: none;
+  }
+
+  /* Primary CTA: fern pill with ink text (AGENTS.md §4), sits beside the dark status pill at the same size. */
+  .btn-primary {
+    background: #03B800;
+    color: #121316;
+    border: 1px solid #03B800;
+  }
+  .btn-primary:hover {
+    background: #029E00;
+    border-color: #029E00;
+    color: #121316;
+    text-decoration: none;
+  }
+  .btn-primary:active {
+    transform: translateY(1px);
+  }
+  /* Not open (yet) / full / closed: same pill, quiet outline instead of a live CTA */
+  .btn-primary.is-pre-open,
+  .btn-primary.is-pre-open:hover {
+    background: transparent;
+    color: #4A4D55;
+    border-color: #8A8D93;
+  }
+  :global(html.dark) .btn-primary.is-pre-open,
+  :global(html[data-theme="dark"]) .btn-primary.is-pre-open {
+    color: #C3C4C7;
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .btn-secondary:active {
@@ -700,6 +741,12 @@ const navLinks = [
   }
   .nav-quick-cta:hover:not(:disabled) { background: #029E00; }
   .nav-quick-cta:focus-visible { outline: 2px solid #1A5FE0; outline-offset: 2px; }
+  /* Links and toggles share the blue focus ring (AGENTS §11.3) instead of the browser default. */
+  .site-nav a:focus-visible,
+  .site-nav button:focus-visible {
+    outline: 2px solid var(--color-tech, #1A5FE0);
+    outline-offset: 2px;
+  }
   /* Pre-open / closed: informational, not a dead green button */
   .nav-quick-cta:disabled {
     background: transparent;

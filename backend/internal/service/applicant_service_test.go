@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	req := service.ApplicationCreateRequest{
 		FullName:   "สมชาย ใจดี",
 		Nickname:   "ชาย",
-		NationalID: "1509900000000",
+		NationalID: validTestNationalID(1),
 		Phone:      "0812345678",
 		Email:      "somchai@example.com",
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -43,12 +44,18 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	if res.ID == "" {
 		t.Errorf("expected non-empty application ID")
 	}
-	if res.Status != domain.StatusPending {
-		t.Errorf("expected status %s, got %s", domain.StatusPending, res.Status)
+	if res.Status != domain.StatusPassed {
+		t.Errorf("expected status %s (first come, first served), got %s", domain.StatusPassed, res.Status)
 	}
 	if res.FullName != "สมชาย ใจดี" {
 		t.Errorf("expected full name 'สมชาย ใจดี', got '%s'", res.FullName)
 	}
+}
+
+// badCheckDigit returns id with its last digit changed, so the Mod-11 check fails.
+func badCheckDigit(id string) string {
+	last := id[12] - '0'
+	return id[:12] + string(rune('0'+(last+1)%10))
 }
 
 func TestApplicantService_Submit_ValidationErrors(t *testing.T) {
@@ -74,11 +81,25 @@ func TestApplicantService_Submit_ValidationErrors(t *testing.T) {
 			expectedErr: service.ErrInvalidNationalID,
 		},
 		{
+			name: "National ID with a wrong check digit",
+			req: service.ApplicationCreateRequest{
+				FullName:   "สมหญิง จริงใจ",
+				Nickname:   "หญิง",
+				NationalID: badCheckDigit(validTestNationalID(4)),
+				Phone:      "0812345678",
+				Email:      "ying@test.com",
+				School:     "โรงเรียนเทศบาล",
+				Grade:      "ม.4",
+				ShirtSize:  "M",
+			},
+			expectedErr: service.ErrInvalidNationalID,
+		},
+		{
 			name: "Invalid phone format",
 			req: service.ApplicationCreateRequest{
 				FullName:   "สมหญิง จริงใจ",
 				Nickname:   "หญิง",
-				NationalID: "1509900000001",
+				NationalID: validTestNationalID(2),
 				Phone:      "999999",
 				Email:      "ying@test.com",
 				School:     "โรงเรียนเทศบาล",
@@ -92,7 +113,7 @@ func TestApplicantService_Submit_ValidationErrors(t *testing.T) {
 			req: service.ApplicationCreateRequest{
 				FullName:   "สมหญิง จริงใจ",
 				Nickname:   "หญิง",
-				NationalID: "1509900000002",
+				NationalID: validTestNationalID(3),
 				Phone:      "0898765432",
 				Email:      "ying2@test.com",
 				School:     "โรงเรียนเทศบาล",
@@ -128,7 +149,7 @@ func TestApplicantService_Submit_ClosedSchedule(t *testing.T) {
 	req := service.ApplicationCreateRequest{
 		FullName:   "สมชาย ใจดี",
 		Nickname:   "ชาย",
-		NationalID: "1509900000000",
+		NationalID: validTestNationalID(1),
 		Phone:      "0812345678",
 		Email:      "somchai@example.com",
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -159,7 +180,7 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	req1 := service.ApplicationCreateRequest{
 		FullName:   "คนที่หนึ่ง",
 		Nickname:   "หนึ่ง",
-		NationalID: "1111111111111",
+		NationalID: validTestNationalID(11),
 		Phone:      "0811111111",
 		Email:      "one@example.com",
 		School:     "โรงเรียน 1",
@@ -174,7 +195,7 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	req2 := service.ApplicationCreateRequest{
 		FullName:   "คนที่สอง",
 		Nickname:   "สอง",
-		NationalID: "2222222222222",
+		NationalID: validTestNationalID(22),
 		Phone:      "0822222222",
 		Email:      "two@example.com",
 		School:     "โรงเรียน 2",
@@ -195,18 +216,33 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("after raising capacity: expected person 2 to be accepted, got %v", err)
 	}
-	if res2.Status != domain.StatusPending {
-		t.Errorf("expected person 2 status PENDING, got %s", res2.Status)
+	if res2.Status != domain.StatusPassed {
+		t.Errorf("expected person 2 status PASSED, got %s", res2.Status)
+	}
+
+	// Two seats are taken: the quota cannot drop below that, but may equal it.
+	one := 1
+	_, err = settingSvc.UpdateSettings(context.Background(), service.UpdateSettingsRequest{MaxCapacity: &one}, 1, "127.0.0.1")
+	if err == nil || !strings.Contains(err.Error(), "cannot be lower than the current applicant count") {
+		t.Fatalf("lowering capacity below the applicant count: expected a validation error, got %v", err)
+	}
+	if got, _ := setRepo.Get(context.Background()); got.MaxCapacity != 2 {
+		t.Errorf("rejected update must not change the quota, got %d", got.MaxCapacity)
+	}
+	if _, err := settingSvc.UpdateSettings(context.Background(), service.UpdateSettingsRequest{MaxCapacity: &two}, 1, "127.0.0.1"); err != nil {
+		t.Errorf("capacity equal to the applicant count should be allowed, got %v", err)
 	}
 }
 
 func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	svc, _, _ := setupTestServices()
+	nid := validTestNationalID(8888888)
+	verify := nid[9:] // verifyCode = last 4 digits of the national ID
 
 	req := service.ApplicationCreateRequest{
 		FullName:   "น้องทดสอบ สดใส",
 		Nickname:   "สด",
-		NationalID: "1509988888888",
+		NationalID: nid,
 		Phone:      "0899999999",
 		Email:      "test@example.com",
 		School:     "โรงเรียนเทศบาล",
@@ -219,7 +255,7 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	}
 
 	// 1. Query by National ID
-	byNational, err := svc.QueryStatus(context.Background(), "1509988888888")
+	byNational, err := svc.QueryStatus(context.Background(), nid)
 	if err != nil {
 		t.Fatalf("failed to query by national id: %v", err)
 	}
@@ -236,8 +272,11 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 		t.Errorf("expected ID %s, got %s", created.ID, byPhone.ID)
 	}
 
-	// 3. Confirm attendance while still PENDING should fail
-	_, err = svc.ConfirmAttendance(context.Background(), created.ID, "8888", true)
+	// 3. Confirm attendance while PENDING should fail (staff can still park an application there)
+	if _, err := svc.UpdateStatus(context.Background(), created.ID, domain.StatusPending, nil, "hold", "127.0.0.1"); err != nil {
+		t.Fatalf("failed to set PENDING: %v", err)
+	}
+	_, err = svc.ConfirmAttendance(context.Background(), created.ID, verify, true)
 	if err != service.ErrCannotConfirm {
 		t.Fatalf("expected ErrCannotConfirm while PENDING, got %v", err)
 	}
@@ -259,7 +298,7 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 		}
 	}
 
-	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, "8888", true)
+	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, verify, true)
 	if err != nil {
 		t.Fatalf("failed to confirm attendance: %v", err)
 	}

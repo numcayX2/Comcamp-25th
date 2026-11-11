@@ -28,6 +28,7 @@ const DRAFT_FIELDS = [
   'school',
   'province',
   'grade',
+  'gradeOther',
   'shirtSize',
 ] as const satisfies readonly (keyof FormState)[];
 
@@ -134,6 +135,15 @@ export function loadReceipt(): { id: string; source: ApiSource } | null {
     return { id: r.id, source: r.source === 'MOCK FALLBACK' ? 'MOCK FALLBACK' : 'LIVE GO API' };
   } catch {
     return null;
+  }
+}
+
+/** After the applicant withdraws: the receipt no longer describes a live application. */
+export function clearReceipt(): void {
+  try {
+    sessionStorage.removeItem(RECEIPT_KEY);
+  } catch {
+    /* ignore */
   }
 }
 

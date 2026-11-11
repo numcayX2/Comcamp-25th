@@ -41,6 +41,20 @@ type testApp struct {
 // these tests run through the same security middleware as the deployed API.
 func setupTestApp(t *testing.T) *testApp {
 	t.Helper()
+	return setupTestAppWith(t, server.DefaultRateLimits())
+}
+
+// setupTestAppWith is setupTestApp with explicit rate limits, for tests that make more mutating
+// requests than the production per-IP limit allows.
+func setupTestAppWith(t *testing.T, limits server.RateLimits) *testApp {
+	t.Helper()
+	return setupTestAppFull(t, limits, nil)
+}
+
+// setupTestAppFull also installs a Turnstile verifier on the applicant service (nil = off, which
+// is what every test outside the captcha tests wants).
+func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.TurnstileVerifier) *testApp {
+	t.Helper()
 
 	appRepo := memory.NewMemoryApplicantRepo()
 	setRepo := memory.NewMemorySettingRepo()
@@ -58,16 +72,20 @@ func setupTestApp(t *testing.T) *testApp {
 	_ = admRepo.Create(context.Background(), admin)
 
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
+	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo)
+	if captcha != nil {
+		applicantSvc.WithTurnstile(captcha)
+	}
 	services := server.Services{
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
-		Applicant: service.NewApplicantService(appRepo, setRepo, payRepo),
+		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(setRepo, appRepo, appRepo.Audit()),
 		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir()),
 	}
 
 	router := server.NewRouter(services, server.Options{
 		AllowedOrigins: []string{"http://localhost:4321"},
-		RateLimits:     server.DefaultRateLimits(),
+		RateLimits:     limits,
 	})
 
 	return &testApp{
@@ -110,6 +128,21 @@ func (a *testApp) login(t *testing.T) string {
 func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }
+
+// validTestNationalID builds a 13-digit national ID that passes the Thai Mod-11 check: the
+// 12-digit body "15099" + seq (7 digits, zero-padded) plus its computed check digit. Distinct
+// seq values give distinct IDs.
+func validTestNationalID(seq int) string {
+	body := fmt.Sprintf("15099%07d", seq%10_000_000)
+	sum := 0
+	for i := 0; i < 12; i++ {
+		sum += int(body[i]-'0') * (13 - i)
+	}
+	return body + string(rune('0'+(11-sum%11)%10))
+}
+
+// e2eNationalID is the ID used by the end-to-end flow and the masking test.
+var e2eNationalID = validTestNationalID(112233)
 
 func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
@@ -236,17 +269,18 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 
 	var created service.ApplicationResponse
 	t.Run("3. POST /api/applications", func(t *testing.T) {
-		created = app.submit(t, "1509900112233", "0819876543", "somkiat@school.ac.th")
+		created = app.submit(t, e2eNationalID, "0819876543", "somkiat@school.ac.th")
 		if created.ID == "" {
 			t.Errorf("expected generated Application ID")
 		}
-		if created.Status != domain.StatusPending {
-			t.Errorf("expected status PENDING, got %s", created.Status)
+		// First come, first served: a registration that fits the quota starts as PASSED.
+		if created.Status != domain.StatusPassed {
+			t.Errorf("expected status PASSED, got %s", created.Status)
 		}
 	})
 
 	t.Run("4. GET /api/applications/status?q={nationalId}", func(t *testing.T) {
-		rec := app.do(t, http.MethodGet, "/api/applications/status?q=1509900112233", nil, nil)
+		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+e2eNationalID, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
@@ -278,18 +312,23 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		if len(list) != 1 {
 			t.Fatalf("expected 1 applicant, got %d", len(list))
 		}
-		if list[0].NationalID != "1509900112233" {
+		if list[0].NationalID != e2eNationalID {
 			t.Errorf("admin list should return the full national ID, got %q", list[0].NationalID)
 		}
 	})
 
-	t.Run("8. PATCH /api/admin/applications/{id} -> PASSED", func(t *testing.T) {
-		app.setStatus(t, token, created.ID, domain.StatusPassed)
+	t.Run("8. admin sees the applicant as PASSED without any staff step", func(t *testing.T) {
+		rec := app.do(t, http.MethodGet, "/api/admin/applications?status=PASSED", nil, bearer(token))
+		var list []service.ApplicationResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &list)
+		if rec.Code != http.StatusOK || len(list) != 1 || list[0].ID != created.ID {
+			t.Fatalf("expected the new applicant in the PASSED list, got %d %+v", rec.Code, list)
+		}
 	})
 
 	t.Run("9. POST /api/applications/{id}/confirm", func(t *testing.T) {
-		// verifyCode = last 4 digits of the national ID 1509900112233 (AGENTS.md §13.5).
-		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"2233"}`), nil)
+		// verifyCode = last 4 digits of the national ID (AGENTS.md §13.5).
+		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"`+e2eNationalID[9:]+`"}`), nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}

@@ -87,9 +87,18 @@ func main() {
 	}
 
 	// 2. Initialize Services
+	applicantSvc := service.NewApplicantService(appRepo, settingRepo, paymentRepo)
+	if cfg.TurnstileSecretKey != "" {
+		applicantSvc.WithTurnstile(service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts()))
+		log.Println("Cloudflare Turnstile verification is ON for POST /api/applications")
+	} else if cfg.IsProduction() {
+		// config.Load already refuses this; kept as a second lock so a future refactor cannot
+		// silently ship an unprotected registration endpoint.
+		log.Fatal("Refusing to start: TURNSTILE_SECRET_KEY is empty in production")
+	}
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
-		Applicant: service.NewApplicantService(appRepo, settingRepo, paymentRepo),
+		Applicant: applicantSvc,
 		Setting:   service.NewSettingService(settingRepo, appRepo, auditRepo),
 		Payment:   service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir),
 	}

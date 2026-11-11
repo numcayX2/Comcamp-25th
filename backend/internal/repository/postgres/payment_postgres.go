@@ -119,6 +119,11 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 	if err != nil {
 		return fmt.Errorf("lock applicant: %w", err)
 	}
+	// A refunded or rejected application has left the camp: its slip is kept for the ledger but
+	// can no longer be approved or rejected (that would re-confirm a seat that was released).
+	if !oldStatus.IsActive() {
+		return domain.ErrStateConflict
+	}
 
 	now := time.Now().UTC()
 	newPaymentStatus, newStatus := domain.PaymentRejected, domain.StatusPassed

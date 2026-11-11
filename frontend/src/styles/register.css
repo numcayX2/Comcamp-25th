@@ -25,6 +25,7 @@ body.rw-page { overflow: visible; }
   --rw-focus: #1A5FE0;
   --rw-danger: #C62828;
   --rw-warn: #B45309;
+  --rw-ok: #047857;
   --rw-fern: #03B800;
   --rw-fern-hover: #029E00;
   --rw-btn-hover: #2A2D33;
@@ -55,16 +56,19 @@ body.rw-page { overflow: visible; }
   accent-color: var(--rw-ink);
 }
 
-html.dark .rw {
-  --rw-canvas: #1A1D22;
-  --rw-surface: rgba(255, 255, 255, 0.04);
+html.dark .rw,
+html[data-theme="dark"] .rw {
+  --rw-canvas: #0B0F19;
+  --rw-surface: rgba(255, 255, 255, 0.05);
   --rw-ink: #F5F4EF;
   --rw-ink-2: #C3C4C7;
   --rw-ink-3: #9A9CA1;
+  --rw-line: #5A5D63;
   --rw-rule: rgba(255, 255, 255, 0.14);
   --rw-focus: #337AFF;
   --rw-danger: #F87171;
   --rw-warn: #F59E0B;
+  --rw-ok: #10B981;
   --rw-btn-hover: #FFFFFF;
   --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23F5F4EF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
@@ -257,21 +261,22 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
   padding: 0;
   font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.6;
   color: var(--rw-ink);
 }
-.rw-hint { font-size: 0.8125rem; font-weight: 400; color: var(--rw-ink-3); }
+.rw-hint { font-size: 0.8125rem; font-weight: 400; color: var(--rw-ink-3); transition: color 0.18s ease; }
+.rw-hint--ok { color: var(--rw-ok); font-weight: 600; }
 .rw-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 
 .rw-input {
   display: block;
   width: 100%;
   min-height: 52px;
-  padding: 10px 0;
+  padding: 8px 0;
   border: 0;
   border-bottom: 1px solid var(--rw-line);
   border-radius: 0;
@@ -293,8 +298,20 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   border-bottom-color: var(--rw-focus);
   box-shadow: 0 1px 0 0 var(--rw-focus);
 }
-.rw-input:focus-visible { outline-offset: 2px; border-radius: 4px; }
-.rw-input[aria-invalid='true'] { border-bottom-color: var(--rw-danger); box-shadow: 0 1px 0 0 var(--rw-danger); }
+.rw-input:focus-visible { outline: none; } /* the underline is the focus indicator; no second ring on top of it */
+.rw-input[aria-invalid='true']:not(:focus) { border-bottom-color: var(--rw-danger); box-shadow: 0 1px 0 0 var(--rw-danger); }
+/* Browser autofill must not paint a light/yellow field over the dark theme. */
+.rw-input:-webkit-autofill,
+.rw-input:-webkit-autofill:hover,
+.rw-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--rw-ink);
+  caret-color: var(--rw-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--rw-canvas) inset;
+  box-shadow: 0 0 0 1000px var(--rw-canvas) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+html.dark .rw .rw-input::placeholder,
+html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 
 .rw-select {
   padding-right: 32px;
@@ -318,14 +335,21 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 .rw-textarea:focus { border-color: var(--rw-focus); box-shadow: 0 0 0 1px var(--rw-focus); }
 
 .rw-err {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin-top: 8px;
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--rw-danger);
 }
 
+/* The icon keeps the error from relying on colour alone. */
+.rw-err svg { flex: none; width: 16px; height: 16px; margin-top: 4px; }
+
 /* ---------- Shirt size chips ---------- */
 .rw-chips {
+  position: relative; /* offsetParent for the sliding pill */
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
@@ -334,26 +358,49 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 @media (min-width: 560px) {
   .rw-chips { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 }
-.rw-chip { position: relative; display: block; cursor: pointer; }
+/* The selected pill: one element that GSAP slides between chips (SizeChips.tsx). Hidden until JS places it. */
+.rw-chips__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: var(--rw-ink);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.rw-chip { position: relative; z-index: 1; display: block; cursor: pointer; }
 .rw-chip input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
 }
 .rw-chip__face {
-  display: grid;
-  place-items: center;
-  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 58px;
   border: 1px solid var(--rw-line);
   border-radius: 9999px;
   font-size: 1rem;
   font-weight: 600;
+  line-height: 1.25;
   color: var(--rw-ink);
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: border-color 0.15s ease, color 0.2s ease 0.06s;
 }
+.rw-chip__chest { font-size: 0.6875rem; font-weight: 500; line-height: 1.2; color: var(--rw-ink-3); transition: color 0.2s ease 0.06s; }
 .rw-chip:hover .rw-chip__face { border-color: var(--rw-ink); }
-.rw-chip input:checked + .rw-chip__face { background: var(--rw-ink); border-color: var(--rw-ink); color: var(--rw-canvas); }
+.rw-chip input:checked + .rw-chip__face { border-color: var(--rw-ink); color: var(--rw-canvas); }
+.rw-chip input:checked + .rw-chip__face .rw-chip__chest { color: color-mix(in srgb, var(--rw-canvas) 75%, transparent); }
+/* Before the pill exists (no JS yet) the chip paints its own selected state. */
+.rw-chips:not([data-thumb]) .rw-chip input:checked + .rw-chip__face { background: var(--rw-ink); }
 .rw-chip input:focus-visible + .rw-chip__face { outline: 2px solid var(--rw-focus); outline-offset: 3px; }
 .rw-chip input[aria-describedby] + .rw-chip__face { border-color: var(--rw-danger); }
 .rw-chip input[aria-describedby]:checked + .rw-chip__face { border-color: var(--rw-ink); }
+@media (prefers-reduced-motion: reduce) { .rw-chip__face, .rw-chip__chest { transition: none; } }
 
 /* ---------- Size guide table ---------- */
 .rw-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
@@ -398,12 +445,56 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 .rw-muted { color: var(--rw-ink-3); }
 .rw-pre { white-space: pre-wrap; }
 
-.rw-fee { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--rw-ink); }
-.rw-fee__row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.rw-fee__label { font-size: 1rem; font-weight: 600; }
-.rw-fee__amount { font-size: 1.5rem; font-weight: 700; line-height: 1.4; }
+/* Fee + first-come-first-served card: its own rounded surface (same edge as .rw-card), apart from
+   the review card above and the consent checkbox below, so it cannot be skimmed past. */
+.rw-fee {
+  margin-top: 28px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--rw-rule);
+  border-radius: 24px;
+  background: var(--rw-surface);
+}
+.rw-fee__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rw-ink);
+}
+.rw-fee__title { flex: 1 1 14rem; font-size: 1.125rem; font-weight: 700; line-height: 1.5; text-wrap: balance; }
+.rw-fee__amount { font-size: 1.75rem; font-weight: 700; line-height: 1.4; white-space: nowrap; }
 .rw-fee__amount .font-mono { font-weight: 600; }
-.rw-fee__note { margin-top: 6px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-fee__steps { margin: 0; padding: 0; list-style: none; counter-reset: fee; }
+.rw-fee__steps li {
+  counter-increment: fee;
+  position: relative;
+  padding: 14px 0 14px 44px;
+  border-bottom: 1px solid var(--rw-rule);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--rw-ink-2);
+}
+.rw-fee__steps li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rw-fee__steps li::before {
+  content: counter(fee);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rw-line);
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--rw-ink);
+}
+.rw-fee__steps li:last-child::before { top: 14px; }
+.rw-fee__steps strong { display: block; font-weight: 600; color: var(--rw-ink); }
 
 /* ---------- Consent ---------- */
 .rw-consent {
@@ -446,6 +537,21 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 .rw-consent input:checked::after { transform: rotate(45deg) scale(1); }
 .rw-consent input[aria-invalid='true'] { border-color: var(--rw-danger); }
 .rw-consent__err { padding-left: 38px; }
+
+/* ---------- Turnstile (bot check) ----------
+   Hairline separation only, no box around the widget: Cloudflare's iframe already draws its own
+   field, so a second border would be card-in-card. min-height keeps the page from jumping when the
+   widget mounts (the managed widget is 65px tall). */
+.rw-captcha { margin-top: 20px; scroll-margin-bottom: 150px; } /* clears the sticky footer when focused / scrolled to */
+.rw-captcha__box, .rw-captcha .rw-err { scroll-margin-bottom: 150px; }
+.rw-captcha__label { margin: 0 0 10px; font-size: 0.9375rem; font-weight: 600; line-height: 1.6; color: var(--rw-ink); }
+.rw-captcha__box { min-height: 65px; max-width: 100%; outline: none; }
+.rw-captcha__box:focus-visible { outline: 2px solid var(--rw-focus); outline-offset: 3px; border-radius: 12px; }
+.rw-captcha__box[data-state='failed'] { min-height: 0; }
+.rw-captcha__hint { margin: 8px 0 0; font-size: 0.875rem; line-height: 1.7; color: var(--rw-ink-2); }
+.rw-captcha__hint--dev { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--rw-rule); }
+.rw-captcha__failed { display: grid; justify-items: start; gap: 10px; margin-top: 4px; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-captcha__failed p { margin: 0; }
 
 /* ---------- Footer nav ---------- */
 .rw-foot {
@@ -491,8 +597,22 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 .rw-btn--primary:hover:not(:disabled) { background: var(--rw-btn-hover); }
 .rw-btn--submit { background: var(--rw-fern); color: #121316; }
 .rw-btn--submit:hover:not(:disabled) { background: var(--rw-fern-hover); }
+/* Consent not ticked yet: pale green, still tappable (aria-disabled, never the disabled attribute) so a
+   tap runs the validation and moves focus to the checkbox. Light: ink on a pale green wash (~15:1);
+   dark: a muted deep green wash with the light ink (~12:1). The border is a darker green so the
+   button edge keeps >=3:1 against the canvas (WCAG 1.4.11). */
+.rw-btn--submit[aria-disabled='true'] {
+  background: color-mix(in srgb, var(--rw-fern) 22%, var(--rw-canvas));
+  color: var(--rw-ink);
+  border-color: color-mix(in srgb, var(--rw-fern) 55%, var(--rw-ink));
+}
+.rw-btn--submit[aria-disabled='true']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rw-fern) 32%, var(--rw-canvas));
+}
 .rw-btn--ghost { background: transparent; color: var(--rw-ink); border-color: var(--rw-line); }
 .rw-btn--ghost:hover:not(:disabled) { border-color: var(--rw-ink); }
+.rw-btn--danger { background: transparent; color: var(--rw-danger); border-color: var(--rw-danger); }
+.rw-btn--danger:hover:not(:disabled) { background: var(--rw-danger); color: var(--rw-canvas); }
 .rw-btn--sm { min-height: 44px; padding: 0 18px; font-size: 0.9375rem; }
 .rw-btn--next { margin-left: auto; flex: 1; }
 .rw-btn--next:hover:not(:disabled) svg { transform: translateX(3px); }
@@ -520,13 +640,25 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0 16px;
+  gap: 4px 16px;
   margin-top: 14px;
-  padding-bottom: 2px;
-  border-bottom: 1px solid var(--rw-rule);
+  padding: 10px 16px;
+  border: 1px solid var(--rw-rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rw-ink) 4%, transparent);
 }
-.rw-draft__text { font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-2); padding: 10px 0; }
+.rw-draft__text { display: flex; align-items: flex-start; gap: 10px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-2); padding: 4px 0; }
+.rw-draft__text svg { flex: none; width: 16px; height: 16px; margin-top: 4px; color: var(--rw-ink-3); }
 .rw-draft__actions { display: inline-flex; gap: 20px; }
+.rw-draft .rw-textlink--quiet {
+  min-height: 44px;
+  color: var(--rw-ink-3);
+  font-size: 0.875rem;
+  font-weight: 400;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.rw-draft .rw-textlink--quiet:hover { color: var(--rw-danger); }
 
 /* ---------- Gate / banner ---------- */
 .rw-gate { padding-top: clamp(8px, 2vw, 24px); border-top: 1px solid var(--rw-ink); margin-top: 8px; }
@@ -539,13 +671,25 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border: 1px solid var(--rw-danger);
   border-radius: 12px;
+  background: var(--rw-danger);
+  color: var(--rw-canvas);
   font-size: 0.9375rem;
+  font-weight: 600;
   line-height: 1.7;
 }
-.rw-banner p { color: var(--rw-ink); }
+.rw-banner p { display: flex; align-items: flex-start; gap: 10px; color: inherit; }
+.rw-banner svg { flex: none; margin-top: 0.3em; color: inherit; }
+.rw-banner .rw-textlink--btn {
+  flex: none;
+  color: inherit;
+  text-decoration-color: currentColor;
+}
+.rw-banner .rw-textlink--btn:focus-visible { outline-color: currentColor; }
+.rw-banner--ok { background: var(--rw-ok); border-color: var(--rw-ok); color: var(--rw-canvas); }
+.rw-banner:focus-visible { outline: 2px solid var(--rw-ink); outline-offset: 2px; }
 
 /* ---------- Receipt ---------- */
 .rw-receipt .rw-block { padding-top: clamp(24px, 3.5vw, 36px); }
@@ -566,24 +710,101 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 .rw-copyrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 14px; }
 .rw-copyrow__msg { font-size: 0.875rem; color: var(--rw-ink-2); min-height: 1.4em; }
 
-.rw-pay { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 16px; align-items: start; }
-.rw-dl--pay { margin: 0; display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); gap: 0; border-top: 1px solid var(--rw-ink); }
-.rw-dl--pay dt, .rw-dl--pay dd { padding: 11px 0; border-bottom: 1px solid var(--rw-rule); margin: 0; line-height: 1.6; user-select: text; -webkit-user-select: text; }
-.rw-dl--pay dt { padding-right: 20px; font-size: 0.9375rem; color: var(--rw-ink-3); }
-.rw-qr-fig { margin: 0; width: min(100%, 240px); }
-.rw-qr {
-  aspect-ratio: 1 / 1;
-  width: 100%;
-  border: 1px dashed var(--rw-line);
-  border-radius: 24px;
-  background: transparent;
-  overflow: hidden;
+/* Payment receipt card: a tactile ticket (AGENTS §6.1 card radius, §4.2 card shadow).
+   Two masked pieces: the amount head and the stub. Their facing corners are cut as quarter
+   circles, so together they read as notches on a dashed tear line, and the stub's bottom edge is
+   scalloped like a torn-off receipt. A mask would clip a box-shadow, so the hairline edge and the
+   soft shadow sit on the card as drop-shadows, which follow the cut-out outline. */
+.rw-ticket {
+  --rw-notch: 11px;  /* notch radius */
+  --rw-wave: 8px;    /* zigzag tooth height: one sharp tooth every 16px */
+  --rw-ticket-edge: rgba(18, 19, 22, 0.24);
+  margin-top: 16px;
+  max-width: 460px;
+  filter:
+    drop-shadow(0 0 0.6px var(--rw-ticket-edge))
+    drop-shadow(0 8px 14px rgba(18, 19, 22, 0.06));
 }
-.rw-qr > img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.rw-qr-cap { margin-top: 10px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-2); }
-@media (min-width: 640px) {
-  .rw-pay { grid-template-columns: minmax(0, 1fr) 220px; gap: 32px; }
-  .rw-qr-fig { width: 220px; }
+html.dark .rw-ticket,
+html[data-theme="dark"] .rw-ticket {
+  --rw-ticket-edge: rgba(255, 255, 255, 0.3);
+  filter: drop-shadow(0 0 0.6px var(--rw-ticket-edge));
+}
+.rw-ticket__head,
+.rw-ticket__stub { background: var(--rw-surface); }
+
+.rw-ticket__head {
+  padding: 24px 24px 20px;
+  border-radius: 24px 24px 0 0;
+  -webkit-mask:
+    radial-gradient(circle var(--rw-notch) at 0 100%, #0000 calc(100% - 0.5px), #000 100%) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--rw-notch) at 100% 100%, #0000 calc(100% - 0.5px), #000 100%) right / 51% 100% no-repeat;
+  mask:
+    radial-gradient(circle var(--rw-notch) at 0 100%, #0000 calc(100% - 0.5px), #000 100%) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--rw-notch) at 100% 100%, #0000 calc(100% - 0.5px), #000 100%) right / 51% 100% no-repeat;
+}
+
+.rw-ticket__stub {
+  position: relative;
+  padding-bottom: var(--rw-wave);
+  -webkit-mask:
+    radial-gradient(circle var(--rw-notch) at 0 0, #0000 calc(100% - 0.5px), #000 100%) left top / 51% calc(100% - var(--rw-wave)) no-repeat,
+    radial-gradient(circle var(--rw-notch) at 100% 0, #0000 calc(100% - 0.5px), #000 100%) right top / 51% calc(100% - var(--rw-wave)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left bottom / calc(var(--rw-wave) * 2) var(--rw-wave) repeat-x;
+  mask:
+    radial-gradient(circle var(--rw-notch) at 0 0, #0000 calc(100% - 0.5px), #000 100%) left top / 51% calc(100% - var(--rw-wave)) no-repeat,
+    radial-gradient(circle var(--rw-notch) at 100% 0, #0000 calc(100% - 0.5px), #000 100%) right top / 51% calc(100% - var(--rw-wave)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) left bottom / calc(var(--rw-wave) * 2) var(--rw-wave) repeat-x;
+}
+/* the tear line, running between the two notches */
+.rw-ticket__stub::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(var(--rw-notch) + 8px);
+  right: calc(var(--rw-notch) + 8px);
+  border-top: 1px dashed var(--rw-line);
+}
+.rw-ticket__label { font-size: 0.9375rem; line-height: 1.6; color: var(--rw-ink-3); }
+.rw-ticket__amount { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+.rw-ticket__amount .font-mono { font-size: clamp(2.25rem, 6vw, 2.75rem); font-weight: 600; line-height: 1.1; color: var(--rw-ink); }
+.rw-ticket__unit { font-size: 1.125rem; font-weight: 600; color: var(--rw-ink-2); }
+
+.rw-ticket__body { padding: 24px 24px 8px; }
+.rw-ticket__acct {
+  margin-top: 4px;
+  font-size: clamp(1.5rem, 5vw, 1.875rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--rw-ink);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.rw-copyrow--tight { margin-top: 12px; }
+.rw-ticket__meta { margin: 20px 0 0; border-top: 1px solid var(--rw-rule); }
+.rw-ticket__meta > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rw-rule);
+}
+.rw-ticket__meta > div:last-child { border-bottom: 0; }
+.rw-ticket__meta dt { font-size: 0.9375rem; line-height: 1.7; color: var(--rw-ink-3); }
+.rw-ticket__meta dd { margin: 0; font-size: 1rem; line-height: 1.7; color: var(--rw-ink); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.rw-ticket__holders { display: block; font-size: 0.875rem; line-height: 1.7; color: var(--rw-ink-2); }
+
+.rw-ticket__foot {
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--rw-rule);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--rw-ink-2);
+}
+@media (max-width: 420px) {
+  .rw-ticket__head, .rw-ticket__body, .rw-ticket__foot { padding-left: 20px; padding-right: 20px; }
+  .rw-ticket__meta > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 
 .rw-steps { margin: 14px 0 0; padding: 0; list-style: none; counter-reset: s; border-top: 1px solid var(--rw-ink); }
@@ -606,7 +827,41 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   color: var(--rw-ink-3);
 }
 .rw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 24px; }
+
+/* ---------- Withdraw (receipt) ---------- */
+/* Quiet by default: one ink text link. The open panel is a plain ruled form, not a modal. */
+.rw-withdraw { margin-top: -8px; }
+.rw-withdraw--open { margin-top: 0; max-width: 520px; }
+.rw-withdraw__warn { margin: 8px 0 16px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-withdraw__code { max-width: 160px; }
+.rw-withdraw__err { min-height: 1.6em; margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-danger); }
+.rw-withdraw__err:empty { min-height: 0; margin-top: 0; }
 .rw-actions--tight { margin-top: 8px; }
+
+/* ---------- Slip upload (receipt) ---------- */
+/* The upload itself is the shared SlipUploadPanel (styles/slip-upload.css). This block only adds the
+   heading row and copy; it stays flat on the receipt flow, separated by whitespace and hairlines. */
+.rw-slip__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.rw-slip__lead { margin-top: 8px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-slip__note { margin-top: 12px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
+.rw-slip__panel { margin-top: 20px; }
+
+/* Status badge: borderless, soft-tinted by the state colour (--pill); ink text keeps >=4.5:1 in both themes. */
+.rw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 14px;
+  border: 0;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--pill, var(--rw-ink-3)) 16%, var(--rw-canvas));
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--rw-ink);
+}
+.rw-pill__dot { flex: none; width: 9px; height: 9px; border-radius: 9999px; background: var(--pill, var(--rw-ink-3)); }
 .rw-devnote { margin-top: 32px; font-size: 0.8125rem; color: var(--rw-ink-3); }
 
 /* ---------- Dev toolbar (dev builds only) ---------- */
@@ -721,8 +976,9 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
     background: var(--rw-side-bg);
     color: var(--rw-side-muted);
     font-size: 0.8125rem;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
   }
+  @media (prefers-reduced-motion: reduce) { .rw-step__dot { transition: none; } }
   .rw-step__label {
     padding-top: 3px;
     font-size: 1rem;
@@ -737,7 +993,7 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   .rw-step[data-state='done'] .rw-step__dot { background: var(--rw-side-ink); border-color: var(--rw-side-ink); color: var(--rw-side-bg); }
   .rw-step[data-state='done'] .rw-step__label { color: var(--rw-side-ink-2); }
 
-  .rw-step[data-state='active'] .rw-step__dot { background: var(--rw-fern); border-color: var(--rw-fern); color: #121316; font-weight: 700; }
+  .rw-step[data-state='active'] .rw-step__dot { background: var(--rw-fern); border-color: var(--rw-fern); color: #121316; font-weight: 700; transform: scale(1.16); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rw-fern) 18%, transparent); }
   .rw-step[data-state='active'] .rw-step__label { color: var(--rw-side-ink); font-weight: 700; }
 
   button.rw-step__row:hover .rw-step__label { color: var(--rw-side-ink); text-decoration: underline; text-underline-offset: 5px; }

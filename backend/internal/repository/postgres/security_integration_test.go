@@ -17,7 +17,7 @@ import (
 	"comcamp25-backend/internal/repository/postgres"
 )
 
-// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001 and 000002 applied.
+// Requires TEST_DATABASE_DSN pointing at a database with migrations 000001–000004 applied.
 
 func openTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -72,7 +72,7 @@ func TestPostgres_CreateWithinCapacityIsAtomic(t *testing.T) {
 	cleanupApplicants(t, pool, tag)
 
 	var existing int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM applicants WHERE status != 'REJECTED' AND deleted_at IS NULL`).Scan(&existing); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM applicants WHERE status NOT IN ('REJECTED', 'REFUND_PENDING', 'REFUNDED') AND deleted_at IS NULL`).Scan(&existing); err != nil {
 		t.Fatal(err)
 	}
 	capacity := existing + 5

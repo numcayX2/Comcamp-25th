@@ -29,6 +29,7 @@ Comcamp-25th/
 │   └── README.md             # คู่มือการพัฒนา Frontend
 ├── docker-compose.yml        # PostgreSQL 16 Service
 ├── .env.example              # ตัวอย่างตัวแปรสภาพแวดล้อม
+├── AI_SETUP.md               # คู่มือและ Prompt ให้ Agentic AI ช่วย Set up & QA
 └── README.md                 # เอกสารภาพรวมโครงการ
 ```
 
@@ -36,20 +37,27 @@ Comcamp-25th/
 
 ## ⚡ เริ่มต้นใช้งานอย่างรวดเร็ว (Quick Start)
 
-### 1. ติดตั้งและเริ่มฐานข้อมูล (PostgreSQL 16)
+> 🤖 **อยากให้ AI ช่วยเซตอัพให้อัตโนมัติ?** เปิดโปรเจกต์ใน Claude Code, Antigravity, Codex, Cursor หรือ Gemini CLI แล้วส่งคำสั่งนี้ให้ AI ได้เลย (รายละเอียดครบอยู่ใน [`AI_SETUP.md`](./AI_SETUP.md)):
+> *"อ่าน `AI_SETUP.md` แล้วช่วยเซตอัพโปรเจกต์แบบโหมด A (In-Memory ไม่ใช้ Docker) พร้อม Cloudflare Turnstile Dummy Keys รันการทดสอบ และสตาร์ต Backend + Frontend ให้หน่อย"*
 
-```bash
-# คัดลอก Environment Variables
+### 1. ตั้งค่า Environment และเริ่มฐานข้อมูล (PostgreSQL 16)
+
+```powershell
+# คัดลอก Environment Variables (ใช้ได้ทั้ง Backend และ Frontend ผ่าน fallback ใน astro.config.mjs)
 cp .env.example .env
+# จากนั้นเปิด .env เพื่อตั้งค่า JWT_SECRET / DB_PASSWORD (และ DEV_ADMIN_PASSWORD สำหรับทดสอบ /admin)
 
 # เริ่มต้น Docker Container สำหรับ PostgreSQL
 docker compose up -d db
 
-# รัน Migration
-Get-Content backend/migrations/000001_init_schema.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+# รัน Migration ทั้งหมดตามลำดับ (000001–000004) — PowerShell
+Get-ChildItem backend/migrations/*.up.sql | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw } | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+
+# หรือบน macOS / Linux (Bash)
+# cat backend/migrations/*.up.sql | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
-*(หมายเหตุ: หากไม่มี Docker ระบบ Backend มี Thread-Safe In-Memory Fallback ให้นักพัฒนา Front-end สามารถรันเซิร์ฟเวอร์ทดสอบได้ทันที)*
+*(หมายเหตุ: หากไม่มี Docker ระบบ Backend มี Thread-Safe In-Memory Fallback ให้นักพัฒนาสามารถรันทดสอบได้ทันที ส่วน Cloudflare Turnstile ในโหมด `development` สามารถเว้นว่างไว้เพื่อข้ามการตรวจ หรือใช้ Dummy Test Keys ที่ระบุไว้ท้ายไฟล์ `.env.example`)*
 
 ### 2. รัน Backend API Service
 
@@ -72,10 +80,16 @@ npm run dev
 
 ---
 
-## 🔑 ข้อมูลเข้าสู่ระบบเริ่มต้นสำหรับผู้ดูแล (Default Admin)
+## 🔑 บัญชีผู้ดูแลระบบ (Admin Accounts)
 
-* **Username:** `admin`
-* **Password:** `strong_password` (หรือ `admin123` ในโหมดทดสอบ)
+ระบบ **ไม่มีบัญชีหรือรหัสผ่านเริ่มต้น** ในโค้ด (AGENTS.md §13.7)
+
+* **Production / PostgreSQL:** สร้างบัญชีด้วยคำสั่งด้านล่าง ระบบจะถามรหัสผ่าน (อย่างน้อย 12 ตัวอักษร) และเก็บเป็น bcrypt
+  ```bash
+  cd backend
+  go run ./cmd/create-admin -username <ชื่อผู้ใช้> -name "<ชื่อที่แสดง>" -role superadmin
+  ```
+* **Development (In-Memory, ไม่มี PostgreSQL):** ตั้ง `DEV_ADMIN_USERNAME` และ `DEV_ADMIN_PASSWORD` ใน `.env` ของเครื่องตัวเองเพื่อสร้างบัญชีทดสอบ `/admin` (ถ้าเว้นว่างไว้ API จะไม่ seed บัญชีให้; ตัวแปรนี้ไม่ถูกใช้ในโหมด production)
 
 ---
 
@@ -88,11 +102,14 @@ npm run dev
 | `POST` | `/api/applications` | Public | ส่งใบสมัครใหม่ (ล็อกโควตาตาม maxCapacity ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้ เต็มแล้วตอบ 409 QUOTA_FULL) |
 | `GET` | `/api/applications/status?q={query}` | Public | ตรวจสอบสถานะใบสมัคร (ค้นหาด้วยเลขบัตร 13 หลัก, เบอร์โทร หรือรหัส) |
 | `POST` | `/api/applications/:id/confirm` | Public | กดยืนยันสิทธิ์เข้าร่วมค่าย (สำหรับผู้ผ่านการคัดเลือก) |
+| `POST` | `/api/applications/:id/withdraw` | Public | ผู้สมัครยกเลิกใบสมัครเอง (ต้องส่ง verifyCode) ใช้ไม่ได้เมื่อยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน |
+| `PATCH` | `/api/applications/:id/profile` | Public | ผู้สมัครแก้ไขชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ (ต้องส่ง verifyCode) ห้ามแก้ชื่อ-นามสกุล เลขบัตร เบอร์ อีเมล |
 | `POST` | `/api/applications/:id/slip` | Public | อัปโหลดสลิปโอนเงิน (ระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
 | `POST` | `/api/auth/login` | Public | เข้าสู่ระบบผู้ดูแลเพื่อรับ JWT Token |
 | `GET` | `/api/admin/applications` | Admin | รายชื่อผู้สมัครทั้งหมดและรูปสลิป |
-| `PATCH` | `/api/admin/applications/:id` | Admin | ปรับสถานะผู้สมัคร (เช่น PASSED, RESERVE, REJECTED) |
+| `PATCH` | `/api/admin/applications/:id` | Admin | ปรับสถานะผู้สมัคร (PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED) ผู้สมัครใหม่เริ่มที่ PASSED ตามหลักใครสมัครก่อนได้ก่อน สถานะ REJECTED / REFUND_PENDING / REFUNDED คืนที่นั่งทันที และการกลับมาถือที่นั่งต้องมีที่ว่าง |
 | `PATCH` | `/api/admin/applications/:id/verify-slip` | Admin | ตรวจสอบและอนุมัติสลิปเพื่อปรับสถานะเป็น CONFIRMED |
+| `PATCH` | `/api/admin/applications/:id/profile` | Admin | พี่ค่ายแก้ไขข้อมูลผู้สมัครทุกฟิลด์ (ตรวจสอบเต็มรูปแบบ, ซ้ำกับคนอื่น 409, บันทึก audit_logs) |
 | `GET` | `/api/admin/settings` | Admin | ดูการตั้งค่าค่าย โควตา และกำหนดการทั้งหมด |
 | `PATCH` | `/api/admin/settings` | Admin | ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), กำหนดการ หรือปิดรับสมัครฉุกเฉิน |
 
@@ -108,3 +125,11 @@ go test -v ./...
 - E2E Lifecycle Test Suite: ผ่านครบทุกขั้นตอน
 - Repository Integration with PostgreSQL 16: ผ่านครบทุกขั้นตอน
 - Unit Validation & Business Logic Tests: ผ่านครบ 100%
+
+---
+
+## 📄 สิทธิ์การใช้งาน (License)
+
+สงวนสิทธิ์ตาม [LICENSE](./LICENSE) (**Source-Available — Proprietary**):
+- **ทีมงานและคณะผู้จัดค่าย ComCamp (CS MJU) รุ่นถัดไป** (เช่น ComCamp #26 เป็นต้นไป) สามารถใช้อ้างอิง คัดลอก ดัดแปลง และติดตั้งใช้งานเพื่อจัดกิจกรรมค่ายของสาขาได้ฟรี (โปรดคงเครดิตทีมพัฒนา ComCamp #25 ไว้)
+- **บุคคลภายนอก (Non-Staff)** ไม่อนุญาตให้นำโค้ดไปคัดลอก ทำซ้ำ ดัดแปลง หรือเผยแพร่ใช้งานต่อโดยไม่ได้รับอนุญาตเป็นลายลักษณ์อักษร
