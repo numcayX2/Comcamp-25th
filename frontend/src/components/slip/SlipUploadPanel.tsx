@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
+import { CircleCheck } from 'lucide-react';
 import { ApiHttpError, uploadPaymentSlip, type ApiSource, type SlipStatus } from '../../lib/api';
 import {
   SLIP_ACCEPT,
@@ -25,6 +26,12 @@ import {
 import { SlipLightbox } from './SlipLightbox';
 import { VerifyCodeField } from './VerifyCodeField';
 import '../../styles/slip-upload.css';
+
+/** Student-friendly success copy. Fixed on purpose: the API message names "เจ้าหน้าที่" and differs
+    between the live server and the dev mock, so it is never shown. */
+export const SLIP_OK_HEADLINE = 'อัปโหลดสลิปเรียบร้อยแล้ว รอพี่ค่ายตรวจสอบสลิป';
+export const SLIP_OK_NEXT =
+  'ไม่ต้องส่งสลิปซ้ำและยังไม่ต้องทำอะไรเพิ่ม พี่ค่ายจะตรวจสอบความถูกต้องและอัปเดตสถานะเป็น “ยืนยันสิทธิ์สมบูรณ์” ให้โดยเร็วที่สุด น้องสามารถกลับมาดูผลได้ตลอดที่หน้าตรวจสอบสถานะ (/status) ด้วยรหัสใบสมัคร เลขบัตรประชาชน หรือเบอร์โทรศัพท์ และติดตามข่าวสารได้ทางเพจ Facebook ของโครงการ';
 
 interface Sent {
   url: string;
@@ -210,9 +217,8 @@ export function SlipUploadPanel({
       setResized(false);
       setReplace(false);
       if (!external) setInnerCode('');
-      const text = res.data.message || 'ส่งสลิปเรียบร้อยแล้ว รอทีมงานตรวจสอบ';
-      setMessage(text);
-      onUploaded(res.data.slipStatus ?? 'PENDING', text, res.source);
+      setMessage(SLIP_OK_HEADLINE);
+      onUploaded(res.data.slipStatus ?? 'PENDING', SLIP_OK_HEADLINE, res.source);
     } catch (err) {
       const text = describeApiError(err, 'ส่งสลิปไม่สำเร็จ กรุณาลองอีกครั้ง');
       // The picked file and the typed digits are kept so a retry is one tap.
@@ -256,10 +262,8 @@ export function SlipUploadPanel({
               </p>
             )}
             <p className="su-note">
-              {sent
-                ? 'รูปแสดงจากเครื่องของคุณเท่านั้น '
-                : 'ทีมงานได้รับสลิปของคุณแล้ว '}
-              เพื่อความปลอดภัย รูปสลิปเปิดดูได้เฉพาะในระบบของทีมงาน
+              {sent ? 'รูปนี้แสดงจากเครื่องของน้องเท่านั้น ' : 'พี่ค่ายได้รับสลิปแล้ว '}
+              เพื่อความปลอดภัย รูปสลิปเปิดดูได้เฉพาะพี่ค่ายในระบบของโครงการ
             </p>
             <div className="su-strip__actions">
               <button ref={replaceBtnRef} type="button" className="su-btn su-btn--ghost" onClick={() => setReplace(true)}>
@@ -270,9 +274,15 @@ export function SlipUploadPanel({
         </div>
       )}
 
-      <p className="su-msg su-msg--ok" role="status">
-        {message}
-      </p>
+      {message && (
+        <div className="su-msg su-msg--ok" role="status">
+          <CircleCheck className="su-msg__icon" size={18} strokeWidth={1.75} aria-hidden="true" />
+          <div className="su-msg__body">
+            <p className="su-msg__title">{message}</p>
+            <p className="su-msg__text">{SLIP_OK_NEXT}</p>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <form className="su-form" onSubmit={onSubmit} noValidate>

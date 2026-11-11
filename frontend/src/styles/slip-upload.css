@@ -21,6 +21,9 @@
   --su-btn-bg: var(--rw-ink, var(--color-btn-dark));
   --su-btn-text: var(--rw-canvas, var(--color-btn-dark-text));
   --su-fill: color-mix(in srgb, var(--su-ink) 6%, transparent);
+  /* Solid success bar: #047857 on #F9F8F4 in light, #10B981 on the dark canvas (both >= 4.5:1). */
+  --su-ok-bg: var(--rw-ok, #047857);
+  --su-ok-fg: var(--su-bg);
   font-family: var(--font-sans, inherit);
   color: var(--su-ink);
 }
@@ -43,9 +46,24 @@
 .su-msg:empty { display: none; }
 .su-msg--err { color: var(--su-danger); font-weight: 600; }
 .su-msg--warn { color: var(--su-warn); font-weight: 600; }
-.su-msg--ok { margin-top: 0; color: var(--su-ink); font-weight: 600; }
-.su-msg--ok::before { content: '●'; margin-right: 8px; font-size: 0.65rem; color: var(--rw-ok, var(--color-success)); vertical-align: 0.1em; }
-.su-msg--ok:empty::before { content: none; }
+.su-msg--ok {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--su-ok-bg);
+  border-radius: 12px;
+  background: var(--su-ok-bg);
+  color: var(--su-ok-fg);
+  font-weight: 400;
+}
+.su-msg__icon { flex: none; margin-top: 3px; } /* centres the 18px icon on the first 24px headline line */
+.su-msg__body { min-width: 0; display: grid; gap: 4px; }
+.su-msg__title { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+.su-msg__text { margin: 0; font-size: 0.9375rem; line-height: 1.75; overflow-wrap: anywhere; }
 
 /* ---------- Verify code: one boxed input ---------- */
 .su-field { max-width: 520px; }
@@ -165,20 +183,74 @@
 .su-defer a { color: var(--su-ink-2); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--su-line); }
 .su-defer a:hover { color: var(--su-ink); text-decoration-color: var(--su-ink); }
 
-/* ---------- Lightbox (native <dialog>) ---------- */
+/* ---------- Lightbox (native <dialog>, top layer) ----------
+   Tailwind Preflight zeroes every margin, which removes the UA "margin: auto" that centres a modal
+   dialog and pins it to the top-left corner. Restore inset + auto margins explicitly, and let the
+   card hug the image (fit-content) so portrait slips do not sit in a wide empty panel. */
 .su-lightbox {
+  /* AGENTS.md section 4.2 --shadow-float; the dark variant is deeper so the card still lifts. */
+  --su-shadow: 0 4px 12px rgba(18, 19, 22, 0.05), 0 24px 48px -12px rgba(18, 19, 22, 0.10);
+  position: fixed;
+  inset: 0;
+  margin: auto;
   box-sizing: border-box;
-  width: min(92vw, 760px);
+  width: fit-content;
+  height: fit-content;
+  max-width: min(92vw, 760px);
   max-height: 92vh;
+  max-height: 92dvh;
   padding: 16px;
-  border: 0;
-  border-radius: 20px;
+  border: 1px solid var(--su-rule);
+  border-radius: 24px;
   background: var(--su-bg);
+  color: var(--su-ink);
+  box-shadow: var(--su-shadow);
   overflow: auto;
+  overscroll-behavior: contain;
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: center;
+  transition:
+    opacity 0.18s ease-out,
+    transform 0.18s ease-out,
+    overlay 0.18s ease-out allow-discrete,
+    display 0.18s ease-out allow-discrete;
 }
-.su-lightbox::backdrop { background: rgba(8, 10, 16, 0.72); }
+html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); }
+html.dark .su-lightbox { --su-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 48px -12px rgba(0, 0, 0, 0.55); }
+.su-lightbox:modal { inset: 0; margin: auto; overscroll-behavior: contain; }
+/* Closing state (exit animation where supported; otherwise the dialog simply disappears). */
+.su-lightbox:not([open]) { opacity: 0; transform: scale(0.96); }
+.su-lightbox::backdrop {
+  background: rgba(8, 10, 16, 0.72);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  opacity: 1;
+  transition:
+    opacity 0.18s ease-out,
+    overlay 0.18s ease-out allow-discrete,
+    display 0.18s ease-out allow-discrete;
+}
+.su-lightbox:not([open])::backdrop { opacity: 0; }
+@starting-style {
+  .su-lightbox[open] { opacity: 0; transform: scale(0.96); }
+  .su-lightbox[open]::backdrop { opacity: 0; }
+}
 .su-lightbox__body { display: grid; gap: 14px; justify-items: center; }
-.su-lightbox__body img { display: block; max-width: 100%; max-height: 74vh; object-fit: contain; border-radius: 12px; }
+.su-lightbox__body img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: calc(92vh - 112px);
+  max-height: calc(92dvh - 112px); /* leaves room for the padding and the close button */
+  object-fit: contain;
+  border-radius: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .su-lightbox, .su-lightbox::backdrop { transition: none; }
+  .su-lightbox:not([open]) { transform: none; }
+  @starting-style { .su-lightbox[open] { transform: none; } }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .su * { transition: none !important; }

@@ -206,9 +206,9 @@ function describeHighlight(app: Application): Highlight {
   return {
     tone: 'tech',
     icon: Ticket,
-    badge: 'ได้รับสิทธิ์แล้ว',
-    title: 'ผ่านการคัดเลือก ได้ที่นั่งในค่ายแล้ว',
-    body: 'ใครสมัครก่อนได้สิทธิ์ก่อน และน้องได้ที่นั่งแล้ว ขั้นต่อไปคือโอนค่าสมัคร 1,000 บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างเพื่อยืนยันสิทธิ์',
+    badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
+    title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
+    body: 'ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด 30 ที่นั่ง) ขั้นตอนต่อไปคือโอนค่าสมัคร 1,000 บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์',
     toSlip: true,
   };
 }
@@ -227,9 +227,10 @@ const FOCUS_RING =
   'outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]';
 
 /**
- * Full-width banner above the record. The tint is the tone mixed into the card colour, the
- * headline stays in the ink colour (AA in both themes), and the colour is never the only cue:
- * icon, badge text and headline all say the same thing.
+ * Editorial banner above the record: sharp corners, a bold tone-coloured top bar and a 1px frame,
+ * like the masthead of sections 01-04. The tint is the tone mixed into the card colour, text stays
+ * in ink (AA in both themes), and colour is never the only cue: icon, badge, state token and
+ * headline all say the same thing. No side stripe, no icon bubble (AGENTS.md section 6.1).
  */
 function StatusHighlight({ app }: { app: Application }) {
   const h = describeHighlight(app);
@@ -241,34 +242,41 @@ function StatusHighlight({ app }: { app: Application }) {
       aria-labelledby="status-highlight-title"
       data-status={app.status}
       data-tone={h.tone}
-      className="rounded-2xl border p-5 sm:p-6"
+      className="rounded-none border-x border-b border-t-4 p-5 sm:p-6"
       style={{
-        backgroundColor: `color-mix(in srgb, ${color} 12%, ${SURFACE})`,
-        borderColor: `color-mix(in srgb, ${color} 40%, ${SURFACE})`,
+        backgroundColor: `color-mix(in srgb, ${color} 14%, ${SURFACE})`,
+        borderTopColor: color,
+        borderColor: `color-mix(in srgb, ${color} 45%, ${RULE})`,
+        borderTopWidth: 4,
       }}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
-        <span
-          aria-hidden="true"
-          className="grid size-12 shrink-0 place-items-center rounded-full"
-          style={{ backgroundColor: `color-mix(in srgb, ${color} 20%, ${SURFACE})`, color }}
-        >
-          <Icon size={26} strokeWidth={1.5} />
-        </span>
-        <div className="min-w-0 flex-1">
+      <div
+        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-3"
+        style={{ borderColor: `color-mix(in srgb, ${color} 28%, ${RULE})` }}
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <span aria-hidden="true" className="shrink-0" style={{ color }}>
+            <Icon size={18} strokeWidth={1.6} />
+          </span>
           <span
-            className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold"
-            style={{ borderColor: `color-mix(in srgb, ${color} 45%, ${SURFACE})`, color: INK, backgroundColor: SURFACE }}
+            className="inline-flex items-center gap-2 rounded-full border-0 px-3 py-1 text-sm font-semibold"
+            style={{ color: INK, backgroundColor: `color-mix(in srgb, ${color} 22%, ${SURFACE})` }}
           >
             <span aria-hidden="true" className="text-[10px] leading-none" style={{ color }}>
               ●
             </span>
             {h.badge}
           </span>
-          <h2 id="status-highlight-title" className="mt-3 text-balance text-xl font-bold leading-[1.4] sm:text-2xl" style={{ color: INK }}>
+        </div>
+        <span className="font-mono text-[11px] font-medium uppercase tabular-nums" style={{ color: INK_MUTED }}>
+          {app.status}
+        </span>
+      </div>
+      <div className="mt-4 min-w-0">
+          <h2 id="status-highlight-title" className="text-balance text-2xl font-bold leading-[1.35] sm:text-3xl" style={{ color: INK }}>
             {h.title}
           </h2>
-          <p className="mt-2 max-w-[62ch] text-base leading-7" style={{ color: INK_MUTED }}>
+          <p className="mt-3 max-w-[62ch] text-base leading-7" style={{ color: INK_MUTED }}>
             {h.body}
           </p>
           {(h.toSlip || h.contact) && (
@@ -295,7 +303,6 @@ function StatusHighlight({ app }: { app: Application }) {
               )}
             </div>
           )}
-        </div>
       </div>
     </section>
   );
@@ -631,24 +638,21 @@ export function StatusSection() {
         </form>
       </section>
 
-      {/* ── Alerts: 1px hairline border, status dot, editorial typography ── */}
+      {/* ── Alerts: solid semantic bar fill for immediate visibility (AA contrast in light & dark) ── */}
       {error && (
         <div
           role="alert"
-          className="mt-6 flex items-baseline justify-between gap-4 rounded-xl border bg-[var(--bg-card)] px-4 py-3.5"
-          style={{ borderColor: RULE }}
+          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
+          style={{ backgroundColor: 'var(--color-danger)', borderColor: 'var(--color-danger)', color: 'var(--bg-canvas)' }}
         >
-          <p className="text-sm leading-7" style={{ color: INK }}>
-            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: 'var(--color-danger)' }}>
-              ●
-            </span>
-            {error}
+          <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
+            <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
+            <span>{error}</span>
           </p>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="shrink-0 rounded-full px-2.5 py-0.5 text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
-            style={{ color: INK_MUTED }}
+            className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
           >
             ปิด
           </button>
@@ -660,25 +664,27 @@ export function StatusSection() {
           ref={withdrawnRef}
           tabIndex={-1}
           role="status"
-          className="mt-6 flex items-baseline justify-between gap-4 rounded-xl border bg-[var(--bg-card)] px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]"
-          style={{ borderColor: RULE }}
+          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]"
+          style={{ backgroundColor: 'var(--color-success)', borderColor: 'var(--color-success)', color: '#121316' }}
         >
-          <p className="text-sm leading-7" style={{ color: INK }}>
-            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: 'var(--color-success)' }}>
-              ●
+          <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
+            <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
+            <span>
+              ใบสมัครนี้ถูกยกเลิกแล้ว (<span className="font-mono tabular-nums">{withdrawnId}</span>) คืนที่นั่งว่างเรียบร้อย
+              {' '}หากเปลี่ยนใจ{' '}
+              <a
+                href="/register"
+                className="font-bold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-current"
+              >
+                สมัครใหม่ได้ที่หน้าสมัครค่าย
+              </a>{' '}
+              หากยังมีที่นั่งว่าง
             </span>
-            ใบสมัครนี้ถูกยกเลิกแล้ว (<span className="font-mono tabular-nums">{withdrawnId}</span>) คืนที่นั่งว่างเรียบร้อย
-            {' '}หากเปลี่ยนใจ{' '}
-            <a href="/register" className="font-semibold underline underline-offset-4" style={{ color: INK }}>
-              สมัครใหม่ได้ที่หน้าสมัครค่าย
-            </a>{' '}
-            หากยังมีที่นั่งว่าง
           </p>
           <button
             type="button"
             onClick={() => setWithdrawnId(null)}
-            className="shrink-0 rounded-full px-2.5 py-0.5 text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
-            style={{ color: INK_MUTED }}
+            className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
           >
             ปิด
           </button>

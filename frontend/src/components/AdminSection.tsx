@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronDown, Download, Pencil, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, CircleCheck, Download, Pencil, Search, Trash2, TriangleAlert, X } from 'lucide-react';
 import {
   ApiHttpError,
   adminLogin,
@@ -45,7 +45,7 @@ import {
   WARNING,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PENDING', 'PASSED', 'RESERVE', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
 
 /* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
    appears only as a small status dot (AGENTS §4.1 master tokens). */
@@ -126,6 +126,11 @@ function StatusSelect({
         className={`cursor-pointer appearance-none rounded-sm border-b bg-transparent py-0.5 pr-6 text-sm leading-7 disabled:opacity-50 ${FOCUS}`}
         style={{ borderColor: RULE, color: INK, colorScheme: 'inherit' }}
       >
+        {!STATUSES.includes(app.status) && (
+          <option key={app.status} value={app.status} disabled>
+            {STATUS_LABELS[app.status]} (สถานะเดิม)
+          </option>
+        )}
         {STATUSES.map((s) => (
           <option
             key={s}
@@ -513,21 +518,21 @@ export function AdminSection() {
         )}
       </header>
 
-      {/* ── Notices: one ruled line, announced to assistive tech ── */}
+      {/* ── Notices: solid semantic bar fill for immediate visibility (AA contrast in light & dark) ── */}
       {error && (
         <div
           role="alert"
-          className="mt-8 flex items-baseline justify-between gap-4 border-y py-3"
-          style={{ borderColor: RULE }}
+          className="mt-8 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
+          style={{ backgroundColor: DANGER, borderColor: DANGER, color: 'var(--bg-canvas)' }}
         >
-          <p className="text-sm leading-7" style={{ color: DANGER }}>
-            {error}
+          <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
+            <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
+            <span>{error}</span>
           </p>
           <button
             type="button"
             onClick={() => setError(null)}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-sm underline underline-offset-4 ${FOCUS}`}
-            style={{ color: INK_2 }}
+            className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
           >
             ปิด
           </button>
@@ -537,20 +542,17 @@ export function AdminSection() {
       {actionSuccess && (
         <div
           role="status"
-          className="mt-8 flex items-baseline justify-between gap-4 border-y py-3"
-          style={{ borderColor: RULE }}
+          className="mt-8 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
+          style={{ backgroundColor: SUCCESS, borderColor: SUCCESS, color: '#121316' }}
         >
-          <p className="text-sm leading-7" style={{ color: INK }}>
-            <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: SUCCESS }}>
-              ●
-            </span>
-            {actionSuccess}
+          <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
+            <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
+            <span>{actionSuccess}</span>
           </p>
           <button
             type="button"
             onClick={() => setActionSuccess(null)}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-sm underline underline-offset-4 ${FOCUS}`}
-            style={{ color: INK_2 }}
+            className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
           >
             ปิด
           </button>
