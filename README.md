@@ -29,12 +29,16 @@ Comcamp-25th/
 │   └── README.md             # คู่มือการพัฒนา Frontend
 ├── docker-compose.yml        # PostgreSQL 16 Service
 ├── .env.example              # ตัวอย่างตัวแปรสภาพแวดล้อม
+├── AI_SETUP.md               # คู่มือและ Prompt ให้ Agentic AI ช่วย Set up & QA
 └── README.md                 # เอกสารภาพรวมโครงการ
 ```
 
 ---
 
 ## ⚡ เริ่มต้นใช้งานอย่างรวดเร็ว (Quick Start)
+
+> 🤖 **อยากให้ AI ช่วยเซตอัพให้อัตโนมัติ?** เปิดโปรเจกต์ใน Claude Code, Antigravity, Codex, Cursor หรือ Gemini CLI แล้วส่งคำสั่งนี้ให้ AI ได้เลย (รายละเอียดครบอยู่ใน [`AI_SETUP.md`](./AI_SETUP.md)):
+> *"อ่าน `AI_SETUP.md` แล้วช่วยเซตอัพโปรเจกต์แบบโหมด A (In-Memory ไม่ใช้ Docker) พร้อม Cloudflare Turnstile Dummy Keys รันการทดสอบ และสตาร์ต Backend + Frontend ให้หน่อย"*
 
 ### 1. ตั้งค่า Environment และเริ่มฐานข้อมูล (PostgreSQL 16)
 
