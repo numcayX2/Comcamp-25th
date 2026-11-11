@@ -117,17 +117,20 @@
       if (capNote) capNote.textContent = 'ใกล้เต็มแล้ว';
       if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบ First-Come, First-Served';
     } else if (s === 'FULL') {
-      ctaText = 'ลงชื่อสำรองสิทธิ์';
-      ctaHref = '/register';
+      // /register is locked once the camp is full, so the CTA leads to the status page instead.
+      ctaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
+      ctaHref = '/status';
       miniLabel = 'ที่นั่งเต็มแล้ว';
-      dateMsg = 'ที่นั่งหลักเต็มแล้ว (' + maxCap + '/' + maxCap + ') · เปิดรับรายชื่อสำรอง';
+      dateMsg = 'ผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว · หากมีผู้สละสิทธิ์จะเปิดรับเพิ่มอัตโนมัติ';
       tone = 'danger';
       stickyDisabled = false;
-      sticky.textContent = 'สำรองสิทธิ์';
-      secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-      secondary.setAttribute('href', '/status');
+      sticky.textContent = 'ตรวจสถานะ';
+      // The primary CTA already leads to /status, so the secondary link points at the camp details.
+      secondary.textContent = 'ดูรายละเอียดค่าย →';
+      secondary.setAttribute('href', '#experience');
       if (capVal) capVal.textContent = 'เต็มแล้ว (' + maxCap + '/' + maxCap + ')';
-      if (capNote) capNote.textContent = 'เปิดรับรายชื่อสำรอง';
+      if (capNote) capNote.textContent = 'เปิดรับเพิ่มเมื่อมีผู้สละสิทธิ์';
+      if (seatsCaption) seatsCaption.textContent = 'ขณะนี้มีผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว หากมีผู้สละสิทธิ์ระบบจะคืนที่นั่งว่างให้สมัครได้ทันที';
     } else { // CLOSED
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
@@ -167,8 +170,8 @@
           cdVal.textContent = 'ใกล้เต็มแล้ว';
           if (cdNote) cdNote.textContent = 'เหลือ ' + seatsLeft + ' ที่นั่งสุดท้าย';
         } else if (s === 'FULL') {
-          cdVal.textContent = 'เปิดรับตัวสำรอง';
-          if (cdNote) cdNote.textContent = 'ที่นั่งหลักครบ ' + maxCap + ' คนแล้ว';
+          cdVal.textContent = 'ที่นั่งเต็มแล้ว';
+          if (cdNote) cdNote.textContent = 'ครบ ' + maxCap + ' ที่นั่ง · เปิดรับเพิ่มเมื่อมีที่ว่าง';
         } else if (s === 'CLOSED') {
           cdVal.textContent = 'ปิดรับสมัครแล้ว';
           if (cdNote) cdNote.textContent = 'ตรวจสอบสถานะใบสมัครได้ตลอดเวลา';
@@ -208,8 +211,10 @@
   }
 
   function navigateToRegister(){
-    if (computeHeroState() === 'PRE_OPEN' || computeHeroState() === 'CLOSED' || computeHeroState() === 'LOADING') return;
-    window.location.href = '/register';
+    var s = computeHeroState();
+    if (s === 'PRE_OPEN' || s === 'CLOSED' || s === 'LOADING') return;
+    // Full: the form is locked, so the mobile button goes to the status page like the hero CTA.
+    window.location.href = s === 'FULL' ? '/status' : '/register';
   }
 
   var stickyBtn = $('sticky-cta');
@@ -288,335 +293,16 @@
   syncServerStatus();
   setInterval(function(){ tickCountdown(); applyHeroState(); }, 1000);
 
-  // Interactive 3D Hardware Stage in Hero Section (Arduino UNO R3 & ESP8266 NodeMCU with real GLB + procedural fallback)
-  (function initHeroStage3D(){
+  // Hero 3D stage: rendered by src/scripts/hero-3d.js, which bundles three.js from package.json
+  // (Astro build). The old loader that lived here pulled three.js from a third-party CDN at runtime, without
+  // Subresource Integrity, and only ran on a page without #heroStage. That case now just shows the
+  // static fallback: no third-party script is ever imported from this file.
+  (function initHeroStageFallback(){
     var canvas = $('heroStageCanvas');
-    // If managed by modern hero-3d.js module (#heroStage), skip legacy loader
     if (!canvas || $('heroStage')) return;
-    var activeBoard = 'arduino';
-    var toggles = document.querySelectorAll('[data-stage-toggle]');
-    var tagTLText = $('heroStageTagTLText');
-    var tagBRText = $('heroStageTagBRText');
-
-    function setBoardUI(which){
-      activeBoard = which;
-      for (var i = 0; i < toggles.length; i++) {
-        var btn = toggles[i];
-        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-stage-toggle') === which));
-      }
-      if (tagTLText && tagBRText) {
-        if (which === 'arduino') {
-          tagTLText.innerHTML = '<strong>ATmega328P</strong> · Digital D0–D13 &amp; Analog A0–A5';
-          tagBRText.innerHTML = '<strong>Arduino UNO R3</strong> · บอร์ดหลักสำหรับฝึกต่อวงจรและเซนเซอร์';
-        } else {
-          tagTLText.innerHTML = '<strong>ESP-12E Wi-Fi</strong> · SoftAP 192.168.4.1 &amp; HTTP Server';
-          tagBRText.innerHTML = '<strong>ESP8266 NodeMCU</strong> · บอร์ดสร้างหน้าเว็บควบคุมอุปกรณ์ผ่านมือถือ';
-        }
-      }
-      canvas.setAttribute(
-        'aria-label',
-        'โมเดลสามมิติบอร์ด ' + (which === 'arduino' ? 'Arduino UNO R3' : 'ESP8266 NodeMCU') + ' ลากเมาส์หรือกดลูกศรเพื่อหมุนดูรอบบอร์ดได้'
-      );
-    }
-
-    for (var i = 0; i < toggles.length; i++) {
-      (function(btn){
-        btn.addEventListener('click', function(){
-          setBoardUI(btn.getAttribute('data-stage-toggle') || 'arduino');
-        });
-      })(toggles[i]);
-    }
-
-    function buildProceduralArduino(THREE){
-      var g = new THREE.Group();
-      function mat(col, rough, metal){
-        return new THREE.MeshStandardMaterial({ color: col, roughness: rough != null ? rough : 0.55, metalness: metal != null ? metal : 0.12 });
-      }
-      function box(w, h, d, m, x, y, z){
-        var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-        mesh.position.set(x, y, z);
-        g.add(mesh);
-        return mesh;
-      }
-      var pcb = mat(0x0e8a92, 0.52, 0.14);
-      var dark = mat(0x232629, 0.48, 0.1);
-      var silver = mat(0xc9ced4, 0.28, 0.78);
-      box(2.76, 0.08, 2.12, pcb, 0, 0, 0);
-      box(1.72, 0.12, 0.16, dark, 0.2, 0.09, -0.94);
-      box(1.72, 0.12, 0.16, dark, 0.2, 0.09, 0.94);
-      box(0.16, 0.12, 1.0, dark, -1.28, 0.09, 0.5);
-      box(0.54, 0.16, 0.46, silver, -1.05, 0.11, -0.72);
-      var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.34, 20), dark);
-      barrel.rotation.z = Math.PI / 2;
-      barrel.position.set(-1.2, 0.11, 0.68);
-      g.add(barrel);
-      box(0.68, 0.08, 0.32, mat(0x14171a, 0.45), 0.35, 0.08, -0.15);
-      box(0.32, 0.06, 0.24, mat(0x111417, 0.4), 0.35, 0.07, 0.35);
-      box(0.24, 0.12, 0.1, silver, -0.4, 0.09, 0.0);
-      for (var cIdx = 0; cIdx < 4; cIdx++) {
-        var cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.13, 12), silver);
-        cap.position.set(-0.55 + cIdx * 0.3, 0.09, 0.75);
-        g.add(cap);
-      }
-      var led = new THREE.Mesh(
-        new THREE.BoxGeometry(0.09, 0.05, 0.06),
-        new THREE.MeshStandardMaterial({ color: 0x03B800, emissive: 0x03B800, emissiveIntensity: 1.5 })
-      );
-      led.position.set(0.95, 0.06, -0.75);
-      g.add(led);
-      return g;
-    }
-
-    function buildProceduralEsp(THREE){
-      var g = new THREE.Group();
-      function mat(col, rough, metal){
-        return new THREE.MeshStandardMaterial({ color: col, roughness: rough != null ? rough : 0.55, metalness: metal != null ? metal : 0.15 });
-      }
-      function box(w, h, d, m, x, y, z){
-        var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-        mesh.position.set(x, y, z);
-        g.add(mesh);
-        return mesh;
-      }
-      var pcb = mat(0x252a30, 0.52, 0.2);
-      var dark = mat(0x16191d, 0.48, 0.12);
-      var silver = mat(0xc2c8ce, 0.26, 0.82);
-      var gold = mat(0xd9a12b, 0.32, 0.75);
-      box(2.35, 0.08, 1.32, pcb, 0, 0, 0);
-      for (var row = 0; row < 2; row++) {
-        for (var col = 0; col < 15; col++) {
-          box(0.045, 0.16, 0.045, gold, -0.96 + col * 0.138, 0.08, row === 0 ? -0.54 : 0.54);
-        }
-      }
-      box(1.02, 0.1, 0.82, dark, 0.14, 0.09, 0);
-      box(0.92, 0.08, 0.72, silver, 0.14, 0.16, 0);
-      box(0.32, 0.11, 0.26, silver, -0.92, 0.1, 0);
-      box(0.28, 0.07, 0.22, dark, -0.36, 0.08, 0);
-      box(0.28, 0.02, 0.68, gold, 0.86, 0.06, 0);
-      var led = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.05, 0.06),
-        new THREE.MeshStandardMaterial({ color: 0x03B800, emissive: 0x03B800, emissiveIntensity: 1.5 })
-      );
-      led.position.set(0.75, 0.06, -0.45);
-      g.add(led);
-      return g;
-    }
-
-    function normalizeGlbScene(THREE, scene, targetSpan){
-      var root = scene.clone(true);
-      root.traverse(function(obj){
-        var nm = (obj.name || '').toLowerCase();
-        if (nm.indexOf('backdrop') !== -1 || nm.indexOf('plane') !== -1 || nm.indexOf('floor') !== -1) {
-          obj.visible = false;
-        }
-      });
-      var box = new THREE.Box3().setFromObject(root);
-      var size = new THREE.Vector3();
-      var center = new THREE.Vector3();
-      box.getSize(size);
-      box.getCenter(center);
-      root.position.sub(center);
-      var maxDim = Math.max(size.x, size.y, size.z);
-      var wrapper = new THREE.Group();
-      wrapper.add(root);
-      if (maxDim > 0) wrapper.scale.setScalar(targetSpan / maxDim);
-      return wrapper;
-    }
-
-    async function bootStage(){
-      try {
-        var testCtx = document.createElement('canvas').getContext('webgl') || document.createElement('canvas').getContext('experimental-webgl');
-        if (!testCtx) throw new Error('WebGL unavailable');
-        var THREE = await import('https://esm.sh/three@0.170.0');
-        var GLTFLoaderMod = await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
-        var GLTFLoader = GLTFLoaderMod.GLTFLoader;
-
-        var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
-        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-        if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) {
-          renderer.outputColorSpace = THREE.SRGBColorSpace;
-        }
-
-        var scene = new THREE.Scene();
-        var camera = new THREE.PerspectiveCamera(36, 1, 0.1, 50);
-        camera.position.set(0, 2.25, 4.75);
-        camera.lookAt(0, 0, 0);
-
-        scene.add(new THREE.HemisphereLight(0xfff9ee, 0x8a8478, 1.35));
-        var keyLight = new THREE.DirectionalLight(0xffffff, 1.85);
-        keyLight.position.set(2.8, 4.5, 3.4);
-        scene.add(keyLight);
-        var rimLight = new THREE.DirectionalLight(0xdbeafe, 0.85);
-        rimLight.position.set(-3.2, 2.4, -2.5);
-        scene.add(rimLight);
-
-        var arduinoHolder = new THREE.Group();
-        var espHolder = new THREE.Group();
-        arduinoHolder.add(buildProceduralArduino(THREE));
-        espHolder.add(buildProceduralEsp(THREE));
-
-        // Soft contact shadow: a radial-gradient sprite instead of a hard-edged disc
-        var shadowTexSize = 256;
-        var shadowCanvas = document.createElement('canvas');
-        shadowCanvas.width = shadowCanvas.height = shadowTexSize;
-        var shadowCtx = shadowCanvas.getContext('2d');
-        var shadowGrad = shadowCtx.createRadialGradient(
-          shadowTexSize / 2, shadowTexSize / 2, 0,
-          shadowTexSize / 2, shadowTexSize / 2, shadowTexSize / 2
-        );
-        shadowGrad.addColorStop(0, 'rgba(18,19,22,0.20)');
-        shadowGrad.addColorStop(0.42, 'rgba(18,19,22,0.09)');
-        shadowGrad.addColorStop(0.72, 'rgba(18,19,22,0.03)');
-        shadowGrad.addColorStop(1, 'rgba(18,19,22,0)');
-        shadowCtx.fillStyle = shadowGrad;
-        shadowCtx.fillRect(0, 0, shadowTexSize, shadowTexSize);
-        var shadowTexture = new THREE.CanvasTexture(shadowCanvas);
-        if ('colorSpace' in shadowTexture && THREE.SRGBColorSpace) {
-          shadowTexture.colorSpace = THREE.SRGBColorSpace;
-        }
-
-        var shadow = new THREE.Mesh(
-          new THREE.CircleGeometry(2.9, 48),
-          new THREE.MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false })
-        );
-        shadow.rotation.x = -Math.PI / 2;
-        shadow.position.y = -0.92;
-
-        scene.add(shadow, arduinoHolder, espHolder);
-        espHolder.visible = false;
-        espHolder.scale.setScalar(0.01);
-
-        // Stream high-detail GLB models from /models/ and swap seamlessly over procedural meshes
-        if (GLTFLoader) {
-          var loader = new GLTFLoader();
-          loader.load('/models/ArduinoR3.glb', function(gltf){
-            if (gltf && gltf.scene) {
-              var realUno = normalizeGlbScene(THREE, gltf.scene, 3.05);
-              arduinoHolder.clear();
-              arduinoHolder.add(realUno);
-            }
-          }, undefined, function(){ /* keep procedural fallback */ });
-
-          loader.load('/models/esp8266.glb', function(gltf){
-            if (gltf && gltf.scene) {
-              var realEsp = normalizeGlbScene(THREE, gltf.scene, 2.75);
-              espHolder.clear();
-              espHolder.add(realEsp);
-            }
-          }, undefined, function(){ /* keep procedural fallback */ });
-        }
-
-        var targetRot = { rx: 0.34, ry: 0.52 };
-        var currentRot = { rx: 0.34, ry: 0.52 };
-        var lastInteract = 0, running = false, raf = null, t = 0;
-
-        function resize(){
-          var parent = canvas.parentElement;
-          if (!parent) return;
-          var r = parent.getBoundingClientRect();
-          if (r.width < 4 || r.height < 4) return;
-          renderer.setSize(r.width, r.height, false);
-          camera.aspect = r.width / r.height;
-          // On narrow viewports pull the camera back along the same viewing axis so
-          // the board stays fully framed instead of touching the screen edges.
-          var narrow = Math.min(1, r.width / 560);
-          var pullBack = narrow < 0.999 ? 1 / Math.max(0.55, narrow) : 1;
-          camera.position.set(0, 2.25 * pullBack, 4.75 * pullBack);
-          camera.lookAt(0, 0, 0);
-          camera.updateProjectionMatrix();
-        }
-        resize();
-        if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
-          new ResizeObserver(resize).observe(canvas.parentElement);
-        } else {
-          window.addEventListener('resize', resize);
-        }
-
-        var dragging = false, px = 0, py = 0;
-        function clampVal(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-
-        canvas.addEventListener('pointerdown', function(e){
-          dragging = true;
-          px = e.clientX;
-          py = e.clientY;
-          if (canvas.setPointerCapture) {
-            try { canvas.setPointerCapture(e.pointerId); } catch (_err) {}
-          }
-          lastInteract = t;
-        });
-        canvas.addEventListener('pointermove', function(e){
-          if (!dragging) return;
-          targetRot.ry += (e.clientX - px) * 0.0085;
-          targetRot.rx = clampVal(targetRot.rx + (e.clientY - py) * 0.0065, -0.45, 0.95);
-          px = e.clientX;
-          py = e.clientY;
-          lastInteract = t;
-        });
-        canvas.addEventListener('pointerup', function(){ dragging = false; });
-        canvas.addEventListener('pointercancel', function(){ dragging = false; });
-        canvas.addEventListener('keydown', function(e){
-          var step = e.shiftKey ? 0.03 : 0.1;
-          if (e.key === 'ArrowLeft') { targetRot.ry -= step; e.preventDefault(); }
-          else if (e.key === 'ArrowRight') { targetRot.ry += step; e.preventDefault(); }
-          else if (e.key === 'ArrowUp') { targetRot.rx = clampVal(targetRot.rx - step, -0.45, 0.95); e.preventDefault(); }
-          else if (e.key === 'ArrowDown') { targetRot.rx = clampVal(targetRot.rx + step, -0.45, 0.95); e.preventDefault(); }
-          lastInteract = t;
-        });
-
-        function loop(){
-          if (!running) { raf = null; return; }
-          raf = requestAnimationFrame(loop);
-          t += 0.016;
-          if (!REDUCED && (t - lastInteract > 2.2)) {
-            // Idle turntable: ~one revolution per minute at 60fps.
-            targetRot.ry += 0.0018;
-          }
-          currentRot.rx += (targetRot.rx - currentRot.rx) * 0.11;
-          currentRot.ry += (targetRot.ry - currentRot.ry) * 0.14;
-
-          var activeGrp = activeBoard === 'arduino' ? arduinoHolder : espHolder;
-          var otherGrp = activeBoard === 'arduino' ? espHolder : arduinoHolder;
-
-          var gs = activeGrp.scale.x + (1 - activeGrp.scale.x) * 0.14;
-          activeGrp.scale.setScalar(gs);
-          activeGrp.visible = activeGrp.scale.x > 0.02;
-
-          var os = otherGrp.scale.x + (0 - otherGrp.scale.x) * 0.16;
-          otherGrp.scale.setScalar(os);
-          otherGrp.visible = otherGrp.scale.x > 0.02;
-
-          var bob = REDUCED ? 0 : Math.sin(t * 1.3) * 0.055;
-          activeGrp.rotation.x = currentRot.rx;
-          activeGrp.rotation.y = currentRot.ry;
-          activeGrp.position.y = bob;
-          otherGrp.position.y = bob;
-
-          renderer.render(scene, camera);
-        }
-
-        function setRunning(on){
-          running = on;
-          if (running && !raf) loop();
-        }
-
-        if ('IntersectionObserver' in window) {
-          new IntersectionObserver(function(entries){
-            setRunning(entries[0].isIntersecting && !document.hidden);
-          }, { rootMargin: '80px' }).observe(canvas);
-        } else {
-          setRunning(true);
-        }
-        document.addEventListener('visibilitychange', function(){
-          setRunning(!document.hidden);
-        });
-      } catch (_err) {
-        canvas.hidden = true;
-        var fb = $('heroStageFallback');
-        if (fb) fb.hidden = false;
-      }
-    }
-
-    bootStage();
+    canvas.hidden = true;
+    var fb = $('heroStageFallback');
+    if (fb) fb.hidden = false;
   })();
 
   // GSAP enhance-only motion (content visible at first paint; transform-only, respects reduced motion)

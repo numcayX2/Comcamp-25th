@@ -140,6 +140,9 @@ type ApplicantRepository interface {
 	// collisions with other live rows return ErrDuplicateApplicant.
 	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfileFields, requireActive bool, audit *AuditEntry) error
 	SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *AuditEntry) error
-	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error
+	// UpdateAttendance records the applicant's answer and writes the audit entry (when non-nil) in
+	// one transaction. It is refused with ErrStateConflict unless the application is still PASSED
+	// or CONFIRMED at the moment of the write, and ErrNotFound when it is missing or deleted.
+	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *AuditEntry) error
 	CountActive(ctx context.Context) (int, error)
 }

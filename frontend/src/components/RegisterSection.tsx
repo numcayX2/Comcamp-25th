@@ -72,7 +72,7 @@ const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string
   },
   full: {
     title: 'ที่นั่งเต็มจำนวนแล้ว',
-    body: 'ผู้สมัครครบ 30 ที่นั่งแล้ว ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ',
+    body: 'ขณะนี้มีผู้สมัครครบตามจำนวนที่รับแล้ว หากมีผู้สละสิทธิ์ระบบจะคืนที่นั่งว่างให้สมัครได้ทันที (กด “ลองใหม่อีกครั้ง” หรือรีเฟรชหน้านี้เพื่อตรวจสอบที่นั่ง) สำหรับน้องที่สมัครทันแล้ว สามารถส่งสลิปและดูสถานะได้ที่หน้าตรวจสอบสถานะ หรือติดตามข่าวสารทางเพจ Facebook ของโครงการ',
   },
   closed: {
     title: 'ปิดรับสมัครแล้ว',
@@ -84,6 +84,9 @@ const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string
     body: 'เชื่อมต่อระบบรับสมัครไม่สำเร็จ อาจเป็นเพราะสัญญาณอินเทอร์เน็ต ลองใหม่อีกครั้งในอีกสักครู่',
   },
 };
+
+/** Longest delay setTimeout accepts (about 24.8 days); a later opening re-schedules on wake-up. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 const isTextEntry = (el: EventTarget | null) =>
   el instanceof HTMLTextAreaElement ||
@@ -115,11 +118,11 @@ function describeSubmitError(err: unknown): string {
       case 'DUPLICATE_APPLICATION':
         return 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ';
       case 'IDEMPOTENCY_KEY_REUSED':
-        return 'แบบฟอร์มนี้ถูกใช้ส่งใบสมัครไปแล้วด้วยเลขบัตรประชาชนอื่น ตรวจสอบสถานะใบสมัครเดิม หรือกด “ล้างข้อมูลร่าง” เพื่อเริ่มใบสมัครใหม่';
+        return 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประชาชนอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประชาชนให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)';
       case 'RATE_LIMITED':
         return 'มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอสักครู่แล้วกดส่งอีกครั้ง';
       case 'QUOTA_FULL':
-        return 'ที่นั่งเต็มจำนวนแล้ว (30 ที่นั่ง) ใบสมัครยังไม่ถูกบันทึก ติดตามประกาศรายชื่อสำรองได้ที่หน้าตรวจสอบสถานะ';
+        return 'ที่นั่งเต็มจำนวนพอดีในจังหวะที่ส่ง ใบสมัครจึงยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ หากมีผู้สละสิทธิ์ระบบจะเปิดรับเพิ่มอัตโนมัติ สามารถกดส่งอีกครั้งได้ทันที';
       case 'CAPTCHA_FAILED':
         return CAPTCHA_FAILED_MESSAGE;
       case 'SERVICE_UNAVAILABLE':
@@ -316,6 +319,8 @@ export function RegisterSection() {
       keeps working in memory where storage is blocked. Empty until the first submit. */
   const idemKeyRef = useRef('');
   const gateRun = useRef(0);
+  /** Timer that re-checks the gate when registration opens (pre_open only). */
+  const openTimer = useRef<number | undefined>(undefined);
   const pending = useRef<{ field?: FieldKey; heading?: boolean } | null>(null);
   const isDev = Boolean(import.meta.env.DEV);
 
@@ -323,8 +328,9 @@ export function RegisterSection() {
   const announce = (msg: string) => setLive((prev) => (prev === msg ? `${msg} ` : msg));
 
   /* Registration gate — server-authoritative. Query overrides are dev-only. */
-  const checkGate = useCallback(() => {
+  const checkGate = useCallback(function checkGateNow() {
     const run = ++gateRun.current;
+    window.clearTimeout(openTimer.current);
     setGate('checking');
     fetchPublicSettings()
       .then(({ settings, offsetMs, live: reachable }) => {
@@ -335,8 +341,14 @@ export function RegisterSection() {
         const capacity = settings.maxCapacity && settings.maxCapacity > 0 ? settings.maxCapacity : SEATS;
         const remaining = Math.max(0, capacity - (settings.currentCount ?? 0));
 
-        if (serverNow < opensAt && !settings.isOpen) setGate('pre_open');
-        else if (remaining <= 0) setGate('full');
+        if (serverNow < opensAt && !settings.isOpen) {
+          setGate('pre_open');
+          // Students wait on this page for 00:00, and the copy promises the form opens by itself:
+          // re-check when the server's opening time arrives. The 200–2000 ms jitter keeps every
+          // waiting tab from asking at the same instant (AGENTS.md §8, Midnight Zero Jitter Buffer).
+          const jitter = 200 + Math.random() * 1800;
+          openTimer.current = window.setTimeout(checkGateNow, Math.min(opensAt - serverNow + jitter, MAX_TIMER_MS));
+        } else if (remaining <= 0) setGate('full');
         else if (!settings.isOpen) setGate('closed');
         else setGate('open');
       })
@@ -355,6 +367,7 @@ export function RegisterSection() {
     checkGate();
     return () => {
       gateRun.current++; // ignore a response that lands after unmount
+      window.clearTimeout(openTimer.current);
     };
   }, [checkGate]);
 
@@ -369,8 +382,8 @@ export function RegisterSection() {
     } else {
       const draft = loadDraft();
       // A submission still unanswered in this tab (refresh after a timeout) keeps its key, so
-      // the retry is replayed instead of duplicated. A pre-v2.4 draft hands its key over too.
-      const pendingKey = loadIdempotencyKey() ?? draft?.legacyKey ?? null;
+      // the retry is replayed instead of duplicated.
+      const pendingKey = loadIdempotencyKey();
       if (pendingKey) {
         idemKeyRef.current = pendingKey;
         saveIdempotencyKey(pendingKey);
@@ -417,6 +430,12 @@ export function RegisterSection() {
   }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
+    // The idempotency key belongs to one applicant: the server refuses it for another national ID
+    // (IDEMPOTENCY_KEY_REUSED). After the ID is edited the next send starts a fresh attempt.
+    if (key === 'nationalId' && value !== form.nationalId) {
+      clearIdempotencyKey();
+      idemKeyRef.current = '';
+    }
     setForm((f) => ({ ...f, [key]: value }));
     // Only re-check a field that is already showing an error — never nag while typing.
     if (errors[key]) {
@@ -558,6 +577,12 @@ export function RegisterSection() {
       // was in fact saved, the next send is answered as a replay without a captcha.
       setTurnstileToken('');
       captchaRef.current?.reset();
+      if (err instanceof ApiHttpError && err.code === 'IDEMPOTENCY_KEY_REUSED') {
+        // The key already holds someone else's application: drop it so the next send (after the
+        // student checks the ID) gets a new one, without clearing the form.
+        clearIdempotencyKey();
+        idemKeyRef.current = '';
+      }
       if (err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED') {
         setCaptchaError(CAPTCHA_FAILED_MESSAGE);
         announce(CAPTCHA_FAILED_MESSAGE);
@@ -711,7 +736,7 @@ export function RegisterSection() {
                       {' '}เลขบัตรประชาชนไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกอีกครั้ง
                     </>
                   ) : (
-                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้ในเครื่องนี้ 24 ชม. ยกเว้นเลขบัตรประชาชนและข้อมูลสุขภาพตาม PDPA'
+                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้เฉพาะแท็บนี้ และหายไปเมื่อปิดแท็บ (ปลอดภัยบนคอมพิวเตอร์ที่ใช้ร่วมกัน) ยกเว้นเลขบัตรประชาชนและข้อมูลสุขภาพที่ไม่บันทึกเลยตาม PDPA'
                   )}
                   </span>
                 </p>
@@ -1213,12 +1238,11 @@ export function RegisterSection() {
                 <h2 className="rw-gate__title">{GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].title}</h2>
                 <p className="rw-gate__body">{GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].body}</p>
                 <div className="rw-actions rw-actions--tight">
-                  {gate === 'error' && (
-                    <button type="button" className="rw-btn rw-btn--primary rw-btn--sm" onClick={checkGate}>
-                      <RotateCw {...ICON} />
-                      ลองใหม่อีกครั้ง
-                    </button>
-                  )}
+                  {/* Every state shown here (pre_open, full, closed, error) can change on the server. */}
+                  <button type="button" className="rw-btn rw-btn--primary rw-btn--sm" onClick={() => checkGate()}>
+                    <RotateCw {...ICON} />
+                    ลองใหม่อีกครั้ง
+                  </button>
                   <a href="/status" className="rw-textlink">
                     ตรวจสอบสถานะใบสมัคร
                   </a>

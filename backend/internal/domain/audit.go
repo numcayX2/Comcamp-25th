@@ -22,9 +22,16 @@ const (
 	AuditSlipVerify        AuditAction = "payment.slip.verify"
 	AuditSlipViewed        AuditAction = "payment.slip.view"
 	AuditSettingsUpdate    AuditAction = "settings.update"
-	AuditTargetApplicant               = "applicant"
-	AuditTargetAdmin                   = "admin"
-	AuditTargetSettings                = "settings"
+	// AuditAdminCLIUpsert is an account created or reset with `go run ./cmd/create-admin`.
+	AuditAdminCLIUpsert AuditAction = "admin.cli.upsert"
+	// AuditAttendanceConfirm is the applicant answering the attendance question on /status
+	// (no admin). Details carry confirmed true/false.
+	AuditAttendanceConfirm AuditAction = "application.attendance.confirm"
+	// AuditApplicantExportCSV is staff downloading the applicant list as CSV from the dashboard.
+	AuditApplicantExportCSV AuditAction = "application.export.csv"
+	AuditTargetApplicant                = "applicant"
+	AuditTargetAdmin                    = "admin"
+	AuditTargetSettings                 = "settings"
 )
 
 // AuditSlipSuperseded is an applicant uploading a new slip that replaced one still waiting for

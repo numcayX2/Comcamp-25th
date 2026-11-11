@@ -75,6 +75,7 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// The client IP goes into the verify guard and the attendance audit row.
 	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
 	app, err := h.appService.ConfirmAttendance(ctx, id, body.VerifyCode, body.Confirmed)
 	if err != nil {
@@ -208,6 +209,36 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 	}
 
 	response.OK(w, app)
+}
+
+// AdminExportAudit records a CSV export of the applicant list before the dashboard builds the file:
+// POST /api/admin/applications/export-audit with { applicationIds, statusFilter, searchFiltered }.
+// superadmin and staff only (the roles that see full national IDs). Answers { count }.
+func (h *ApplicantHandler) AdminExportAudit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ApplicationIDs []string `json:"applicationIds"`
+		StatusFilter   string   `json:"statusFilter,omitempty"`
+		SearchFiltered bool     `json:"searchFiltered,omitempty"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	var adminID int64
+	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
+		adminID = claims.AdminID
+	}
+
+	count, err := h.appService.RecordExport(r.Context(), adminID, service.ExportRecord{
+		ApplicationIDs: body.ApplicationIDs,
+		StatusFilter:   body.StatusFilter,
+		SearchFiltered: body.SearchFiltered,
+	}, middleware.RemoteIP(r))
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	response.OK(w, map[string]int{"count": count})
 }
 
 func (h *ApplicantHandler) AdminDelete(w http.ResponseWriter, r *http.Request) {

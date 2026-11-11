@@ -104,7 +104,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 	// Wired like main: one lockout guard shared by every public verify-code endpoint.
 	uploadDir := t.TempDir()
 	guard := service.NewVerifyGuardWith(appRepo.Audit(), service.VerifyGuardConfig{Now: clock.Now})
-	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo).WithVerifyGuard(guard)
+	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo).WithVerifyGuard(guard).WithAudit(appRepo.Audit())
 	if captcha != nil {
 		applicantSvc.WithTurnstile(captcha)
 	}

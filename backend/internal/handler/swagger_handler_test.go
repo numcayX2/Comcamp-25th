@@ -48,5 +48,27 @@ func TestSwaggerHandler(t *testing.T) {
 		if !strings.Contains(body, "SwaggerUIBundle") {
 			t.Errorf("expected HTML to contain SwaggerUIBundle script")
 		}
+		// LOW-05: Swagger UI must not keep an admin Bearer token in localStorage.
+		if !strings.Contains(body, "persistAuthorization: false") || strings.Contains(body, "persistAuthorization: true") {
+			t.Errorf("expected persistAuthorization: false in the Swagger UI config")
+		}
 	})
+
+	// LOW-05: both docs responses carry the defensive headers.
+	for name, serve := range map[string]http.HandlerFunc{"ServeUI": h.ServeUI, "ServeSpec": h.ServeSpec} {
+		t.Run(name+" sets defensive headers", func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			serve(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+			for k, want := range map[string]string{
+				"X-Content-Type-Options": "nosniff",
+				"X-Frame-Options":        "DENY",
+				"Referrer-Policy":        "no-referrer",
+				"Cache-Control":          "no-store",
+			} {
+				if got := rec.Header().Get(k); got != want {
+					t.Errorf("%s: %s = %q, want %q", name, k, got, want)
+				}
+			}
+		})
+	}
 }

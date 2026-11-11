@@ -211,9 +211,9 @@ export interface AdminPermissions {
   verifySlip: boolean;
   editSettings: boolean;
   /**
-   * The CSV export. The server hands finance and reviewer accounts a masked national ID (they could
-   * otherwise use it to withdraw applications through the public endpoint), so the reviewer, who
-   * has no operational need for the file, does not get the button.
+   * The CSV export: superadmin and staff only, the roles the server gives full national IDs and the
+   * only roles POST /admin/applications/export-audit accepts. Every export is recorded in
+   * audit_logs before the file is built.
    */
   exportCsv: boolean;
 }
@@ -234,7 +234,7 @@ export function adminPermissions(role: string | null | undefined): AdminPermissi
     viewSlip: payments,
     verifySlip: payments,
     editSettings: superadmin,
-    exportCsv: payments,
+    exportCsv: editor,
   };
 }
 
@@ -781,6 +781,26 @@ export function listApplications(
         createdAt: new Date(Date.now() - 259200000).toISOString(),
       },
     ],
+  );
+}
+
+/**
+ * POST /admin/applications/export-audit — records a CSV export (application.export.csv in
+ * audit_logs) before the dashboard builds the file. The search text is not sent: staff search by
+ * phone number or national ID; only whether a search narrowed the list.
+ */
+export function recordCsvExport(
+  token: string,
+  body: { applicationIds: string[]; statusFilter?: ApplicationStatus; searchFiltered: boolean },
+): Promise<ApiResult<{ count: number }>> {
+  return withFallback(
+    () =>
+      fetchJson<{ count: number }>('/admin/applications/export-audit', {
+        method: 'POST',
+        headers: authHeader(token),
+        body: JSON.stringify(body),
+      }),
+    () => ({ count: body.applicationIds.length }),
   );
 }
 

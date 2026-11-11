@@ -1051,7 +1051,7 @@ const navLinks = isAdmin ? [] : [
       case 'ALMOST_FULL':
         return { label: `สมัครค่าย (เหลือ ${seatsLeft})`, href: '/register', muted: false };
       case 'FULL':
-        return { label: 'ที่นั่งเต็มแล้ว', href: '/register', muted: true };
+        return { label: 'ที่นั่งเต็มแล้ว', href: '/status', muted: true };
       case 'CLOSED':
         return { label: 'ปิดรับสมัครแล้ว', href: '/status', muted: true };
       default:

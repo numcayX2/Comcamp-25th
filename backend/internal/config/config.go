@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -86,20 +87,20 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Env:              env,
-		Port:             getEnv("PORT", "8000"),
-		DBHost:           getEnv("DB_HOST", "127.0.0.1"),
-		DBPort:           getEnv("DB_PORT", "5432"),
-		DBUser:           getEnv("DB_USER", "comcamp"),
-		DBPassword:       os.Getenv("DB_PASSWORD"),
-		DBName:           getEnv("DB_NAME", "comcamp_db"),
-		DBSSLMode:        getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:        os.Getenv("JWT_SECRET"),
-		UploadDir:        getEnv("UPLOAD_DIR", "./uploads"),
-		FrontendURL:      strings.TrimSpace(os.Getenv("FRONTEND_URL")),
+		Env:                env,
+		Port:               getEnv("PORT", "8000"),
+		DBHost:             getEnv("DB_HOST", "127.0.0.1"),
+		DBPort:             getEnv("DB_PORT", "5432"),
+		DBUser:             getEnv("DB_USER", "comcamp"),
+		DBPassword:         os.Getenv("DB_PASSWORD"),
+		DBName:             getEnv("DB_NAME", "comcamp_db"),
+		DBSSLMode:          getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:          os.Getenv("JWT_SECRET"),
+		UploadDir:          getEnv("UPLOAD_DIR", "./uploads"),
+		FrontendURL:        strings.TrimSpace(os.Getenv("FRONTEND_URL")),
 		TurnstileSecretKey: strings.TrimSpace(os.Getenv("TURNSTILE_SECRET_KEY")),
-		DevAdminUsername: getEnv("DEV_ADMIN_USERNAME", "admin"),
-		DevAdminPassword: os.Getenv("DEV_ADMIN_PASSWORD"),
+		DevAdminUsername:   getEnv("DEV_ADMIN_USERNAME", "admin"),
+		DevAdminPassword:   os.Getenv("DEV_ADMIN_PASSWORD"),
 	}
 
 	var problems []string
@@ -165,9 +166,19 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// DSN is a postgres:// URL. net/url percent-encodes the user, password and database name, so a
+// password with spaces, quotes, backslashes, '@' or '=' can neither break the string nor smuggle in
+// another connection parameter (the old "key=value ..." form allowed both). net.JoinHostPort puts
+// brackets around an IPv6 host.
 func (c *Config) DSN() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode)
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.DBUser, c.DBPassword),
+		Host:     net.JoinHostPort(c.DBHost, c.DBPort),
+		Path:     "/" + c.DBName,
+		RawQuery: url.Values{"sslmode": {c.DBSSLMode}}.Encode(),
+	}
+	return u.String()
 }
 
 func getEnv(key, defaultVal string) string {

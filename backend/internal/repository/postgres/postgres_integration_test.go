@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -160,10 +161,9 @@ func TestPostgres_FullIntegration(t *testing.T) {
 			t.Errorf("expected ID %v, got %v", applicantID, byQuery.ID)
 		}
 
-		// Update Attendance
-		err = appRepo.UpdateAttendance(ctx, applicantID, true)
-		if err != nil {
-			t.Fatalf("failed to update attendance: %v", err)
+		// Attendance cannot be recorded while the application is still PENDING
+		if err := appRepo.UpdateAttendance(ctx, applicantID, true, nil); !errors.Is(err, domain.ErrStateConflict) {
+			t.Fatalf("attendance while PENDING: expected ErrStateConflict, got %v", err)
 		}
 
 		// Update Status with Audit Log
@@ -172,9 +172,17 @@ func TestPostgres_FullIntegration(t *testing.T) {
 			t.Fatalf("failed to update status: %v", err)
 		}
 
+		// Update Attendance (allowed once PASSED)
+		if err := appRepo.UpdateAttendance(ctx, applicantID, true, nil); err != nil {
+			t.Fatalf("failed to update attendance: %v", err)
+		}
+
 		updatedApp, _ := appRepo.GetByID(ctx, applicantID)
 		if updatedApp.Status != domain.StatusPassed {
 			t.Errorf("expected status PASSED, got %s", updatedApp.Status)
+		}
+		if !updatedApp.AttendanceConfirmed {
+			t.Errorf("expected attendance to be confirmed")
 		}
 	})
 

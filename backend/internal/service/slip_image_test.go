@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"encoding/binary"
+	"image"
+	"image/jpeg"
 	"testing"
 )
 
@@ -86,4 +89,106 @@ func TestInputCleaning(t *testing.T) {
 			t.Errorf("normalizeLookupQuery(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// jpegSegment builds one marker segment: FF <marker> <2-byte length incl. itself> <payload>.
+func jpegSegment(marker byte, payload []byte) []byte {
+	seg := []byte{0xFF, marker, 0, 0}
+	binary.BigEndian.PutUint16(seg[2:4], uint16(2+len(payload)))
+	return append(seg, payload...)
+}
+
+func testJPEG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, w, h)), nil); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// withSegmentsAfterSOI inserts segments right after the SOI marker, where cameras put APP1.
+func withSegmentsAfterSOI(img []byte, segs ...[]byte) []byte {
+	out := append([]byte{}, img[:2]...)
+	for _, s := range segs {
+		out = append(out, s...)
+	}
+	return append(out, img[2:]...)
+}
+
+func TestStripJPEGExif(t *testing.T) {
+	plain := testJPEG(t, 37, 23)
+	gps := []byte("GPSLatitude=18.8977N;GPSLongitude=99.0117E;home") // stands in for a GPS IFD
+	exif := jpegSegment(0xE1, append([]byte("Exif\x00\x00II*\x00"), gps...))
+	xmp := jpegSegment(0xE1, []byte("http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"))
+
+	t.Run("EXIF APP1 is removed, image still reads", func(t *testing.T) {
+		in := withSegmentsAfterSOI(plain, exif)
+		out := stripJPEGExif(in)
+		if bytes.Contains(out, []byte("Exif\x00\x00")) || bytes.Contains(out, gps) {
+			t.Fatal("EXIF / GPS bytes survived")
+		}
+		if !bytes.Equal(out, plain) {
+			t.Fatalf("expected exactly the JPEG without its EXIF segment (%d bytes), got %d bytes", len(plain), len(out))
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+		if err != nil || format != "jpeg" || cfg.Width != 37 || cfg.Height != 23 {
+			t.Fatalf("DecodeConfig = %+v %q %v, want 37x23 jpeg", cfg, format, err)
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
+			t.Fatalf("stripped JPEG no longer decodes: %v", err)
+		}
+		if w, h, err := slipDimensions(out, "image/jpeg"); err != nil || w != 37 || h != 23 {
+			t.Fatalf("slipDimensions = %d x %d, %v", w, h, err)
+		}
+	})
+
+	t.Run("every EXIF segment goes, XMP and fill bytes are handled", func(t *testing.T) {
+		in := withSegmentsAfterSOI(plain, exif, []byte{0xFF, 0xFF}, xmp, exif)
+		out := stripJPEGExif(in)
+		if bytes.Contains(out, []byte("Exif\x00\x00")) {
+			t.Fatal("a second EXIF segment survived")
+		}
+		if !bytes.Contains(out, xmp) {
+			t.Fatal("a non-EXIF APP1 segment was removed")
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+	})
+
+	t.Run("a JPEG without EXIF is returned unchanged", func(t *testing.T) {
+		if out := stripJPEGExif(plain); !bytes.Equal(out, plain) {
+			t.Fatal("JPEG without EXIF was modified")
+		}
+	})
+
+	t.Run("the word Exif inside scan data is left alone", func(t *testing.T) {
+		// After SOS nothing is parsed: bytes that look like a segment there are image data.
+		in := append(append([]byte{}, plain[:len(plain)-2]...), exif...)
+		in = append(in, 0xFF, 0xD9)
+		if out := stripJPEGExif(in); !bytes.Equal(out, in) {
+			t.Fatal("bytes after SOS were changed")
+		}
+	})
+
+	t.Run("non-standard input is returned unchanged", func(t *testing.T) {
+		withExif := withSegmentsAfterSOI(plain, exif)
+		truncated := withExif[:2+4+5] // EXIF segment cut short
+		overlong := append([]byte{}, withExif...)
+		binary.BigEndian.PutUint16(overlong[4:6], 0xFFFF) // length past the end of the file
+		zeroLen := append([]byte{}, withExif...)
+		binary.BigEndian.PutUint16(zeroLen[4:6], 0)
+		stray := withSegmentsAfterSOI(plain, []byte{0x00}, exif) // garbage byte between segments
+		eoiFirst := withSegmentsAfterSOI(plain, []byte{0xFF, 0xD9}, exif)
+		png := []byte("\x89PNG\r\n\x1a\nExif\x00\x00")
+		for name, in := range map[string][]byte{
+			"truncated": truncated, "length past end": overlong, "zero length": zeroLen,
+			"stray byte": stray, "EOI before SOS": eoiFirst, "not a JPEG": png, "empty": {}, "SOI only": {0xFF, 0xD8},
+		} {
+			if out := stripJPEGExif(in); !bytes.Equal(out, in) {
+				t.Errorf("%s: input was modified", name)
+			}
+		}
+	})
 }

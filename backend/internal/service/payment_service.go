@@ -158,6 +158,14 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 		return nil, ErrInvalidImageDimensions
 	}
 
+	// 1c. Privacy: a slip photographed with a phone camera carries EXIF, often with the GPS position
+	//     of the student's home. It is dropped before hashing, so the stored file and slip_hash
+	//     describe the same bytes (and two copies of one photo that differ only in EXIF count as
+	//     the same slip). The image data itself is untouched.
+	if contentType == "image/jpeg" {
+		fileData = stripJPEGExif(fileData)
+	}
+
 	// 2. Anti-fraud: SHA-256 of the file. A lookup failure blocks the upload (fail closed); the
 	//    unique index on payments.slip_hash also catches two identical uploads racing each other.
 	sum := sha256.Sum256(fileData)

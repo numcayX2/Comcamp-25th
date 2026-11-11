@@ -28,6 +28,7 @@ func TestOpenAPISpec(t *testing.T) {
 		"/applications/{id}/profile":       "patch",
 		"/admin/applications/{id}/profile": "patch",
 		"/admin/applications/{id}":         "delete",
+		"/admin/applications/export-audit": "post",
 	} {
 		if _, ok := spec.Paths[path][method]; !ok {
 			t.Errorf("spec is missing %s %s", method, path)

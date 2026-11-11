@@ -359,7 +359,12 @@ func (m *MemoryApplicantRepo) SoftDelete(ctx context.Context, id uuid.UUID, admi
 	return nil
 }
 
-func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error {
+// UpdateAttendance mirrors the PostgreSQL guard: only a live PASSED or CONFIRMED application may
+// record an answer, checked under the lock, and the audit entry is stored with it.
+func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *domain.AuditEntry) error {
+	if err := checkAuditDetails(audit); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -367,8 +372,15 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 	if !ok || a.DeletedAt != nil {
 		return domain.ErrNotFound
 	}
+	if a.Status != domain.StatusPassed && a.Status != domain.StatusConfirmed {
+		return domain.ErrStateConflict
+	}
 	a.AttendanceConfirmed = confirmed
 	a.UpdatedAt = time.Now().UTC()
+
+	if audit != nil {
+		return m.audit.Log(ctx, withDetail(audit, "status", a.Status))
+	}
 	return nil
 }
 
@@ -502,6 +514,19 @@ func (m *MemoryAdminRepo) SetActive(id int64, active bool) error {
 		return domain.ErrNotFound
 	}
 	a.IsActive = active
+	return nil
+}
+
+// SetUpdatedAt overwrites an admin's UpdatedAt, as a password reset would (used by tests).
+func (m *MemoryAdminRepo) SetUpdatedAt(id int64, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	a, ok := m.data[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	a.UpdatedAt = at
 	return nil
 }
 

@@ -392,16 +392,43 @@ func (r *ApplicantPostgresRepo) SoftDelete(ctx context.Context, id uuid.UUID, ad
 	return tx.Commit(ctx)
 }
 
-func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error {
-	query := `UPDATE applicants SET attendance_confirmed = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`
-	tag, err := r.pool.Exec(ctx, query, confirmed, time.Now().UTC(), id)
+// UpdateAttendance checks the status in the UPDATE itself: the service read the application
+// without a lock, and staff may have rejected or refunded it since. Such a row is left alone and
+// the call returns domain.ErrStateConflict (domain.ErrNotFound when it is missing or deleted). The
+// audit row is written in the same transaction.
+func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *domain.AuditEntry) error {
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx)
+
+	var status domain.ApplicationStatus
+	err = tx.QueryRow(ctx, `
+		UPDATE applicants SET attendance_confirmed = $1, updated_at = $2
+		WHERE id = $3 AND deleted_at IS NULL AND status IN ('PASSED', 'CONFIRMED')
+		RETURNING status
+	`, confirmed, time.Now().UTC(), id).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM applicants WHERE id = $1 AND deleted_at IS NULL)`, id).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return domain.ErrStateConflict
+		}
 		return domain.ErrNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+
+	if audit != nil {
+		if err := insertAudit(ctx, tx, withAuditDetail(audit, "status", status)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // countActiveSQL is the quota count: every live row that holds a seat. REJECTED, REFUND_PENDING

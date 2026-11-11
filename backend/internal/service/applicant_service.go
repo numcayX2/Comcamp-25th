@@ -128,6 +128,8 @@ type ApplicationResponse struct {
 }
 
 type ApplicantService struct {
+	// audit receives standalone events such as the CSV export record (see WithAudit).
+	audit       domain.AuditRepository
 	appRepo     domain.ApplicantRepository
 	settingRepo domain.SettingRepository
 	paymentRepo domain.PaymentRepository
@@ -145,6 +147,13 @@ func (s *ApplicantService) WithVerifyGuard(g *VerifyGuard) *ApplicantService {
 	if g != nil {
 		s.verify = g
 	}
+	return s
+}
+
+// WithAudit sets the store for standalone audit events (the CSV export record) and returns the
+// service. Without it RecordExport refuses, so an export is never silently left unrecorded.
+func (s *ApplicantService) WithAudit(a domain.AuditRepository) *ApplicantService {
+	s.audit = a
 	return s
 }
 
@@ -509,8 +518,10 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Appl
 
 // ConfirmAttendance is public, so it only accepts the application ID (not a phone number) and
 // requires verifyCode, the last 4 digits of the applicant's national ID (see CheckVerifyCode).
-// Repeated wrong codes lock the application (VerifyGuard); the client IP for the audit row comes
-// from WithRemoteIP.
+// Repeated wrong codes lock the application (VerifyGuard). The answer is written with an
+// application.attendance.confirm audit row carrying confirmed and the client IP, which the handler
+// passes in with WithRemoteIP. The repository re-checks the status at the write, so an application
+// staff rejected after the read below is refused with ErrCannotConfirm.
 func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo, verifyCode string, confirmed bool) (*ApplicationResponse, error) {
 	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
 	if err != nil {
@@ -526,8 +537,18 @@ func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo,
 		return nil, ErrCannotConfirm
 	}
 
-	if err := s.appRepo.UpdateAttendance(ctx, applicant.ID, confirmed); err != nil {
-		return nil, err
+	audit := &domain.AuditEntry{
+		Action:     domain.AuditAttendanceConfirm,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   applicant.ApplicationNo,
+		Details:    map[string]any{"confirmed": confirmed},
+		IPAddress:  remoteIPFrom(ctx),
+	}
+	if err := s.appRepo.UpdateAttendance(ctx, applicant.ID, confirmed, audit); err != nil {
+		if errors.Is(err, domain.ErrStateConflict) {
+			return nil, ErrCannotConfirm
+		}
+		return nil, notFoundOr(err)
 	}
 	applicant.AttendanceConfirmed = confirmed
 
@@ -1089,4 +1110,72 @@ func generateAppNo() string {
 	b := make([]byte, 3)
 	_, _ = rand.Read(b)
 	return fmt.Sprintf("CC25-%X", b)
+}
+
+// MaxExportAuditIDs bounds one export record. The JSON body limit is 64 KB, and a camp of at most
+// 1000 seats (plus rejected and refunded history) stays well below this.
+const MaxExportAuditIDs = 2000
+
+var (
+	ErrInvalidExport = newValidationError("applicationIds must be a list of at most 2000 application IDs (CC25-XXXXXX)")
+	// ErrAuditUnavailable means the service was built without WithAudit; the export is refused.
+	ErrAuditUnavailable = errors.New("audit log is not configured")
+)
+
+// ExportRecord describes one CSV export from the staff dashboard.
+type ExportRecord struct {
+	// ApplicationIDs are the rows in the file, in the order the dashboard shows them.
+	ApplicationIDs []string
+	// StatusFilter is the dashboard's status tab, "" for all.
+	StatusFilter string
+	// SearchFiltered reports that a search narrowed the list. The search text itself is not
+	// recorded: staff search by phone number or national ID.
+	SearchFiltered bool
+}
+
+// RecordExport writes the application.export.csv audit row (count, application IDs, filter, admin
+// and IP) for a CSV the dashboard is about to build. The dashboard builds the file only after this
+// succeeds, so every export it makes leaves a trace. It cannot stop someone who already holds the
+// list in the browser from copying it another way: the row records honest exports, it is not a
+// control on the data itself.
+func (s *ApplicantService) RecordExport(ctx context.Context, adminID int64, rec ExportRecord, ip string) (int, error) {
+	if s.audit == nil {
+		return 0, ErrAuditUnavailable
+	}
+	if len(rec.ApplicationIDs) > MaxExportAuditIDs {
+		return 0, ErrInvalidExport
+	}
+	ids := make([]string, 0, len(rec.ApplicationIDs))
+	for _, id := range rec.ApplicationIDs {
+		n := normalizeAppNo(id)
+		if !looseAppNoRe.MatchString(n) {
+			return 0, ErrInvalidExport
+		}
+		ids = append(ids, n)
+	}
+	details := map[string]any{
+		"count":          len(ids),
+		"applicationIds": ids,
+		"searchFiltered": rec.SearchFiltered,
+	}
+	if rec.StatusFilter != "" {
+		st := domain.ApplicationStatus(rec.StatusFilter)
+		if !st.IsValid() {
+			return 0, ErrInvalidStatus
+		}
+		details["statusFilter"] = st
+	}
+	entry := &domain.AuditEntry{
+		Action:     domain.AuditApplicantExportCSV,
+		TargetType: domain.AuditTargetApplicant,
+		Details:    details,
+		IPAddress:  ip,
+	}
+	if adminID != 0 {
+		entry.AdminID = &adminID
+	}
+	if err := s.audit.Log(ctx, entry); err != nil {
+		return 0, fmt.Errorf("record export: %w", err)
+	}
+	return len(ids), nil
 }

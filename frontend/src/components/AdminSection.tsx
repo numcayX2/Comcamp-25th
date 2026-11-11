@@ -9,6 +9,7 @@ import {
   hasSlip,
   holdsSeat,
   listApplications,
+  recordCsvExport,
   roleFromToken,
   stripZeroWidth,
   updateApplicationStatus,
@@ -238,6 +239,7 @@ export function AdminSection() {
   /** Camp fee in baht from the settings panel; used in the note templates. */
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [patching, setPatching] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -419,9 +421,27 @@ export function AdminSection() {
     tokenStore.clear();
   }
 
-  function exportCsv() {
-    downloadCsv(csvFileName(), buildApplicantsCsv(visible));
-    setActionSuccess(`ส่งออก ${visible.length} รายการเป็นไฟล์ CSV แล้ว`);
+  /** Records the export in audit_logs first; the file is built only once that succeeded. */
+  async function exportCsv() {
+    if (!token || exporting) return;
+    const rows = visible;
+    setExporting(true);
+    setActionSuccess(null);
+    setError(null);
+    try {
+      await recordCsvExport(token, {
+        applicationIds: rows.map((a) => a.id),
+        statusFilter: filter === 'ALL' ? undefined : (filter as ApplicationStatus),
+        searchFiltered: searching,
+      });
+      downloadCsv(csvFileName(), buildApplicantsCsv(rows));
+      setActionSuccess(`ส่งออก ${rows.length} รายการเป็นไฟล์ CSV แล้ว (บันทึกประวัติการส่งออกแล้ว)`);
+    } catch (err) {
+      if (handleAuthError(err)) return;
+      setError(describeAdminError(err, 'บันทึกประวัติการส่งออกไม่สำเร็จ จึงยังไม่ได้สร้างไฟล์ CSV กรุณาลองใหม่อีกครั้ง'));
+    } finally {
+      setExporting(false);
+    }
   }
 
   useEffect(() => {
@@ -762,7 +782,8 @@ export function AdminSection() {
                   <button
                     type="button"
                     onClick={exportCsv}
-                    disabled={visible.length === 0}
+                    disabled={visible.length === 0 || exporting}
+                    aria-busy={exporting}
                     className={`inline-flex items-center gap-2 ${pillGhost}`}
                     style={{ borderColor: RULE, color: INK }}
                   >

@@ -14,7 +14,18 @@ func NewSwaggerHandler(specJSON []byte) *SwaggerHandler {
 	return &SwaggerHandler{specJSON: specJSON}
 }
 
+// setDocsHeaders hardens both docs responses: no MIME sniffing, no framing (clickjacking of the
+// "Authorize" dialog), no Referer to the CDN, and no caching of a page an admin pasted a token into.
+func setDocsHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Cache-Control", "no-store")
+}
+
 func (h *SwaggerHandler) ServeSpec(w http.ResponseWriter, r *http.Request) {
+	setDocsHeaders(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(h.specJSON)
@@ -55,7 +66,8 @@ func (h *SwaggerHandler) ServeUI(w http.ResponseWriter, r *http.Request) {
           SwaggerUIBundle.plugins.DownloadUrl
         ],
         layout: "StandaloneLayout",
-        persistAuthorization: true
+        // Never keep an admin Bearer token in localStorage: it is gone when the tab closes.
+        persistAuthorization: false
       });
       window.ui = ui;
     };
@@ -63,6 +75,7 @@ func (h *SwaggerHandler) ServeUI(w http.ResponseWriter, r *http.Request) {
 </body>
 </html>`
 
+	setDocsHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(html))

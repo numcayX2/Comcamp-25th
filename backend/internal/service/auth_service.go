@@ -19,6 +19,9 @@ var (
 	// deactivated account — so the response never reveals which usernames exist.
 	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrAccountInactive    = errors.New("admin account is inactive")
+	// ErrTokenStale is a token issued before the account was last changed (password reset, role
+	// change or re-activation, which all bump admins.updated_at).
+	ErrTokenStale = errors.New("token was issued before the account was last updated")
 )
 
 const (
@@ -155,7 +158,8 @@ func (s *AuthService) VerifyToken(tokenString string) (*AdminClaims, error) {
 }
 
 // Authenticate verifies the token and then re-loads the admin, rejecting deactivated accounts and
-// taking the current role from the database rather than from the (possibly stale) token.
+// tokens issued before the account was last updated, and taking the current role from the
+// database rather than from the (possibly stale) token.
 func (s *AuthService) Authenticate(ctx context.Context, tokenString string) (*AdminClaims, error) {
 	claims, err := s.VerifyToken(tokenString)
 	if err != nil {
@@ -167,6 +171,13 @@ func (s *AuthService) Authenticate(ctx context.Context, tokenString string) (*Ad
 	}
 	if !admin.IsActive {
 		return nil, ErrAccountInactive
+	}
+	// A password reset (or any other change to the account) ends every session started before it.
+	// iat has whole-second precision and updated_at does not, so updated_at is truncated to the
+	// second: a login in the same second as the change still works. UpdateLastLogin does not touch
+	// updated_at, so logging in again does not end the other sessions.
+	if claims.IssuedAt == nil || claims.IssuedAt.Time.Before(admin.UpdatedAt.Truncate(time.Second)) {
+		return nil, ErrTokenStale
 	}
 	claims.Username = admin.Username
 	claims.Role = admin.Role

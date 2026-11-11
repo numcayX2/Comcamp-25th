@@ -99,7 +99,7 @@ func main() {
 	// One lockout guard for every public endpoint that checks verifyCode / nationalId, so wrong
 	// answers count per application across confirm, slip, profile and withdraw (AGENTS.md §13.5).
 	verifyGuard := service.NewVerifyGuard(auditRepo)
-	applicantSvc.WithVerifyGuard(verifyGuard)
+	applicantSvc.WithVerifyGuard(verifyGuard).WithAudit(auditRepo)
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: applicantSvc,

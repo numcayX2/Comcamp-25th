@@ -71,3 +71,60 @@ func webpDimensions(b []byte) (width, height int, err error) {
 func validSlipDimensions(width, height int) bool {
 	return width > 0 && height > 0 && width <= MaxSlipDimension && height <= MaxSlipDimension
 }
+
+// exifHeader starts the payload of an APP1 segment that holds EXIF data (JPEG/EXIF 2.3 §4.5.4).
+var exifHeader = []byte("Exif\x00\x00")
+
+// stripJPEGExif removes every EXIF APP1 segment (camera model, capture time, GPS position) from a
+// JPEG, so a slip photographed with a phone camera does not store the student's home location on
+// the server. Only the marker segments before SOS are walked; SOS and the entropy-coded data after
+// it are copied byte for byte, and no pixel is decoded or re-encoded. Other APP1 payloads (XMP) and
+// every other segment are kept.
+//
+// Anything that does not follow the standard layout (no SOI, a truncated or zero-length segment, a
+// stray byte between segments, EOI or a restart marker before SOS) returns data unchanged: the
+// upload's own checks decide about such a file, this helper never makes it worse. Pad 0xFF bytes
+// before a marker are allowed by the standard and dropped.
+func stripJPEGExif(data []byte) []byte {
+	if len(data) < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+		return data
+	}
+	out := make([]byte, 0, len(data))
+	out = append(out, 0xFF, 0xD8)
+	stripped := false
+	i := 2
+	for {
+		if i+2 > len(data) || data[i] != 0xFF {
+			return data
+		}
+		marker := data[i+1]
+		switch {
+		case marker == 0xFF: // fill byte before the real marker
+			i++
+			continue
+		case marker == 0xDA: // SOS: the rest is scan data (and any later segments), kept as is
+			out = append(out, data[i:]...)
+			if !stripped {
+				return data
+			}
+			return out
+		case marker == 0x00, marker == 0x01, marker >= 0xD0 && marker <= 0xD9:
+			// Stuffed zero, TEM, RSTn, SOI or EOI: none belongs between SOI and SOS.
+			return data
+		}
+		if i+4 > len(data) {
+			return data
+		}
+		segLen := int(binary.BigEndian.Uint16(data[i+2 : i+4]))
+		end := i + 2 + segLen
+		if segLen < 2 || end > len(data) {
+			return data
+		}
+		if marker == 0xE1 && bytes.HasPrefix(data[i+4:end], exifHeader) {
+			stripped = true
+		} else {
+			out = append(out, data[i:end]...)
+		}
+		i = end
+	}
+}

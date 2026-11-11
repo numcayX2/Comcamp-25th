@@ -430,6 +430,49 @@
         }
       }
     },
+    "/admin/applications/export-audit": {
+      "post": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Record CSV Export",
+        "description": "บันทึกการส่งออกรายชื่อผู้สมัครเป็นไฟล์ CSV ลง audit_logs (action application.export.csv: จำนวนแถว รหัสใบสมัคร ตัวกรองสถานะ ผู้ส่งออกและ IP) หน้าแอดมินเรียกก่อนสร้างไฟล์ และสร้างไฟล์เมื่อบันทึกสำเร็จเท่านั้น ข้อความที่ค้นหาไม่ถูกบันทึก (มักเป็นเบอร์โทรหรือเลขบัตร) สิทธิ์: superadmin, staff",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["applicationIds"],
+                "properties": {
+                  "applicationIds": { "type": "array", "maxItems": 2000, "items": { "type": "string" }, "description": "รหัสใบสมัครของทุกแถวในไฟล์" },
+                  "statusFilter": { "type": "string", "description": "แท็บสถานะที่เลือก (ว่าง = ทั้งหมด)" },
+                  "searchFiltered": { "type": "boolean", "description": "true เมื่อรายการถูกกรองด้วยช่องค้นหา" }
+                }
+              },
+              "example": { "applicationIds": ["CC25-8A4B2C", "CC25-9A8B1C"], "statusFilter": "PASSED", "searchFiltered": false }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "บันทึกแล้ว สร้างไฟล์ได้",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "count": { "type": "integer" } } } } }
+          },
+          "400": {
+            "description": "รายการรหัสใบสมัครหรือสถานะไม่ถูกต้อง หรือเกิน 2000 รายการ (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
     "/admin/applications/{id}": {
       "patch": {
         "tags": ["Admin Management"],

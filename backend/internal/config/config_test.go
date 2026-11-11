@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // clearEnv blanks every variable Load reads so a developer's .env cannot affect the test.
@@ -146,5 +148,53 @@ func TestTurnstileAllowedHosts(t *testing.T) {
 	dev := &Config{Env: EnvDevelopment, FrontendURL: "http://localhost:4321"}
 	if got := strings.Join(dev.TurnstileAllowedHosts(), ","); got != "localhost,localhost,127.0.0.1" {
 		t.Errorf("development hosts: %s", got)
+	}
+}
+
+// DSN must survive any password: the old "key=value" string broke on a space or quote, and a
+// password like "x host=evil" could override another connection parameter.
+func TestDSN_EncodesSpecialCharactersSafely(t *testing.T) {
+	cases := []struct{ name, user, password, host, db string }{
+		{"audit example", "comcamp", `p@ss 'word\123`, "127.0.0.1", "comcamp_db"},
+		{"url delimiters", "comcamp", `a b"c=d&e?f#g/h%i:j@k`, "db.internal", "comcamp_db"},
+		{"parameter injection", "comcamp", "x sslmode=disable host=evil.example dbname=other", "127.0.0.1", "comcamp_db"},
+		{"ipv6 host and odd user", "camp user@x", "s3cret", "::1", "comcamp db"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{DBHost: tc.host, DBPort: "5433", DBUser: tc.user, DBPassword: tc.password, DBName: tc.db, DBSSLMode: "require"}
+			dsn := cfg.DSN()
+			if !strings.HasPrefix(dsn, "postgres://") {
+				t.Fatalf("DSN %q is not a postgres:// URL", dsn)
+			}
+			pc, err := pgxpool.ParseConfig(dsn)
+			if err != nil {
+				t.Fatalf("ParseConfig(%q): %v", dsn, err)
+			}
+			cc := pc.ConnConfig
+			if cc.Password != tc.password {
+				t.Errorf("password = %q, want %q", cc.Password, tc.password)
+			}
+			if cc.User != tc.user || cc.Host != tc.host || cc.Port != 5433 || cc.Database != tc.db {
+				t.Errorf("got user=%q host=%q port=%d db=%q, want %q %q 5433 %q", cc.User, cc.Host, cc.Port, cc.Database, tc.user, tc.host, tc.db)
+			}
+			// sslmode=require stays in force (an injected sslmode=disable would leave TLSConfig nil).
+			if cc.TLSConfig == nil {
+				t.Errorf("sslmode=require was lost: TLSConfig is nil")
+			}
+			if len(cc.Fallbacks) != 0 {
+				t.Errorf("unexpected fallback hosts %v", cc.Fallbacks)
+			}
+		})
+	}
+
+	// sslmode=disable from the config itself is honoured.
+	cfg := &Config{DBHost: "localhost", DBPort: "5432", DBUser: "u", DBPassword: "p", DBName: "d", DBSSLMode: "disable"}
+	pc, err := pgxpool.ParseConfig(cfg.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pc.ConnConfig.TLSConfig != nil {
+		t.Errorf("sslmode=disable: expected no TLS")
 	}
 }

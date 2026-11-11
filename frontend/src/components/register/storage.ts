@@ -1,7 +1,10 @@
 /**
  * Client-side persistence for the /register wizard (AGENTS.md §9.2).
  *
- * Draft   → localStorage, one key, 24h TTL, cleared on successful submit.
+ * Draft   → sessionStorage (this tab only, gone when the tab closes), one key, 24h TTL, cleared
+ *           on successful submit. Not localStorage: on a shared school-lab computer the next
+ *           student would find the name and phone number, and the phone number alone opens
+ *           /status. A draft left in localStorage by an older build is deleted on load and clear.
  *           Allowlist only: personal + education fields and shirt size. Never stored: the
  *           13-digit national ID (§9.2.1), free-text motivation, health data, the PDPA tick.
  * Idempotency key → sessionStorage (this tab only), §9.2.4: written before POST /applications,
@@ -73,18 +76,25 @@ export function clearIdempotencyKey(): void {
   }
 }
 
-/**
- * Restores a ≤24h draft. `legacyKey` is the idempotency key that builds before v2.4 kept inside
- * the localStorage draft; the caller moves it to sessionStorage so an in-flight retry still replays.
- */
-export function loadDraft(): { form: FormState; savedAt: number; legacyKey: string | null } | null {
+/** Deletes a draft that an older build left in localStorage (shared-computer PII, LOW-06). */
+function purgeLegacyDraft(): void {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Restores a ≤24h draft saved earlier in this tab. */
+export function loadDraft(): { form: FormState; savedAt: number } | null {
+  purgeLegacyDraft();
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { v?: number; savedAt?: number; form?: Partial<DraftFields>; key?: unknown };
+    const parsed = JSON.parse(raw) as { v?: number; savedAt?: number; form?: Partial<DraftFields> };
     if (parsed.v !== 1 || typeof parsed.savedAt !== 'number' || !parsed.form) throw new Error('bad draft');
     if (Date.now() - parsed.savedAt > TTL_MS) {
-      localStorage.removeItem(DRAFT_KEY);
+      sessionStorage.removeItem(DRAFT_KEY);
       return null;
     }
     // Allowlist on read too: a national ID saved by an older build is dropped here and
@@ -95,8 +105,7 @@ export function loadDraft(): { form: FormState; savedAt: number; legacyKey: stri
       if (typeof v === 'string') (form as unknown as Record<string, string>)[key] = v;
     }
     if (form.shirtSize && !SHIRT_SIZES.includes(form.shirtSize)) form.shirtSize = '';
-    const legacyKey = typeof parsed.key === 'string' && UUID_RE.test(parsed.key) ? parsed.key : null;
-    return { form, savedAt: parsed.savedAt, legacyKey };
+    return { form, savedAt: parsed.savedAt };
   } catch {
     clearDraft();
     return null;
@@ -112,15 +121,16 @@ export function saveDraft(form: FormState): void {
       if (form[key].trim()) any = true;
     }
     if (!any) return clearDraft();
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), form: picked }));
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), form: picked }));
   } catch {
     /* storage full or blocked: the form still works, it just won't survive a refresh */
   }
 }
 
 export function clearDraft(): void {
+  purgeLegacyDraft();
   try {
-    localStorage.removeItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY);
   } catch {
     /* ignore */
   }

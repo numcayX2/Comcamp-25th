@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -131,6 +132,18 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 			name: "GET /api/admin/applications", allowed: all,
 			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
 				return app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token))
+			},
+		},
+		{
+			name: "POST /api/admin/applications/export-audit", allowed: editors,
+			setup: func(t *testing.T) string { return strconv.Itoa(len(exportEntries(app))) },
+			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
+				return app.do(t, http.MethodPost, "/api/admin/applications/export-audit",
+					bytes.NewBufferString(`{"applicationIds":[]}`), bearer(token))
+			},
+			changed: func(t *testing.T, before string) bool {
+				n, _ := strconv.Atoi(before)
+				return len(exportEntries(app)) > n
 			},
 		},
 		{
@@ -278,6 +291,7 @@ func TestRBAC_UnknownRoleIsDeniedEverywhere(t *testing.T) {
 		{http.MethodPatch, "/api/admin/applications/CC25-000000/profile"},
 		{http.MethodPatch, "/api/admin/applications/CC25-000000/verify-slip"},
 		{http.MethodDelete, "/api/admin/applications/CC25-000000"},
+		{http.MethodPost, "/api/admin/applications/export-audit"},
 	} {
 		rec := app.do(t, rt.method, rt.path, bytes.NewBufferString(`{}`), bearer(token))
 		if rec.Code != http.StatusForbidden {
@@ -298,6 +312,7 @@ func TestRBAC_NoTokenIs401OnEveryAdminRoute(t *testing.T) {
 		{http.MethodPatch, "/api/admin/applications/CC25-000000/profile"},
 		{http.MethodPatch, "/api/admin/applications/CC25-000000/verify-slip"},
 		{http.MethodDelete, "/api/admin/applications/CC25-000000"},
+		{http.MethodPost, "/api/admin/applications/export-audit"},
 	} {
 		if rec := app.do(t, rt.method, rt.path, nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a token: expected 401, got %d", rt.method, rt.path, rec.Code)

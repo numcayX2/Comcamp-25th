@@ -18,8 +18,17 @@ import (
 
 type racingApplicants struct {
 	*memory.MemoryApplicantRepo
-	beforeSoftDelete   func()
-	beforeUpdateStatus func()
+	beforeSoftDelete       func()
+	beforeUpdateStatus     func()
+	beforeUpdateAttendance func()
+}
+
+func (r *racingApplicants) UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *domain.AuditEntry) error {
+	if f := r.beforeUpdateAttendance; f != nil {
+		r.beforeUpdateAttendance = nil
+		f()
+	}
+	return r.MemoryApplicantRepo.UpdateAttendance(ctx, id, confirmed, audit)
 }
 
 func (r *racingApplicants) SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *domain.AuditEntry) error {
@@ -235,4 +244,62 @@ func TestRace_AdminDeleteDuringVerifyKeepsSlipAndReleasesHash(t *testing.T) {
 	}
 	_, again, _ := f.submit(t, 4301)
 	f.addSlip(t, again, "h1")
+}
+
+// LOW-04: staff reject the application between ConfirmAttendance's status check and the write.
+// The repository re-checks under its lock, so the answer is not recorded and no audit row is left.
+func TestRace_ConfirmAttendanceAfterReject(t *testing.T) {
+	ctx := context.Background()
+	f := newRaceFixture(t)
+	appNo, a, nid := f.submit(t, 9101)
+
+	f.race.beforeUpdateAttendance = func() {
+		if err := f.apps.UpdateStatus(ctx, a.ID, domain.StatusRejected, nil, "rejected meanwhile", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.4"), appNo, nid[9:], true)
+	if !errors.Is(err, service.ErrCannotConfirm) {
+		t.Fatalf("expected ErrCannotConfirm, got %v", err)
+	}
+	got, _ := f.apps.GetByID(ctx, a.ID)
+	if got.AttendanceConfirmed || got.Status != domain.StatusRejected {
+		t.Fatalf("attendance=%v status=%s, want false REJECTED", got.AttendanceConfirmed, got.Status)
+	}
+	for _, e := range f.apps.Audit().Entries() {
+		if e.Action == domain.AuditAttendanceConfirm {
+			t.Fatalf("refused confirmation was audited: %+v", e)
+		}
+	}
+}
+
+// LOW-04: a recorded answer carries confirmed and the caller's IP in its audit row.
+func TestConfirmAttendance_WritesAuditEntry(t *testing.T) {
+	ctx := context.Background()
+	f := newRaceFixture(t)
+	appNo, a, nid := f.submit(t, 9102)
+
+	for _, confirmed := range []bool{true, false} {
+		if _, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.9"), appNo, nid[9:], confirmed); err != nil {
+			t.Fatalf("confirmed=%v: %v", confirmed, err)
+		}
+		var last *domain.AuditEntry
+		for _, e := range f.apps.Audit().Entries() {
+			if e.Action == domain.AuditAttendanceConfirm {
+				e := e
+				last = &e
+			}
+		}
+		if last == nil {
+			t.Fatal("no application.attendance.confirm audit entry")
+		}
+		if last.TargetType != domain.AuditTargetApplicant || last.TargetID != appNo || last.IPAddress != "198.51.100.9" ||
+			last.AdminID != nil || last.Details["confirmed"] != confirmed {
+			t.Fatalf("confirmed=%v: unexpected audit entry %+v", confirmed, last)
+		}
+		got, _ := f.apps.GetByID(ctx, a.ID)
+		if got.AttendanceConfirmed != confirmed {
+			t.Fatalf("attendance = %v, want %v", got.AttendanceConfirmed, confirmed)
+		}
+	}
 }

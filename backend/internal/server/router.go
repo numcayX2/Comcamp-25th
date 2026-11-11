@@ -135,6 +135,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				super := middleware.RequireRoles(rolesSuper...)
 
 				admin.With(anyAdmin).Get("/admin/applications", appHandler.AdminList)
+				admin.With(editors).Post("/admin/applications/export-audit", appHandler.AdminExportAudit)
 				admin.With(editors).Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
 				admin.With(editors).Patch("/admin/applications/{id}/profile", appHandler.AdminUpdateProfile)
 				admin.With(super).Delete("/admin/applications/{id}", appHandler.AdminDelete)
