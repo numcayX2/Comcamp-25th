@@ -94,7 +94,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Username:     testAdminUser,
 		PasswordHash: hash,
 		FullName:     "System Admin",
-		Role:         domain.RoleSuperadmin,
+		Role:         domain.RoleAdmin,
 		IsActive:     true,
 	}
 	_ = admRepo.Create(context.Background(), admin)

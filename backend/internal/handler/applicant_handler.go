@@ -166,8 +166,8 @@ func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 		statusFilter = &st
 	}
 
-	// The caller's role decides whether national IDs come back in full: finance and reviewer get
-	// them masked (see service.CanSeeFullNationalID). No identity at all is treated as no role.
+	// The caller's role decides whether national IDs come back in full: only admin gets
+	// them unmasked (see service.CanSeeFullNationalID). No identity at all is treated as no role.
 	var role domain.AdminRole
 	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
 		role = claims.Role
@@ -213,7 +213,7 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 
 // AdminExportAudit records a CSV export of the applicant list before the dashboard builds the file:
 // POST /api/admin/applications/export-audit with { applicationIds, statusFilter, searchFiltered }.
-// superadmin and staff only (the roles that see full national IDs). Answers { count }.
+// admin only (the role that sees full national IDs). Answers { count }.
 func (h *ApplicantHandler) AdminExportAudit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ApplicationIDs []string `json:"applicationIds"`

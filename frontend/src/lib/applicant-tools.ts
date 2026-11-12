@@ -95,9 +95,9 @@ function csvDigits(value: string): string {
 }
 
 /**
- * The national ID column. Finance and reviewer accounts receive a masked value (1-5099-XXXXX-XX-X)
- * from the server; stripping that down to its digits would export the misleading number 15099, so
- * a value with a mask in it is written as the text it is.
+ * The national ID column. If a masked value (1-5099-XXXXX-XX-X) is ever passed, stripping that down
+ * to its digits would export the misleading number 15099, so a value with a mask in it is written
+ * as the text it is.
  */
 function csvNationalId(value: string): string {
   return /x/i.test(value) ? csvField(value) : csvDigits(value);

@@ -83,7 +83,9 @@ backend/
 │   ├── 000005_allow_rejected_slip_reupload.up.sql   # unique slip_hash เฉพาะสลิปที่ยังไม่ถูกปฏิเสธ
 │   ├── 000005_allow_rejected_slip_reupload.down.sql
 │   ├── 000006_release_deleted_applicant_slips.up.sql  # สลิปของใบสมัครที่ถูกลบ/ยกเลิกไม่กัน slip_hash (payments.applicant_deleted)
-│   └── 000006_release_deleted_applicant_slips.down.sql
+│   ├── 000006_release_deleted_applicant_slips.down.sql
+│   ├── 000007_single_admin_role.up.sql                # ยุบบทบาทผู้ดูแลระบบเหลือบทบาทเดียว ('admin')
+│   └── 000007_single_admin_role.down.sql
 ├── go.mod
 └── go.sum
 ```
@@ -105,13 +107,14 @@ cp .env.example .env
 # 2. เริ่มต้นฐานข้อมูล PostgreSQL 16 ผ่าน Docker
 docker compose up -d db
 
-# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรันครบ 000001–000006 ไม่อย่างนั้น API จะ query หรือบันทึกสถานะใหม่ไม่ผ่าน)
+# 3. รันสคริปต์ Migration ตามลำดับ (ต้องรันครบ 000001–000007 ไม่อย่างนั้น API จะ query หรือบันทึกสถานะใหม่ไม่ผ่าน)
 Get-Content backend/migrations/000001_init_schema.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000002_security_hardening.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000003_soft_delete_identity.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000004_refund_statuses.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000005_allow_rejected_slip_reupload.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 Get-Content backend/migrations/000006_release_deleted_applicant_slips.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
+Get-Content backend/migrations/000007_single_admin_role.up.sql -Raw | docker exec -i comcamp_db psql -U comcamp -d comcamp_db
 ```
 
 > **ย้ายจาก compose เวอร์ชันเก่า:** ไฟล์เดิม mount volume ไว้ที่ `/var/lib/pgsql/data` ซึ่งไม่ใช่ที่เก็บข้อมูลของ `postgres:16-alpine` ข้อมูลจึงไปอยู่ใน anonymous volume ตอนนี้แก้เป็น `/var/lib/postgresql/data` แล้ว ครั้งแรกที่ `docker compose up` จะได้ฐานข้อมูลว่าง ถ้ามีข้อมูลที่ต้องเก็บ ให้ `pg_dump` ออกมาก่อนอัปเดต แล้ว restore กลับ
@@ -133,7 +136,7 @@ Swagger UI documentation available at: http://localhost:8000/swagger
 * **PostgreSQL (dev/production):** สร้างบัญชีด้วยคำสั่งด้านล่าง ระบบรับรหัสผ่านทาง stdin หรือ `ADMIN_PASSWORD` และ hash ด้วย bcrypt
   ```bash
   cd backend
-  go run ./cmd/create-admin -username pee_somchai -name "พี่สมชาย" -role superadmin
+  go run ./cmd/create-admin -username pee_somchai -name "พี่สมชาย" -role admin
   ```
   รันซ้ำด้วยชื่อเดิมเพื่อรีเซ็ตรหัสผ่าน หากต้องการระงับบัญชี ให้ใช้ `UPDATE admins SET is_active = false WHERE username = '...'` บัญชีที่ถูกระงับจะใช้ token เดิมไม่ได้ทันที
 * **In-Memory (`APP_ENV=development` และยังไม่มีฐานข้อมูล):** ตั้ง `DEV_ADMIN_PASSWORD` ใน `.env` แล้ว login ด้วย `DEV_ADMIN_USERNAME` (ค่าเริ่มต้น `admin`) ถ้าตั้งตัวแปรนี้ใน production เซิร์ฟเวอร์จะไม่ยอมเริ่ม
@@ -164,7 +167,7 @@ Swagger UI documentation available at: http://localhost:8000/swagger
 cd backend
 go test ./...
 
-# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001–000006 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
+# Integration tests กับ PostgreSQL จริง (ต้องรัน migration 000001–000007 แล้ว) จะ skip ถ้าไม่ได้ตั้งตัวแปรนี้
 TEST_DATABASE_DSN="host=127.0.0.1 port=5432 user=comcamp password=... dbname=comcamp_db sslmode=disable" go test ./internal/repository/postgres/
 ```
 
@@ -199,9 +202,9 @@ Security regression tests อยู่ที่ `internal/handler/security_test.
 | **Idempotency** | `X-Idempotency-Key` (UUID) ส่งซ้ำได้ปลอดภัย: ครั้งแรก `201`, ส่งซ้ำได้ `200` + `Idempotent-Replayed: true` |
 | **Masking** | `/applications/status`, `/confirm` และผลการสมัคร ส่งเลขบัตร `1-5099-XXXXX-XX-X`, เบอร์ `XXX-XXX-5678`, อีเมล `s***@…` เท่านั้น ข้อมูลเต็มอยู่ใน `/api/admin/*` |
 | **บัญชีแอดมิน** | ตรวจ `is_active` ทุก request (ระงับบัญชีแล้ว token ใช้ไม่ได้ทันที), token อายุ 8 ชม., login ผิดทุกกรณีตอบข้อความเดียวกัน |
-| **สิทธิ์ตามบทบาท (RBAC)** | ทุก route ใต้ `/api/admin/*` ระบุบทบาทที่เรียกได้ (`middleware.RequireRoles`) และอ่านบทบาทจากฐานข้อมูลทุก request: ดูรายชื่อ/การตั้งค่า = ทุกบทบาท, ดู/ตรวจสลิป = superadmin finance staff, เปลี่ยนสถานะ/แก้ข้อมูล = superadmin staff, ลบใบสมัคร/แก้การตั้งค่า = superadmin เท่านั้น นอกนั้น → `403 FORBIDDEN` |
+| **สิทธิ์ตามบทบาท (RBAC)** | ทุก route ใต้ `/api/admin/*` ใช้บทบาทเดียวคือ `admin` (`middleware.RequireAdmin` / `middleware.RequireRoles`) และอ่านบทบาทจากฐานข้อมูลทุก request หากไม่ใช่ `admin` → `403 FORBIDDEN` |
 | **Rate limit (ต่อ IP)** | login 10 ครั้ง/5 นาที, ค้นสถานะ 60/นาที, ส่งใบสมัคร 20/นาที, ยืนยันสิทธิ์ อัปโหลดสลิป แก้โปรไฟล์ และยกเลิกใบสมัคร อย่างละ 20/นาที (นับแยกรายเอนด์พอยต์ นักเรียนหลายคนหลัง NAT เดียวกันอัปโหลดสลิปแล้วจะไม่บล็อกเพื่อนที่กดยืนยันสิทธิ์) → `429` + `Retry-After` IPv6 นับรวมทั้ง prefix `/64` (หมุนที่อยู่ในบล็อกเดียวกันเพื่อเลี่ยงลิมิตไม่ได้) และตารางตัวนับมีเพดาน 50,000 รายการ เต็มแล้วตัดรายการเก่าสุดออก หน่วยความจำจึงไม่โตตามจำนวนบอท |
-| **เลขบัตรในรายชื่อแอดมิน** | `GET /api/admin/applications` ให้เลขเต็ม 13 หลักเฉพาะ superadmin และ staff ส่วน finance และ reviewer ได้ค่า mask (`1-5099-XXXXX-XX-X`) เพราะเลขเต็มใช้ยกเลิกใบสมัครผ่าน `POST /:id/withdraw` ได้ ซึ่งเป็นสิทธิ์ของ superadmin ปุ่มส่งออก CSV ไม่แสดงให้ reviewer |
+| **เลขบัตรในรายชื่อแอดมิน** | `GET /api/admin/applications` ให้เลขเต็ม 13 หลักแก่บัญชีบทบาท `admin` เท่านั้น |
 | **Turnstile ตรวจหลังกำหนดการ** | `POST /api/applications` ตรวจช่วงเปิดรับสมัครก่อนเรียก Cloudflare ช่วงที่ยังปิดไม่มีการเรียกและไม่ใช้ token (บอทเตรียม token ล่วงหน้าไว้ยิงตอนเที่ยงคืนไม่ได้) และ idempotency key ที่ส่งให้ Cloudflare ผูกกับเลขบัตรของใบสมัคร จึงเอา token+key ที่ใช้แล้วไปใช้กับเลขบัตรอื่นไม่ได้ |
 | **IP จริงของผู้ใช้** | เชื่อ `X-Forwarded-For` เฉพาะจาก `TRUSTED_PROXIES` เท่านั้น (ปลอม IP เพื่อหลบ rate limit หรือ audit log ไม่ได้) |
 | **Audit log** | ตาราง `audit_logs` (`admin_id`, `action`, `details`, `ip_address`, `created_at`) บันทึกใน transaction เดียวกับการเปลี่ยนสถานะ/อนุมัติสลิป รวมถึง login สำเร็จ/ล้มเหลว และการเปิดดูสลิป |

@@ -1,8 +1,8 @@
-// Command create-admin creates (or re-activates with a new password) a staff account in
+// Command create-admin creates (or re-activates with a new password) an admin account in
 // PostgreSQL with a bcrypt-hashed password (AGENTS.md §13.2). There are no default admin accounts.
 //
 //	cd backend
-//	go run ./cmd/create-admin -username pee_somchai -name "พี่สมชาย" -role staff
+//	go run ./cmd/create-admin -username pee_somchai -name "พี่สมชาย" -role admin
 //
 // The password is read from the ADMIN_PASSWORD environment variable, or from the first line of
 // stdin, so it never appears in shell history or the process list.
@@ -39,16 +39,14 @@ const (
 func main() {
 	username := flag.String("username", "", "login name (required)")
 	fullName := flag.String("name", "", "display name (required)")
-	role := flag.String("role", string(domain.RoleStaff), "superadmin | staff | finance | reviewer")
+	role := flag.String("role", string(domain.RoleAdmin), "admin")
 	flag.Parse()
 
 	if *username == "" || *fullName == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
-	switch domain.AdminRole(*role) {
-	case domain.RoleSuperadmin, domain.RoleStaff, domain.RoleFinance, domain.RoleReviewer:
-	default:
+	if domain.AdminRole(*role) != domain.RoleAdmin {
 		log.Fatalf("invalid role %q", *role)
 	}
 

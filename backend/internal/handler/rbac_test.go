@@ -91,9 +91,9 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 	}
 
 	all := domain.AllAdminRoles
-	payments := []domain.AdminRole{domain.RoleSuperadmin, domain.RoleFinance, domain.RoleStaff}
-	editors := []domain.AdminRole{domain.RoleSuperadmin, domain.RoleStaff}
-	super := []domain.AdminRole{domain.RoleSuperadmin}
+	payments := all
+	editors := all
+	super := all
 
 	seq := 0
 	newApplication := func(t *testing.T) string {
@@ -248,28 +248,28 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 	}
 }
 
-// The role is re-read from the database on every request, so demoting an account takes effect on
-// its very next request, with the same token.
+// The role is re-read from the database on every request, so demoting an account to a non-admin
+// role takes effect on its very next request, with the same token.
 func TestRBAC_DemotionTakesEffectImmediately(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	token, id := app.loginAs(t, "rbac-demoted", domain.RoleSuperadmin)
+	token, id := app.loginAs(t, "rbac-demoted", domain.RoleAdmin)
 	patch := func() int {
 		return app.do(t, http.MethodPatch, "/api/admin/settings", bytes.NewBufferString(`{"campName":"ComCamp #25"}`), bearer(token)).Code
 	}
 
 	if code := patch(); code != http.StatusOK {
-		t.Fatalf("superadmin: expected 200, got %d", code)
+		t.Fatalf("admin: expected 200, got %d", code)
 	}
-	if err := app.adminRepo.SetRole(id, domain.RoleReviewer); err != nil {
+	if err := app.adminRepo.SetRole(id, domain.AdminRole("auditor")); err != nil {
 		t.Fatal(err)
 	}
 	if code := patch(); code != http.StatusForbidden {
-		t.Fatalf("after demotion to reviewer the old token must get 403, got %d", code)
+		t.Fatalf("after demotion to non-admin role the old token must get 403, got %d", code)
 	}
-	if code := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token)).Code; code != http.StatusOK {
-		t.Fatalf("a reviewer can still read the list, got %d", code)
+	if code := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token)).Code; code != http.StatusForbidden {
+		t.Fatalf("after demotion to non-admin role read list must get 403, got %d", code)
 	}
-	if err := app.adminRepo.SetRole(id, domain.RoleSuperadmin); err != nil {
+	if err := app.adminRepo.SetRole(id, domain.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	if code := patch(); code != http.StatusOK {

@@ -35,7 +35,7 @@ type FieldErrors = { quota?: string; fee?: string };
 interface Props {
   token: string;
   /**
-   * Whether this role may change the settings (superadmin only on the server). Others see the
+   * Whether this role may change the settings (`admin` role on the server). Others see the
    * values read-only instead of a form that would answer 403.
    */
   canEdit?: boolean;
@@ -49,7 +49,7 @@ interface Props {
 
 function errorText(err: unknown, fallback: string): string {
   if (err instanceof ApiHttpError) {
-    if (err.status === 403) return 'บัญชีนี้ไม่มีสิทธิ์แก้การตั้งค่า (ทำได้เฉพาะบทบาท superadmin)';
+    if (err.status === 403) return 'บัญชีนี้ไม่มีสิทธิ์แก้การตั้งค่า (ทำได้เฉพาะบทบาท admin)';
     if (err.code === 'VALIDATION_ERROR') {
       if (err.message.includes('capacity') || err.message.includes('quota')) {
         return 'จำนวนโควตาต้องไม่ต่ำกว่าจำนวนผู้สมัครปัจจุบัน และไม่เกิน 1,000 ที่นั่ง';
@@ -357,7 +357,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                   </div>
                   <p className="max-w-[46ch] text-sm leading-7" style={{ color: INK_3 }}>
                     บัญชีของคุณดูการตั้งค่าได้อย่างเดียว การแก้โควตา ค่าสมัคร และการปิดรับสมัครฉุกเฉินทำได้เฉพาะบทบาท{' '}
-                    <span className="font-mono">superadmin</span>
+                    <span className="font-mono">admin</span>
                   </p>
                 </div>
               )}
@@ -396,7 +396,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                         ? 'กำลังปิดรับ ผู้สมัครใหม่จะถูกปฏิเสธจนกว่าจะปิดสวิตช์นี้'
                         : canEdit
                           ? 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'
-                          : 'ยังรับใบสมัครตามกำหนดการ (เปิด/ปิดสวิตช์นี้ได้เฉพาะ superadmin)'}
+                          : 'ยังรับใบสมัครตามกำหนดการ (เปิด/ปิดสวิตช์นี้ได้เฉพาะ admin)'}
                     </p>
                   </div>
                   {canEdit ? (

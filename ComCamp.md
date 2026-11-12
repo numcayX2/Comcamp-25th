@@ -143,7 +143,7 @@
 | `uploaded_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | เวลาที่อัปโหลดสลิป |
 
 ### 4.4 ตาราง `admins` และ `audit_logs`
-* `admins`: เก็บบัญชีผู้ดูแลระบบ (`id`, `username`, `password_hash`, `full_name`, `role` (`superadmin`, `staff`, `finance`, `reviewer`), `is_active`)
+* `admins`: เก็บบัญชีผู้ดูแลระบบ (`id`, `username`, `password_hash`, `full_name`, `role` (`admin`), `is_active`)
 * `audit_logs`: บันทึกประวัติการแก้ไขสถานะและการอนุมัติสลิปของแอดมินทุกครั้ง (`admin_id`, `applicant_id`, `action`, `details`, `ip_address`, `created_at`)
 
 ---

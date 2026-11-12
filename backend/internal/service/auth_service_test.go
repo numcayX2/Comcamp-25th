@@ -23,7 +23,7 @@ func TestAuthService_Login(t *testing.T) {
 		Username:     "camp_leader",
 		PasswordHash: hash,
 		FullName:     "พี่ค่ายใหญ่",
-		Role:         domain.RoleSuperadmin,
+		Role:         domain.RoleAdmin,
 		IsActive:     true,
 	})
 
@@ -72,7 +72,7 @@ func TestAuthService_AccountUpdateInvalidatesOlderTokens(t *testing.T) {
 	authSvc := service.NewAuthService(adminRepo, nil, secret)
 
 	hash, _ := service.HashPassword("old-password-123")
-	admin := &domain.Admin{Username: "reset_me", PasswordHash: hash, FullName: "พี่รีเซ็ต", Role: domain.RoleStaff, IsActive: true}
+	admin := &domain.Admin{Username: "reset_me", PasswordHash: hash, FullName: "พี่รีเซ็ต", Role: domain.RoleAdmin, IsActive: true}
 	if err := adminRepo.Create(ctx, admin); err != nil {
 		t.Fatal(err)
 	}

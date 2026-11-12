@@ -99,13 +99,13 @@ TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
      ```powershell
      cd backend
      $env:ADMIN_PASSWORD="<รหัสผ่านอย่างน้อย 12 ตัว>"
-     go run ./cmd/create-admin -username admin -name "Staff Admin" -role superadmin
+     go run ./cmd/create-admin -username admin -name "Staff Admin" -role admin
      Remove-Item Env:ADMIN_PASSWORD
      ```
    - Bash
      ```bash
      cd backend
-     ADMIN_PASSWORD="<รหัสผ่านอย่างน้อย 12 ตัว>" go run ./cmd/create-admin -username admin -name "Staff Admin" -role superadmin
+     ADMIN_PASSWORD="<รหัสผ่านอย่างน้อย 12 ตัว>" go run ./cmd/create-admin -username admin -name "Staff Admin" -role admin
      ```
 
 ### ขั้นที่ 3: build และรันเทสต์
