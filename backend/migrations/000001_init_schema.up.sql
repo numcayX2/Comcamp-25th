@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS admins (
     username VARCHAR(50) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     full_name VARCHAR(100) NOT NULL,
-    role VARCHAR(30) NOT NULL DEFAULT 'staff' CHECK (role IN ('superadmin', 'staff', 'finance', 'reviewer')),
+    role VARCHAR(30) NOT NULL DEFAULT 'admin' CHECK (role IN ('admin')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS settings (
     payment_deadline TIMESTAMPTZ,
     certificate_release_at TIMESTAMPTZ,
     max_capacity INT NOT NULL DEFAULT 30 CHECK (max_capacity > 0),
-    camp_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    camp_fee DECIMAL(10,2) NOT NULL DEFAULT 300.00 CHECK (camp_fee >= 0),
     is_manual_closed BOOLEAN NOT NULL DEFAULT false,
     updated_by_admin_id BIGINT REFERENCES admins(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS settings (
 -- 3. applicants table
 CREATE TABLE IF NOT EXISTS applicants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    application_no VARCHAR(20) NOT NULL UNIQUE,
-    national_id CHAR(13) NOT NULL UNIQUE,
+    application_no VARCHAR(20) NOT NULL,
+    national_id CHAR(13) NOT NULL,
     prefix VARCHAR(20) NOT NULL,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS applicants (
     gender VARCHAR(20) NOT NULL,
     school VARCHAR(150) NOT NULL,
     grade VARCHAR(20) NOT NULL,
-    phone VARCHAR(20) NOT NULL UNIQUE,
-    email VARCHAR(150) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(150) NULL,
     line_id VARCHAR(100),
     
     address_line TEXT,
@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS applicants (
     deleted_at TIMESTAMPTZ
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_applicants_application_no_active ON applicants(application_no) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_applicants_national_id_active ON applicants(national_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_applicants_phone_active ON applicants(phone) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_applicants_email_active ON applicants(email) WHERE email IS NOT NULL AND email <> '' AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_applicants_status ON applicants(status);
 CREATE INDEX IF NOT EXISTS idx_applicants_school ON applicants(school);
 CREATE INDEX IF NOT EXISTS idx_applicants_created_at ON applicants(created_at);
@@ -102,6 +106,7 @@ CREATE TABLE IF NOT EXISTS payments (
     verified_at TIMESTAMPTZ
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_slip_hash ON payments(slip_hash) WHERE slip_hash IS NOT NULL AND slip_hash <> '';
 CREATE INDEX IF NOT EXISTS idx_payments_applicant_id ON payments(applicant_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
 
@@ -120,5 +125,5 @@ CREATE INDEX IF NOT EXISTS idx_status_logs_applicant ON applicant_status_logs(ap
 
 -- Initial Singleton Setting Row
 INSERT INTO settings (id, camp_name, registration_open_at, registration_close_at, max_capacity, camp_fee)
-VALUES (1, 'ComCamp 25th', '2026-11-16 00:00:00+07', '2026-11-30 23:59:59+07', 30, 0.00)
+VALUES (1, 'ComCamp 25th', '2026-11-16 00:00:00+07', '2026-11-30 23:59:59+07', 30, 300.00)
 ON CONFLICT (id) DO NOTHING;

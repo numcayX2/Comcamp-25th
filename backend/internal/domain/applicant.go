@@ -88,8 +88,10 @@ type ApplicantRepository interface {
 	GetByApplicationNo(ctx context.Context, appNo string) (*Applicant, error)
 	GetByNationalID(ctx context.Context, nationalID string) (*Applicant, error)
 	FindByQuery(ctx context.Context, query string) (*Applicant, error)
+	FindByIDOrAppNo(ctx context.Context, idOrAppNo string) (*Applicant, error)
 	ListAll(ctx context.Context, status *ApplicationStatus) ([]*Applicant, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string) error
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool) error
 	CountActive(ctx context.Context) (int, error)
+	CountConfirmed(ctx context.Context) (int, error)
 }

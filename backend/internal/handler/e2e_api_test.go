@@ -5,13 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/handler"
@@ -20,13 +25,32 @@ import (
 	"comcamp25-backend/internal/service"
 )
 
+type testAppDeps struct {
+	router     http.Handler
+	appRepo    *memory.MemoryApplicantRepo
+	setRepo    *memory.MemorySettingRepo
+	admRepo    *memory.MemoryAdminRepo
+	payRepo    *memory.MemoryPaymentRepo
+	authSvc    *service.AuthService
+	appSvc     *service.ApplicantService
+	settingSvc *service.SettingService
+	paymentSvc *service.PaymentService
+	uploadDir  string
+}
+
 func setupTestApp(t *testing.T) http.Handler {
+	t.Helper()
+	return setupTestAppWithDeps(t).router
+}
+
+func setupTestAppWithDeps(t *testing.T) *testAppDeps {
 	t.Helper()
 
 	appRepo := memory.NewMemoryApplicantRepo()
 	setRepo := memory.NewMemorySettingRepo()
+	appRepo.SetSettingRepo(setRepo)
 	admRepo := memory.NewMemoryAdminRepo()
-	payRepo := memory.NewMemoryPaymentRepo(appRepo)
+	payRepo := memory.NewMemoryPaymentRepoWithSettings(appRepo, setRepo)
 
 	// Seed admin
 	hash, _ := service.HashPassword("admin123")
@@ -34,7 +58,7 @@ func setupTestApp(t *testing.T) http.Handler {
 		Username:     "admin",
 		PasswordHash: hash,
 		FullName:     "System Admin",
-		Role:         domain.RoleSuperadmin,
+		Role:         domain.RoleAdmin,
 		IsActive:     true,
 	})
 
@@ -51,21 +75,32 @@ func setupTestApp(t *testing.T) http.Handler {
 	setH := handler.NewSettingHandler(settingService)
 	payH := handler.NewPaymentHandler(paymentService)
 
+	loginLimiter := middleware.NewRateLimiter(10, time.Minute, nil)
+	publicWriteLimiter := middleware.NewRateLimiter(20, time.Minute, nil)
+	statusLimiter := middleware.NewRateLimiter(30, time.Minute, nil)
+
 	r := chi.NewRouter()
-	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(uploadDir))))
+	r.Use(chimiddleware.RequestID)
+	r.Use(middleware.SecurityHeaders)
+	r.Use(middleware.SafeLoggerWithProxies(nil))
+	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.NewCORS([]string{"https://comcamp.csmju.com"}))
+
+	r.Handle("/uploads/*", handler.NewUploadFileHandler(uploadDir))
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", healthH.Check)
 		api.Get("/settings/public", setH.GetPublic)
 
-		api.Post("/applications", appH.Submit)
-		api.Get("/applications/status", appH.GetStatus)
-		api.Post("/applications/{id}/confirm", appH.ConfirmAttendance)
-		api.Post("/applications/{id}/slip", payH.UploadSlip)
+		api.With(publicWriteLimiter.Middleware).Post("/applications", appH.Submit)
+		api.With(statusLimiter.Middleware).Get("/applications/status", appH.GetStatus)
+		api.With(publicWriteLimiter.Middleware).Post("/applications/{id}/confirm", appH.ConfirmAttendance)
+		api.With(publicWriteLimiter.Middleware).Post("/applications/{id}/slip", payH.UploadSlip)
 
-		api.Post("/auth/login", authH.Login)
+		api.With(loginLimiter.Middleware).Post("/auth/login", authH.Login)
 
 		api.Group(func(admin chi.Router) {
 			admin.Use(middleware.RequireAuth(authService))
+			admin.Post("/auth/logout", authH.Logout)
 			admin.Get("/admin/applications", appH.AdminList)
 			admin.Patch("/admin/applications/{id}", appH.AdminUpdateStatus)
 			admin.Patch("/admin/applications/{id}/verify-slip", payH.VerifySlip)
@@ -74,20 +109,56 @@ func setupTestApp(t *testing.T) http.Handler {
 		})
 	})
 
-	return r
+	return &testAppDeps{
+		router:     r,
+		appRepo:    appRepo,
+		setRepo:    setRepo,
+		admRepo:    admRepo,
+		payRepo:    payRepo,
+		authSvc:    authService,
+		appSvc:     appService,
+		settingSvc: settingService,
+		paymentSvc: paymentService,
+		uploadDir:  uploadDir,
+	}
+}
+
+func generateValidJPEGBytes(t *testing.T, r, g, b uint8) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			img.Set(x, y, color.RGBA{R: r, G: g, B: b, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("failed to encode test jpeg: %v", err)
+	}
+	return buf.Bytes()
 }
 
 func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	app := setupTestApp(t)
 
-	// Step 1: Health Check
+	// Step 1: Health Check + Security Headers
 	t.Run("1. GET /api/health", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+		req.Header.Set("Origin", "https://comcamp.csmju.com")
 		rec := httptest.NewRecorder()
 		app.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+		if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("expected X-Content-Type-Options: nosniff")
+		}
+		if rec.Header().Get("X-Frame-Options") != "DENY" {
+			t.Errorf("expected X-Frame-Options: DENY")
+		}
+		if rec.Header().Get("Access-Control-Allow-Origin") != "https://comcamp.csmju.com" {
+			t.Errorf("expected CORS Allow-Origin header, got %q", rec.Header().Get("Access-Control-Allow-Origin"))
 		}
 	})
 
@@ -150,8 +221,8 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 4: Query Status by National ID
-	t.Run("4. GET /api/applications/status?q={nationalId}", func(t *testing.T) {
+	// Step 4: Query Status by National ID (expects masked PII)
+	t.Run("4. GET /api/applications/status?q={nationalId} returns masked PII", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/applications/status?q=1509900112233", nil)
 		rec := httptest.NewRecorder()
 		app.ServeHTTP(rec, req)
@@ -163,6 +234,15 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &queried)
 		if queried.ID != createdApp.ID {
 			t.Errorf("expected ID %s, got %s", createdApp.ID, queried.ID)
+		}
+		if queried.NationalID != "15099******33" {
+			t.Errorf("expected masked nationalId 15099******33, got %q", queried.NationalID)
+		}
+		if queried.Phone != "081****543" {
+			t.Errorf("expected masked phone 081****543, got %q", queried.Phone)
+		}
+		if queried.Email != "s***@school.ac.th" {
+			t.Errorf("expected masked email s***@school.ac.th, got %q", queried.Email)
 		}
 	})
 
@@ -200,7 +280,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 7: Admin Lists Applications
+	// Step 7: Admin Lists Applications (unmasked)
 	t.Run("7. GET /api/admin/applications (with auth)", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/admin/applications", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -214,7 +294,10 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		var list []service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &list)
 		if len(list) != 1 {
-			t.Errorf("expected 1 applicant, got %d", len(list))
+			t.Fatalf("expected 1 applicant, got %d", len(list))
+		}
+		if list[0].NationalID != "1509900112233" {
+			t.Errorf("expected unmasked nationalId in admin list, got %q", list[0].NationalID)
 		}
 	})
 
@@ -257,9 +340,9 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 10: Upload payment slip
-	mockSlipBytes := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00}
-	t.Run("10. POST /api/applications/{id}/slip (upload)", func(t *testing.T) {
+	// Step 10: Upload payment slip (valid JPEG) & verify directory listing disabled
+	mockSlipBytes := generateValidJPEGBytes(t, 25, 120, 210)
+	t.Run("10. POST /api/applications/{id}/slip (upload) and uploads dir listing disabled", func(t *testing.T) {
 		targetURL := fmt.Sprintf("/api/applications/%s/slip", createdApp.ID)
 
 		body := &bytes.Buffer{}
@@ -280,16 +363,29 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		var slipRes service.SlipUploadResult
 		_ = json.Unmarshal(rec.Body.Bytes(), &slipRes)
 
-		// Test admin fetching the uploaded slip file over HTTP (manual inspection)
+		// Fetch uploaded slip over HTTP
 		reqFetch := httptest.NewRequest(http.MethodGet, slipRes.SlipURL, nil)
 		recFetch := httptest.NewRecorder()
 		app.ServeHTTP(recFetch, reqFetch)
 
 		if recFetch.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK when admin fetches slip, got %d", recFetch.Code)
+			t.Fatalf("expected 200 OK when fetching slip, got %d", recFetch.Code)
 		}
 		if !bytes.Equal(recFetch.Body.Bytes(), mockSlipBytes) {
 			t.Errorf("fetched slip bytes do not match uploaded bytes")
+		}
+		if recFetch.Header().Get("Cache-Control") != "private, no-store" {
+			t.Errorf("expected Cache-Control: private, no-store, got %q", recFetch.Header().Get("Cache-Control"))
+		}
+
+		// Directory listing must return 404
+		for _, dirURL := range []string{"/uploads/", "/uploads/slips/", "/uploads/slips"} {
+			reqDir := httptest.NewRequest(http.MethodGet, dirURL, nil)
+			recDir := httptest.NewRecorder()
+			app.ServeHTTP(recDir, reqDir)
+			if recDir.Code != http.StatusNotFound {
+				t.Errorf("directory listing %s: expected 404, got %d", dirURL, recDir.Code)
+			}
 		}
 	})
 
@@ -300,7 +396,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		part, _ := writer.CreateFormFile("slip", "same_slip_reused.jpg")
-		_, _ = io.Copy(part, bytes.NewReader(mockSlipBytes)) // Same hash
+		_, _ = io.Copy(part, bytes.NewReader(mockSlipBytes))
 		_ = writer.Close()
 
 		req := httptest.NewRequest(http.MethodPost, targetURL, body)
@@ -350,7 +446,6 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 
 	// Step 14: Admin checks and updates dynamic camp settings
 	t.Run("14. GET and PATCH /api/admin/settings", func(t *testing.T) {
-		// 14.1 GET /api/admin/settings
 		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/settings", nil)
 		getReq.Header.Set("Authorization", "Bearer "+token)
 		getRec := httptest.NewRecorder()
@@ -360,7 +455,6 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 			t.Fatalf("expected 200 OK for GET /api/admin/settings, got %d", getRec.Code)
 		}
 
-		// 14.2 PATCH /api/admin/settings to update capacity from 30 to 50
 		updateBody := `{"maxCapacity": 50, "campName": "ComCamp #25 (Updated)"}`
 		patchReq := httptest.NewRequest(http.MethodPatch, "/api/admin/settings", bytes.NewReader([]byte(updateBody)))
 		patchReq.Header.Set("Authorization", "Bearer "+token)
@@ -383,7 +477,6 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 			t.Errorf("expected updated camp name, got %s", updatedSettings.CampName)
 		}
 
-		// 14.3 Verify Public Settings reflects updated capacity
 		pubReq := httptest.NewRequest(http.MethodGet, "/api/settings/public", nil)
 		pubRec := httptest.NewRecorder()
 		app.ServeHTTP(pubRec, pubReq)
@@ -394,4 +487,49 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 			t.Errorf("expected public settings maxCapacity 50, got %d", pubSettings.MaxCapacity)
 		}
 	})
+
+	// Step 15: Logout revokes token
+	t.Run("15. POST /api/auth/logout revokes token", func(t *testing.T) {
+		logoutReq := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+		logoutReq.Header.Set("Authorization", "Bearer "+token)
+		logoutRec := httptest.NewRecorder()
+		app.ServeHTTP(logoutRec, logoutReq)
+
+		if logoutRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for logout, got %d", logoutRec.Code)
+		}
+
+		afterReq := httptest.NewRequest(http.MethodGet, "/api/admin/applications", nil)
+		afterReq.Header.Set("Authorization", "Bearer "+token)
+		afterRec := httptest.NewRecorder()
+		app.ServeHTTP(afterRec, afterReq)
+
+		if afterRec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized after logout, got %d", afterRec.Code)
+		}
+	})
+}
+
+func TestE2E_RateLimitingOnLogin(t *testing.T) {
+	app := setupTestApp(t)
+
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"admin","password":"wrong"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "198.51.100.42:10000"
+		rec := httptest.NewRecorder()
+		app.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, rec.Code)
+		}
+	}
+
+	req11 := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"admin","password":"wrong"}`))
+	req11.Header.Set("Content-Type", "application/json")
+	req11.RemoteAddr = "198.51.100.42:10000"
+	rec11 := httptest.NewRecorder()
+	app.ServeHTTP(rec11, req11)
+	if rec11.Code != http.StatusTooManyRequests {
+		t.Fatalf("attempt 11: expected 429 Too Many Requests, got %d", rec11.Code)
+	}
 }

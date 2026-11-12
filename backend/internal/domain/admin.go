@@ -8,11 +8,20 @@ import (
 type AdminRole string
 
 const (
-	RoleSuperadmin AdminRole = "superadmin"
-	RoleStaff      AdminRole = "staff"
-	RoleFinance    AdminRole = "finance"
-	RoleReviewer   AdminRole = "reviewer"
+	RoleAdmin AdminRole = "admin"
 )
+
+func (r AdminRole) IsValid() bool {
+	return r == RoleAdmin
+}
+
+type AdminClaims struct {
+	AdminID   int64     `json:"adminId"`
+	Username  string    `json:"username"`
+	Role      AdminRole `json:"role"`
+	TokenID   string    `json:"jti,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
+}
 
 type Admin struct {
 	ID           int64      `db:"id" json:"id"`
@@ -31,4 +40,5 @@ type AdminRepository interface {
 	GetByUsername(ctx context.Context, username string) (*Admin, error)
 	UpdateLastLogin(ctx context.Context, id int64) error
 	Create(ctx context.Context, admin *Admin) error
+	Count(ctx context.Context) (int, error)
 }

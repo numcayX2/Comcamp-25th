@@ -2,6 +2,8 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,28 +17,9 @@ import (
 
 const testDSN = "host=127.0.0.1 port=5432 user=comcamp password=change_this_strong_password dbname=comcamp_db sslmode=disable"
 
-func setupRealDB(t *testing.T) *postgres.ApplicantPostgresRepo {
-	t.Helper()
-
-	cfg := repository.DefaultPoolConfig(testDSN)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	pool, err := repository.NewPool(ctx, cfg)
-	if err != nil {
-		t.Skipf("Skipping integration test: PostgreSQL is not reachable (%v)", err)
-		return nil
-	}
-	t.Cleanup(func() {
-		pool.Close()
-	})
-
-	return postgres.NewApplicantPostgresRepo(pool)
-}
-
 func TestPostgres_FullIntegration(t *testing.T) {
 	cfg := repository.DefaultPoolConfig(testDSN)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	pool, err := repository.NewPool(ctx, cfg)
@@ -51,33 +34,69 @@ func TestPostgres_FullIntegration(t *testing.T) {
 	admRepo := postgres.NewAdminPostgresRepo(pool)
 	payRepo := postgres.NewPaymentPostgresRepo(pool)
 
-	// 1. Test Settings
-	t.Run("1. Settings Get", func(t *testing.T) {
+	var testAdminID int64
+	applicantID := uuid.New()
+	applicantBlankEmail1ID := uuid.New()
+	applicantBlankEmail2ID := uuid.New()
+	var origSettings *domain.Settings
+
+	t.Cleanup(func() {
+		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanCancel()
+		if origSettings != nil {
+			_ = setRepo.Update(cleanCtx, origSettings)
+		}
+		for _, id := range []uuid.UUID{applicantID, applicantBlankEmail1ID, applicantBlankEmail2ID} {
+			_, _ = pool.Exec(cleanCtx, `DELETE FROM payments WHERE applicant_id = $1`, id)
+			_, _ = pool.Exec(cleanCtx, `DELETE FROM applicant_status_logs WHERE applicant_id = $1`, id)
+			_, _ = pool.Exec(cleanCtx, `DELETE FROM applicants WHERE id = $1`, id)
+		}
+		if testAdminID > 0 {
+			_, _ = pool.Exec(cleanCtx, `DELETE FROM admins WHERE id = $1`, testAdminID)
+		}
+	})
+
+	// 1. Test Settings Get & Update
+	t.Run("1. Settings Get and Update", func(t *testing.T) {
 		settings, err := setRepo.Get(ctx)
 		if err != nil {
 			t.Fatalf("failed to get settings: %v", err)
 		}
+		copied := *settings
+		origSettings = &copied
+
 		if settings.CampName != "ComCamp 25th" {
 			t.Errorf("expected camp name 'ComCamp 25th', got '%s'", settings.CampName)
 		}
 		if settings.MaxCapacity != 30 {
 			t.Errorf("expected max capacity 30, got %d", settings.MaxCapacity)
 		}
+
+		updated := *settings
+		updated.MaxCapacity = 45
+		if err := setRepo.Update(ctx, &updated); err != nil {
+			t.Fatalf("failed to update settings: %v", err)
+		}
+		reloaded, err := setRepo.Get(ctx)
+		if err != nil || reloaded.MaxCapacity != 45 {
+			t.Fatalf("expected updated MaxCapacity=45, got %v (%v)", reloaded, err)
+		}
+		if err := setRepo.Update(ctx, origSettings); err != nil {
+			t.Fatalf("failed to restore settings: %v", err)
+		}
 	})
 
-	// 2. Test Admin Creation & Lookup
-	var testAdminID int64
+	// 2. Test Admin Creation, Lookup & Count
 	testUsername := "test_admin_" + uuid.New().String()[:8]
-	t.Run("2. Admin Create and Lookup", func(t *testing.T) {
+	t.Run("2. Admin Create, Lookup, and Count", func(t *testing.T) {
 		admin := &domain.Admin{
 			Username:     testUsername,
 			PasswordHash: "$2a$10$abcdefghijklmnopqrstuvwxyz123456",
 			FullName:     "พี่ค่ายทดสอบ",
-			Role:         domain.RoleSuperadmin,
+			Role:         domain.RoleAdmin,
 			IsActive:     true,
 		}
-		err := admRepo.Create(ctx, admin)
-		if err != nil {
+		if err := admRepo.Create(ctx, admin); err != nil {
 			t.Fatalf("failed to create admin: %v", err)
 		}
 		testAdminID = admin.ID
@@ -89,20 +108,20 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		if queried.FullName != "พี่ค่ายทดสอบ" {
 			t.Errorf("expected full name 'พี่ค่ายทดสอบ', got '%s'", queried.FullName)
 		}
-
-		err = admRepo.UpdateLastLogin(ctx, testAdminID)
-		if err != nil {
+		if err := admRepo.UpdateLastLogin(ctx, testAdminID); err != nil {
 			t.Errorf("failed to update last login: %v", err)
+		}
+		if cnt, err := admRepo.Count(ctx); err != nil || cnt < 1 {
+			t.Errorf("expected admin count >= 1, got %d (%v)", cnt, err)
 		}
 	})
 
-	// 3. Test Applicant Lifecycle
+	// 3. Test Applicant Lifecycle, Blank Emails, FindByIDOrAppNo, ListAll, CountConfirmed
 	testNationalID := "15099" + uuid.New().String()[:8]
 	testPhone := "08" + uuid.New().String()[:8]
 	testAppNo := "CC25-" + uuid.New().String()[:6]
-	applicantID := uuid.New()
 
-	t.Run("3. Applicant Insert and Query", func(t *testing.T) {
+	t.Run("3. Applicant Insert, Query, Blank Emails, ListAll, CountConfirmed", func(t *testing.T) {
 		mot := "อยากเรียนรู้ Hardware IoT และ AI Dashboard"
 		applicant := &domain.Applicant{
 			ID:                  applicantID,
@@ -128,12 +147,36 @@ func TestPostgres_FullIntegration(t *testing.T) {
 			AttendanceConfirmed: false,
 		}
 
-		err := appRepo.Create(ctx, applicant)
-		if err != nil {
+		if err := appRepo.Create(ctx, applicant); err != nil {
 			t.Fatalf("failed to insert applicant into real PostgreSQL: %v", err)
 		}
 
-		// Query by ID
+		// Two applicants with blank email should both succeed
+		for i, id := range []uuid.UUID{applicantBlankEmail1ID, applicantBlankEmail2ID} {
+			blankApp := &domain.Applicant{
+				ID:               id,
+				ApplicationNo:    "CC25-BL" + uuid.New().String()[:4],
+				NationalID:       "16099" + uuid.New().String()[:8],
+				FirstName:        "ทดสอบ",
+				LastName:         "ไม่มีเมล",
+				Nickname:         "บี",
+				BirthDate:        time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC),
+				Gender:           "unspecified",
+				School:           "โรงเรียนทดสอบ",
+				Grade:            "ม.4",
+				Phone:            "09" + uuid.New().String()[:8],
+				Email:            "",
+				Province:         "เชียงใหม่",
+				EmergencyContact: "ผู้ปกครอง",
+				EmergencyPhone:   "0811112222",
+				ShirtSize:        "M",
+				Status:           domain.StatusPending,
+			}
+			if err := appRepo.Create(ctx, blankApp); err != nil {
+				t.Fatalf("blank email applicant %d failed: %v", i+1, err)
+			}
+		}
+
 		byID, err := appRepo.GetByID(ctx, applicantID)
 		if err != nil {
 			t.Fatalf("failed to query applicant by ID: %v", err)
@@ -142,67 +185,116 @@ func TestPostgres_FullIntegration(t *testing.T) {
 			t.Errorf("expected national ID %s, got %s", testNationalID, byID.NationalID)
 		}
 
-		// Query by Search Query
+		// FindByIDOrAppNo supports UUID and lowercase appNo, not nationalID/phone
+		if byAppNoLower, err := appRepo.FindByIDOrAppNo(ctx, strings.ToLower(testAppNo)); err != nil || byAppNoLower.ID != applicantID {
+			t.Errorf("expected FindByIDOrAppNo lowercase match, got %v (%v)", byAppNoLower, err)
+		}
+		if _, err := appRepo.FindByIDOrAppNo(ctx, testNationalID); !errors.Is(err, domain.ErrApplicantNotFound) {
+			t.Errorf("expected FindByIDOrAppNo not to match national ID, got %v", err)
+		}
+
 		byQuery, err := appRepo.FindByQuery(ctx, testAppNo)
-		if err != nil {
+		if err != nil || byQuery.ID != applicantID {
 			t.Fatalf("failed to query applicant by appNo: %v", err)
 		}
-		if byQuery.ID != applicantID {
-			t.Errorf("expected ID %v, got %v", applicantID, byQuery.ID)
-		}
 
-		// Update Attendance
-		err = appRepo.UpdateAttendance(ctx, applicantID, true)
-		if err != nil {
+		if err := appRepo.UpdateAttendance(ctx, applicantID, true); err != nil {
 			t.Fatalf("failed to update attendance: %v", err)
 		}
-
-		// Update Status with Audit Log
-		err = appRepo.UpdateStatus(ctx, applicantID, domain.StatusPassed, &testAdminID, "ผ่านสัมภาษณ์รอบแรก")
-		if err != nil {
+		if err := appRepo.UpdateStatus(ctx, applicantID, domain.StatusPassed, &testAdminID, "ผ่านสัมภาษณ์รอบแรก"); err != nil {
 			t.Fatalf("failed to update status: %v", err)
 		}
 
-		updatedApp, _ := appRepo.GetByID(ctx, applicantID)
-		if updatedApp.Status != domain.StatusPassed {
-			t.Errorf("expected status PASSED, got %s", updatedApp.Status)
+		passedStatus := domain.StatusPassed
+		passedList, err := appRepo.ListAll(ctx, &passedStatus)
+		if err != nil {
+			t.Fatalf("ListAll failed: %v", err)
+		}
+		found := false
+		for _, item := range passedList {
+			if item.ID == applicantID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected applicant %s in ListAll(PASSED)", applicantID)
+		}
+
+		if _, err := appRepo.CountActive(ctx); err != nil {
+			t.Errorf("CountActive failed: %v", err)
+		}
+		if _, err := appRepo.CountConfirmed(ctx); err != nil {
+			t.Errorf("CountConfirmed failed: %v", err)
 		}
 	})
 
-	// 4. Test Payment & Verification Flow
-	t.Run("4. Payment Insert, Anti-Fraud Hash, and Verification", func(t *testing.T) {
-		paymentID := uuid.New()
-		slipHash := "sha256_" + uuid.New().String()
-		transRef := "KBANK_" + uuid.New().String()
+	// 4. Test Payment & Verification Flow (approved=false then approved=true + GetLatestByApplicantIDs)
+	t.Run("4. Payment Insert, Reject, Approve, and Batch Lookup", func(t *testing.T) {
+		rejectedPaymentID := uuid.New()
+		slipHash1 := "sha256_" + uuid.New().String()
+		transRef1 := "KBANK_" + uuid.New().String()
 
-		payment := &domain.Payment{
-			ID:            paymentID,
+		p1 := &domain.Payment{
+			ID:            rejectedPaymentID,
 			ApplicantID:   applicantID,
-			SlipURL:       "/uploads/slips/test_slip.jpg",
+			SlipURL:       "/uploads/slips/test_slip_1.jpg",
 			Amount:        decimal.NewFromFloat(300.00),
 			Status:        domain.PaymentPending,
-			TransRef:      &transRef,
-			SlipHash:      &slipHash,
+			TransRef:      &transRef1,
+			SlipHash:      &slipHash1,
 			VerifiedByAPI: false,
 		}
-
-		err := payRepo.Create(ctx, payment)
-		if err != nil {
+		if err := payRepo.Create(ctx, p1); err != nil {
 			t.Fatalf("failed to insert payment into PostgreSQL: %v", err)
 		}
 
-		// Check Duplicate Hash
-		isDup, err := payRepo.CheckDuplicateSlipHash(ctx, slipHash)
-		if err != nil {
-			t.Fatalf("failed to check duplicate slip hash: %v", err)
-		}
-		if !isDup {
-			t.Errorf("expected duplicate check to return true")
+		isDup, err := payRepo.CheckDuplicateSlipHash(ctx, slipHash1)
+		if err != nil || !isDup {
+			t.Fatalf("expected duplicate check true, got %v (%v)", isDup, err)
 		}
 
-		// Admin Verifies Payment -> Applicant status automatically becomes CONFIRMED
-		err = payRepo.Verify(ctx, paymentID, true, testAdminID, "ยอดเงินเข้าบัญชีเรียบร้อย")
-		if err != nil {
+		// Verify with approved=false -> PaymentRejected, applicant stays PASSED
+		if err := payRepo.Verify(ctx, rejectedPaymentID, false, testAdminID, "สลิปไม่ชัดเจน"); err != nil {
+			t.Fatalf("failed to reject payment: %v", err)
+		}
+		gotRejected, err := payRepo.GetByID(ctx, rejectedPaymentID)
+		if err != nil || gotRejected.Status != domain.PaymentRejected {
+			t.Fatalf("expected PaymentRejected, got %v (%v)", gotRejected, err)
+		}
+		if gotRejected.RejectionReason == nil || *gotRejected.RejectionReason != "สลิปไม่ชัดเจน" {
+			t.Errorf("expected rejection_reason to be persisted, got %v", gotRejected.RejectionReason)
+		}
+		stillPassed, _ := appRepo.GetByID(ctx, applicantID)
+		if stillPassed.Status != domain.StatusPassed {
+			t.Errorf("expected applicant to remain PASSED on rejection, got %s", stillPassed.Status)
+		}
+
+		// Re-verify guard
+		if err := payRepo.Verify(ctx, rejectedPaymentID, true, testAdminID, "retry"); !errors.Is(err, domain.ErrPaymentAlreadyVerified) {
+			t.Errorf("expected ErrPaymentAlreadyVerified, got %v", err)
+		}
+
+		// Second upload & approve -> CONFIRMED
+		approvedPaymentID := uuid.New()
+		slipHash2 := "sha256_" + uuid.New().String()
+		transRef2 := "KBANK_" + uuid.New().String()
+		time.Sleep(5 * time.Millisecond)
+		p2 := &domain.Payment{
+			ID:            approvedPaymentID,
+			ApplicantID:   applicantID,
+			SlipURL:       "/uploads/slips/test_slip_2.jpg",
+			Amount:        decimal.NewFromFloat(300.00),
+			Status:        domain.PaymentPending,
+			TransRef:      &transRef2,
+			SlipHash:      &slipHash2,
+			VerifiedByAPI: false,
+		}
+		if err := payRepo.Create(ctx, p2); err != nil {
+			t.Fatalf("failed to insert second payment: %v", err)
+		}
+
+		if err := payRepo.Verify(ctx, approvedPaymentID, true, testAdminID, "ยอดเงินเข้าบัญชีเรียบร้อย"); err != nil {
 			t.Fatalf("failed to verify payment: %v", err)
 		}
 
@@ -210,16 +302,16 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to get applicant: %v", err)
 		}
-		if confirmedApp.Status != domain.StatusConfirmed {
-			t.Errorf("expected applicant status to become CONFIRMED, got %s", confirmedApp.Status)
+		if confirmedApp.Status != domain.StatusConfirmed || !confirmedApp.AttendanceConfirmed {
+			t.Errorf("expected applicant CONFIRMED + attendance_confirmed=true, got %s (%v)", confirmedApp.Status, confirmedApp.AttendanceConfirmed)
 		}
-	})
 
-	// 5. Cleanup test data
-	t.Run("5. Cleanup test records", func(t *testing.T) {
-		_, _ = pool.Exec(ctx, `DELETE FROM payments WHERE applicant_id = $1`, applicantID)
-		_, _ = pool.Exec(ctx, `DELETE FROM applicant_status_logs WHERE applicant_id = $1`, applicantID)
-		_, _ = pool.Exec(ctx, `DELETE FROM applicants WHERE id = $1`, applicantID)
-		_, _ = pool.Exec(ctx, `DELETE FROM admins WHERE id = $1`, testAdminID)
+		latestByIDs, err := payRepo.GetLatestByApplicantIDs(ctx, []uuid.UUID{applicantID, applicantBlankEmail1ID})
+		if err != nil {
+			t.Fatalf("GetLatestByApplicantIDs failed: %v", err)
+		}
+		if latestByIDs[applicantID] == nil || latestByIDs[applicantID].ID != approvedPaymentID {
+			t.Errorf("expected latest payment for %s to be %s, got %+v", applicantID, approvedPaymentID, latestByIDs[applicantID])
+		}
 	})
 }

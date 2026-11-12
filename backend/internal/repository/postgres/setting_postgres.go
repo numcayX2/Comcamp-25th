@@ -36,7 +36,7 @@ func (r *SettingPostgresRepo) Get(ctx context.Context) (*domain.Settings, error)
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("settings not found")
+			return nil, domain.ErrSettingsNotFound
 		}
 		return nil, fmt.Errorf("failed to get settings: %w", err)
 	}
@@ -62,10 +62,16 @@ func (r *SettingPostgresRepo) Update(ctx context.Context, s *domain.Settings) er
 	`
 	now := time.Now().UTC()
 	s.UpdatedAt = now
-	_, err := r.pool.Exec(ctx, query,
+	tag, err := r.pool.Exec(ctx, query,
 		s.CampName, s.RegistrationOpenAt, s.RegistrationCloseAt,
 		s.AnnouncementAt, s.PaymentOpenAt, s.PaymentDeadline, s.CertificateReleaseAt,
 		s.MaxCapacity, s.CampFee, s.IsManualClosed, s.UpdatedByAdminID, now,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrSettingsNotFound
+	}
+	return nil
 }
