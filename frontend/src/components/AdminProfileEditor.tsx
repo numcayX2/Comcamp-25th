@@ -3,6 +3,7 @@ import { TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   sanitizeDigits,
+  stripZeroWidth,
   updateApplicantProfile,
   type AdminProfilePayload,
   type Application,
@@ -68,39 +69,68 @@ function initialForm(a: Application): Form {
   };
 }
 
+function cleanSingleLine(s: string): string {
+  return stripZeroWidth(s).trim().replace(/\s+/g, ' ');
+}
+
 /** Same rules as the backend (shared normalisation and validation), so mistakes show per field. */
 function validate(f: Form): Errors {
   const e: Errors = {};
-  if (!f.fullName.trim()) e.fullName = 'กรุณากรอกชื่อ-นามสกุล';
-  else if (f.fullName.trim().length > 201) e.fullName = 'ชื่อ-นามสกุลยาวเกินไป';
-  if (!f.nickname.trim()) e.nickname = 'กรุณากรอกชื่อเล่น';
-  else if (f.nickname.trim().length > 50) e.nickname = 'ชื่อเล่นยาวได้ไม่เกิน 50 ตัวอักษร';
+  const fullName = cleanSingleLine(f.fullName);
+  if (!fullName) {
+    e.fullName = 'กรุณากรอกชื่อ-นามสกุล';
+  } else {
+    const spaceIdx = fullName.indexOf(' ');
+    const first = spaceIdx === -1 ? fullName : fullName.slice(0, spaceIdx);
+    const last = spaceIdx === -1 ? '' : fullName.slice(spaceIdx + 1).trim();
+    if (first.length > 100 || last.length > 100 || fullName.length > 201) {
+      e.fullName = 'ชื่อหรือนามสกุลยาวเกิน 100 ตัวอักษร';
+    }
+  }
+
+  const nickname = cleanSingleLine(f.nickname);
+  if (!nickname) e.nickname = 'กรุณากรอกชื่อเล่น';
+  else if (nickname.length > 50) e.nickname = 'ชื่อเล่นยาวได้ไม่เกิน 50 ตัวอักษร';
 
   const nid = sanitizeDigits(f.nationalId);
   if (nid.length !== 13) e.nationalId = `เลขบัตรประชาชนต้องมี 13 หลัก (ตอนนี้ ${nid.length} หลัก)`;
   else if (!isValidThaiNationalID(nid)) e.nationalId = 'เลขบัตรประชาชนไม่ผ่านการตรวจเลขตรวจสอบ (Mod-11)';
 
   if (!/^0\d{9}$/.test(sanitizeDigits(f.phone))) e.phone = 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
-  const email = f.email.trim();
-  if (email && !/^\S+@\S+\.\S+$/.test(email)) e.email = 'รูปแบบอีเมลไม่ถูกต้อง (เว้นว่างได้)';
-  if (!f.school.trim()) e.school = 'กรุณากรอกโรงเรียนหรือสถานศึกษา';
-  if (!f.province.trim()) e.province = 'กรุณากรอกจังหวัด';
-  const g = validateGradeFields(f.grade, f.gradeOther);
+  const email = stripZeroWidth(f.email).replace(/\s+/g, '');
+  if (email && (email.length > 150 || !/^\S+@\S+\.\S+$/.test(email))) {
+    e.email = email.length > 150 ? 'อีเมลยาวได้ไม่เกิน 150 ตัวอักษร' : 'รูปแบบอีเมลไม่ถูกต้อง (เว้นว่างได้)';
+  }
+
+  const school = cleanSingleLine(f.school);
+  if (!school) e.school = 'กรุณากรอกโรงเรียนหรือสถานศึกษา';
+  else if (school.length > 150) e.school = 'ชื่อโรงเรียนยาวได้ไม่เกิน 150 ตัวอักษร';
+
+  const province = cleanSingleLine(f.province);
+  if (!province) e.province = 'กรุณากรอกจังหวัด';
+  else if (province.length > 100) e.province = 'ชื่อจังหวัดยาวได้ไม่เกิน 100 ตัวอักษร';
+
+  const g = validateGradeFields(f.grade, cleanSingleLine(f.gradeOther));
   if (g) e[f.grade === GRADE_OTHER ? 'gradeOther' : 'grade'] = g;
   if (!f.shirtSize) e.shirtSize = 'กรุณาเลือกไซส์เสื้อ';
-  if (f.motivation.trim().length > 2000) e.motivation = 'เหตุผลการสมัครยาวได้ไม่เกิน 2,000 ตัวอักษร';
-  if (f.reason.trim().length > 500) e.reason = 'เหตุผลการแก้ไขยาวได้ไม่เกิน 500 ตัวอักษร';
+  if (stripZeroWidth(f.motivation).trim().length > 2000) e.motivation = 'เหตุผลการสมัครยาวได้ไม่เกิน 2,000 ตัวอักษร';
+  if (stripZeroWidth(f.reason).trim().length > 500) e.reason = 'เหตุผลการแก้ไขยาวได้ไม่เกิน 500 ตัวอักษร';
   return e;
 }
 
 /** The server messages are developer English; staff get the Thai explanation. */
 function describeSaveError(err: unknown): string {
   if (err instanceof ApiHttpError) {
-    if (err.code === 'DUPLICATE_APPLICATION') {
+    if (err.code === 'DUPLICATE_APPLICATION' || err.status === 409) {
       return 'เลขบัตรประชาชน เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง';
     }
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกลบไปแล้ว กรุณากดรีเฟรชรายการ';
     if (err.status === 413) return 'ข้อมูลที่ส่งใหญ่เกินไป กรุณาลดความยาวเหตุผลการสมัคร';
+    if (err.status === 429) {
+      return err.retryAfterSeconds
+        ? `ทำรายการถี่เกินไป กรุณารอ ${err.retryAfterSeconds} วินาที แล้วลองใหม่`
+        : 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
+    }
     if (err.status === 400) {
       const m = err.message.toLowerCase();
       if (m.includes('national id')) return 'เลขบัตรประชาชนไม่ถูกต้อง ต้องมี 13 หลักและผ่านการตรวจเลขตรวจสอบ';
@@ -188,17 +218,17 @@ export function AdminProfileEditor({
     }
 
     const payload: AdminProfilePayload = {
-      fullName: form.fullName.trim(),
-      nickname: form.nickname.trim(),
+      fullName: cleanSingleLine(form.fullName),
+      nickname: cleanSingleLine(form.nickname),
       nationalId: sanitizeDigits(form.nationalId),
       phone: sanitizeDigits(form.phone),
-      email: form.email.trim(),
-      school: form.school.trim(),
-      province: form.province.trim(),
-      grade: gradeValue(form),
+      email: stripZeroWidth(form.email).replace(/\s+/g, ''),
+      school: cleanSingleLine(form.school),
+      province: cleanSingleLine(form.province),
+      grade: gradeValue({ grade: form.grade, gradeOther: cleanSingleLine(form.gradeOther) }),
       shirtSize: form.shirtSize as ShirtSize,
-      motivation: form.motivation.trim(),
-      reason: form.reason.trim() || undefined,
+      motivation: stripZeroWidth(form.motivation).trim(),
+      reason: stripZeroWidth(form.reason).trim() || undefined,
     };
     setSaving(true);
     try {
@@ -326,7 +356,7 @@ export function AdminProfileEditor({
           type="submit"
           disabled={saving}
           aria-busy={saving || undefined}
-          className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+          className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
           style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
         >
           {saving ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
@@ -335,7 +365,7 @@ export function AdminProfileEditor({
           type="button"
           onClick={onClose}
           disabled={saving}
-          className={`rounded-full px-3 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+          className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
           style={{ color: INK_2 }}
         >
           ปิด

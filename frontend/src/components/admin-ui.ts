@@ -22,5 +22,5 @@ export const FOCUS =
 /** Text field without its corner radius, so each caller picks rounded-xl (form) or rounded-full (search). */
 export const INPUT_BASE = `w-full border bg-[var(--bg-card)] px-3.5 py-3 text-base leading-6 transition-colors placeholder:text-[var(--color-ink-subtle)] ${FOCUS}`;
 
-/** Quiet full-pill button with a hairline border. */
-export const PILL_GHOST = `rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`;
+/** Quiet full-pill button with a hairline border (min 44px touch target). */
+export const PILL_GHOST = `inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`;

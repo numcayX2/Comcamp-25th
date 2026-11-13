@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronDown, CircleCheck, Download, Pencil, Search, Trash2, TriangleAlert, X } from 'lucide-react';
+import { ChevronDown, CircleCheck, Download, Eye, Pencil, Search, Trash2, TriangleAlert, X } from 'lucide-react';
 import {
   ApiHttpError,
   adminLogin,
   adminPermissions,
   deleteApplication,
-  fetchAdminSlip,
+  fetchAdminSlipInfo,
   hasSlip,
   holdsSeat,
+  isAdminRole,
   listApplications,
   recordCsvExport,
   roleFromToken,
@@ -27,7 +28,9 @@ import {
   csvFileName,
   downloadCsv,
   matchesApplicantQuery,
+  slipLabel,
 } from '../lib/applicant-tools';
+import { formatNationalId } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import {
@@ -48,12 +51,30 @@ import {
   WARNING,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'RESERVE', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
 
-/** What each role can do, in the words staff use. Mirrors adminPermissions() in lib/api.ts. */
-const ROLE_NOTE: Record<string, string> = {
-  admin: 'จัดการได้ทุกอย่าง รวมถึงดู/ตรวจสลิป ปรับสถานะ แก้ข้อมูล ลบใบสมัคร และแก้การตั้งค่า',
-};
+const BANGKOK_DATETIME = new Intl.DateTimeFormat('th-TH', {
+  timeZone: 'Asia/Bangkok',
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
+function formatBangkokDateTime(iso?: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : BANGKOK_DATETIME.format(d);
+}
+
+/** Resolves the admin role from login response or JWT payload; fails closed unless `'admin'`. */
+function resolveAdminRole(token: string, explicitRole?: string | null): 'admin' | null {
+  if (explicitRole !== undefined && explicitRole !== null) {
+    return isAdminRole(explicitRole) ? explicitRole : null;
+  }
+  const fromJwt = roleFromToken(token);
+  if (isAdminRole(fromJwt)) return fromJwt;
+  if (import.meta.env.DEV && token === 'mock-jwt-token') return 'admin';
+  return null;
+}
 
 /* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
    appears only as a small status dot (AGENTS §4.1 master tokens). */
@@ -131,7 +152,7 @@ function StatusSelect({
         value={app.status}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as ApplicationStatus)}
-        className={`cursor-pointer appearance-none rounded-sm border-b bg-transparent py-0.5 pr-6 text-sm leading-7 disabled:opacity-50 ${FOCUS}`}
+        className={`min-h-11 cursor-pointer appearance-none rounded-sm border-b bg-transparent py-2 pr-7 text-sm leading-6 disabled:opacity-50 ${FOCUS}`}
         style={{ borderColor: RULE, color: INK, colorScheme: 'inherit' }}
       >
         {!STATUSES.includes(app.status) && (
@@ -188,10 +209,15 @@ function describeAdminError(err: unknown, fallback: string): string {
       return 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือเซสชันหมดอายุ';
     }
     if (err.status === 403) {
-      return 'บัญชีของคุณไม่มีสิทธิ์ทำรายการนี้ หากเพิ่งถูกเปลี่ยนบทบาท กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่';
+      return 'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ (admin) กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่';
     }
     if (err.status === 404 || err.code === 'NOT_FOUND') {
-      return 'ไม่พบรายการใบสมัครนี้ในระบบ';
+      return 'ไม่พบรายการใบสมัครหรือไฟล์สลิปนี้ในระบบ';
+    }
+    if (err.status === 429 || err.code === 'RATE_LIMITED') {
+      return err.retryAfterSeconds
+        ? `ทำรายการถี่เกินไป กรุณารอ ${err.retryAfterSeconds} วินาที แล้วลองใหม่`
+        : 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
     }
     if (err.code === 'QUOTA_FULL') {
       return 'ที่นั่งเต็มแล้ว จึงคืนใบสมัครนี้กลับเป็นสถานะที่ถือที่นั่งไม่ได้ ต้องมีที่นั่งว่างหรือเพิ่มโควตาก่อน (ใบสมัครยังคงสถานะเดิม)';
@@ -203,7 +229,7 @@ function describeAdminError(err: unknown, fallback: string): string {
       return 'ผู้สมัครเพิ่งอัปโหลดสลิปใหม่ จึงยังไม่ได้อนุมัติหรือปฏิเสธรายการนี้ รายการถูกโหลดใหม่แล้ว กรุณาเปิดดูสลิปล่าสุดก่อนตัดสินอีกครั้ง';
     }
     if (err.code === 'ALREADY_VERIFIED') {
-      return 'สลิปนี้ถูกตรวจสอบไปแล้ว กรุณากดรีเฟรชรายการ';
+      return 'สลิปนี้ถูกตรวจสอบไปแล้ว รายการถูกโหลดใหม่ให้แล้ว';
     }
     if (err.status === 409) {
       return 'สถานะของใบสมัครนี้ไม่อนุญาตให้ทำรายการนี้ (ใบสมัครที่รอคืนเงิน คืนเงินแล้ว หรือไม่ผ่านจะอนุมัติหรือปฏิเสธสลิปไม่ได้)';
@@ -243,35 +269,65 @@ export function AdminSection() {
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // Slip review state (an inline panel under the row, not a modal)
-  const [inspectingApp, setInspectingApp] = useState<Application | null>(null);
-  // Profile editor: an inline panel too. Only one panel (slip or editor) is open at a time.
+  // Slip review state (an inline panel under the row, not a modal). Store id and derive from apps
+  // so refreshes keep slipPaymentId and status current.
+  const [inspectingId, setInspectingId] = useState<string | null>(null);
+  // Detail drawer/panel and profile editor: inline panels too; at most one panel per row is open.
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Confirmation for destructive / seat-releasing status transitions.
+  const [pendingStatus, setPendingStatus] = useState<{ appId: string; from: ApplicationStatus; to: ApplicationStatus } | null>(null);
+  const [statusReason, setStatusReason] = useState('');
   const [verificationNote, setVerificationNote] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [slipImage, setSlipImage] = useState<{ url: string | null; error: string | null }>({ url: null, error: null });
+  const [slipImage, setSlipImage] = useState<{
+    url: string | null;
+    paymentId: string | null;
+    error: string | null;
+  }>({ url: null, paymentId: null, error: null });
 
-  // Focus bookkeeping: the slip panel / delete confirmation open in the previous render, and a
+  // Focus bookkeeping: the slip / detail / delete confirmation open in the previous render, and a
   // pending move to the ledger list after a delete (the deleted row's controls are gone).
   const prevSlipId = useRef<string | null>(null);
+  const prevDetailId = useRef<string | null>(null);
   const prevConfirmId = useRef<string | null>(null);
   const prevEditId = useRef<string | null>(null);
   const focusListAfterDelete = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
 
-  /* Fail closed when role is unknown; an offline dev mock token with no role claim defaults to 'admin'. */
-  const can = adminPermissions(role ?? 'admin');
+  const inspectingApp = inspectingId ? apps.find((a) => a.id === inspectingId) ?? null : null;
+  /* Fail closed when role is not `'admin'`. */
+  const can = adminPermissions(role);
 
-  /** Expired or deactivated session: drop the token and show the login form again. */
+  function resetSessionState() {
+    tokenStore.clear();
+    setToken(null);
+    setRole(null);
+    setSource(null);
+    setApps([]);
+    setFeeBaht(null);
+    setFilter('ALL');
+    setQuery('');
+    setInspectingId(null);
+    setDetailId(null);
+    setEditingId(null);
+    setConfirmDeleteId(null);
+    setPendingStatus(null);
+    setStatusReason('');
+    setVerificationNote('');
+    setSlipImage({ url: null, paymentId: null, error: null });
+  }
+
+  /** Expired, deactivated, or unauthorized session: drop the token and show the login form again. */
   function handleAuthError(err: unknown): boolean {
-    if (err instanceof ApiHttpError && err.status === 401) {
-      tokenStore.clear();
-      setToken(null);
-      setRole(null);
-      setApps([]);
-      setInspectingApp(null);
-      setEditingId(null);
-      setError('เซสชันหมดอายุหรือบัญชีถูกระงับ กรุณาเข้าสู่ระบบอีกครั้ง');
+    if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
+      resetSessionState();
+      setActionSuccess(null);
+      setError(
+        err.status === 401
+          ? 'เซสชันหมดอายุหรือบัญชีถูกระงับ กรุณาเข้าสู่ระบบอีกครั้ง'
+          : 'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ (admin) หรือสิทธิ์ถูกเพิกถอน กรุณาเข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์',
+      );
       return true;
     }
     return false;
@@ -298,10 +354,16 @@ export function AdminSection() {
     setError(null);
     setActionSuccess(null);
     try {
-      const res = await adminLogin(username, password);
+      const res = await adminLogin(username.trim(), password);
       setPassword('');
+      const resolvedRole = resolveAdminRole(res.data.token, res.data.role);
+      if (resolvedRole !== 'admin') {
+        tokenStore.clear();
+        setError('บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ (admin)');
+        return;
+      }
       setToken(res.data.token);
-      setRole(res.data.role ?? roleFromToken(res.data.token));
+      setRole(resolvedRole);
       setSource(res.source);
       await refresh(res.data.token);
     } catch (err) {
@@ -311,15 +373,30 @@ export function AdminSection() {
     }
   }
 
-  async function onStatus(id: string, status: ApplicationStatus) {
+  function requestStatusChange(app: Application, to: ApplicationStatus) {
+    if (to === app.status) return;
+    const releasesSeat = holdsSeat(app.status) && !holdsSeat(to);
+    const leavesConfirmed = app.status === 'CONFIRMED' && to !== 'CONFIRMED';
+    if (releasesSeat || leavesConfirmed) {
+      setConfirmDeleteId(null);
+      setStatusReason('');
+      setPendingStatus({ appId: app.id, from: app.status, to });
+      return;
+    }
+    void onStatus(app.id, to);
+  }
+
+  async function onStatus(id: string, status: ApplicationStatus, reason?: string) {
     if (!token) return;
     setPatching(id);
     setError(null);
     setActionSuccess(null);
     try {
-      const res = await updateApplicationStatus(token, id, status);
+      const res = await updateApplicationStatus(token, id, status, reason);
       setApps((prev) => prev.map((a) => (a.id === id ? res.data : a)));
       setSource(res.source);
+      setPendingStatus(null);
+      setStatusReason('');
       setActionSuccess(`เปลี่ยนสถานะของ ${id} เป็น ${STATUS_LABELS[status]} สำเร็จ`);
     } catch (err) {
       if (handleAuthError(err)) return;
@@ -336,8 +413,15 @@ export function AdminSection() {
     setActionSuccess(null);
     try {
       // slipPaymentId pins the verdict to the slip that is on screen: a slip swapped in meanwhile
-      // is refused (SLIP_CHANGED) instead of being approved unseen.
-      const res = await verifyPaymentSlip(token, inspectingApp.id, approved, verificationNote, inspectingApp.slipPaymentId);
+      // is refused (SLIP_CHANGED) instead of being approved unseen. Prefer X-Slip-Payment-Id from the
+      // loaded image response, falling back to the row's slipPaymentId.
+      const res = await verifyPaymentSlip(
+        token,
+        inspectingApp.id,
+        approved,
+        verificationNote,
+        slipImage.paymentId ?? inspectingApp.slipPaymentId,
+      );
       setSource(res.source);
 
       const newStatus: ApplicationStatus = approved ? 'CONFIRMED' : 'PASSED';
@@ -349,17 +433,25 @@ export function AdminSection() {
       setActionSuccess(
         `${approved ? 'อนุมัติสลิปสำเร็จ' : 'ปฏิเสธสลิปแล้ว'}: ${res.data.message || inspectingApp.id}`,
       );
-      setInspectingApp(null);
+      setInspectingId(null);
       setVerificationNote('');
     } catch (err) {
       if (handleAuthError(err)) return;
-      if (err instanceof ApiHttpError && err.code === 'SLIP_CHANGED') {
-        // Close the stale slip and reload the list, so the next open shows the new slip.
-        setInspectingApp(null);
+      if (
+        err instanceof ApiHttpError &&
+        (err.code === 'SLIP_CHANGED' || err.code === 'ALREADY_VERIFIED' || err.status === 409 || err.status === 404)
+      ) {
+        // Close the stale slip and reload the list so the ledger reflects current state.
+        setInspectingId(null);
         setVerificationNote('');
         listApplications(token)
-          .then((res) => setApps(Array.isArray(res.data) ? res.data : []))
-          .catch(() => undefined);
+          .then((listRes) => {
+            setApps(Array.isArray(listRes.data) ? listRes.data : []);
+            setSource(listRes.source);
+          })
+          .catch((reloadErr) => {
+            handleAuthError(reloadErr);
+          });
       }
       setError(describeAdminError(err, 'การตรวจสอบสลิปล้มเหลว'));
     } finally {
@@ -376,8 +468,10 @@ export function AdminSection() {
       const res = await deleteApplication(token, id);
       setApps((prev) => prev.filter((a) => a.id !== id));
       focusListAfterDelete.current = true;
-      if (inspectingApp?.id === id) setInspectingApp(null);
+      if (inspectingId === id) setInspectingId(null);
+      if (detailId === id) setDetailId(null);
       if (editingId === id) setEditingId(null);
+      if (pendingStatus?.appId === id) setPendingStatus(null);
       setConfirmDeleteId(null);
       setSource(res.source);
       setActionSuccess(`ลบใบสมัคร ${id} (${name}) สำเร็จ`);
@@ -391,13 +485,22 @@ export function AdminSection() {
 
   function openSlip(a: Application) {
     setEditingId(null);
-    setInspectingApp((cur) => (cur?.id === a.id ? null : a));
+    setDetailId(null);
+    setInspectingId((cur) => (cur === a.id ? null : a.id));
     setVerificationNote('');
   }
 
+  function toggleDetail(a: Application) {
+    setInspectingId(null);
+    setEditingId(null);
+    setDetailId((cur) => (cur === a.id ? null : a.id));
+  }
+
   function toggleEdit(a: Application) {
-    setInspectingApp(null);
+    setInspectingId(null);
+    setDetailId(null);
     setConfirmDeleteId(null);
+    setPendingStatus(null);
     setEditingId((cur) => (cur === a.id ? null : a.id));
   }
 
@@ -408,13 +511,9 @@ export function AdminSection() {
   }
 
   function logout() {
-    setToken(null);
-    setRole(null);
-    setApps([]);
-    setInspectingApp(null);
-    setEditingId(null);
-    setQuery('');
-    tokenStore.clear();
+    resetSessionState();
+    setError(null);
+    setActionSuccess(null);
   }
 
   /** Records the export in audit_logs first; the file is built only once that succeeded. */
@@ -448,8 +547,13 @@ export function AdminSection() {
     }
     const saved = tokenStore.get();
     if (saved) {
+      const savedRole = resolveAdminRole(saved);
+      if (savedRole !== 'admin') {
+        tokenStore.clear();
+        return;
+      }
       setToken(saved);
-      setRole(roleFromToken(saved));
+      setRole(savedRole);
       refresh(saved);
     }
   }, []);
@@ -461,47 +565,51 @@ export function AdminSection() {
   /* Slips are served only to an authenticated admin, so fetch the image with the token and show
      it from an object URL (revoked when the panel closes). */
   useEffect(() => {
-    if (!token || !inspectingApp) return;
+    if (!token || !inspectingId) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    setSlipImage({ url: null, error: null });
-    fetchAdminSlip(token, inspectingApp.id)
-      .then((url) => {
+    setSlipImage({ url: null, paymentId: null, error: null });
+    fetchAdminSlipInfo(token, inspectingId)
+      .then(({ url, paymentId }) => {
         if (cancelled) return URL.revokeObjectURL(url);
         objectUrl = url;
-        setSlipImage({ url, error: null });
+        setSlipImage({ url, paymentId, error: null });
       })
       .catch((err) => {
         if (cancelled || handleAuthError(err)) return;
-        setSlipImage({ url: null, error: err instanceof Error ? err.message : 'โหลดรูปสลิปไม่สำเร็จ' });
+        setSlipImage({ url: null, paymentId: null, error: describeAdminError(err, 'โหลดรูปสลิปไม่สำเร็จ') });
       });
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       // Drop the revoked URL too, so reopening the panel never renders an <img> pointing at it.
-      setSlipImage({ url: null, error: null });
+      setSlipImage({ url: null, paymentId: null, error: null });
     };
-  }, [token, inspectingApp?.id]);
+  }, [token, inspectingId]);
 
-  /* Escape closes the open slip panel or delete confirmation. */
+  /* Escape closes open inline panels or confirmations (when no mutation is in flight). */
   useEffect(() => {
-    if (!inspectingApp && !confirmDeleteId) return;
+    if (!inspectingId && !detailId && !confirmDeleteId && !pendingStatus) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setInspectingApp(null);
-        setConfirmDeleteId(null);
+        if (!verifying) setInspectingId(null);
+        setDetailId(null);
+        if (!deletingId) setConfirmDeleteId(null);
+        if (!patching) setPendingStatus(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [inspectingApp, confirmDeleteId]);
+  }, [inspectingId, detailId, confirmDeleteId, pendingStatus, verifying, deletingId, patching]);
 
-  /* Keyboard focus should never fall to <body>: closing the slip panel or the delete confirmation
+  /* Keyboard focus should never fall to <body>: closing an inline panel or delete confirmation
      returns focus to the control that opened it; after a delete it moves to the ledger list. */
   useEffect(() => {
-    const nowSlip = inspectingApp?.id ?? null;
-    if (prevSlipId.current && !nowSlip) {
+    if (prevSlipId.current && !inspectingId) {
       document.getElementById(`slip-btn-${prevSlipId.current}`)?.focus();
+    }
+    if (prevDetailId.current && !detailId) {
+      document.getElementById(`detail-btn-${prevDetailId.current}`)?.focus();
     }
     if (prevConfirmId.current && !confirmDeleteId) {
       document.getElementById(`delete-btn-${prevConfirmId.current}`)?.focus();
@@ -509,10 +617,11 @@ export function AdminSection() {
     if (prevEditId.current && !editingId) {
       document.getElementById(`edit-btn-${prevEditId.current}`)?.focus();
     }
-    prevSlipId.current = nowSlip;
+    prevSlipId.current = inspectingId;
+    prevDetailId.current = detailId;
     prevConfirmId.current = confirmDeleteId;
     prevEditId.current = editingId;
-  }, [inspectingApp, confirmDeleteId, editingId]);
+  }, [inspectingId, detailId, confirmDeleteId, editingId]);
 
   useEffect(() => {
     if (!focusListAfterDelete.current) return;
@@ -529,6 +638,7 @@ export function AdminSection() {
   const searching = stripZeroWidth(query).trim() !== '';
   const count = (s: ApplicationStatus) => apps.filter((a) => a.status === s).length;
   const withSlip = apps.filter((a) => hasSlip(a)).length;
+  const pendingSlipCount = apps.filter((a) => hasSlip(a) && (a.slipStatus ?? 'PENDING') === 'PENDING').length;
   /** Same rule the server uses for the seat quota: REJECTED, REFUND_PENDING and REFUNDED released theirs. */
   const currentCount = apps.filter((a) => holdsSeat(a.status)).length;
   /** First come, first served: a new application is PASSED and then waits for a slip or its review. */
@@ -540,13 +650,17 @@ export function AdminSection() {
   const inputCls = `${INPUT_BASE} rounded-xl`;
   const pillGhost = PILL_GHOST;
 
+  const extraPendingTab: { key: string; label: string; n: number }[] =
+    count('PENDING') > 0 ? [{ key: 'PENDING', label: STATUS_LABELS.PENDING, n: count('PENDING') }] : [];
+
   const tabs: { key: string; label: string; n: number }[] = [
     { key: 'ALL', label: 'ทั้งหมด', n: apps.length },
+    ...extraPendingTab,
     ...STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s], n: count(s) })),
   ];
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 pb-24 pt-14 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 sm:pt-20">
+    <div className="mx-auto w-full max-w-5xl select-text px-5 pb-24 pt-14 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 sm:pt-20">
       {/* ── Masthead ─────────────────────────────────────────── */}
       <header>
         <h1
@@ -557,9 +671,11 @@ export function AdminSection() {
         </h1>
         {token ? (
           <>
-          <p className="mt-4 max-w-[60ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
+          <p className="mt-4 max-w-[65ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
             ผู้สมัคร <span className="font-mono tabular-nums" style={{ color: INK }}>{apps.length}</span> คน
-            {' · '}รอชำระ/รอตรวจสลิป <span className="font-mono tabular-nums" style={{ color: INK }}>{awaitingPayment}</span>
+            {' · '}ถือที่นั่ง <span className="font-mono tabular-nums" style={{ color: INK }}>{currentCount}</span>
+            {' · '}รอชำระ/รอตรวจ <span className="font-mono tabular-nums" style={{ color: INK }}>{awaitingPayment}</span>
+            {' · '}สลิปรอตรวจ <span className="font-mono tabular-nums" style={{ color: INK }}>{pendingSlipCount}</span>
             {' · '}ยืนยันสิทธิ์แล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{count('CONFIRMED')}</span>
             {' · '}รอคืนเงิน <span className="font-mono tabular-nums" style={{ color: INK }}>{count('REFUND_PENDING')}</span>
             {' · '}แนบสลิปแล้ว <span className="font-mono tabular-nums" style={{ color: INK }}>{withSlip}</span>
@@ -568,7 +684,7 @@ export function AdminSection() {
             <p className="mt-2 max-w-[60ch] text-sm leading-7" style={{ color: INK_3 }}>
               เข้าสู่ระบบในบทบาท <span className="font-mono" style={{ color: INK }}>{role}</span>
               {' · '}
-              {ROLE_NOTE[role] ?? 'บทบาทนี้ไม่มีสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ'}
+              จัดการใบสมัคร ตรวจสลิป แก้ไขข้อมูล ส่งออก CSV และตั้งค่าค่าย
             </p>
           )}
           </>
@@ -695,14 +811,14 @@ export function AdminSection() {
                       type="button"
                       aria-pressed={active}
                       onClick={() => setFilter(t.key)}
-                      className={`shrink-0 whitespace-nowrap rounded-none border-b-2 py-1 text-sm transition-colors ${FOCUS}`}
+                      className={`inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-none border-b-2 py-2 text-sm transition-colors ${FOCUS}`}
                       style={{
                         color: active ? INK : INK_3,
                         fontWeight: active ? 600 : 400,
                         borderColor: active ? INK : 'transparent',
                       }}
                     >
-                      {t.label} <span className="font-mono text-xs tabular-nums">{t.n}</span>
+                      {t.label} <span className="ml-1.5 font-mono text-xs tabular-nums">{t.n}</span>
                     </button>
                   );
                 })}
@@ -762,7 +878,7 @@ export function AdminSection() {
                     type="button"
                     onClick={() => setQuery('')}
                     aria-label="ล้างคำค้นหา"
-                    className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 ${FOCUS}`}
+                    className={`absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full ${FOCUS}`}
                     style={{ color: INK_2 }}
                   >
                     <X aria-hidden="true" strokeWidth={1.5} size={16} />
@@ -794,13 +910,16 @@ export function AdminSection() {
             <ul ref={listRef} tabIndex={-1} className={`rounded-sm ${FOCUS}`}>
               {visible.map((a) => {
                 const slip = hasSlip(a);
-                const open = inspectingApp?.id === a.id;
+                const open = inspectingId === a.id;
+                const detailOpen = detailId === a.id;
                 const editing = editingId === a.id;
+                const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
                 // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
                 const slipLocked = !holdsSeat(a.status);
+                const slipPending = (a.slipStatus ?? 'PENDING') === 'PENDING';
                 return (
                   <li key={a.id} className="border-b" style={{ borderColor: RULE }}>
-                    <div className="grid gap-x-8 gap-y-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.2fr)_13.5rem] md:items-start">
+                    <div className="grid gap-x-8 gap-y-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.2fr)_14.5rem] md:items-start">
                       {/* Who */}
                       <div className="min-w-0">
                         <p className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
@@ -830,30 +949,41 @@ export function AdminSection() {
                       </div>
 
                       {/* State + actions */}
-                      <div className="flex flex-col items-start gap-2">
+                      <div className="flex flex-col items-start gap-1">
                         {can.changeStatus ? (
                           <StatusSelect
                             app={a}
                             disabled={patching === a.id || deletingId === a.id}
-                            onChange={(status) => onStatus(a.id, status)}
+                            onChange={(status) => requestStatusChange(a, status)}
                           />
                         ) : (
-                          <p className="inline-flex items-center gap-2 py-0.5 text-sm leading-7" style={{ color: INK }}>
+                          <p className="inline-flex min-h-11 items-center gap-2 py-2 text-sm leading-6" style={{ color: INK }}>
                             <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
                               ●
                             </span>
                             {STATUS_LABELS[a.status]}
                           </p>
                         )}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                           <SlipBadge app={a} />
+                          <button
+                            id={`detail-btn-${a.id}`}
+                            type="button"
+                            aria-expanded={detailOpen}
+                            onClick={() => toggleDetail(a)}
+                            className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                            style={{ color: INK_2 }}
+                          >
+                            <Eye size={14} strokeWidth={1.5} aria-hidden="true" />
+                            {detailOpen ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}
+                          </button>
                           {slip && can.viewSlip && (
                             <button
                               id={`slip-btn-${a.id}`}
                               type="button"
                               aria-expanded={open}
                               onClick={() => openSlip(a)}
-                              className={`rounded-sm py-0.5 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                              className={`inline-flex min-h-11 items-center rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
                               style={{ color: TECH }}
                             >
                               {open ? 'ซ่อนสลิป' : 'ตรวจสอบสลิป'}
@@ -865,41 +995,23 @@ export function AdminSection() {
                             type="button"
                             aria-expanded={editing}
                             onClick={() => toggleEdit(a)}
-                            className={`inline-flex items-center gap-1 rounded-sm py-0.5 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                            className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
                             style={{ color: TECH }}
                           >
                             <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
                             {editing ? 'ซ่อนการแก้ไข' : 'แก้ไขข้อมูล'}
                           </button>
                           )}
-                          {can.deleteApplication && (confirmDeleteId === a.id ? (
-                            <div className="inline-flex items-center gap-1.5" role="group" aria-label={`ยืนยันการลบ ${a.id}`}>
-                              <button
-                                type="button"
-                                disabled={deletingId === a.id}
-                                onClick={() => handleDeleteApp(a.id, a.fullName)}
-                                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                                style={{ borderColor: DANGER, color: DANGER }}
-                              >
-                                {deletingId === a.id ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={deletingId === a.id}
-                                onClick={() => setConfirmDeleteId(null)}
-                                className={`rounded-full px-2 py-1 text-xs underline underline-offset-2 ${FOCUS}`}
-                                style={{ color: INK_3 }}
-                              >
-                                ยกเลิก
-                              </button>
-                            </div>
-                          ) : (
+                          {can.deleteApplication && (confirmDeleteId !== a.id && (
                             <button
                               id={`delete-btn-${a.id}`}
                               type="button"
                               disabled={deletingId === a.id}
-                              onClick={() => setConfirmDeleteId(a.id)}
-                              className={`inline-flex items-center gap-1 rounded-sm py-0.5 text-sm font-semibold underline underline-offset-4 transition-colors hover:opacity-80 disabled:opacity-50 ${FOCUS}`}
+                              onClick={() => {
+                                setPendingStatus(null);
+                                setConfirmDeleteId(a.id);
+                              }}
+                              className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 transition-colors hover:opacity-80 disabled:opacity-50 ${FOCUS}`}
                               style={{ color: DANGER }}
                               title={`ลบใบสมัคร ${a.id}`}
                             >
@@ -910,6 +1022,166 @@ export function AdminSection() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Confirmation for destructive / seat-releasing status transition */}
+                    {pendingChange && (
+                      <div
+                        role="region"
+                        aria-label={`ยืนยันการเปลี่ยนสถานะ ${a.id}`}
+                        className="border-t py-4"
+                        style={{ borderColor: RULE }}
+                      >
+                        <p className="text-sm font-semibold leading-7" style={{ color: INK }}>
+                          ยืนยันเปลี่ยนสถานะ {a.id} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
+                        </p>
+                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                          {!holdsSeat(pendingChange.to)
+                            ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
+                            : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
+                          {a.slipStatus === 'APPROVED' && pendingChange.to === 'REJECTED'
+                            ? ' (ผู้สมัครมีสลิปที่อนุมัติแล้ว หากต้องคืนเงินแนะนำให้เลือก “รอคืนเงิน”)'
+                            : ''}
+                        </p>
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <label htmlFor={`status-reason-${a.id}`} className="sr-only">
+                            เหตุผลการเปลี่ยนสถานะ (ไม่บังคับ)
+                          </label>
+                          <input
+                            id={`status-reason-${a.id}`}
+                            type="text"
+                            maxLength={500}
+                            value={statusReason}
+                            onChange={(e) => setStatusReason(e.target.value)}
+                            placeholder="เหตุผลในการเปลี่ยนสถานะ (ไม่บังคับ)"
+                            className={`${inputCls} sm:max-w-sm`}
+                            style={{ borderColor: INPUT_BORDER, color: INK }}
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={patching === a.id}
+                              onClick={() => onStatus(a.id, pendingChange.to, statusReason.trim() || undefined)}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                              style={{ borderColor: DANGER, color: DANGER }}
+                            >
+                              {patching === a.id ? 'กำลังบันทึก…' : 'ยืนยันเปลี่ยนสถานะ'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={patching === a.id}
+                              onClick={() => {
+                                setPendingStatus(null);
+                                setStatusReason('');
+                              }}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                              style={{ color: INK_2 }}
+                            >
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Confirmation for soft delete */}
+                    {can.deleteApplication && confirmDeleteId === a.id && (
+                      <div
+                        role="region"
+                        aria-label={`ยืนยันการลบ ${a.id}`}
+                        className="border-t py-4"
+                        style={{ borderColor: RULE }}
+                      >
+                        <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
+                          ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
+                        </p>
+                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                          การลบจะคืนที่นั่งและปล่อยเลขบัตรประชาชน เบอร์โทร และอีเมลให้สมัครใหม่ได้
+                          {(slip || a.status === 'CONFIRMED') &&
+                            ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={deletingId === a.id}
+                            onClick={() => handleDeleteApp(a.id, a.fullName)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                            style={{ borderColor: DANGER, color: DANGER }}
+                          >
+                            {deletingId === a.id ? 'กำลังลบ…' : 'ยืนยันลบ'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingId === a.id}
+                            onClick={() => setConfirmDeleteId(null)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                            style={{ color: INK_2 }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Applicant details: expands under its own row */}
+                    {detailOpen && (
+                      <div
+                        className="border-t py-6"
+                        style={{ borderColor: RULE }}
+                        role="region"
+                        aria-label={`รายละเอียดใบสมัคร ${a.id}`}
+                      >
+                        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>เลขบัตรประชาชน</p>
+                            <p className="mt-1 font-mono text-sm tabular-nums" style={{ color: INK }}>
+                              {formatNationalId(a.nationalId)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>การยืนยันสิทธิ์เข้าร่วมค่าย</p>
+                            <p className="mt-1 text-sm" style={{ color: INK }}>
+                              {a.attendanceConfirmed ? 'ยืนยันสิทธิ์แล้ว' : 'ยังไม่ยืนยันสิทธิ์'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>สถานะหลักฐานการโอนเงิน</p>
+                            <p className="mt-1 text-sm" style={{ color: INK }}>
+                              {slipLabel(a)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>วันที่สมัคร</p>
+                            <p className="mt-1 text-sm" style={{ color: INK }}>
+                              {formatBangkokDateTime(a.createdAt)}
+                            </p>
+                          </div>
+                          {a.updatedAt && (
+                            <div>
+                              <p className="text-xs font-semibold" style={{ color: INK_3 }}>อัปเดตล่าสุด</p>
+                              <p className="mt-1 text-sm" style={{ color: INK }}>
+                                {formatBangkokDateTime(a.updatedAt)}
+                              </p>
+                            </div>
+                          )}
+                          <div className="sm:col-span-2 lg:col-span-3">
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>เหตุผลการสมัคร / แรงบันดาลใจ</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-7" style={{ color: INK_2 }}>
+                              {a.motivation?.trim() ? a.motivation : '— ไม่ได้ระบุ —'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-5">
+                          <button
+                            type="button"
+                            onClick={() => setDetailId(null)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                            style={{ borderColor: RULE, color: INK }}
+                          >
+                            ปิด
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Profile editor: expands under its own row */}
                     {editing && token && can.editProfile && (
@@ -955,8 +1227,8 @@ export function AdminSection() {
                             <a
                               href={slipImage.url}
                               target="_blank"
-                              rel="noreferrer"
-                              className={`mt-1 inline-block rounded-sm py-1 text-sm underline underline-offset-4 ${FOCUS}`}
+                              rel="noopener noreferrer"
+                              className={`mt-1 inline-flex min-h-11 items-center rounded-sm py-2 text-sm underline underline-offset-4 ${FOCUS}`}
                               style={{ color: TECH }}
                             >
                               เปิดรูปขนาดเต็ม
@@ -974,10 +1246,14 @@ export function AdminSection() {
                           <p className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
                             {slipLocked
                               ? `ใบสมัครนี้อยู่ในสถานะ “${STATUS_LABELS[a.status]}” จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ ยังดูรูปสลิปเพื่อทำบัญชีได้ตามปกติ`
-                              : 'อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นได้รับสิทธิ์เพื่อให้ส่งสลิปใหม่'}
+                              : a.slipStatus === 'APPROVED'
+                                ? 'สลิปนี้ได้รับการอนุมัติเรียบร้อยแล้ว'
+                                : a.slipStatus === 'REJECTED'
+                                  ? 'สลิปนี้ถูกปฏิเสธแล้ว รอผู้สมัครอัปโหลดสลิปใหม่'
+                                  : 'อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นได้รับสิทธิ์เพื่อให้ส่งสลิปใหม่'}
                           </p>
 
-                          {!slipLocked && can.verifySlip && (
+                          {!slipLocked && slipPending && can.verifySlip && (
                           <>
                           <label
                             className="mb-2 mt-6 block text-sm font-semibold"
@@ -1000,7 +1276,7 @@ export function AdminSection() {
                                 key={t}
                                 type="button"
                                 onClick={() => setVerificationNote(t)}
-                                className={`rounded-full border px-3 py-1.5 text-xs leading-5 transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                                className={`inline-flex min-h-11 items-center rounded-full border px-3.5 py-2 text-xs leading-5 transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
                                 style={{ borderColor: RULE, color: INK_2 }}
                               >
                                 {t}
@@ -1013,7 +1289,7 @@ export function AdminSection() {
                               type="button"
                               disabled={verifying}
                               onClick={() => handleVerifySlip(true)}
-                              className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                               style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                             >
                               {verifying ? 'กำลังบันทึก…' : 'อนุมัติสลิป'}
@@ -1022,15 +1298,16 @@ export function AdminSection() {
                               type="button"
                               disabled={verifying}
                               onClick={() => handleVerifySlip(false)}
-                              className={`rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                               style={{ borderColor: DANGER, color: DANGER }}
                             >
                               ปฏิเสธสลิป
                             </button>
                             <button
                               type="button"
-                              onClick={() => setInspectingApp(null)}
-                              className={`rounded-full px-3 py-2.5 text-sm underline underline-offset-4 ${FOCUS}`}
+                              disabled={verifying}
+                              onClick={() => setInspectingId(null)}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
                               style={{ color: INK_2 }}
                             >
                               ปิด
@@ -1038,12 +1315,12 @@ export function AdminSection() {
                           </div>
                           </>
                           )}
-                          {(slipLocked || !can.verifySlip) && (
+                          {(slipLocked || !slipPending || !can.verifySlip) && (
                             <div className="mt-6">
                               <button
                                 type="button"
-                                onClick={() => setInspectingApp(null)}
-                                className={`rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                                onClick={() => setInspectingId(null)}
+                                className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
                                 style={{ borderColor: RULE, color: INK }}
                               >
                                 ปิด

@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, CircleCheck, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchAdminSettings,
   fetchPublicSettings,
   updateAdminSettings,
   type AdminSettings,
+  type UpdateAdminSettingsPayload,
 } from '../lib/api';
 import {
   BTN_DARK,
@@ -26,18 +27,23 @@ import {
 const MAX_CAPACITY = 1000;
 /** Fee ceiling in baht (backend: campFee 0–100000). */
 const MAX_FEE = 100000;
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 const numberFmt = new Intl.NumberFormat('en-US');
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null;
-type FieldErrors = { quota?: string; fee?: string };
+type FieldErrors = {
+  quota?: string;
+  fee?: string;
+  openAt?: string;
+  closeAt?: string;
+  certReleaseAt?: string;
+};
 
 interface Props {
   token: string;
-  /**
-   * Whether this role may change the settings (`admin` role on the server). Others see the
-   * values read-only instead of a form that would answer 403.
-   */
+  /** Kept optional for caller compatibility; backend restricts all admin endpoints to role "admin". */
   canEdit?: boolean;
   /** Applicants who are not rejected. This is the count the server checks the quota against. */
   currentCount: number;
@@ -47,15 +53,48 @@ interface Props {
   onSettings?: (s: AdminSettings) => void;
 }
 
+/** Formats an ISO/RFC3339 timestamp into an `<input type="datetime-local">` value in Asia/Bangkok (+07:00). */
+function toBangkokDatetimeInput(iso?: string): string {
+  if (!iso) return '';
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + BANGKOK_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** Converts a `<input type="datetime-local">` value (Asia/Bangkok) to RFC3339 (+07:00) for Go `time.RFC3339`. */
+function fromBangkokDatetimeInput(local: string): string | null {
+  const trimmed = local.trim();
+  if (!DATETIME_LOCAL_RE.test(trimmed)) return null;
+  const rfc = `${trimmed.slice(0, 16)}:00+07:00`;
+  return Number.isFinite(Date.parse(rfc)) ? rfc : null;
+}
+
 function errorText(err: unknown, fallback: string): string {
   if (err instanceof ApiHttpError) {
-    if (err.status === 403) return 'บัญชีนี้ไม่มีสิทธิ์แก้การตั้งค่า (ทำได้เฉพาะบทบาท admin)';
+    if (err.status === 401 || err.status === 403) {
+      return 'สิทธิ์การใช้งานหมดอายุหรือไม่เพียงพอ กรุณาเข้าสู่ระบบใหม่';
+    }
+    if (err.status === 429) {
+      return err.retryAfterSeconds
+        ? `ส่งคำขอบ่อยเกินไป กรุณารอ ${err.retryAfterSeconds} วินาทีแล้วลองใหม่`
+        : 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่';
+    }
     if (err.code === 'VALIDATION_ERROR') {
-      if (err.message.includes('capacity') || err.message.includes('quota')) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('registrationcloseat') || msg.includes('after registrationopenat')) {
+        return 'วัน-เวลาปิดรับสมัครต้องอยู่หลังวัน-เวลาเปิดรับสมัคร';
+      }
+      if (msg.includes('rfc 3339') || msg.includes('registrationopenat') || msg.includes('certificatereleaseat')) {
+        return 'รูปแบบวันและเวลาไม่ถูกต้อง กรุณาเลือกวัน-เวลาใหม่อีกครั้ง';
+      }
+      if (msg.includes('capacity') || msg.includes('quota')) {
         return 'จำนวนโควตาต้องไม่ต่ำกว่าจำนวนผู้สมัครปัจจุบัน และไม่เกิน 1,000 ที่นั่ง';
       }
-      if (err.message.includes('fee')) {
+      if (msg.includes('fee')) {
         return 'ค่าสมัครต้องอยู่ในช่วง 0 ถึง 100,000 บาท';
+      }
+      if (msg.includes('no settings')) {
+        return 'กรุณาแก้ไขอย่างน้อย 1 รายการก่อนบันทึก';
       }
       return 'ข้อมูลการตั้งค่าไม่ถูกต้องตามเงื่อนไข';
     }
@@ -68,8 +107,8 @@ function errorText(err: unknown, fallback: string): string {
 }
 
 /**
- * Collapsible control panel for camp staff: the seat quota, the camp fee and the emergency
- * switch. The summary row stays visible when collapsed so the status is always in view.
+ * Collapsible control panel for camp admins: registration schedule, certificate release time,
+ * seat quota, camp fee, and the emergency switch.
  */
 export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuthError, onSettings }: Props) {
   const [open, setOpen] = useState(false);
@@ -79,6 +118,9 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
   const [acceptingNow, setAcceptingNow] = useState<boolean | null>(null);
   const [quotaInput, setQuotaInput] = useState('');
   const [feeInput, setFeeInput] = useState('');
+  const [openAtInput, setOpenAtInput] = useState('');
+  const [closeAtInput, setCloseAtInput] = useState('');
+  const [certReleaseInput, setCertReleaseInput] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -89,7 +131,8 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
   const statusLabel =
     acceptingNow === null ? 'ไม่ทราบสถานะ' : acceptingNow ? 'เปิดรับสมัคร' : 'ปิดรับสมัคร';
   const statusDot = acceptingNow === null ? INK_3 : acceptingNow ? SUCCESS : DANGER;
-  const feeShown = settings ? numberFmt.format(Number(settings.campFee)) : '–';
+  const feeNum = settings ? Number(settings.campFee) : NaN;
+  const feeShown = settings && Number.isFinite(feeNum) ? numberFmt.format(feeNum) : '–';
 
   function receive(s: AdminSettings) {
     setSettings(s);
@@ -98,7 +141,11 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
 
   function resetInputs(s: AdminSettings) {
     setQuotaInput(String(s.maxCapacity));
-    setFeeInput(String(Number(s.campFee)));
+    const parsedFee = Number(s.campFee);
+    setFeeInput(Number.isFinite(parsedFee) ? String(parsedFee) : '0');
+    setOpenAtInput(toBangkokDatetimeInput(s.registrationOpenAt));
+    setCloseAtInput(toBangkokDatetimeInput(s.registrationCloseAt));
+    setCertReleaseInput(toBangkokDatetimeInput(s.certificateReleaseAt));
     setFieldErrors({});
   }
 
@@ -126,11 +173,12 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
     };
   }, [token]);
 
-  /** Checks both fields before anything is sent. Returns null when a field is invalid. */
-  function checkInputs(): { quota: number; fee: number } | null {
+  /** Validates schedule, quota, and fee before submitting. Returns null when a field is invalid. */
+  function checkInputs(): UpdateAdminSettingsPayload | null {
     const next: FieldErrors = {};
     const quota = Number(quotaInput);
-    const fee = Number(feeInput);
+    const feeTrim = feeInput.trim();
+    const fee = Number(feeTrim);
 
     if (quotaInput.trim() === '' || !Number.isInteger(quota)) {
       next.quota = 'กรุณากรอกจำนวนที่นั่งเป็นจำนวนเต็ม';
@@ -140,30 +188,76 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
       next.quota = `ตั้งได้สูงสุด ${MAX_CAPACITY} ที่นั่ง`;
     }
 
-    if (feeInput.trim() === '' || !Number.isInteger(fee)) {
-      next.fee = 'กรุณากรอกค่าสมัครเป็นจำนวนเต็มบาท';
-    } else if (fee < 0 || fee > MAX_FEE) {
-      next.fee = `ค่าสมัครต้องอยู่ระหว่าง 0 ถึง ${numberFmt.format(MAX_FEE)} บาท`;
+    if (
+      feeTrim === '' ||
+      !Number.isFinite(fee) ||
+      !/^\d+(\.\d{1,2})?$/.test(feeTrim) ||
+      fee < 0 ||
+      fee > MAX_FEE
+    ) {
+      next.fee = `ค่าสมัครต้องอยู่ระหว่าง 0 ถึง ${numberFmt.format(MAX_FEE)} บาท (ทศนิยมได้ไม่เกิน 2 ตำแหน่ง)`;
+    }
+
+    const openRfc = openAtInput.trim() ? fromBangkokDatetimeInput(openAtInput) : null;
+    const closeRfc = closeAtInput.trim() ? fromBangkokDatetimeInput(closeAtInput) : null;
+
+    if (!openAtInput.trim()) {
+      next.openAt = 'กรุณาระบุวัน-เวลาเปิดรับสมัคร';
+    } else if (!openRfc) {
+      next.openAt = 'รูปแบบวัน-เวลาเปิดรับสมัครไม่ถูกต้อง';
+    }
+
+    if (!closeAtInput.trim()) {
+      next.closeAt = 'กรุณาระบุวัน-เวลาปิดรับสมัคร';
+    } else if (!closeRfc) {
+      next.closeAt = 'รูปแบบวัน-เวลาปิดรับสมัครไม่ถูกต้อง';
+    } else if (openRfc && Date.parse(closeRfc) <= Date.parse(openRfc)) {
+      next.closeAt = 'วัน-เวลาปิดรับสมัครต้องอยู่หลังวัน-เวลาเปิดรับสมัคร';
+    }
+
+    let certRfc: string | undefined;
+    const certTrim = certReleaseInput.trim();
+    if (certTrim) {
+      const parsed = fromBangkokDatetimeInput(certTrim);
+      if (!parsed) {
+        next.certReleaseAt = 'รูปแบบวัน-เวลาปล่อยเกียรติบัตรไม่ถูกต้อง';
+      } else {
+        certRfc = parsed;
+      }
+    } else if (settings?.certificateReleaseAt) {
+      next.certReleaseAt = 'ไม่สามารถล้างวัน-เวลาปล่อยเกียรติบัตรที่ตั้งไว้แล้วได้ กรุณาเลือกเวลาใหม่';
     }
 
     setFieldErrors(next);
-    return next.quota || next.fee ? null : { quota, fee };
+    if (next.quota || next.fee || next.openAt || next.closeAt || next.certReleaseAt) {
+      return null;
+    }
+
+    const payload: UpdateAdminSettingsPayload = {
+      maxCapacity: quota,
+      campFee: Math.round(fee * 100) / 100,
+    };
+    if (openRfc) payload.registrationOpenAt = openRfc;
+    if (closeRfc) payload.registrationCloseAt = closeRfc;
+    if (certRfc) payload.certificateReleaseAt = certRfc;
+    return payload;
   }
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
     if (!canEdit) return;
-    const values = checkInputs();
-    if (!values) return;
+    const payload = checkInputs();
+    if (!payload) return;
     setSaving(true);
     setNotice(null);
     try {
-      const res = await updateAdminSettings(token, { maxCapacity: values.quota, campFee: values.fee });
+      const res = await updateAdminSettings(token, payload);
       receive(res.data);
       resetInputs(res.data);
+      const savedFee = Number(res.data.campFee);
       setNotice({
         kind: 'ok',
-        text: `บันทึกแล้ว: ${numberFmt.format(values.quota)} ที่นั่ง · ค่าสมัคร ${numberFmt.format(values.fee)} บาท`,
+        text: `บันทึกแล้ว: ${numberFmt.format(res.data.maxCapacity)} ที่นั่ง · ค่าสมัคร ${numberFmt.format(Number.isFinite(savedFee) ? savedFee : 0)} บาท`,
       });
       refreshStatus(true);
     } catch (err) {
@@ -207,16 +301,14 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full flex-col gap-2 rounded-none py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-6 ${FOCUS}`}
+        className={`flex min-h-11 w-full flex-col gap-2 rounded-none py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-6 ${FOCUS}`}
       >
         <span className="text-base font-semibold leading-7" style={{ color: INK }}>
           ตั้งค่าการรับสมัคร
         </span>
         <span className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm leading-7" style={{ color: INK_2 }}>
           <span className="inline-flex items-center gap-2">
-            <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: statusDot }}>
-              ●
-            </span>
+            <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: statusDot }} />
             {statusLabel}
             {closed ? <span style={{ color: INK_3 }}>(ปิดฉุกเฉิน)</span> : null}
           </span>
@@ -258,8 +350,78 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
 
           {settings && (
             <>
-              {canEdit ? (
               <form onSubmit={onSave} noValidate aria-busy={saving} className="flex flex-col gap-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="open-at-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
+                      เปิดรับสมัคร (เวลาไทย)
+                    </label>
+                    <input
+                      id="open-at-input"
+                      type="datetime-local"
+                      value={openAtInput}
+                      onChange={(e) => setOpenAtInput(e.target.value)}
+                      disabled={!canEdit}
+                      aria-invalid={fieldErrors.openAt ? true : undefined}
+                      aria-describedby={fieldErrors.openAt ? 'open-at-error' : undefined}
+                      className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
+                      style={{ borderColor: fieldErrors.openAt ? DANGER : INPUT_BORDER, color: INK }}
+                    />
+                    {fieldErrors.openAt && (
+                      <p id="open-at-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                        {fieldErrors.openAt}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="close-at-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
+                      ปิดรับสมัคร (เวลาไทย)
+                    </label>
+                    <input
+                      id="close-at-input"
+                      type="datetime-local"
+                      value={closeAtInput}
+                      onChange={(e) => setCloseAtInput(e.target.value)}
+                      disabled={!canEdit}
+                      aria-invalid={fieldErrors.closeAt ? true : undefined}
+                      aria-describedby={fieldErrors.closeAt ? 'close-at-error' : undefined}
+                      className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
+                      style={{ borderColor: fieldErrors.closeAt ? DANGER : INPUT_BORDER, color: INK }}
+                    />
+                    {fieldErrors.closeAt && (
+                      <p id="close-at-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                        {fieldErrors.closeAt}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="cert-release-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
+                    วัน-เวลาปล่อยเกียรติบัตร (เวลาไทย, ไม่บังคับ)
+                  </label>
+                  <input
+                    id="cert-release-input"
+                    type="datetime-local"
+                    value={certReleaseInput}
+                    onChange={(e) => setCertReleaseInput(e.target.value)}
+                    disabled={!canEdit}
+                    aria-invalid={fieldErrors.certReleaseAt ? true : undefined}
+                    aria-describedby={fieldErrors.certReleaseAt ? 'cert-help cert-error' : 'cert-help'}
+                    className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
+                    style={{ borderColor: fieldErrors.certReleaseAt ? DANGER : INPUT_BORDER, color: INK }}
+                  />
+                  <p id="cert-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
+                    ผู้สมัครที่ยืนยันสิทธิ์แล้วจะดาวน์โหลดเกียรติบัตรได้เมื่อถึงเวลาที่กำหนด
+                  </p>
+                  {fieldErrors.certReleaseAt && (
+                    <p id="cert-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                      {fieldErrors.certReleaseAt}
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label htmlFor="quota-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
                     โควตาที่นั่ง
@@ -273,9 +435,10 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     max={MAX_CAPACITY}
                     value={quotaInput}
                     onChange={(e) => setQuotaInput(e.target.value)}
+                    disabled={!canEdit}
                     aria-invalid={fieldErrors.quota ? true : undefined}
                     aria-describedby={fieldErrors.quota ? 'quota-help quota-error' : 'quota-help'}
-                    className={`${INPUT_BASE} rounded-xl font-mono tabular-nums`}
+                    className={`${INPUT_BASE} min-h-11 rounded-xl font-mono tabular-nums`}
                     style={{ borderColor: fieldErrors.quota ? DANGER : INPUT_BORDER, color: INK }}
                   />
                   <p id="quota-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
@@ -296,15 +459,16 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                   <input
                     id="fee-input"
                     type="number"
-                    inputMode="numeric"
-                    step={1}
+                    inputMode="decimal"
+                    step="0.01"
                     min={0}
                     max={MAX_FEE}
                     value={feeInput}
                     onChange={(e) => setFeeInput(e.target.value)}
+                    disabled={!canEdit}
                     aria-invalid={fieldErrors.fee ? true : undefined}
                     aria-describedby={fieldErrors.fee ? 'fee-help fee-error' : 'fee-help'}
-                    className={`${INPUT_BASE} rounded-xl font-mono tabular-nums`}
+                    className={`${INPUT_BASE} min-h-11 rounded-xl font-mono tabular-nums`}
                     style={{ borderColor: fieldErrors.fee ? DANGER : INPUT_BORDER, color: INK }}
                   />
                   <p id="fee-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
@@ -320,8 +484,8 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="submit"
-                    disabled={saving}
-                    className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                    disabled={saving || !canEdit}
+                    className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                   >
                     {saving ? 'กำลังบันทึก…' : 'บันทึกการตั้งค่า'}
@@ -337,30 +501,6 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                   </button>
                 </div>
               </form>
-              ) : (
-                <div className="flex flex-col gap-6">
-                  <div>
-                    <p className="text-sm leading-7" style={{ color: INK_2 }}>
-                      โควตาที่นั่ง
-                    </p>
-                    <p className="font-mono text-2xl font-semibold leading-8 tabular-nums" style={{ color: INK }}>
-                      {numberFmt.format(settings.maxCapacity)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm leading-7" style={{ color: INK_2 }}>
-                      ค่าสมัคร (บาท)
-                    </p>
-                    <p className="font-mono text-2xl font-semibold leading-8 tabular-nums" style={{ color: INK }}>
-                      {feeShown}
-                    </p>
-                  </div>
-                  <p className="max-w-[46ch] text-sm leading-7" style={{ color: INK_3 }}>
-                    บัญชีของคุณดูการตั้งค่าได้อย่างเดียว การแก้โควตา ค่าสมัคร และการปิดรับสมัครฉุกเฉินทำได้เฉพาะบทบาท{' '}
-                    <span className="font-mono">admin</span>
-                  </p>
-                </div>
-              )}
 
               <div className="flex flex-col">
                 <div className="border-b pb-6" style={{ borderColor: RULE }}>
@@ -368,9 +508,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     สถานะการรับสมัคร
                   </p>
                   <p className="mt-1 flex items-center gap-2 text-lg font-semibold leading-7" style={{ color: INK }}>
-                    <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: statusDot }}>
-                      ●
-                    </span>
+                    <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: statusDot }} />
                     {statusLabel}
                   </p>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
@@ -394,39 +532,35 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     <p id="closed-desc" className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
                       {closed
                         ? 'กำลังปิดรับ ผู้สมัครใหม่จะถูกปฏิเสธจนกว่าจะปิดสวิตช์นี้'
-                        : canEdit
-                          ? 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'
-                          : 'ยังรับใบสมัครตามกำหนดการ (เปิด/ปิดสวิตช์นี้ได้เฉพาะ admin)'}
+                        : 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'}
                     </p>
                   </div>
-                  {canEdit ? (
                   <button
                     type="button"
                     role="switch"
                     aria-checked={closed}
                     aria-labelledby="closed-label"
                     aria-describedby="closed-desc"
-                    disabled={toggling}
+                    disabled={toggling || !canEdit}
                     onClick={onToggleClosed}
-                    className={`relative inline-flex h-8 w-14 shrink-0 rounded-full border transition-colors disabled:opacity-50 ${FOCUS}`}
-                    style={{
-                      backgroundColor: closed ? BTN_DARK : 'transparent',
-                      borderColor: closed ? BTN_DARK : INPUT_BORDER,
-                    }}
+                    className={`inline-flex min-h-11 min-w-14 shrink-0 items-center justify-center rounded-full disabled:opacity-50 ${FOCUS}`}
                   >
                     <span
                       aria-hidden="true"
-                      className={`absolute left-[3px] top-[3px] size-6 rounded-full transition-transform motion-reduce:transition-none ${
-                        closed ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                      style={{ backgroundColor: closed ? BTN_DARK_TEXT : INK_3 }}
-                    />
+                      className="relative block h-8 w-14 rounded-full border transition-colors"
+                      style={{
+                        backgroundColor: closed ? BTN_DARK : 'transparent',
+                        borderColor: closed ? BTN_DARK : INPUT_BORDER,
+                      }}
+                    >
+                      <span
+                        className={`absolute left-[3px] top-[3px] size-6 rounded-full transition-transform motion-reduce:transition-none ${
+                          closed ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                        style={{ backgroundColor: closed ? BTN_DARK_TEXT : INK_3 }}
+                      />
+                    </span>
                   </button>
-                  ) : (
-                    <p className="shrink-0 text-sm font-semibold leading-7" style={{ color: closed ? DANGER : INK_2 }}>
-                      {closed ? 'เปิดอยู่' : 'ไม่ได้เปิด'}
-                    </p>
-                  )}
                 </div>
               </div>
             </>
@@ -435,15 +569,15 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
           {notice && (
             <p
               role={notice.kind === 'error' ? 'alert' : 'status'}
-              className="text-sm leading-7 md:col-span-2"
+              className="flex items-center gap-2 text-sm leading-7 md:col-span-2"
               style={{ color: notice.kind === 'error' ? DANGER : INK }}
             >
-              {notice.kind === 'ok' && (
-                <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: SUCCESS }}>
-                  ●
-                </span>
+              {notice.kind === 'ok' ? (
+                <CircleCheck aria-hidden="true" size={16} strokeWidth={2} style={{ color: SUCCESS }} />
+              ) : (
+                <TriangleAlert aria-hidden="true" size={16} strokeWidth={2} style={{ color: DANGER }} />
               )}
-              {notice.text}
+              <span>{notice.text}</span>
             </p>
           )}
         </div>
