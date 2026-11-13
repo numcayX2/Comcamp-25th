@@ -164,6 +164,36 @@ func (r *PaymentPostgresRepo) GetLatestByApplicantID(ctx context.Context, applic
 	return r.scan(r.pool.QueryRow(ctx, query, applicantID))
 }
 
+// GetLatestByApplicantIDs fetches the most recent payment for each requested applicant in one query.
+func (r *PaymentPostgresRepo) GetLatestByApplicantIDs(ctx context.Context, applicantIDs []uuid.UUID) (map[uuid.UUID]*domain.Payment, error) {
+	result := make(map[uuid.UUID]*domain.Payment, len(applicantIDs))
+	if len(applicantIDs) == 0 {
+		return result, nil
+	}
+
+	query := `SELECT DISTINCT ON (applicant_id) ` + paymentColumns + `
+		FROM payments
+		WHERE applicant_id = ANY($1)
+		ORDER BY applicant_id, uploaded_at DESC, id DESC`
+	rows, err := r.pool.Query(ctx, query, applicantIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		p, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		result[p.ApplicantID] = p
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (r *PaymentPostgresRepo) CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM payments WHERE trans_ref = $1)`

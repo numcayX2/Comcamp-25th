@@ -281,3 +281,43 @@ func TestPostgres_ApproveRacesWithReupload(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgres_GetLatestByApplicantIDs(t *testing.T) {
+	pool := openTestPool(t)
+	repo := postgres.NewApplicantPostgresRepo(pool)
+	pay := postgres.NewPaymentPostgresRepo(pool)
+	ctx := context.Background()
+	const tag, ht = "495", "a5"
+	cleanupApplicants(t, pool, tag)
+	cleanupSlips(t, pool, ht)
+	a1 := seedApplicant(t, pool, repo, 1, tag)
+	a2 := seedApplicant(t, pool, repo, 2, tag)
+
+	empty, err := pay.GetLatestByApplicantIDs(ctx, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("expected empty map for nil slice, got %v / %v", empty, err)
+	}
+
+	first := slipFor(a1.ID, hashOf(ht, 1))
+	if err := pay.Create(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second := slipFor(a1.ID, hashOf(ht, 2))
+	if err := pay.Create(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE payments SET uploaded_at = uploaded_at + interval '5 seconds' WHERE id = $1`, second.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := pay.GetLatestByApplicantIDs(ctx, []uuid.UUID{a1.ID, a2.ID})
+	if err != nil {
+		t.Fatalf("GetLatestByApplicantIDs failed: %v", err)
+	}
+	if p := got[a1.ID]; p == nil || p.ID != second.ID {
+		t.Fatalf("expected latest payment %s for a1, got %+v", second.ID, p)
+	}
+	if p, ok := got[a2.ID]; ok {
+		t.Fatalf("expected no payment entry for a2, got %+v", p)
+	}
+}

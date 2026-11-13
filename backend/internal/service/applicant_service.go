@@ -588,13 +588,19 @@ func (s *ApplicantService) ListAll(ctx context.Context, status *domain.Applicati
 		return nil, err
 	}
 
+	ids := make([]uuid.UUID, len(list))
+	for i, a := range list {
+		ids[i] = a.ID
+	}
+	latestPayments, err := s.paymentRepo.GetLatestByApplicantIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	maskID := !CanSeeFullNationalID(role)
 	responses := make([]*ApplicationResponse, 0, len(list))
 	for _, a := range list {
-		res, err := s.toAdmin(ctx, a)
-		if err != nil {
-			return nil, err
-		}
+		res := s.toAdminWithPayment(a, latestPayments[a.ID])
 		if maskID {
 			res.NationalID = MaskNationalID(a.NationalID)
 		}
@@ -1025,13 +1031,17 @@ func (s *ApplicantService) toPublic(ctx context.Context, a *domain.Applicant) *A
 }
 
 func (s *ApplicantService) toAdmin(ctx context.Context, a *domain.Applicant) (*ApplicationResponse, error) {
-	res := s.baseResponse(a)
-	if a.Motivation != nil {
-		res.Motivation = *a.Motivation
-	}
 	p, err := s.latestPayment(ctx, a.ID)
 	if err != nil {
 		return nil, err
+	}
+	return s.toAdminWithPayment(a, p), nil
+}
+
+func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Payment) *ApplicationResponse {
+	res := s.baseResponse(a)
+	if a.Motivation != nil {
+		res.Motivation = *a.Motivation
 	}
 	if p != nil {
 		res.HasSlip = true
@@ -1042,7 +1052,7 @@ func (s *ApplicantService) toAdmin(ctx context.Context, a *domain.Applicant) (*A
 		pid := p.ID.String()
 		res.SlipPaymentID = &pid
 	}
-	return res, nil
+	return res
 }
 
 // AdminSlipPath is the authenticated endpoint that streams an applicant's latest slip image.

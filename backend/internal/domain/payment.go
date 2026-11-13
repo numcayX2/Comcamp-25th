@@ -38,6 +38,7 @@ type PaymentRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Payment, error)
 	GetByApplicantID(ctx context.Context, applicantID uuid.UUID) ([]*Payment, error)
 	GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*Payment, error)
+	GetLatestByApplicantIDs(ctx context.Context, applicantIDs []uuid.UUID) (map[uuid.UUID]*Payment, error)
 	CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error)
 	CheckDuplicateSlipHash(ctx context.Context, slipHash string) (bool, error)
 	// CreateReplacingPending stores p as the applicant's newest slip and, in the same transaction,

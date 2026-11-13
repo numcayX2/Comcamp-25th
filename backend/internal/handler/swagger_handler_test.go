@@ -52,6 +52,15 @@ func TestSwaggerHandler(t *testing.T) {
 		if !strings.Contains(body, "persistAuthorization: false") || strings.Contains(body, "persistAuthorization: true") {
 			t.Errorf("expected persistAuthorization: false in the Swagger UI config")
 		}
+		if !strings.Contains(body, `crossorigin="anonymous"`) {
+			t.Errorf("expected CDN assets to specify crossorigin=\"anonymous\"")
+		}
+		csp := rec.Header().Get("Content-Security-Policy")
+		for _, directive := range []string{"default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "connect-src 'self'"} {
+			if !strings.Contains(csp, directive) {
+				t.Errorf("ServeUI CSP %q missing %q", csp, directive)
+			}
+		}
 	})
 
 	// LOW-05: both docs responses carry the defensive headers.

@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/netip"
 	"time"
@@ -60,6 +61,7 @@ type Options struct {
 	EnableSwagger  bool
 	OpenAPISpec    []byte
 	RateLimits     RateLimits
+	HealthCheck    func(context.Context) error
 }
 
 type Services struct {
@@ -70,7 +72,7 @@ type Services struct {
 }
 
 func NewRouter(svc Services, opt Options) http.Handler {
-	healthHandler := handler.NewHealthHandler("comcamp25-backend")
+	healthHandler := handler.NewHealthHandlerWithCheck("comcamp25-backend", opt.HealthCheck)
 	authHandler := handler.NewAuthHandler(svc.Auth)
 	appHandler := handler.NewApplicantHandler(svc.Applicant)
 	settingHandler := handler.NewSettingHandler(svc.Setting)

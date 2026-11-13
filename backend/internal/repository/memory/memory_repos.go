@@ -758,6 +758,34 @@ func (m *MemoryPaymentRepo) GetLatestByApplicantID(ctx context.Context, applican
 	return latest, nil
 }
 
+// GetLatestByApplicantIDs returns the most recent payment for each requested applicant ID.
+func (m *MemoryPaymentRepo) GetLatestByApplicantIDs(ctx context.Context, applicantIDs []uuid.UUID) (map[uuid.UUID]*domain.Payment, error) {
+	result := make(map[uuid.UUID]*domain.Payment, len(applicantIDs))
+	if len(applicantIDs) == 0 {
+		return result, nil
+	}
+
+	wanted := make(map[uuid.UUID]struct{}, len(applicantIDs))
+	for _, id := range applicantIDs {
+		wanted[id] = struct{}{}
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, p := range m.data {
+		if _, ok := wanted[p.ApplicantID]; !ok {
+			continue
+		}
+		cur, exists := result[p.ApplicantID]
+		if !exists || !p.UploadedAt.Before(cur.UploadedAt) {
+			clone := *p
+			result[p.ApplicantID] = &clone
+		}
+	}
+	return result, nil
+}
+
 func (m *MemoryPaymentRepo) CheckDuplicateTransRef(ctx context.Context, transRef string) (bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

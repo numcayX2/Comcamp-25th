@@ -110,12 +110,18 @@ func main() {
 	}
 
 	// 3. Router (all security middleware lives in internal/server)
+	var healthCheck func(context.Context) error
+	if pool != nil {
+		healthCheck = pool.Ping
+	}
+
 	router := server.NewRouter(services, server.Options{
 		AllowedOrigins: cfg.AllowedOrigins,
 		TrustedProxies: cfg.TrustedProxies,
 		EnableSwagger:  cfg.EnableSwagger,
 		OpenAPISpec:    docs.OpenAPISpec,
 		RateLimits:     server.DefaultRateLimits(),
+		HealthCheck:    healthCheck,
 	})
 
 	httpServer := &http.Server{

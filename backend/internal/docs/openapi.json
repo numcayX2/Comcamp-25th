@@ -42,6 +42,19 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "ฐานข้อมูลไม่พร้อมใช้งาน",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": {
+                  "status": "unhealthy",
+                  "service": "comcamp25-backend",
+                  "time": "2026-11-04T12:00:00Z"
+                }
+              }
+            }
           }
         }
       }

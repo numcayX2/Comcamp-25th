@@ -105,6 +105,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*domain.PublicS
 			now.Before(settings.RegistrationCloseAt)
 
 		activeCount, countErr := s.appRepo.CountActive(qCtx)
+		if countErr != nil {
+			return nil, countErr
+		}
 		isCertReleased := settings.CertificateReleaseAt != nil && now.After(*settings.CertificateReleaseAt)
 
 		resp := domain.PublicSettingsResponse{
@@ -128,7 +131,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*domain.PublicS
 			}
 		}
 
-		if countErr == nil && s.pubVer.Load() == startVer && expiresAt.After(now) {
+		if s.pubVer.Load() == startVer && expiresAt.After(now) {
 			entry := &cachedPublicSettings{
 				response:  resp,
 				feeValue:  settings.CampFee,

@@ -3,9 +3,11 @@ package service_test
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"comcamp25-backend/internal/domain"
@@ -304,5 +306,111 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	}
 	if !confirmed.AttendanceConfirmed {
 		t.Errorf("expected attendanceConfirmed to be true")
+	}
+}
+
+type countingPaymentRepo struct {
+	*memory.MemoryPaymentRepo
+	singleCalls atomic.Int64
+	batchCalls  atomic.Int64
+}
+
+func (r *countingPaymentRepo) GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*domain.Payment, error) {
+	r.singleCalls.Add(1)
+	return r.MemoryPaymentRepo.GetLatestByApplicantID(ctx, applicantID)
+}
+
+func (r *countingPaymentRepo) GetLatestByApplicantIDs(ctx context.Context, applicantIDs []uuid.UUID) (map[uuid.UUID]*domain.Payment, error) {
+	r.batchCalls.Add(1)
+	return r.MemoryPaymentRepo.GetLatestByApplicantIDs(ctx, applicantIDs)
+}
+
+func TestApplicantService_ListAll_UsesBatchPaymentLookup(t *testing.T) {
+	appRepo := memory.NewMemoryApplicantRepo()
+	setRepo := memory.NewMemorySettingRepo()
+	payRepo := &countingPaymentRepo{MemoryPaymentRepo: memory.NewMemoryPaymentRepo(appRepo)}
+	svc := service.NewApplicantService(appRepo, setRepo, payRepo)
+
+	ctx := context.Background()
+	a1, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName:   "น้องหนึ่ง ทดสอบ",
+		Nickname:   "หนึ่ง",
+		NationalID: validTestNationalID(101),
+		Phone:      "0811111111",
+		Email:      "one@example.com",
+		School:     "โรงเรียนทดสอบ",
+		Grade:      "ม.5",
+		ShirtSize:  "M",
+	})
+	if err != nil {
+		t.Fatalf("submit a1: %v", err)
+	}
+	a2, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName:   "น้องสอง ทดสอบ",
+		Nickname:   "สอง",
+		NationalID: validTestNationalID(102),
+		Phone:      "0822222222",
+		Email:      "two@example.com",
+		School:     "โรงเรียนทดสอบ",
+		Grade:      "ม.6",
+		ShirtSize:  "L",
+	})
+	if err != nil {
+		t.Fatalf("submit a2: %v", err)
+	}
+
+	domainA1, err := appRepo.GetByApplicationNo(ctx, a1.ID)
+	if err != nil {
+		t.Fatalf("get a1 by applicationNo: %v", err)
+	}
+	older := &domain.Payment{
+		ApplicantID: domainA1.ID,
+		SlipURL:     "slips/old.webp",
+		Amount:      decimal.NewFromInt(1000),
+		Status:      domain.PaymentRejected,
+	}
+	if err := payRepo.Create(ctx, older); err != nil {
+		t.Fatalf("create older payment: %v", err)
+	}
+	// Sleep longer than Windows timer resolution so UploadedAt ordering is deterministic in memory.
+	time.Sleep(20 * time.Millisecond)
+	newer := &domain.Payment{
+		ApplicantID: domainA1.ID,
+		SlipURL:     "slips/new.webp",
+		Amount:      decimal.NewFromInt(1000),
+		Status:      domain.PaymentPending,
+	}
+	if err := payRepo.Create(ctx, newer); err != nil {
+		t.Fatalf("create newer payment: %v", err)
+	}
+
+	payRepo.singleCalls.Store(0)
+	payRepo.batchCalls.Store(0)
+
+	list, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	if err != nil {
+		t.Fatalf("ListAll failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 applicants, got %d", len(list))
+	}
+	if got := payRepo.batchCalls.Load(); got != 1 {
+		t.Errorf("expected 1 batch lookup, got %d", got)
+	}
+	if got := payRepo.singleCalls.Load(); got != 0 {
+		t.Errorf("expected 0 per-applicant payment queries (N+1), got %d", got)
+	}
+
+	byID := make(map[string]*service.ApplicationResponse, len(list))
+	for _, item := range list {
+		byID[item.ID] = item
+	}
+	got1 := byID[a1.ID]
+	if got1 == nil || !got1.HasSlip || got1.SlipStatus == nil || *got1.SlipStatus != domain.PaymentPending || got1.SlipPaymentID == nil || *got1.SlipPaymentID != newer.ID.String() {
+		t.Fatalf("unexpected slip fields for a1: %+v", got1)
+	}
+	got2 := byID[a2.ID]
+	if got2 == nil || got2.HasSlip || got2.SlipStatus != nil || got2.SlipPaymentID != nil {
+		t.Fatalf("expected no slip fields for a2, got: %+v", got2)
 	}
 }

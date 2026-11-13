@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,11 +29,15 @@ func (r *countingSettingRepo) Get(ctx context.Context) (*domain.Settings, error)
 
 type countingApplicantRepo struct {
 	*memory.MemoryApplicantRepo
-	counts atomic.Int64
+	counts   atomic.Int64
+	countErr error
 }
 
 func (r *countingApplicantRepo) CountActive(ctx context.Context) (int, error) {
 	r.counts.Add(1)
+	if r.countErr != nil {
+		return 0, r.countErr
+	}
 	return r.MemoryApplicantRepo.CountActive(ctx)
 }
 
@@ -202,5 +207,28 @@ func TestSettingService_GetPublicSettings_CallerCancelDoesNotAbortPeer(t *testin
 	close(release)
 	if err := <-peerRes; err != nil {
 		t.Fatalf("peer caller failed after first caller cancelled: %v", err)
+	}
+}
+
+func TestSettingService_GetPublicSettings_CountActiveErrorNotSwallowed(t *testing.T) {
+	setRepo := &countingSettingRepo{MemorySettingRepo: memory.NewMemorySettingRepo()}
+	appRepo := &countingApplicantRepo{
+		MemoryApplicantRepo: memory.NewMemoryApplicantRepo(),
+		countErr:            errors.New("db unavailable"),
+	}
+	svc := service.NewSettingService(setRepo, appRepo, appRepo.Audit())
+
+	if res, err := svc.GetPublicSettings(context.Background()); err == nil || res != nil {
+		t.Fatalf("expected error and nil response when CountActive fails, got res=%+v err=%v", res, err)
+	}
+
+	// Clear the error and ensure the failed lookup was not cached.
+	appRepo.countErr = nil
+	res, err := svc.GetPublicSettings(context.Background())
+	if err != nil {
+		t.Fatalf("expected recovery after CountActive succeeds, got %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil response after recovery")
 	}
 }
