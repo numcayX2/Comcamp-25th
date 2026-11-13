@@ -1,13 +1,11 @@
 /**
  * hero-3d.js — ComCamp #25 hero stage
  * Renders BOTH real .glb boards in one transparent WebGL canvas (#heroStageCanvas).
- * Save as src/scripts/hero-3d.js (three@0.170.0).
- *
- * If your .glb files are Draco/Meshopt compressed, add a DRACOLoader / MeshoptDecoder
- * to the GLTFLoader in section 5 (see the commented lines there).
+ * Decodes Draco-compressed .glb meshes using self-hosted decoders at /draco/gltf/.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* ==========================================================================
@@ -275,10 +273,14 @@ function init(stage, canvas) {
      5. LOAD BOTH .glb MODELS
      ========================================================================== */
   const loader = new GLTFLoader();
-  // Compressed exports? Uncomment and install the decoders:
-  // import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-  // const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-  // loader.setDRACOLoader(draco);
+  const draco = new DRACOLoader().setDecoderPath('/draco/gltf/').preload();
+  loader.setDRACOLoader(draco);
+  let dracoDisposed = false;
+  const disposeDraco = () => {
+    if (dracoDisposed) return;
+    dracoDisposed = true;
+    draco.dispose();
+  };
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   const loadGlb = (url) => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
 
@@ -298,6 +300,7 @@ function init(stage, canvas) {
       return name;
     })
   ).then((results) => {
+    disposeDraco();
     results.forEach((r) => r.status === 'rejected' && console.warn('[hero-3d] model failed:', r.reason));
     if (!results.some((r) => r.status === 'fulfilled')) {
       setState('fallback');
@@ -496,6 +499,7 @@ function init(stage, canvas) {
 
   window.addEventListener('pagehide', () => {
     if (raf) cancelAnimationFrame(raf);
+    disposeDraco();
     shadowTex.dispose();
     shadowGeo.dispose();
     pmrem.dispose();

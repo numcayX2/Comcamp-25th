@@ -268,28 +268,8 @@
   function initGsap(){
     try {
       if (REDUCED || typeof gsap === 'undefined') return;
-      if (typeof ScrollTrigger !== 'undefined') gsap.registerPlugin(ScrollTrigger);
-      var ease = 'power2.out';
-
       if (typeof ScrollTrigger !== 'undefined') {
-        (function(){
-          var journey = document.querySelector('.journey');
-          var jSteps = journey ? gsap.utils.toArray('.journey .step') : [];
-          if (!journey || !jSteps.length) return;
-          gsap.to(journey, { '--jp': 1, ease: 'none',
-            scrollTrigger: { trigger: journey, start: 'top 70%', end: 'bottom 65%', scrub: 0.35 } });
-          jSteps.forEach(function(step){
-            ScrollTrigger.create({
-              trigger: step,
-              start: 'top 72%',
-              end: 'bottom 42%',
-              onEnter: function(){ step.classList.add('is-active'); },
-              onEnterBack: function(){ step.classList.add('is-active'); step.classList.remove('is-done'); },
-              onLeave: function(){ step.classList.remove('is-active'); step.classList.add('is-done'); },
-              onLeaveBack: function(){ step.classList.remove('is-active','is-done'); }
-            });
-          });
-        })();
+        gsap.registerPlugin(ScrollTrigger);
         initEditorialMotion();
       }
     } catch(e){}
@@ -340,10 +320,55 @@
           gsap.fromTo(box, { '--rule-p': 0 }, { '--rule-p': 1, duration: 1.3, ease: 'expo.out',
             scrollTrigger: { trigger: box, start: 'top 88%', once: true } });
         });
+
+        // Section 04 Journey (Option C): scrubbed numeral parallax, staged reveal, and contiguous active step spy
+        if (sec.id === 'journey') {
+          var jSteps = gsap.utils.toArray('.journey .step', sec);
+          var py = desktop ? 18 : 10;
+          var setActiveStep = function(activeIdx){
+            jSteps.forEach(function(s, i){
+              s.classList.toggle('is-active', i === activeIdx);
+              s.classList.toggle('is-done', activeIdx >= 0 && i < activeIdx);
+            });
+          };
+          jSteps.forEach(function(step, idx){
+            var bigNum = step.querySelector('.step-big-num');
+            var tag = step.querySelector('.step-num');
+            var title = step.querySelector('h3');
+            var day = step.querySelector('.day');
+            var body = step.querySelector('p');
+
+            if (bigNum) {
+              gsap.fromTo(bigNum,
+                { y: py },
+                { y: -py, ease: 'none',
+                  scrollTrigger: { trigger: step, start: 'top bottom', end: 'bottom top', scrub: 0.25, invalidateOnRefresh: true } });
+            }
+
+            var stepTl = gsap.timeline({
+              scrollTrigger: { trigger: step, start: 'top 86%', once: true, fastScrollEnd: true }
+            });
+            if (bigNum) stepTl.from(bigNum, { opacity: 0, duration: 0.45, ease: 'power2.out', clearProps: 'opacity' }, 0);
+            if (tag) stepTl.from(tag, { x: -14, opacity: 0, duration: 0.45, ease: 'power2.out', clearProps: 'transform,opacity' }, 0);
+            if (title) stepTl.from(title, { yPercent: 40, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.65, ease: ease, clearProps: 'clipPath,transform,opacity' }, 0.06);
+            var follow = [day, body].filter(Boolean);
+            if (follow.length) stepTl.from(follow, { y: 14, opacity: 0, duration: 0.5, stagger: 0.06, ease: 'power2.out', clearProps: 'transform,opacity' }, 0.16);
+
+            ScrollTrigger.create({
+              trigger: step,
+              start: 'top 60%',
+              end: 'bottom 60%',
+              onEnter: function(){ setActiveStep(idx); },
+              onEnterBack: function(){ setActiveStep(idx); },
+              onLeave: function(){ if (idx === jSteps.length - 1) setActiveStep(jSteps.length); },
+              onLeaveBack: function(){ if (idx === 0) setActiveStep(-1); }
+            });
+          });
+        }
       });
 
-      // 4) Row reveals: batched so rows entering together cascade
-      ScrollTrigger.batch('.exp-item, .bento .card, .journey .step, .tm-tile, .faq-item', {
+      // 4) Row reveals: batched so rows entering together cascade (Section 04 handled with Option C choreography)
+      ScrollTrigger.batch('.exp-item, .bento .card, .tm-tile, .faq-item', {
         start: 'top 90%',
         once: true,
         interval: 0.08,
@@ -353,7 +378,7 @@
         }
       });
       // Hold rows hidden until their batch fires (set after the batch so first paint is never blank)
-      gsap.set('.exp-item, .bento .card, .journey .step, .tm-tile, .faq-item', { opacity: 0, y: 34 });
+      gsap.set('.exp-item, .bento .card, .tm-tile, .faq-item', { opacity: 0, y: 34 });
       ScrollTrigger.refresh();
 
       // 5) Big figures: mask-rise + gentle scrubbed parallax (desktop)
