@@ -28,8 +28,8 @@
   color: var(--su-ink);
 }
 
-.su { display: grid; gap: 20px; min-width: 0; }
-.su-form { display: grid; gap: 22px; max-width: 560px; }
+.su { display: grid; gap: 20px; min-width: 0; max-width: 100%; }
+.su-form { display: grid; gap: 22px; width: 100%; max-width: 560px; min-width: 0; }
 .su *:focus-visible, .su-field *:focus-visible, .su-lightbox *:focus-visible { outline: 2px solid var(--su-focus); outline-offset: 3px; }
 
 .su-sr {
@@ -66,7 +66,7 @@
 .su-msg__text { margin: 0; font-size: 0.9375rem; line-height: 1.75; overflow-wrap: anywhere; }
 
 /* ---------- Verify code: one boxed input ---------- */
-.su-field { max-width: 520px; }
+.su-field { width: 100%; max-width: 520px; min-width: 0; }
 .su-code {
   display: block;
   box-sizing: border-box;
@@ -83,6 +83,7 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
+  scroll-margin-top: 96px;
   appearance: none;
   -webkit-appearance: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -144,7 +145,29 @@
 .su-strip__meta { display: grid; gap: 4px; min-width: 0; align-content: start; }
 .su-strip__title { font-size: 1rem; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
 .su-strip__size { font-size: 0.9375rem; line-height: 1.6; color: var(--su-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.su-strip__status { margin: 2px 0 0; font-size: 0.875rem; font-weight: 600; line-height: 1.5; color: var(--su-focus); }
+.su-strip[data-busy] { background: var(--su-fill); }
 .su-strip__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+
+.su-code-prompt { display: grid; justify-items: start; gap: 4px; }
+.su-link-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--su-focus);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.su-link-btn:hover { opacity: 0.85; }
 
 /* ---------- Buttons: full pill, 44px+ targets ---------- */
 .su-btn {
@@ -195,17 +218,18 @@
   margin: auto;
   box-sizing: border-box;
   width: fit-content;
+  min-width: min(92vw, 320px);
   height: fit-content;
-  max-width: min(92vw, 760px);
+  max-width: min(94vw, 760px);
   max-height: 92vh;
   max-height: 92dvh;
-  padding: 16px;
+  padding: 0;
   border: 1px solid var(--su-rule);
   border-radius: 24px;
   background: var(--su-bg);
   color: var(--su-ink);
   box-shadow: var(--su-shadow);
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   opacity: 1;
   transform: scale(1);
@@ -217,7 +241,8 @@
     display 0.18s ease-out allow-discrete;
 }
 html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); }
-html.dark .su-lightbox { --su-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 48px -12px rgba(0, 0, 0, 0.55); }
+html.dark .su-lightbox,
+html[data-theme="dark"] .su-lightbox { --su-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 48px -12px rgba(0, 0, 0, 0.55); }
 .su-lightbox:modal { inset: 0; margin: auto; overscroll-behavior: contain; }
 /* Closing state (exit animation where supported; otherwise the dialog simply disappears). */
 .su-lightbox:not([open]) { opacity: 0; transform: scale(0.96); }
@@ -236,15 +261,113 @@ html.dark .su-lightbox { --su-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 24px 48p
   .su-lightbox[open] { opacity: 0; transform: scale(0.96); }
   .su-lightbox[open]::backdrop { opacity: 0; }
 }
-.su-lightbox__body { display: grid; gap: 14px; justify-items: center; }
-.su-lightbox__body img {
+.su-lightbox__frame {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(92vh - 2px);
+  max-height: calc(92dvh - 2px);
+  min-height: 0;
+}
+.su-lightbox__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  background: var(--su-bg);
+  border-bottom: 1px solid var(--su-rule);
+}
+.su-lightbox__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--su-ink);
+}
+.su-lightbox__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.su-lightbox__zoom {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--su-line);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.su-lightbox__zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--su-rule);
+  background: transparent;
+  color: var(--su-ink);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.su-lightbox__zoom-btn:last-child { border-right: 0; }
+.su-lightbox__zoom-btn:hover { background: var(--su-fill); }
+.su-lightbox__zoom-btn[aria-pressed='true'] {
+  background: var(--su-btn-bg);
+  color: var(--su-btn-text);
+}
+.su-lightbox__close {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+}
+.su-lightbox__stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.su-lightbox__img {
   display: block;
+  margin: auto;
   width: auto;
   max-width: 100%;
-  max-height: calc(92vh - 112px);
-  max-height: calc(92dvh - 112px); /* leaves room for the padding and the close button */
+  max-height: calc(92vh - 168px);
+  max-height: calc(92dvh - 168px); /* leaves room for sticky header and stage padding on mobile */
   object-fit: contain;
   border-radius: 12px;
+}
+@media (min-width: 560px) {
+  .su-lightbox__img {
+    max-height: calc(92vh - 116px);
+    max-height: calc(92dvh - 116px);
+  }
+}
+.su-lightbox[data-zoom='150'] .su-lightbox__img {
+  max-width: none;
+  max-height: none;
+  width: 150%;
+  height: auto;
+}
+.su-lightbox[data-zoom='200'] .su-lightbox__img {
+  max-width: none;
+  max-height: none;
+  width: 200%;
+  height: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .su-lightbox, .su-lightbox::backdrop { transition: none; }

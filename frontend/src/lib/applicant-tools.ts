@@ -38,9 +38,9 @@ export function slipLabel(app: Application): string {
 
 /**
  * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, email, school,
- * province and (when unmasked) national ID. Zero-width characters, Thai numerals and surrounding
- * spaces are normalised. A query made only of digits, spaces and hyphens also matches phone and
- * unmasked national ID written without them (081-234 finds 0812345678).
+ * province, grade, shirt size and (when unmasked) national ID. Zero-width characters, Thai numerals
+ * and surrounding spaces are normalised. A query made only of digits, spaces and hyphens also
+ * matches phone and unmasked national ID written without them (081-234 finds 0812345678).
  */
 export function matchesApplicantQuery(app: Application, rawQuery: string): boolean {
   const q = stripZeroWidth(rawQuery).trim().toLowerCase();
@@ -54,6 +54,8 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
     app.email ?? '',
     app.school,
     app.province ?? '',
+    app.grade ?? '',
+    app.shirtSize ?? '',
   ];
   if (fields.some((f) => stripZeroWidth(f).toLowerCase().includes(q))) return true;
 

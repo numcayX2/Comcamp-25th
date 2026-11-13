@@ -5,9 +5,17 @@
  * drag or scroll that starts on the image never dismisses it. closedby="any" is set as a
  * progressive enhancement for browsers with native light dismiss.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import '../../styles/slip-upload.css';
+
+const ZOOM_LEVELS = [
+  { value: 1, label: '100%' },
+  { value: 1.5, label: '150%' },
+  { value: 2, label: '200%' },
+] as const;
+
+type ZoomLevel = (typeof ZOOM_LEVELS)[number]['value'];
 
 function outsideCard(dlg: HTMLDialogElement, e: ReactPointerEvent<HTMLDialogElement>): boolean {
   const r = dlg.getBoundingClientRect();
@@ -17,7 +25,12 @@ function outsideCard(dlg: HTMLDialogElement, e: ReactPointerEvent<HTMLDialogElem
 export function SlipLightbox({ src, open, onClose }: { src: string | null; open: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const downOutside = useRef(false);
+  const titleId = useId();
+  const [zoom, setZoom] = useState<ZoomLevel>(1);
+  const [baseWidth, setBaseWidth] = useState<number | null>(null);
 
   useEffect(() => {
     const dlg = ref.current;
@@ -36,11 +49,27 @@ export function SlipLightbox({ src, open, onClose }: { src: string | null; open:
     if (!open && dlg.open) dlg.close();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      setZoom(1);
+      setBaseWidth(null);
+    }
+  }, [open, src]);
+
+  function selectZoom(next: ZoomLevel) {
+    if (next !== 1 && zoom === 1 && imgRef.current && imgRef.current.clientWidth > 0) {
+      setBaseWidth(imgRef.current.clientWidth);
+    }
+    setZoom(next);
+    if (next === 1) stageRef.current?.scrollTo({ top: 0, left: 0 });
+  }
+
   return (
     <dialog
       ref={ref}
       className="su-lightbox"
-      aria-label="รูปสลิปขนาดเต็ม"
+      data-zoom={zoom === 1 ? '100' : zoom === 1.5 ? '150' : '200'}
+      aria-labelledby={titleId}
       onClose={onClose}
       onPointerDown={(e) => {
         const dlg = ref.current;
@@ -56,11 +85,52 @@ export function SlipLightbox({ src, open, onClose }: { src: string | null; open:
         downOutside.current = false;
       }}
     >
-      <div className="su-lightbox__body">
-        {open && src && <img src={src} alt="สลิปการโอนเงิน ขนาดเต็ม" />}
-        <button ref={closeRef} type="button" className="su-btn su-btn--ghost" onClick={onClose}>
-          ปิด
-        </button>
+      <div className="su-lightbox__frame">
+        <header className="su-lightbox__head">
+          <h2 id={titleId} className="su-lightbox__title">
+            ตัวอย่างสลิปการโอนเงิน
+          </h2>
+          <div className="su-lightbox__controls">
+            <div className="su-lightbox__zoom" role="group" aria-label="ระดับการขยายรูปสลิป">
+              {ZOOM_LEVELS.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  className="su-lightbox__zoom-btn"
+                  aria-pressed={zoom === item.value}
+                  onClick={() => selectZoom(item.value)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              className="su-btn su-btn--ghost su-lightbox__close"
+              onClick={onClose}
+              aria-label="ปิดตัวอย่างสลิป"
+            >
+              ปิด
+            </button>
+          </div>
+        </header>
+        <div ref={stageRef} className="su-lightbox__stage">
+          {open && src && (
+            <img
+              ref={imgRef}
+              className="su-lightbox__img"
+              src={src}
+              alt="สลิปการโอนเงิน ขนาดเต็ม"
+              style={zoom !== 1 && baseWidth ? { width: `${Math.round(baseWidth * zoom)}px` } : undefined}
+              onLoad={() => {
+                if (zoom === 1 && imgRef.current && imgRef.current.clientWidth > 0) {
+                  setBaseWidth(imgRef.current.clientWidth);
+                }
+              }}
+            />
+          )}
+        </div>
       </div>
     </dialog>
   );

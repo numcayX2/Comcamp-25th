@@ -10,8 +10,9 @@
    ========================================================================== */
 
 /* BaseLayout makes <body> overflow-y:auto, which turns it into a scroll container and
-   silently breaks position:sticky for the sidebar and the footer nav. Let the viewport scroll. */
-body.rw-page { overflow: visible; }
+   silently breaks position:sticky for the sidebar and the footer nav. Let the viewport scroll
+   while clipping horizontal overflow so mobile (<768px) never scrolls sideways. */
+body.rw-page { overflow: visible; overflow-x: clip; }
 
 .rw {
   /* canvas (light) */
@@ -47,8 +48,11 @@ body.rw-page { overflow: visible; }
 
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: clip;
   background: var(--rw-canvas);
   color: var(--rw-ink);
   font-family: var(--font-sans);
@@ -194,17 +198,19 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 
 .rw-content {
   flex: 1;
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   max-width: var(--rw-measure);
   margin: 0 auto;
   padding: clamp(24px, 4vw, 72px) var(--rw-gutter) clamp(36px, 5vw, 72px);
   outline: none;
 }
 
-/* The one authored moment: each step eases in. */
-.rw-step-view { animation: rw-in 0.4s var(--rw-ease) both; }
+/* The one authored moment: each step settles in briskly without dipping contrast. */
+.rw-step-view { animation: rw-in 0.14s var(--rw-ease) both; }
 @keyframes rw-in {
-  from { opacity: 0.01; transform: translateY(10px); }
+  from { opacity: 0.92; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -692,18 +698,18 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-banner:focus-visible { outline: 2px solid var(--rw-ink); outline-offset: 2px; }
 
 /* ---------- Receipt ---------- */
-.rw-receipt .rw-block { padding-top: clamp(24px, 3.5vw, 36px); }
+.rw-receipt .rw-block { min-width: 0; padding-top: clamp(24px, 3.5vw, 36px); }
 .rw-receipt .rw-block + .rw-block { margin-top: clamp(24px, 3.5vw, 36px); border-top: 1px solid var(--rw-rule); }
 .rw-block__label { font-size: 0.9375rem; color: var(--rw-ink-3); }
 .rw-block__title { font-size: 1.25rem; font-weight: 700; line-height: 1.4; }
 .rw-id {
   margin-top: 6px;
   font-family: var(--font-mono);
-  font-size: clamp(2rem, 1.2rem + 4.2vw, 3.5rem);
+  font-size: clamp(1.625rem, 1rem + 4vw, 3.5rem);
   font-weight: 500;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   user-select: all;
   -webkit-user-select: all;
 }
@@ -793,6 +799,8 @@ html[data-theme="dark"] .rw-ticket {
 .rw-ticket__meta > div:last-child { border-bottom: 0; }
 .rw-ticket__meta dt { font-size: 0.9375rem; line-height: 1.7; color: var(--rw-ink-3); }
 .rw-ticket__meta dd { margin: 0; font-size: 1rem; line-height: 1.7; color: var(--rw-ink); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.rw-ticket__meta dd .font-mono,
+.rw-withdraw__warn .font-mono { white-space: nowrap; }
 .rw-ticket__holders { display: block; font-size: 0.875rem; line-height: 1.7; color: var(--rw-ink-2); }
 
 .rw-ticket__foot {
@@ -852,6 +860,7 @@ html[data-theme="dark"] .rw-ticket {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
   min-height: 32px;
   padding: 2px 14px;
   border: 0;
@@ -860,6 +869,7 @@ html[data-theme="dark"] .rw-ticket {
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.5;
+  white-space: nowrap;
   color: var(--rw-ink);
 }
 .rw-pill__dot { flex: none; width: 9px; height: 9px; border-radius: 9999px; background: var(--pill, var(--rw-ink-3)); }
