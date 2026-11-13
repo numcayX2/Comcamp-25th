@@ -217,54 +217,38 @@
   content: "— ";
 }
 
-/* ---------- 04 Journey: hairline rail, square markers ---------- */
+/* ---------- 04 Journey: typographic parallax index (Option C) ---------- */
 .ed-sec .journey {
-  --jx: 12px;
   border-top: 1px solid var(--ink);
 }
-.ed-sec .journey-rail {
-  left: calc(var(--jx) - 0.5px);
-  top: 44px;
-  bottom: 44px;
-  width: 1px;
-  border-radius: 0;
-  background: var(--rule-strong);
-}
-.ed-sec .journey-rail::after {
-  background: var(--ink);
-  border-radius: 0;
-}
 .ed-sec .step {
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 0 clamp(18px, 3vw, 40px);
-  padding: clamp(26px, 3vw, 36px) 0;
+  display: grid;
+  grid-template-columns: clamp(48px, 8vw, 96px) minmax(0, 1fr);
+  align-items: start;
+  gap: 0 clamp(16px, 3vw, 40px);
+  padding: clamp(28px, 3.2vw, 40px) 0;
   border-bottom: 1px solid var(--rule) !important;
 }
 .ed-sec .step:last-child {
   border-bottom: 0 !important;
 }
-.ed-sec .step-marker {
-  padding-top: 6px;
+.ed-sec .step-big-num {
+  font-family: var(--ed-mono);
+  font-size: clamp(2rem, 3.8vw, 3.35rem);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  padding-top: 2px;
+  color: var(--rule-strong);
+  user-select: none;
+  will-change: transform;
+  transition: color 0.35s ease;
 }
-.ed-sec .step-dot {
-  width: 13px;
-  height: 13px;
-  border-radius: 0;
-  border: 1px solid var(--ink-3);
-  background: var(--canvas-0);
+.ed-sec .step.is-active .step-big-num {
+  color: var(--blue-600);
 }
-.ed-sec .step-dot::after {
-  display: none;
-}
-.ed-sec .step.is-active .step-dot {
-  background: var(--blue-600);
-  border-color: var(--blue-600);
-  transform: none;
-  box-shadow: none;
-}
-.ed-sec .step.is-done .step-dot {
-  background: var(--ink);
-  border-color: var(--ink);
+.ed-sec .step.is-done .step-big-num {
+  color: var(--ink-3);
 }
 .ed-sec .step-num {
   margin-bottom: 8px;
@@ -501,6 +485,7 @@ html[data-theme="dark"] .ed-footer {
 
 @media (prefers-reduced-motion: reduce) {
   .ed-progress { display: none; }
+  .ed-sec .step-big-num,
   .ed-sec .step h3,
   .ed-sec .step .step-num,
   #experience .exp-item-title { transition: none; transform: none !important; }
