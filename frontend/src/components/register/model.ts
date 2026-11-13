@@ -175,14 +175,24 @@ export function isValidThaiNationalID(id: string): boolean {
   return (11 - (sum % 11)) % 10 === Number(id[12]);
 }
 
+export function cleanSingleLine(s: string): string {
+  return s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim().replace(/\s+/g, ' ');
+}
+
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
   switch (key) {
     case 'fullName': {
-      const full = form.fullName.trim().replace(/\s+/g, ' ');
+      const full = cleanSingleLine(form.fullName);
       if (!full) return 'กรุณากรอกชื่อและนามสกุล';
       const spaceIdx = full.indexOf(' ');
-      const first = spaceIdx === -1 ? full : full.slice(0, spaceIdx);
-      const last = spaceIdx === -1 ? '' : full.slice(spaceIdx + 1).trim();
+      if (spaceIdx === -1) {
+        return 'กรุณากรอกทั้งชื่อจริงและนามสกุล โดยมีเว้นวรรคคั่น (เช่น สมชาย ใจดี)';
+      }
+      const first = full.slice(0, spaceIdx);
+      const last = full.slice(spaceIdx + 1).trim();
+      if (!first || !last) {
+        return 'กรุณากรอกทั้งชื่อจริงและนามสกุล โดยมีเว้นวรรคคั่น (เช่น สมชาย ใจดี)';
+      }
       if (first.length > NAME_PART_MAX || last.length > NAME_PART_MAX) {
         return `ชื่อและนามสกุลแต่ละส่วนต้องยาวไม่เกิน ${NAME_PART_MAX} ตัวอักษร`;
       }

@@ -37,6 +37,7 @@ import {
   SIZE_CHEST,
   STEPS,
   TOTAL_STEPS,
+  cleanSingleLine,
   firstErrorKey,
   formatCampFee,
   formatNationalId,
@@ -370,6 +371,8 @@ export function RegisterSection() {
   const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const errorBannerRef = useRef<HTMLDivElement>(null);
+  const focusErrorBanner = useRef(false);
   const submittingRef = useRef(false);
   /** X-Idempotency-Key of the current attempt. Mirrors sessionStorage (register/storage.ts) and
       keeps working in memory where storage is blocked. Empty until the first submit. */
@@ -501,6 +504,13 @@ export function RegisterSection() {
     else headingRef.current?.focus({ preventScroll: true });
   }, [step, errors, appId]);
 
+  useEffect(() => {
+    if (error && focusErrorBanner.current) {
+      focusErrorBanner.current = false;
+      errorBannerRef.current?.focus({ preventScroll: true });
+    }
+  }, [error]);
+
   /* ── helpers ── */
 
   function show(next: number, focus: { field?: FieldKey; heading?: boolean }) {
@@ -545,7 +555,10 @@ export function RegisterSection() {
   function handleNext() {
     if (busy || submittingRef.current) return;
     if (gate !== 'open') {
-      setError('ยังไม่เปิดรับสมัครในขณะนี้ กรุณาตรวจสอบอีกครั้งเมื่อถึงกำหนดเปิดรับ');
+      const msg = 'ยังไม่เปิดรับสมัครในขณะนี้ กรุณาตรวจสอบอีกครั้งเมื่อถึงกำหนดเปิดรับ';
+      focusErrorBanner.current = true;
+      setError(msg);
+      announce(msg);
       return;
     }
     const errs = validateStep(step, form, consent);
@@ -565,6 +578,12 @@ export function RegisterSection() {
     if (step === LAST_FORM_STEP) {
       void submit();
       return;
+    }
+    if (returnTo !== null) {
+      for (let i = step + 1; i < returnTo; i++) {
+        const betweenErrs = validateStep(i, form, consent);
+        if (firstErrorKey(i, betweenErrs)) return failAt(i, betweenErrs);
+      }
     }
     const next = returnTo ?? step + 1;
     setReturnTo(null);
@@ -630,7 +649,7 @@ export function RegisterSection() {
 
     try {
       const payload: ApplicationPayload = {
-        fullName: form.fullName.trim(),
+        fullName: cleanSingleLine(form.fullName),
         nickname: form.nickname.trim(),
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
         nationalId: sanitizeDigits(form.nationalId),
@@ -668,7 +687,10 @@ export function RegisterSection() {
         announce(CAPTCHA_FAILED_MESSAGE);
         captchaRef.current?.focus();
       } else {
-        setError(describeSubmitError(err));
+        const msg = describeSubmitError(err);
+        focusErrorBanner.current = true;
+        setError(msg);
+        announce(msg);
         window.scrollTo({ top: 0 });
       }
     } finally {
@@ -998,13 +1020,17 @@ export function RegisterSection() {
                         {SIZE_CHEST[s] !== null ? (
                           <span className="font-mono">{SIZE_CHEST[s]}</span>
                         ) : (
-                          <span className="rw-todo">รอประกาศ</span>
+                          <span className="rw-muted">อยู่ระหว่างอัปเดต</span>
                         )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className="rw-slip__note">
+                ตารางรอบอกของ <span className="font-mono">XS / 2XL / 3XL</span> อยู่ระหว่างอัปเดต สามารถเลือกเบื้องต้นแล้วกลับมาเปลี่ยนไซส์ภายหลังได้ที่หน้า{' '}
+                <span className="font-mono">/status</span>
+              </p>
             </div>
           </div>
         );
@@ -1186,7 +1212,7 @@ export function RegisterSection() {
   );
 
   const errorBanner = error && (
-    <div className="rw-banner" role="alert">
+    <div ref={errorBannerRef} tabIndex={-1} className="rw-banner" role="alert">
       <p>
         <TriangleAlert {...ICON} />
         <span>{error}</span>

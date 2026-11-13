@@ -180,7 +180,8 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
         <div className="rw-captcha__failed" role="alert">
           <p>
             โหลดการยืนยันตัวตนไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง
-            หากยังไม่ขึ้น ให้เปิดหน้านี้ใน Chrome หรือ Safari แทนเบราว์เซอร์ในแอป Facebook / LINE ข้อมูลที่กรอกยังอยู่ครบ
+            หากเปิดจากเบราว์เซอร์ในแอป LINE หรือ Facebook แล้วไม่ขึ้น แนะนำให้เปิดหน้านี้ใน Chrome หรือ Safari
+            (หมายเหตุ: การสลับแอปเบราว์เซอร์จะล้างข้อมูลร่างที่กรอกค้างไว้ แต่หากส่งใบสมัครไปแล้ว สามารถเช็กและกู้คืนข้อมูลได้ที่หน้า /status ด้วยเบอร์โทรศัพท์หรือเลขบัตรประชาชน)
           </p>
           <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={retry}>
             <RotateCw size={18} strokeWidth={1.5} aria-hidden="true" />

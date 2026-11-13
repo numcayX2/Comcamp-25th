@@ -108,10 +108,12 @@ export function SizeChips({
             />
             <span className="rw-chip__face">
               <span className="font-mono">{s}</span>
-              {chest !== null && (
+              {chest !== null ? (
                 <small className="rw-chip__chest font-mono">
                   {chest}&quot;
                 </small>
+              ) : (
+                <small className="rw-chip__chest">รออัปเดต</small>
               )}
             </span>
           </label>

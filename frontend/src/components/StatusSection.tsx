@@ -4,13 +4,16 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  Copy,
   Hourglass,
+  Info,
   ListOrdered,
   Pencil,
   Receipt,
   RotateCcw,
   Ticket,
   TriangleAlert,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -103,9 +106,6 @@ function StatusTag({ status }: { status: ApplicationStatus }) {
   return (
     <DotPill color={STATUS_DOT[status] ?? INK_SUBTLE}>
       {STATUS_LABELS[status] || status}
-      <span className="font-mono text-[11px] font-medium tabular-nums" style={{ color: INK_SUBTLE }}>
-        {status}
-      </span>
     </DotPill>
   );
 }
@@ -140,7 +140,35 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
 
   switch (app.status) {
     case 'CONFIRMED':
-      return confirmedHighlight();
+      if (slip === 'APPROVED') return confirmedHighlight();
+      if (slip === 'PENDING') {
+        return {
+          tone: 'warning',
+          icon: Clock,
+          badge: 'ยืนยันสิทธิ์แล้ว · รอตรวจสลิป',
+          title: 'สถานะยืนยันสิทธิ์แล้ว (อยู่ระหว่างรอทีมงานตรวจสลิป)',
+          body: 'ทีมงานได้รับสลิปเรียบร้อยแล้ว กำลังตรวจสอบหลักฐานการโอนเงินให้โดยเร็วที่สุด',
+        };
+      }
+      if (slip === 'REJECTED') {
+        return {
+          tone: 'danger',
+          icon: TriangleAlert,
+          badge: 'สลิปไม่ผ่าน',
+          title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
+          body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
+          toSlip: true,
+          contact: true,
+        };
+      }
+      return {
+        tone: 'success',
+        icon: CircleCheck,
+        badge: 'ยืนยันสิทธิ์แล้ว · ยังไม่พบสลิปในระบบ',
+        title: 'สถานะยืนยันสิทธิ์แล้ว (ยังไม่ได้อัปโหลดสลิปมัดจำ)',
+        body: `ระบบยังไม่มีสลิปค่ามัดจำสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป โปรดโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว รอรับข่าวสารจากทีมงานได้เลย)`,
+        toSlip: true,
+      };
     case 'REFUND_PENDING':
       return {
         tone: 'warning',
@@ -189,15 +217,27 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       break;
   }
 
-  // PASSED: what happens next depends on the slip.
-  if (slip === 'APPROVED') return confirmedHighlight();
+  // PASSED: attendanceConfirmed (confirming availability) and slipStatus (deposit review) are separate steps.
+  if (slip === 'APPROVED') {
+    return app.attendanceConfirmed
+      ? confirmedHighlight()
+      : {
+          tone: 'success',
+          icon: CircleCheck,
+          badge: 'สลิปมัดจำผ่านการตรวจสอบแล้ว',
+          title: 'สลิปผ่านการตรวจสอบแล้ว — กรุณากดยืนยันเข้าร่วมค่าย',
+          body: 'สลิปค่ามัดจำผ่านการตรวจสอบเรียบร้อยแล้ว อย่าลืมกดปุ่ม “ยืนยันว่าจะเข้าร่วมค่ายได้” ด้านล่างให้ครบถ้วนนะ',
+        };
+  }
   if (slip === 'PENDING') {
     return {
       tone: 'warning',
       icon: Clock,
-      badge: 'รอตรวจสลิป',
-      title: 'ได้รับสลิปแล้ว กำลังรอเจ้าหน้าที่ตรวจสอบ',
-      body: 'ทีมงานจะตรวจสอบและยืนยันสิทธิ์ให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ และกลับมาดูสถานะในหน้านี้ได้ทุกเมื่อ',
+      badge: 'ได้รับสลิปแล้ว · รอทีมงานตรวจสลิป',
+      title: 'ได้รับสลิปแล้ว กำลังรอทีมงานตรวจสอบ',
+      body: app.attendanceConfirmed
+        ? 'น้องยืนยันเข้าร่วมค่ายได้และส่งสลิปเรียบร้อยแล้ว ทีมงานจะตรวจสอบสลิปและยืนยันสิทธิ์สมบูรณ์ให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ'
+        : 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ ระหว่างนี้สามารถกดยืนยันว่าจะเข้าร่วมค่ายได้ที่หัวข้อด้านล่างด้วยนะ',
     };
   }
   if (slip === 'REJECTED') {
@@ -211,12 +251,22 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       contact: true,
     };
   }
+  if (app.attendanceConfirmed) {
+    return {
+      tone: 'tech',
+      icon: Ticket,
+      badge: 'ยืนยันเข้าร่วมค่ายได้แล้ว · รออัปโหลดสลิป',
+      title: 'ยืนยันว่าจะเข้าร่วมค่ายได้แล้ว — ขั้นตอนถัดไป: โอนค่าสมัครและส่งสลิป',
+      body: `บันทึกการยืนยันเข้าร่วมค่ายเรียบร้อย (คนละขั้นตอนกับการตรวจสลิป) กรุณาโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
+      toSlip: true,
+    };
+  }
   return {
     tone: 'tech',
     icon: Ticket,
     badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) ขั้นตอนต่อไปคือโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณากดยืนยันว่าจะเข้าร่วมค่ายได้ และโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
     toSlip: true,
   };
 }
@@ -225,8 +275,8 @@ function confirmedHighlight(): Highlight {
   return {
     tone: 'success',
     icon: CircleCheck,
-    badge: 'สลิปผ่านการตรวจสอบ',
-    title: 'ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์แล้ว',
+    badge: 'สลิปมัดจำผ่านการตรวจสอบแล้ว',
+    title: 'สลิปผ่านการตรวจสอบ / ยืนยันสิทธิ์สมบูรณ์แล้ว',
     body: 'น้องมีที่นั่งในค่าย ComCamp #25 เรียบร้อย ไม่ต้องดำเนินการอะไรเพิ่ม รอรับข่าวสารจากทีมงานได้เลย',
   };
 }
@@ -274,8 +324,8 @@ function StatusHighlight({ app, seats, feeText }: { app: Application; seats: num
             {h.badge}
           </span>
         </div>
-        <span className="font-mono text-[11px] font-medium uppercase tabular-nums" style={{ color: INK_MUTED }}>
-          {app.status}
+        <span className="text-xs font-semibold" style={{ color: INK_MUTED }}>
+          {STATUS_LABELS[app.status] || app.status}
         </span>
       </div>
       <div className="mt-4 min-w-0">
@@ -379,6 +429,26 @@ function validateEdit(f: EditForm): EditErrors {
   return e;
 }
 
+function VerifyCodePrompt({ onFocusCode, action }: { onFocusCode: () => void; action: string }) {
+  return (
+    <div
+      role="note"
+      className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-sm leading-6"
+      style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_MUTED }}
+    >
+      <span>กรอกเลข 4 ตัวท้ายบัตรประชาชนด้านบนก่อนจึงจะ{action}ได้</span>
+      <button
+        type="button"
+        onClick={onFocusCode}
+        className={`inline-flex min-h-11 items-center rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
+        style={{ borderColor: BORDER_INPUT, color: INK, backgroundColor: SURFACE }}
+      >
+        ไปกรอกรหัส 4 ตัวท้ายด้านบน
+      </button>
+    </div>
+  );
+}
+
 export function StatusSection() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
@@ -388,9 +458,14 @@ export function StatusSection() {
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
   const [error, setError] = useState<string | null>(null);
+  const [storedNotice, setStoredNotice] = useState<string | null>(null);
   /** A wrong verify code reported by the slip upload or attendance confirmation, shown beneath #verify-code. */
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const acctCopyTimer = useRef<number | undefined>(undefined);
+  const idCopyTimer = useRef<number | undefined>(undefined);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
   const [verifyCode, setVerifyCode] = useState('');
   const codeReady = verifyCode.length === 4;
@@ -412,6 +487,7 @@ export function StatusSection() {
   const [edit, setEdit] = useState<EditForm>({ nickname: '', school: '', province: '', grade: '', gradeOther: '', shirtSize: '' });
   const [editErrors, setEditErrors] = useState<EditErrors>({});
   const [editError, setEditError] = useState<string | null>(null);
+  const [editLiveSummary, setEditLiveSummary] = useState('');
   const [editSaved, setEditSaved] = useState(false);
   const editToggleRef = useRef<HTMLButtonElement>(null);
   const editNicknameRef = useRef<HTMLInputElement>(null);
@@ -431,6 +507,7 @@ export function StatusSection() {
     const run = ++searchRun.current;
     setBusy(true);
     setError(null);
+    setStoredNotice(null);
     setVerifyError(null);
     setVerifyCode('');
     setWithdrawOpen(false);
@@ -441,6 +518,7 @@ export function StatusSection() {
     setEditSaved(false);
     setEditError(null);
     setEditErrors({});
+    setEditLiveSummary('');
     try {
       const res = await getApplicationStatus(query);
       if (run !== searchRun.current) return;
@@ -452,6 +530,7 @@ export function StatusSection() {
         clearReceipt();
         setQ('');
         setApp(null);
+        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยเบอร์โทรศัพท์หรือเลขบัตรประชาชนได้ด้านล่าง`);
         return;
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
@@ -489,6 +568,8 @@ export function StatusSection() {
     return () => {
       active = false;
       searchRun.current++;
+      window.clearTimeout(acctCopyTimer.current);
+      window.clearTimeout(idCopyTimer.current);
     };
   }, [runSearch]);
 
@@ -537,7 +618,7 @@ export function StatusSection() {
         setVerifyError(describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง'));
         document.getElementById('verify-code')?.focus();
       } else {
-        setError(describeError(err, confirmed ? 'ยืนยันสิทธิ์ไม่สำเร็จ' : 'ยกเลิกการยืนยันไม่สำเร็จ'));
+        setError(describeError(err, confirmed ? 'ยืนยันเข้าร่วมค่ายไม่สำเร็จ' : 'ยกเลิกการยืนยันเข้าร่วมไม่สำเร็จ'));
       }
     } finally {
       setConfirmBusy(false);
@@ -549,6 +630,7 @@ export function StatusSection() {
     setEdit(formFromApp(app));
     setEditErrors({});
     setEditError(null);
+    setEditLiveSummary('');
     setEditSaved(false);
     setEditOpen(true);
   }
@@ -556,13 +638,19 @@ export function StatusSection() {
   function closeEdit() {
     if (editBusy) return;
     editRestore.current = true;
+    setEditLiveSummary('');
     setEditOpen(false);
   }
 
   function setEditField<K extends keyof EditForm>(key: K, value: EditForm[K]) {
     setEdit((f) => ({ ...f, [key]: value }));
     // Clear the message of the field being fixed; the others stay until the next save.
-    setEditErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
+    setEditErrors((e) => {
+      if (!e[key]) return e;
+      const next = { ...e, [key]: undefined };
+      if (!Object.values(next).some(Boolean)) setEditLiveSummary('');
+      return next;
+    });
   }
 
   async function onSaveProfile(e: React.FormEvent) {
@@ -571,11 +659,15 @@ export function StatusSection() {
     const errors = validateEdit(edit);
     setEditErrors(errors);
     setEditError(null);
+    const errCount = Object.values(errors).filter(Boolean).length;
     const firstBad = (['nickname', 'school', 'province', 'grade', 'gradeOther', 'shirtSize'] as const).find((k) => errors[k]);
     if (firstBad) {
+      const msg = `ข้อมูลยังไม่ครบหรือไม่ถูกต้อง ${errCount} ช่อง กรุณาตรวจสอบช่องที่มีข้อความแจ้งเตือน`;
+      setEditLiveSummary((prev) => (prev === msg ? `${msg} ` : msg));
       document.getElementById(`edit-${firstBad}`)?.focus();
       return;
     }
+    setEditLiveSummary('');
     if (!codeReady) return;
     setEditBusy(true);
     try {
@@ -671,22 +763,39 @@ export function StatusSection() {
   const onConfirm = () => setAttendance(true);
   const onCancelConfirm = () => setAttendance(false);
 
+  function focusVerifyCode() {
+    const el = document.getElementById('verify-code');
+    if (el instanceof HTMLInputElement) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.focus({ preventScroll: true });
+    }
+  }
+
   async function onCopyAccount() {
     const ok = await copyText(PAY_ACCOUNT_DIGITS);
     setAcctCopy(ok ? 'copied' : 'failed');
-    window.setTimeout(() => setAcctCopy('idle'), ok ? 2200 : 5000);
+    window.clearTimeout(acctCopyTimer.current);
+    acctCopyTimer.current = window.setTimeout(() => setAcctCopy('idle'), ok ? 2200 : 5000);
+  }
+
+  async function onCopyAppId() {
+    if (!app) return;
+    const ok = await copyText(app.id);
+    setIdCopy(ok ? 'copied' : 'failed');
+    window.clearTimeout(idCopyTimer.current);
+    idCopyTimer.current = window.setTimeout(() => setIdCopy('idle'), ok ? 2200 : 5000);
   }
 
   const slipUploaded = hasSlip(app);
-  // slipStatus comes from the server; older responses without it fall back to the applicant status.
-  const slipApproved = app?.slipStatus ? app.slipStatus === 'APPROVED' : app?.status === 'CONFIRMED';
-  const slipRejected = app?.slipStatus === 'REJECTED';
+  const slipState = slipUploaded ? (app?.slipStatus ?? 'PENDING') : null;
+  // Separate attendanceConfirmed from slip approval: never treat status === 'CONFIRMED' without an approved slip as slipApproved.
+  const slipApproved = slipState === 'APPROVED';
+  const slipRejected = slipState === 'REJECTED';
   const isEligibleForPayment = app && (app.status === 'PASSED' || app.status === 'CONFIRMED');
   const seatHeld = Boolean(app && holdsSeat(app.status));
   // A slip waiting for review or already approved means money has moved: the row must stay in the
   // staff ledger so a refund can be recorded, so only staff can cancel from then on. A slip staff
   // rejected is not money held. A missing slipStatus on an uploaded slip counts as waiting.
-  const slipState = slipUploaded ? (app?.slipStatus ?? 'PENDING') : null;
   const moneyHeld = slipState === 'PENDING' || slipState === 'APPROVED';
   const canWithdraw = Boolean(app && seatHeld && app.status !== 'CONFIRMED' && !moneyHeld);
   // Cancelling is staff-only: say so, with the way to reach them.
@@ -694,7 +803,16 @@ export function StatusSection() {
   // Secondary fields stay editable while the application holds a seat (also once CONFIRMED).
   const canEditProfile = seatHeld;
   // The code is asked for only while there is something left to do on this application.
-  const needsVerifyCode = Boolean(isEligibleForPayment && (app?.status === 'PASSED' || !slipApproved)) || canWithdraw || canEditProfile;
+  const needsVerifyCode = Boolean(isEligibleForPayment && (app?.status === 'PASSED' || !slipApproved)) || canEditProfile;
+  const verifyHint = !app
+    ? ''
+    : app.status === 'PENDING' || app.status === 'RESERVE'
+      ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป (ในสถานะนี้ยังไม่ต้องยืนยันเข้าร่วมหรือส่งสลิป)'
+      : slipApproved && app.status === 'CONFIRMED'
+        ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป'
+        : isEligibleForPayment && !slipApproved
+          ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนยืนยันเข้าร่วมค่าย ส่งสลิปโอนเงิน หรือแก้ไขข้อมูลทั่วไป'
+          : 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป';
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
@@ -733,14 +851,31 @@ export function StatusSection() {
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
             เลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร
           </label>
-          <input
-            id="status-q"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="เช่น 1103701234512 หรือ CC25-XXXXXX"
-            className="w-full rounded-none border bg-[var(--bg-card)] px-3 py-2.5 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
-            style={{ borderColor: BORDER_INPUT }}
-          />
+          <div className="relative flex items-center">
+            <input
+              ref={searchInputRef}
+              id="status-q"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="เช่น 0812345678, 1103701234512 หรือ CC25-XXXXXX"
+              className="min-h-11 w-full rounded-none border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
+              style={{ borderColor: BORDER_INPUT }}
+            />
+            {q.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQ('');
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="ล้างคำค้นหา"
+                className={`absolute right-0.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full transition-opacity hover:opacity-75 ${FOCUS_RING}`}
+                style={{ color: INK_MUTED }}
+              >
+                <X aria-hidden="true" size={18} strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
           <button
             type="submit"
             disabled={busy || !q.trim()}
@@ -751,6 +886,27 @@ export function StatusSection() {
           </button>
         </form>
       </section>
+
+      {storedNotice && (
+        <div
+          role="status"
+          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
+          style={{ backgroundColor: SURFACE, borderColor: RULE, color: INK }}
+        >
+          <p className="flex items-start gap-2.5 text-sm leading-7" style={{ color: INK_MUTED }}>
+            <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
+            <span>{storedNotice}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setStoredNotice(null)}
+            className={`-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 ${FOCUS_RING}`}
+            style={{ color: INK }}
+          >
+            ปิด
+          </button>
+        </div>
+      )}
 
       {/* ── Alerts: solid semantic bar fill for immediate visibility (AA contrast in light & dark) ── */}
       {error && (
@@ -784,7 +940,7 @@ export function StatusSection() {
           <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
             <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
             <span>
-              ใบสมัครนี้ถูกยกเลิกแล้ว (<span className="font-mono tabular-nums">{withdrawnId}</span>) คืนที่นั่งว่างเรียบร้อย
+              ใบสมัครนี้ถูกยกเลิกแล้ว (<span className="select-all whitespace-nowrap font-mono tabular-nums">{withdrawnId}</span>) คืนที่นั่งว่างเรียบร้อย
               {' '}หากเปลี่ยนใจ{' '}
               <a
                 href="/register"
@@ -812,21 +968,49 @@ export function StatusSection() {
           {/* ── 03 · Application record ─────────────────────── */}
           <section className="border bg-[var(--bg-card)] p-6 sm:p-8" style={{ borderColor: INK, backgroundColor: SURFACE }}>
             <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
-              <div>
-                <p className="font-mono text-xs font-medium uppercase" style={{ color: INK_SUBTLE }}>
-                  Record / Application No.
-                </p>
-                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums" style={{ color: INK }}>{app.id}</p>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold leading-6" style={{ color: INK_SUBTLE }}>
+                  ข้อมูลใบสมัคร · รหัสใบสมัคร
+                </h2>
+                <p className="mt-1 select-all whitespace-nowrap font-mono text-2xl font-semibold tabular-nums" style={{ color: INK }}>{app.id}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusTag status={app.status} />
-                {source && (
+                {import.meta.env.DEV && source && (
                   <span className="rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold" style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}>
                     {source}
                   </span>
                 )}
               </div>
             </div>
+
+            {isEligibleForPayment && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-b pb-4" style={{ borderColor: RULE }}>
+                <DotPill color={app.attendanceConfirmed ? 'var(--color-success)' : 'var(--color-ink-subtle)'}>
+                  1. ยืนยันเข้าร่วมค่าย: {app.attendanceConfirmed ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}
+                </DotPill>
+                <DotPill
+                  color={
+                    slipApproved
+                      ? 'var(--color-success)'
+                      : slipRejected
+                        ? 'var(--color-danger)'
+                        : slipUploaded
+                          ? 'var(--color-warning)'
+                          : 'var(--color-ink-subtle)'
+                  }
+                >
+                  2. สลิปค่ามัดจำ:{' '}
+                  {slipApproved
+                    ? 'ผ่านการตรวจสอบแล้ว'
+                    : slipRejected
+                      ? 'ไม่ผ่าน กรุณาส่งใหม่'
+                      : slipUploaded
+                        ? 'รอทีมงานตรวจสอบ'
+                        : 'ยังไม่ส่งสลิป'}
+                </DotPill>
+              </div>
+            )}
 
             <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
               {[
@@ -839,9 +1023,9 @@ export function StatusSection() {
                 ...(app.email ? [{ k: 'อีเมล', v: app.email, mono: false }] : []),
                 ...(app.province ? [{ k: 'จังหวัด', v: app.province, mono: false }] : []),
               ].map((row) => (
-                <div key={row.k} className="border-b py-3" style={{ borderColor: RULE }}>
+                <div key={row.k} className="min-w-0 border-b py-3" style={{ borderColor: RULE }}>
                   <dt className="font-mono text-[11px] font-medium uppercase" style={{ color: INK_SUBTLE }}>{row.k}</dt>
-                  <dd className={`mt-0.5 text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
+                  <dd className={`mt-0.5 select-text break-words [overflow-wrap:anywhere] text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
                     {row.v}
                   </dd>
                 </div>
@@ -863,21 +1047,21 @@ export function StatusSection() {
                   error={verifyError}
                   notPhone
                   hintId="verify-code-hint"
-                  hint="ใช้ยืนยันว่าเป็นเจ้าของใบสมัครก่อนยืนยันสิทธิ์ ส่งสลิป แก้ไขข้อมูล หรือยกเลิกใบสมัคร"
+                  hint={verifyHint}
                 />
               </div>
             )}
 
-            {/* Attendance confirmation */}
-            {app.status === 'PASSED' && (
+            {/* Attendance confirmation (separate from payment slip review) */}
+            {isEligibleForPayment && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-base font-bold leading-7" style={{ color: INK }}>การยืนยันสิทธิ์เข้าร่วมค่าย</h3>
+                    <h3 className="text-base font-bold leading-7" style={{ color: INK }}>การยืนยันว่าจะเข้าร่วมค่าย</h3>
                     <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
                       {app.attendanceConfirmed
-                        ? 'กดยืนยันสิทธิ์เข้าร่วมค่ายเรียบร้อยแล้ว'
-                        : 'โปรดยืนยันสิทธิ์เข้าร่วมค่ายและอัปโหลดหลักฐานการโอนเงิน'}
+                        ? 'ยืนยันว่าจะเข้าร่วมค่ายได้เรียบร้อยแล้ว (คนละขั้นตอนกับการตรวจสลิปมัดจำ)'
+                        : 'กรุณากดยืนยันว่าน้องสามารถเข้าร่วมค่ายตามกำหนดการได้ (คนละขั้นตอนกับการส่งสลิปด้านล่าง)'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -894,10 +1078,10 @@ export function StatusSection() {
                       ) : app.attendanceConfirmed ? (
                         <>
                           <Check aria-hidden="true" size={16} strokeWidth={2} />
-                          <span>ยืนยันสิทธิ์แล้ว</span>
+                          <span>ยืนยันเข้าร่วมค่ายแล้ว</span>
                         </>
                       ) : (
-                        'ยืนยันสิทธิ์'
+                        'ยืนยันว่าจะเข้าร่วมค่ายได้'
                       )}
                     </button>
                     {app.attendanceConfirmed && (
@@ -909,11 +1093,17 @@ export function StatusSection() {
                         className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: RULE, color: INK_MUTED, backgroundColor: SURFACE }}
                       >
-                        ยกเลิก
+                        ยกเลิกการยืนยันเข้าร่วม
                       </button>
                     )}
                   </div>
                 </div>
+                {!codeReady && (
+                  <VerifyCodePrompt
+                    onFocusCode={focusVerifyCode}
+                    action={app.attendanceConfirmed ? 'ยกเลิกการยืนยันเข้าร่วม' : 'ยืนยันเข้าร่วมค่าย'}
+                  />
+                )}
               </div>
             )}
 
@@ -944,7 +1134,7 @@ export function StatusSection() {
                       ของโครงการ
                     </p>
 
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <EditField id="edit-nickname" label="ชื่อเล่น" error={editErrors.nickname}>
                         <input
                           id="edit-nickname"
@@ -1044,10 +1234,16 @@ export function StatusSection() {
                       )}
                     </div>
 
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className={editLiveSummary.trim() ? 'mt-3 text-sm font-semibold leading-7' : 'sr-only'}
+                      style={{ color: 'var(--color-danger)' }}
+                    >
+                      {editLiveSummary}
+                    </p>
                     {!codeReady && (
-                      <p className="mt-3 text-sm leading-7" style={{ color: INK_MUTED }}>
-                        กรอกเลข <span className="font-mono tabular-nums">4</span> ตัวท้ายของบัตรประชาชนด้านบนก่อนบันทึก
-                      </p>
+                      <VerifyCodePrompt onFocusCode={focusVerifyCode} action="บันทึกการแก้ไข" />
                     )}
                     {editError && (
                       <p role="alert" className="mt-3 flex items-start gap-1.5 text-sm leading-7" style={{ color: INK }}>
@@ -1119,7 +1315,7 @@ export function StatusSection() {
                       ยืนยันสละสิทธิ์ / ยกเลิกใบสมัคร
                     </h3>
                     <p id="withdraw-warn" className="mt-1 max-w-[60ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                      หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums">{app.id}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที ยกเลิกแล้วกู้คืนไม่ได้
+                      หากยกเลิก ใบสมัคร <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที ยกเลิกแล้วกู้คืนไม่ได้
                       {slipUploaded && ' หากโอนเงินไปแล้ว กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ'}
                     </p>
                     <div className="mt-3 max-w-[22rem]">
@@ -1218,7 +1414,7 @@ export function StatusSection() {
                     ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'
                     : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'}{' '}
                   หากต้องการสละสิทธิ์และขอคืนเงิน กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ พร้อมแจ้งรหัสใบสมัคร{' '}
-                  <span className="font-mono tabular-nums">{app.id}</span>
+                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
                 </p>
                 <a
                   href={FB_URL}
@@ -1255,7 +1451,7 @@ export function StatusSection() {
                   ) : slipRejected ? (
                     <DotPill color="var(--color-danger)">สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดใหม่</DotPill>
                   ) : (
-                    <DotPill color="var(--color-warning)">รอเจ้าหน้าที่ตรวจสอบ</DotPill>
+                    <DotPill color="var(--color-warning)">รอทีมงานตรวจสอบ</DotPill>
                   )
                 ) : (
                   <DotPill color="var(--color-ink-subtle)">ยังไม่ได้ส่งสลิป</DotPill>
@@ -1268,24 +1464,59 @@ export function StatusSection() {
                     โอนค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท · {PAY_ACCOUNT.bank}
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <p className="font-mono text-2xl font-medium tabular-nums" style={{ color: INK }}>{PAY_ACCOUNT.number}</p>
+                    <p className="select-all whitespace-nowrap font-mono text-2xl font-medium tabular-nums" style={{ color: INK }}>
+                      {PAY_ACCOUNT.number}
+                    </p>
                     <button
                       type="button"
                       onClick={onCopyAccount}
-                      className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
+                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
                       style={{ borderColor: BORDER_INPUT, color: INK }}
                     >
-                      {acctCopy === 'copied' ? 'คัดลอกเลขบัญชีแล้ว' : 'คัดลอกเลขบัญชี'}
+                      {acctCopy === 'copied' ? (
+                        <Check aria-hidden="true" size={16} strokeWidth={2} />
+                      ) : (
+                        <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+                      )}
+                      <span>{acctCopy === 'copied' ? 'คัดลอกเลขบัญชีแล้ว' : 'คัดลอกเลขบัญชี'}</span>
                     </button>
                   </div>
                   <p role="status" aria-live="polite" className="min-h-[1.4em] text-sm" style={{ color: INK_MUTED }}>
                     {acctCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่เลขบัญชีแล้วเลือกคัดลอก'}
                   </p>
-                  <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
+                  <p className="mt-1 select-text text-sm leading-7" style={{ color: INK_MUTED }}>
                     ชื่อบัญชี {PAY_ACCOUNT.name} ({PAY_ACCOUNT.holders})
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
+                      อ้างอิงตอนโอน (บันทึกช่วยจำ):{' '}
+                      <span className="select-all whitespace-nowrap font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                        {app.id}
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onCopyAppId}
+                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
+                      style={{ borderColor: BORDER_INPUT, color: INK }}
+                    >
+                      {idCopy === 'copied' ? (
+                        <Check aria-hidden="true" size={16} strokeWidth={2} />
+                      ) : (
+                        <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+                      )}
+                      <span>{idCopy === 'copied' ? 'คัดลอกรหัสใบสมัครแล้ว' : 'คัดลอกรหัสใบสมัคร'}</span>
+                    </button>
+                  </div>
+                  <p role="status" aria-live="polite" className="min-h-[1.4em] text-sm" style={{ color: INK_MUTED }}>
+                    {idCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่รหัสใบสมัครแล้วเลือกคัดลอก'}
                   </p>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>{NO_QR_NOTE}</p>
                 </div>
+              )}
+
+              {!slipApproved && !codeReady && (
+                <VerifyCodePrompt onFocusCode={focusVerifyCode} action="ส่งหลักฐานสลิป" />
               )}
 
               <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }}>

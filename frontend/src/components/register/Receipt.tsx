@@ -131,7 +131,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
         ยกเลิกใบสมัคร
       </h3>
       <p id={ids.warn} className="rw-withdraw__warn">
-        หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums">{appId}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที
+        หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums whitespace-nowrap select-all">{appId}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที
         ยกเลิกแล้วกู้คืนไม่ได้ แต่สมัครใหม่ได้หากยังมีที่นั่งว่าง
       </p>
       <label className="rw-label" htmlFor={ids.input}>
@@ -192,8 +192,10 @@ export function Receipt({
 }) {
   const [copy, setCopy] = useState<CopyState>('idle');
   const [acctCopy, setAcctCopy] = useState<CopyState>('idle');
+  const [refCopy, setRefCopy] = useState<CopyState>('idle');
   const timer = useRef<number | undefined>(undefined);
   const acctTimer = useRef<number | undefined>(undefined);
+  const refTimer = useRef<number | undefined>(undefined);
   // Slip + application status synced from the server, so a receipt restored after a refresh is accurate.
   const [slip, setSlip] = useState<SlipStatus | null>(null);
   const [appStatus, setAppStatus] = useState<ApplicationStatus | null>(null);
@@ -233,6 +235,7 @@ export function Receipt({
     () => () => {
       window.clearTimeout(timer.current);
       window.clearTimeout(acctTimer.current);
+      window.clearTimeout(refTimer.current);
     },
     [],
   );
@@ -242,6 +245,13 @@ export function Receipt({
     setCopy(ok ? 'copied' : 'failed');
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setCopy('idle'), ok ? 2200 : 5000);
+  }
+
+  async function onCopyRef() {
+    const ok = await copyText(appId);
+    setRefCopy(ok ? 'copied' : 'failed');
+    window.clearTimeout(refTimer.current);
+    refTimer.current = window.setTimeout(() => setRefCopy('idle'), ok ? 2200 : 5000);
   }
 
   /** Copies the digits only, so banking apps accept the paste. */
@@ -285,11 +295,11 @@ export function Receipt({
 
       <section className="rw-block" aria-label="รหัสใบสมัคร">
         <p className="rw-block__label">รหัสใบสมัคร</p>
-        <p className="rw-id" data-app-id>{appId}</p>
+        <p className="rw-id whitespace-nowrap select-all" data-app-id>{appId}</p>
         <div className="rw-copyrow">
           <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={onCopy}>
             {copy === 'copied' ? <Check size={18} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={18} strokeWidth={1.5} aria-hidden="true" />}
-            {copy === 'copied' ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}
+            {copy === 'copied' ? 'คัดลอกแล้ว' : 'คัดลอกรหัสใบสมัคร'}
           </button>
           <p className="rw-copyrow__msg" role="status" aria-live="polite">
             {copy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่รหัสแล้วเลือกคัดลอก'}
@@ -314,7 +324,7 @@ export function Receipt({
           <div className="rw-ticket__stub">
           <div className="rw-ticket__body">
             <p className="rw-ticket__label">เลขที่บัญชี · {PAY_ACCOUNT.bank}</p>
-            <p className="rw-ticket__acct font-mono tabular-nums">{PAY_ACCOUNT.number}</p>
+            <p className="rw-ticket__acct font-mono tabular-nums whitespace-nowrap select-all">{PAY_ACCOUNT.number}</p>
             <div className="rw-copyrow rw-copyrow--tight">
               <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={onCopyAccount}>
                 {acctCopy === 'copied' ? <Check size={18} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={18} strokeWidth={1.5} aria-hidden="true" />}
@@ -336,8 +346,17 @@ export function Receipt({
               <div>
                 <dt>อ้างอิง</dt>
                 <dd>
-                  <span className="font-mono tabular-nums">{appId}</span>
+                  <span className="font-mono tabular-nums whitespace-nowrap select-all">{appId}</span>
                   <span className="rw-ticket__holders">ใส่ในบันทึกช่วยจำตอนโอน (ถ้าแอปธนาคารให้ใส่ได้)</span>
+                  <div className="rw-copyrow rw-copyrow--tight">
+                    <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={onCopyRef}>
+                      {refCopy === 'copied' ? <Check size={18} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={18} strokeWidth={1.5} aria-hidden="true" />}
+                      {refCopy === 'copied' ? 'คัดลอกรหัสใบสมัครแล้ว' : 'คัดลอกรหัสใบสมัคร'}
+                    </button>
+                    <p className="rw-copyrow__msg" role="status" aria-live="polite">
+                      {refCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่รหัสใบสมัครแล้วเลือกคัดลอก'}
+                    </p>
+                  </div>
                 </dd>
               </div>
             </dl>
@@ -354,7 +373,11 @@ export function Receipt({
         <h3 id="rw-next-title" className="rw-block__title">ขั้นตอนถัดไป</h3>
         <ol className="rw-steps">
           <li>โอนเงินตามรายละเอียดด้านบน แล้วบันทึกหรือแคปหน้าจอสลิป</li>
-          <li>แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประชาชน หรือเบอร์โทรศัพท์</li>
+          <li>
+            แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประชาชน หรือเบอร์โทรศัพท์
+            (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป แต่สามารถใช้เบอร์โทรหรือเลขบัตรประชาชนค้นหาใบสมัครที่ส่งแล้วได้ที่หน้า{' '}
+            <span className="font-mono">/status</span>)
+          </li>
           <li>รอทีมงานตรวจสอบสลิปและยืนยันสิทธิ์ ติดตามประกาศได้ที่หน้าตรวจสอบสถานะและเพจ Facebook ของโครงการ</li>
         </ol>
         <div className="rw-actions">
