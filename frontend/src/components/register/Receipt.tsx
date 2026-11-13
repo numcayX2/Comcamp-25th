@@ -14,6 +14,7 @@ import {
 import { cleanNationalIdInput, describeVerifyLock } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
 import { FB_URL, FEE_TEXT, RECEIPT_META, RECEIPT_STEP, isValidThaiNationalID } from './model';
+import { clearReceipt } from './storage';
 import { SlipBlock } from './SlipBlock';
 import { StepHeader } from './parts';
 
@@ -178,12 +179,14 @@ export function Receipt({
   appId,
   source,
   showSource,
+  feeText = FEE_TEXT,
   headingRef,
   onWithdrawn,
 }: {
   appId: string;
   source: ApiSource | null;
   showSource: boolean;
+  feeText?: string;
   headingRef: Ref<HTMLHeadingElement>;
   onWithdrawn: (id: string) => void;
 }) {
@@ -195,17 +198,24 @@ export function Receipt({
   const [slip, setSlip] = useState<SlipStatus | null>(null);
   const [appStatus, setAppStatus] = useState<ApplicationStatus | null>(null);
   const [synced, setSynced] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setSynced(false);
+    setNotFound(false);
     getApplicationStatus(appId)
       .then((res) => {
         if (!alive) return;
         setAppStatus(res.data.status);
         setSlip(hasSlip(res.data) ? (res.data.slipStatus ?? 'PENDING') : null);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (!alive) return;
+        if (err instanceof ApiHttpError && err.status === 404) {
+          clearReceipt();
+          setNotFound(true);
+        }
         /* offline: the upload form still works and the server re-checks every rule */
       })
       .finally(() => {
@@ -242,6 +252,28 @@ export function Receipt({
     acctTimer.current = window.setTimeout(() => setAcctCopy('idle'), ok ? 2200 : 5000);
   }
 
+  if (notFound) {
+    return (
+      <div className="rw-receipt">
+        <StepHeader
+          no={RECEIPT_STEP + 1}
+          title="ไม่พบใบสมัครนี้ในระบบ"
+          lead={`ใบสมัครรหัส ${appId} อาจถูกยกเลิกหรือนำออกจากระบบแล้ว`}
+          headingRef={headingRef}
+        />
+        <div className="rw-actions">
+          <button type="button" className="rw-btn rw-btn--primary" onClick={() => onWithdrawn(appId)}>
+            กลับไปหน้าสมัครค่าย
+          </button>
+          <a href="/status" className="rw-btn rw-btn--ghost">
+            ไปหน้าตรวจสอบสถานะ
+            <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rw-receipt">
       <StepHeader
@@ -274,7 +306,7 @@ export function Receipt({
           <header className="rw-ticket__head">
             <p className="rw-ticket__label">ยอดที่ต้องโอน</p>
             <p className="rw-ticket__amount">
-              <span className="font-mono tabular-nums">{FEE_TEXT}</span>
+              <span className="font-mono tabular-nums">{feeText}</span>
               <span className="rw-ticket__unit">บาท</span>
             </p>
           </header>
@@ -326,7 +358,7 @@ export function Receipt({
           <li>รอทีมงานตรวจสอบสลิปและยืนยันสิทธิ์ ติดตามประกาศได้ที่หน้าตรวจสอบสถานะและเพจ Facebook ของโครงการ</li>
         </ol>
         <div className="rw-actions">
-          <a href="/status" className="rw-btn rw-btn--ghost">
+          <a href={`/status?id=${encodeURIComponent(appId)}`} className="rw-btn rw-btn--ghost">
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>

@@ -5,7 +5,8 @@
  * drop input focus on every keystroke.
  */
 import { useRef, type ReactNode, type Ref } from 'react';
-import { pad2 } from './model';
+import { TriangleAlert } from 'lucide-react';
+import { onlyDigits, pad2 } from './model';
 
 export function StepHeader({
   no,
@@ -36,10 +37,7 @@ export function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
     <p id={`${id}-err`} className="rw-err">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-        <circle cx="8" cy="8" r="6.5" />
-        <path d="M8 4.5v4M8 11v.01" />
-      </svg>
+      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
       <span>{message}</span>
     </p>
   );
@@ -141,12 +139,12 @@ export function TextField({
         onChange={(e) => {
           const el = e.target;
           const raw = el.value;
-          const next = digits ? raw.replace(/\D/g, '').slice(0, digits) : raw;
+          const next = digits ? onlyDigits(raw).slice(0, digits) : raw;
           onChange(next);
           if (groups) {
             // Hyphens are re-inserted by formatting, so put the caret back after the same digit.
             const caret = el.selectionStart ?? raw.length;
-            const before = raw.slice(0, caret).replace(/\D/g, '').length;
+            const before = onlyDigits(raw.slice(0, caret)).length;
             const text = formatGroups(next, groups);
             let pos = 0;
             for (let seen = 0; pos < text.length && seen < before; pos++) if (/\d/.test(text[pos])) seen++;

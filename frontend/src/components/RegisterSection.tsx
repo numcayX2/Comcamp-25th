@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Check, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Clock, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchPublicSettings,
@@ -29,6 +29,7 @@ import {
   gradeValue,
   LAST_FORM_STEP,
   MOCK_FORM,
+  MOTIVATION_MAX,
   RECEIPT_META,
   RECEIPT_STEP,
   SEATS,
@@ -37,6 +38,7 @@ import {
   STEPS,
   TOTAL_STEPS,
   firstErrorKey,
+  formatCampFee,
   formatNationalId,
   formatPhone,
   validateField,
@@ -95,6 +97,35 @@ const isTextEntry = (el: EventTarget | null) =>
 const timeText = (ms: number) =>
   new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+function formatThaiOpenDateTime(ms: number): string {
+  const d = new Date(ms);
+  const datePart = d.toLocaleDateString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Bangkok',
+  });
+  const timePart = d.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+  return `${datePart} เวลา ${timePart} น.`;
+}
+
+function formatCountdown(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const hh = String(hours).padStart(2, '0');
+  const mm = String(mins).padStart(2, '0');
+  const ss = String(secs).padStart(2, '0');
+  return days > 0 ? `${days} วัน ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
 /* Cloudflare Turnstile (bot check on submit). The public site key is inlined by Astro at build time.
    widget: render it and require a token. dev-skip: `astro dev` without a key, the API bypasses the
    check too. missing-key: a production build without a key can never pass the server's check. */
@@ -119,27 +150,47 @@ function describeSubmitError(err: unknown): string {
         return 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ';
       case 'IDEMPOTENCY_KEY_REUSED':
         return 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประชาชนอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประชาชนให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)';
-      case 'RATE_LIMITED':
-        return 'มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอสักครู่แล้วกดส่งอีกครั้ง';
+      case 'RATE_LIMITED': {
+        const wait = err.retryAfterSeconds ? ` ${err.retryAfterSeconds} วินาที` : 'สักครู่';
+        return `มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอ${wait}แล้วกดส่งอีกครั้ง`;
+      }
+      case 'REGISTRATION_CLOSED':
+        return 'ขณะนี้ปิดรับใบสมัครแล้ว ใบสมัครยังไม่ถูกบันทึก หากมีข้อสงสัยติดต่อทีมงานผ่านเพจ Facebook ของโครงการ';
       case 'QUOTA_FULL':
         return 'ที่นั่งเต็มจำนวนพอดีในจังหวะที่ส่ง ใบสมัครจึงยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ หากมีผู้สละสิทธิ์ระบบจะเปิดรับเพิ่มอัตโนมัติ สามารถกดส่งอีกครั้งได้ทันที';
       case 'CAPTCHA_FAILED':
         return CAPTCHA_FAILED_MESSAGE;
+      case 'PAYLOAD_TOO_LARGE':
+        return 'ขนาดข้อมูลที่ส่งเกินกว่าที่ระบบกำหนด กรุณาลดความยาวข้อความในช่องความสนใจแล้วลองใหม่อีกครั้ง';
       case 'SERVICE_UNAVAILABLE':
         // 503: the midnight queue timed out, settings were unreachable, or Cloudflare could not be
         // asked to verify the captcha. Nothing was saved.
         return 'ระบบยุ่งหรือตรวจสอบการยืนยันตัวตนไม่ได้ชั่วคราว (อาจมีผู้สมัครพร้อมกันจำนวนมาก) ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
-      case 'VALIDATION_ERROR':
-        if (err.message.includes('national ID') || err.message.includes('check digit')) {
+      case 'VALIDATION_ERROR': {
+        const msg = err.message.toLowerCase();
+        if (msg.includes('national id') || msg.includes('check digit')) {
           return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
         }
-        if (err.message.includes('phone')) {
+        if (msg.includes('phone')) {
           return 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
         }
-        if (err.message.includes('shirt')) {
+        if (msg.includes('email')) {
+          return 'รูปแบบอีเมลไม่ถูกต้อง กรุณาตรวจสอบอีเมลอีกครั้ง';
+        }
+        if (msg.includes('shirt')) {
           return 'ขนาดเสื้อไม่ถูกต้อง กรุณาเลือกไซส์ใหม่อีกครั้ง';
         }
+        if (msg.includes('grade')) {
+          return 'ระดับชั้นไม่ถูกต้อง กรุณาตรวจสอบข้อมูลระดับชั้นอีกครั้ง';
+        }
+        if (msg.includes('idempotency')) {
+          return 'รหัสอ้างอิงคำขอไม่ถูกต้อง กรุณารีเฟรชหน้านี้แล้วลองส่งใหม่อีกครั้ง';
+        }
+        if (msg.includes('too long') || msg.includes('character')) {
+          return 'ข้อความบางช่องยาวเกินกำหนด กรุณาตรวจสอบความยาวข้อมูลแล้วลองส่งอีกครั้ง';
+        }
         return 'ข้อมูลที่กรอกไม่ผ่านการตรวจสอบ กรุณาตรวจทานข้อมูลในแต่ละขั้นตอนแล้วลองส่งอีกครั้ง';
+      }
     }
     if (err.status === 403) return 'ระบบปิดรับใบสมัครในขณะนี้ ใบสมัครยังไม่ถูกบันทึก';
     if (err.status >= 400 && err.status < 500)
@@ -312,6 +363,11 @@ export function RegisterSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const noticeFocus = useRef(false);
+  const [seats, setSeats] = useState(SEATS);
+  const [feeText, setFeeText] = useState(FEE_TEXT);
+  const [opensAtMs, setOpensAtMs] = useState<number | null>(null);
+  const [offsetMs, setOffsetMs] = useState(0);
+  const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const submittingRef = useRef(false);
@@ -325,7 +381,7 @@ export function RegisterSection() {
   const isDev = Boolean(import.meta.env.DEV);
 
   /** Polite screen-reader announcement; a trailing NBSP forces a repeat of the same text to be re-read. */
-  const announce = (msg: string) => setLive((prev) => (prev === msg ? `${msg} ` : msg));
+  const announce = (msg: string) => setLive((prev) => (prev === msg ? `${msg} ` : msg));
 
   /* Registration gate — server-authoritative. Query overrides are dev-only. */
   const checkGate = useCallback(function checkGateNow(fresh = false) {
@@ -333,29 +389,53 @@ export function RegisterSection() {
     window.clearTimeout(openTimer.current);
     setGate('checking');
     fetchPublicSettings({ fresh })
-      .then(({ settings, offsetMs, live: reachable }) => {
+      .then(({ settings, offsetMs: serverOffset, live: reachable }) => {
         if (run !== gateRun.current) return;
         if (!reachable) return setGate('error');
-        const serverNow = Date.now() + offsetMs;
-        const opensAt = new Date(settings.registrationOpenAt).getTime();
+        const serverNow = Date.now() + serverOffset;
+        const parsedOpens = new Date(settings.registrationOpenAt).getTime();
+        const opensAt = Number.isFinite(parsedOpens) ? parsedOpens : null;
         const capacity = settings.maxCapacity && settings.maxCapacity > 0 ? settings.maxCapacity : SEATS;
         const remaining = Math.max(0, capacity - (settings.currentCount ?? 0));
 
-        if (serverNow < opensAt && !settings.isOpen) {
+        setSeats(capacity);
+        if (settings.campFee !== null && settings.campFee !== undefined) {
+          setFeeText(formatCampFee(settings.campFee));
+        }
+        setOffsetMs(serverOffset);
+        setOpensAtMs(opensAt);
+
+        if (opensAt !== null && serverNow < opensAt && !settings.isOpen) {
           setGate('pre_open');
+          setCountdownMs(Math.max(0, opensAt - serverNow));
           // Students wait on this page for 00:00, and the copy promises the form opens by itself:
           // re-check when the server's opening time arrives. The 200–2000 ms jitter keeps every
           // waiting tab from asking at the same instant (AGENTS.md §8, Midnight Zero Jitter Buffer).
           const jitter = 200 + Math.random() * 1800;
           openTimer.current = window.setTimeout(() => checkGateNow(true), Math.min(opensAt - serverNow + jitter, MAX_TIMER_MS));
-        } else if (remaining <= 0) setGate('full');
-        else if (!settings.isOpen) setGate('closed');
-        else setGate('open');
+        } else if (!settings.isOpen) {
+          setGate('closed');
+        } else if (remaining <= 0) {
+          setGate('full');
+        } else {
+          setGate('open');
+        }
       })
       .catch(() => {
         if (run === gateRun.current) setGate('error');
       });
   }, []);
+
+  useEffect(() => {
+    if (gate !== 'pre_open' || opensAtMs === null) {
+      setCountdownMs(null);
+      return;
+    }
+    const tick = () => setCountdownMs(Math.max(0, opensAtMs - (Date.now() + offsetMs)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [gate, opensAtMs, offsetMs]);
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -586,6 +666,7 @@ export function RegisterSection() {
       if (err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED') {
         setCaptchaError(CAPTCHA_FAILED_MESSAGE);
         announce(CAPTCHA_FAILED_MESSAGE);
+        captchaRef.current?.focus();
       } else {
         setError(describeSubmitError(err));
         window.scrollTo({ top: 0 });
@@ -725,10 +806,7 @@ export function RegisterSection() {
             ) : (
               <>
                 <p className="rw-draft__text">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="8" cy="8" r="6.5" />
-                    <path d="M8 4.5V8l2.2 1.4" />
-                  </svg>
+                  <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
                   <span>
                   {restoredAt ? (
                     <>
@@ -934,15 +1012,28 @@ export function RegisterSection() {
       case 3:
         return (
           <div className="rw-fields">
-            <FieldShell id="motivation" label="ความสนใจด้าน IoT / ไมโครคอนโทรลเลอร์" hint="ไม่บังคับ">
+            <FieldShell
+              id="motivation"
+              label="ความสนใจด้าน IoT / ไมโครคอนโทรลเลอร์"
+              hint={
+                <>
+                  ไม่บังคับ · <span className="font-mono tabular-nums">{form.motivation.trim().length}/{MOTIVATION_MAX}</span>
+                </>
+              }
+              error={errors.motivation}
+            >
               <textarea
                 id="motivation"
                 name="motivation"
                 className="rw-input rw-textarea"
                 rows={7}
+                maxLength={MOTIVATION_MAX}
                 value={form.motivation}
                 onChange={(e) => set('motivation', e.target.value)}
+                onBlur={() => blur('motivation')}
                 onKeyDown={onTextareaKey}
+                aria-invalid={errors.motivation ? true : undefined}
+                aria-describedby={errors.motivation ? 'motivation-err' : undefined}
                 placeholder="เช่น อยากลองต่อวงจรเซนเซอร์ หรืออยากทำหน้าเว็บสั่งงานบอร์ดผ่านมือถือ"
               />
             </FieldShell>
@@ -991,18 +1082,18 @@ export function RegisterSection() {
                   ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย
                 </h3>
                 <p className="rw-fee__amount">
-                  <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท
+                  <span className="font-mono tabular-nums">{feeText}</span> บาท
                 </p>
               </div>
               <ol className="rw-fee__steps">
                 <li>
                   <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที</strong>
-                  มาก่อนได้ก่อน จำกัด <span className="font-mono tabular-nums">{SEATS}</span> ที่นั่ง เมื่อส่งสำเร็จจะได้รหัส{' '}
+                  มาก่อนได้ก่อน จำกัด <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง เมื่อส่งสำเร็จจะได้รหัส{' '}
                   <span className="font-mono">CC25-XXXXXX</span>
                 </li>
                 <li>
                   <strong>
-                    โอนค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท หลังส่งใบสมัคร
+                    โอนค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท หลังส่งใบสมัคร
                   </strong>
                   หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) ยังไม่ต้องโอนก่อนกดส่ง
                 </li>
@@ -1028,7 +1119,7 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน และดำเนินกิจกรรมค่ายเท่านั้น
-                และรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{FEE_TEXT}</span> บาท (ชำระหลังส่งใบสมัคร)
+                และรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท (ชำระหลังส่งใบสมัคร)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
@@ -1046,8 +1137,7 @@ export function RegisterSection() {
                 error={captchaError}
                 onToken={(token) => {
                   setTurnstileToken(token ?? '');
-                  // Only the "verify first" hint clears itself; a rejection message stays until the next send.
-                  if (token) setCaptchaError((e) => (e === CAPTCHA_MISSING_MESSAGE ? null : e));
+                  if (token) setCaptchaError(null);
                 }}
               />
             )}
@@ -1168,11 +1258,11 @@ export function RegisterSection() {
 
         <p className="rw-colophon">
           <span className="nowrap">
-            ComCamp <span className="font-mono">#25</span> · <span className="font-mono">{SEATS}</span> ที่นั่ง
+            ComCamp <span className="font-mono">#25</span> · <span className="font-mono">{seats}</span> ที่นั่ง
           </span>{' '}
           ·{' '}
           <span className="nowrap">
-            ค่าสมัคร <span className="font-mono">{FEE_TEXT}</span> บาท
+            ค่าสมัคร <span className="font-mono">{feeText}</span> บาท
           </span>
         </p>
       </aside>
@@ -1228,15 +1318,25 @@ export function RegisterSection() {
             {noticeBanner}
             {errorBanner}
             {appId ? (
-              <Receipt appId={appId} source={source} showSource={isDev} headingRef={headingRef} onWithdrawn={onWithdrawn} />
+              <Receipt appId={appId} feeText={feeText} source={source} showSource={isDev} headingRef={headingRef} onWithdrawn={onWithdrawn} />
             ) : gate === 'checking' ? (
               <p className="rw-checking" role="status">
                 กำลังตรวจสอบสถานะการรับสมัคร…
               </p>
             ) : (
               <section className="rw-gate" role="status">
-                <h2 className="rw-gate__title">{GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].title}</h2>
+                <h2 className="rw-gate__title">
+                  {gate === 'pre_open' && opensAtMs !== null
+                    ? `ยังไม่เปิดรับสมัคร — เปิดรับ ${formatThaiOpenDateTime(opensAtMs)}`
+                    : GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].title}
+                </h2>
                 <p className="rw-gate__body">{GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].body}</p>
+                {gate === 'pre_open' && countdownMs !== null && (
+                  <p className="rw-gate__body">
+                    เปิดรับสมัครอัตโนมัติในอีก{' '}
+                    <span className="font-mono tabular-nums">{formatCountdown(countdownMs)}</span>
+                  </p>
+                )}
                 <div className="rw-actions rw-actions--tight">
                   {/* Every state shown here (pre_open, full, closed, error) can change on the server. */}
                   <button type="button" className="rw-btn rw-btn--primary rw-btn--sm" onClick={() => checkGate(true)}>

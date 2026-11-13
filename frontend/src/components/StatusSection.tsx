@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Check,
   CircleCheck,
   CircleX,
   Clock,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import {
   ApiHttpError,
+  fetchPublicSettings,
   getApplicationStatus,
   confirmAttendance,
   updateOwnProfile,
@@ -28,16 +30,23 @@ import {
 } from '../lib/api';
 import {
   FB_URL,
+  FEE_TEXT,
   GRADES,
   GRADE_OTHER,
   GRADE_OTHER_MAX,
+  NICKNAME_MAX,
+  PROVINCE_MAX,
+  SCHOOL_MAX,
+  SEATS,
   SHIRT_SIZES,
   SIZE_CHEST,
+  formatCampFee,
   gradeValue,
   isValidThaiNationalID,
   splitGrade,
   validateGradeFields,
 } from './register/model';
+import { clearReceipt, loadReceipt } from './register/storage';
 import { cleanNationalIdInput, describeApiError as describeError, describeVerifyLock } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
@@ -84,9 +93,7 @@ function DotPill({ color, mono, children }: { color: string; mono?: boolean; chi
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${mono ? 'font-mono tabular-nums' : ''}`}
       style={{ color: INK, backgroundColor: `color-mix(in srgb, ${color} 16%, ${SURFACE})` }}
     >
-      <span aria-hidden="true" className="text-[10px] leading-none" style={{ color }}>
-        ●
-      </span>
+      <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       {children}
     </span>
   );
@@ -94,7 +101,7 @@ function DotPill({ color, mono, children }: { color: string; mono?: boolean; chi
 
 function StatusTag({ status }: { status: ApplicationStatus }) {
   return (
-    <DotPill color={STATUS_DOT[status]}>
+    <DotPill color={STATUS_DOT[status] ?? INK_SUBTLE}>
       {STATUS_LABELS[status] || status}
       <span className="font-mono text-[11px] font-medium tabular-nums" style={{ color: INK_SUBTLE }}>
         {status}
@@ -128,7 +135,7 @@ interface Highlight {
 }
 
 /** One place that decides the headline for every status / slip combination. */
-function describeHighlight(app: Application): Highlight {
+function describeHighlight(app: Application, seats: number, feeText: string): Highlight {
   const slip = hasSlip(app) ? (app.slipStatus ?? 'PENDING') : null;
 
   switch (app.status) {
@@ -199,7 +206,7 @@ function describeHighlight(app: Application): Highlight {
       icon: TriangleAlert,
       badge: 'สลิปไม่ผ่าน',
       title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-      body: 'โปรดตรวจสอบยอดโอน 1,000 บาทและความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง',
+      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
       toSlip: true,
       contact: true,
     };
@@ -209,7 +216,7 @@ function describeHighlight(app: Application): Highlight {
     icon: Ticket,
     badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: 'ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด 30 ที่นั่ง) ขั้นตอนต่อไปคือโอนค่าสมัคร 1,000 บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์',
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) ขั้นตอนต่อไปคือโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
     toSlip: true,
   };
 }
@@ -233,8 +240,8 @@ const FOCUS_RING =
  * in ink (AA in both themes), and colour is never the only cue: icon, badge, state token and
  * headline all say the same thing. No side stripe, no icon bubble (AGENTS.md section 6.1).
  */
-function StatusHighlight({ app }: { app: Application }) {
-  const h = describeHighlight(app);
+function StatusHighlight({ app, seats, feeText }: { app: Application; seats: number; feeText: string }) {
+  const h = describeHighlight(app, seats, feeText);
   const color = TONE_COLOR[h.tone];
   const Icon = h.icon;
   return (
@@ -263,9 +270,7 @@ function StatusHighlight({ app }: { app: Application }) {
             className="inline-flex items-center gap-2 rounded-full border-0 px-3 py-1 text-sm font-semibold"
             style={{ color: INK, backgroundColor: `color-mix(in srgb, ${color} 22%, ${SURFACE})` }}
           >
-            <span aria-hidden="true" className="text-[10px] leading-none" style={{ color }}>
-              ●
-            </span>
+            <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
             {h.badge}
           </span>
         </div>
@@ -285,7 +290,7 @@ function StatusHighlight({ app }: { app: Application }) {
               {h.toSlip && (
                 <a
                   href="#slip-section"
-                  className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 ${FOCUS_RING}`}
+                  className={`inline-flex min-h-11 items-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 ${FOCUS_RING}`}
                   style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                 >
                   ไปส่งหลักฐานการชำระเงิน
@@ -296,7 +301,7 @@ function StatusHighlight({ app }: { app: Application }) {
                   href={FB_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
+                  className={`inline-flex min-h-11 items-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
                   style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                 >
                   ติดต่อทีมงานทาง Facebook
@@ -363,8 +368,11 @@ function formFromApp(app: Application): EditForm {
 function validateEdit(f: EditForm): EditErrors {
   const e: EditErrors = {};
   if (!f.nickname.trim()) e.nickname = 'กรุณากรอกชื่อเล่น';
+  else if (f.nickname.trim().length > NICKNAME_MAX) e.nickname = `ชื่อเล่นต้องไม่เกิน ${NICKNAME_MAX} ตัวอักษร`;
   if (!f.school.trim()) e.school = 'กรุณากรอกชื่อโรงเรียนหรือสถานศึกษา';
+  else if (f.school.trim().length > SCHOOL_MAX) e.school = `ชื่อสถานศึกษาต้องไม่เกิน ${SCHOOL_MAX} ตัวอักษร`;
   if (!f.province.trim()) e.province = 'กรุณากรอกจังหวัด';
+  else if (f.province.trim().length > PROVINCE_MAX) e.province = `ชื่อจังหวัดต้องไม่เกิน ${PROVINCE_MAX} ตัวอักษร`;
   const g = validateGradeFields(f.grade, f.gradeOther);
   if (g) e[f.grade === GRADE_OTHER ? 'gradeOther' : 'grade'] = g;
   if (!f.shirtSize) e.shirtSize = 'กรุณาเลือกไซส์เสื้อ';
@@ -377,8 +385,10 @@ export function StatusSection() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [app, setApp] = useState<Application | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
+  const [seats, setSeats] = useState(SEATS);
+  const [feeText, setFeeText] = useState(FEE_TEXT);
   const [error, setError] = useState<string | null>(null);
-  /** A wrong verify code reported by the slip upload, shown beneath the shared #verify-code field. */
+  /** A wrong verify code reported by the slip upload or attendance confirmation, shown beneath #verify-code. */
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
@@ -412,6 +422,75 @@ export function StatusSection() {
   const withdrawnRef = useRef<HTMLDivElement>(null);
   /** Focus goes back to the toggle only when the panel was closed by the user. */
   const withdrawRestore = useRef(false);
+  const searchRun = useRef(0);
+
+  const runSearch = useCallback(async (rawQuery: string, opts?: { fromStoredReceipt?: boolean }) => {
+    // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
+    const query = normalizeLookupQuery(rawQuery);
+    if (!query) return;
+    const run = ++searchRun.current;
+    setBusy(true);
+    setError(null);
+    setVerifyError(null);
+    setVerifyCode('');
+    setWithdrawOpen(false);
+    setWithdrawNid('');
+    setWithdrawErr(null);
+    setWithdrawnId(null);
+    setEditOpen(false);
+    setEditSaved(false);
+    setEditError(null);
+    setEditErrors({});
+    try {
+      const res = await getApplicationStatus(query);
+      if (run !== searchRun.current) return;
+      setApp(res.data);
+      setSource(res.source);
+    } catch (err) {
+      if (run !== searchRun.current) return;
+      if (opts?.fromStoredReceipt && err instanceof ApiHttpError && err.status === 404) {
+        clearReceipt();
+        setQ('');
+        setApp(null);
+        return;
+      }
+      setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
+      setApp(null);
+    } finally {
+      if (run === searchRun.current) setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchPublicSettings()
+      .then(({ settings }) => {
+        if (!active) return;
+        if (settings.maxCapacity && settings.maxCapacity > 0) setSeats(settings.maxCapacity);
+        if (settings.campFee !== null && settings.campFee !== undefined) setFeeText(formatCampFee(settings.campFee));
+      })
+      .catch(() => {
+        /* Fallback to SEATS / FEE_TEXT constants when offline. */
+      });
+
+    const params = new URLSearchParams(window.location.search);
+    const urlQuery = (params.get('q') ?? params.get('id') ?? '').trim();
+    if (urlQuery) {
+      setQ(urlQuery);
+      void runSearch(urlQuery);
+    } else {
+      const receipt = loadReceipt();
+      if (receipt?.id) {
+        setQ(receipt.id);
+        void runSearch(receipt.id, { fromStoredReceipt: true });
+      }
+    }
+
+    return () => {
+      active = false;
+      searchRun.current++;
+    };
+  }, [runSearch]);
 
   useEffect(() => {
     if (withdrawOpen) withdrawNidRef.current?.focus();
@@ -431,45 +510,35 @@ export function StatusSection() {
     }
   }, [editOpen]);
 
-  async function onSearch(e: React.FormEvent) {
+  function onSearch(e: React.FormEvent) {
     e.preventDefault();
-    // Zero-width characters and hyphens from a LINE copy-paste are removed (§9.2.2).
-    const query = normalizeLookupQuery(q);
-    if (!query) return;
-    setBusy(true);
-    setError(null);
-    setVerifyError(null);
-    setVerifyCode('');
-    setWithdrawOpen(false);
-    setWithdrawNid('');
-    setWithdrawErr(null);
-    setWithdrawnId(null);
-    setEditOpen(false);
-    setEditSaved(false);
-    setEditError(null);
-    setEditErrors({});
-    try {
-      const res = await getApplicationStatus(query);
-      setApp(res.data);
-      setSource(res.source);
-    } catch (err) {
-      setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
-      setApp(null);
-    } finally {
-      setBusy(false);
-    }
+    void runSearch(q);
   }
 
   async function setAttendance(confirmed: boolean) {
     if (!app || !codeReady) return;
     setConfirmBusy(true);
     setError(null);
+    setVerifyError(null);
     try {
       const res = await confirmAttendance(app.id, confirmed, verifyCode);
       setApp(res.data);
       setSource(res.source);
     } catch (err) {
-      setError(describeError(err, confirmed ? 'ยืนยันสิทธิ์ไม่สำเร็จ' : 'ยกเลิกการยืนยันไม่สำเร็จ'));
+      const locked = describeVerifyLock(err);
+      if (locked) {
+        setVerifyError(locked);
+        document.getElementById('verify-code')?.focus();
+      } else if (
+        err instanceof ApiHttpError &&
+        (err.code === 'INVALID_VERIFY_CODE' ||
+          (err.code === 'VALIDATION_ERROR' && err.message.toLowerCase().includes('verify')))
+      ) {
+        setVerifyError(describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง'));
+        document.getElementById('verify-code')?.focus();
+      } else {
+        setError(describeError(err, confirmed ? 'ยืนยันสิทธิ์ไม่สำเร็จ' : 'ยกเลิกการยืนยันไม่สำเร็จ'));
+      }
     } finally {
       setConfirmBusy(false);
     }
@@ -523,7 +592,15 @@ export function StatusSection() {
       editRestore.current = true;
       setEditOpen(false);
     } catch (err) {
-      if (err instanceof ApiHttpError && err.status === 409) {
+      const locked = describeVerifyLock(err);
+      if (locked) {
+        setEditError(locked);
+        setVerifyError(locked);
+      } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
+        const msg = describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง');
+        setEditError(msg);
+        setVerifyError(msg);
+      } else if (err instanceof ApiHttpError && err.status === 409) {
         setEditError('ใบสมัครนี้อยู่ในสถานะที่แก้ไขเองไม่ได้ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ');
       } else if (err instanceof ApiHttpError && err.code === 'VALIDATION_ERROR') {
         setEditError('ข้อมูลที่กรอกยังไม่ถูกต้อง กรุณาตรวจสอบทุกช่องแล้วลองอีกครั้ง');
@@ -551,6 +628,7 @@ export function StatusSection() {
     try {
       await withdrawApplication(app.id, withdrawNid);
       const id = app.id;
+      if (loadReceipt()?.id === id) clearReceipt();
       setApp(null);
       setSource(null);
       setVerifyCode('');
@@ -570,8 +648,17 @@ export function StatusSection() {
       } else if (err instanceof ApiHttpError && err.status === 429) {
         setWithdrawErr(describeError(err, 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่'));
       } else if (err instanceof ApiHttpError && err.status === 409) {
+        setWithdrawOpen(false);
+        setWithdrawNid('');
         setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน');
+        getApplicationStatus(app.id)
+          .then((res) => {
+            setApp(res.data);
+            setSource(res.source);
+          })
+          .catch(() => {});
       } else if (err instanceof ApiHttpError && err.status === 404) {
+        if (loadReceipt()?.id === app.id) clearReceipt();
         setError('ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ลองค้นหาอีกครั้ง');
       } else {
         setError(describeError(err, 'ยกเลิกใบสมัครไม่สำเร็จ'));
@@ -657,7 +744,7 @@ export function StatusSection() {
           <button
             type="submit"
             disabled={busy || !q.trim()}
-            className="mt-4 w-full rounded-full px-4 py-3 text-base font-semibold transition-opacity disabled:opacity-50"
+            className={`mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 py-3 text-base font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
             style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
           >
             {busy ? 'กำลังค้นหา…' : 'ค้นหาข้อมูล'}
@@ -720,7 +807,7 @@ export function StatusSection() {
 
       {app && (
         <div className="mt-8 space-y-8">
-          <StatusHighlight app={app} />
+          <StatusHighlight app={app} seats={seats} feeText={feeText} />
 
           {/* ── 03 · Application record ─────────────────────── */}
           <section className="border bg-[var(--bg-card)] p-6 sm:p-8" style={{ borderColor: INK, backgroundColor: SURFACE }}>
@@ -793,16 +880,25 @@ export function StatusSection() {
                         : 'โปรดยืนยันสิทธิ์เข้าร่วมค่ายและอัปโหลดหลักฐานการโอนเงิน'}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={onConfirm}
                       disabled={confirmBusy || app.attendanceConfirmed || !codeReady}
                       aria-describedby={!codeReady && !app.attendanceConfirmed ? 'verify-code-hint' : undefined}
-                      className="rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
+                      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
                       style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                     >
-                      {confirmBusy ? 'กำลังดำเนินการ…' : app.attendanceConfirmed ? '✓ ยืนยันสิทธิ์แล้ว' : 'ยืนยันสิทธิ์'}
+                      {confirmBusy ? (
+                        'กำลังดำเนินการ…'
+                      ) : app.attendanceConfirmed ? (
+                        <>
+                          <Check aria-hidden="true" size={16} strokeWidth={2} />
+                          <span>ยืนยันสิทธิ์แล้ว</span>
+                        </>
+                      ) : (
+                        'ยืนยันสิทธิ์'
+                      )}
                     </button>
                     {app.attendanceConfirmed && (
                       <button
@@ -810,7 +906,7 @@ export function StatusSection() {
                         onClick={onCancelConfirm}
                         disabled={confirmBusy || !codeReady}
                         aria-describedby={!codeReady ? 'verify-code-hint' : undefined}
-                        className="rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: RULE, color: INK_MUTED, backgroundColor: SURFACE }}
                       >
                         ยกเลิก
@@ -965,7 +1061,7 @@ export function StatusSection() {
                         disabled={editBusy || !codeReady}
                         aria-busy={editBusy || undefined}
                         aria-describedby={codeReady ? undefined : 'verify-code-hint'}
-                        className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
+                        className={`inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                       >
                         {editBusy ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
@@ -974,7 +1070,7 @@ export function StatusSection() {
                         type="button"
                         onClick={closeEdit}
                         disabled={editBusy}
-                        className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
+                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                       >
                         ยกเลิก
@@ -987,19 +1083,17 @@ export function StatusSection() {
                       ref={editToggleRef}
                       type="button"
                       onClick={openEdit}
-                      aria-expanded={false}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${FOCUS_RING}`}
+                      aria-expanded={editOpen}
+                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
                       style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                     >
                       <Pencil aria-hidden="true" size={16} strokeWidth={1.5} />
                       แก้ไขข้อมูลทั่วไป
                     </button>
                     {editSaved && (
-                      <p role="status" className="text-sm leading-7" style={{ color: INK }}>
-                        <span aria-hidden="true" className="mr-2 text-[10px]" style={{ color: 'var(--color-success)' }}>
-                          ●
-                        </span>
-                        บันทึกข้อมูลเรียบร้อยแล้ว
+                      <p role="status" className="inline-flex items-center gap-1.5 text-sm leading-7" style={{ color: INK }}>
+                        <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} style={{ color: 'var(--color-success)' }} />
+                        <span>บันทึกข้อมูลเรียบร้อยแล้ว</span>
                       </p>
                     )}
                   </div>
@@ -1084,7 +1178,7 @@ export function StatusSection() {
                         disabled={withdrawBusy || !withdrawNidValid}
                         aria-busy={withdrawBusy || undefined}
                         aria-describedby="withdraw-warn withdraw-nid-hint"
-                        className="rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)', backgroundColor: SURFACE }}
                       >
                         {withdrawBusy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกใบสมัคร'}
@@ -1093,7 +1187,7 @@ export function StatusSection() {
                         type="button"
                         onClick={closeWithdraw}
                         disabled={withdrawBusy}
-                        className="rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                       >
                         ไม่ยกเลิก (กลับ)
@@ -1105,8 +1199,8 @@ export function StatusSection() {
                     ref={withdrawToggleRef}
                     type="button"
                     onClick={() => setWithdrawOpen(true)}
-                    aria-expanded={false}
-                    className="rounded-full py-1 text-sm font-semibold underline underline-offset-4"
+                    aria-expanded={withdrawOpen}
+                    className={`inline-flex min-h-11 items-center rounded-full px-3 py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS_RING}`}
                     style={{ color: INK_MUTED }}
                   >
                     สละสิทธิ์ / ยกเลิกใบสมัคร
@@ -1130,7 +1224,7 @@ export function StatusSection() {
                   href={FB_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`mt-3 inline-block rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${FOCUS_RING}`}
+                  className={`mt-3 inline-flex min-h-11 items-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
                   style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                 >
                   ติดต่อทีมงานทาง Facebook
@@ -1152,7 +1246,7 @@ export function StatusSection() {
                 <div>
                   <h2 className="text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">1,000</span> บาท
+                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">{feeText}</span> บาท
                   </p>
                 </div>
                 {slipUploaded ? (
@@ -1171,14 +1265,14 @@ export function StatusSection() {
               {!slipApproved && (
                 <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }} aria-label="ข้อมูลการโอนเงิน" role="group">
                   <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                    โอนค่าสมัคร <span className="font-mono tabular-nums">1,000</span> บาท · {PAY_ACCOUNT.bank}
+                    โอนค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท · {PAY_ACCOUNT.bank}
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
                     <p className="font-mono text-2xl font-medium tabular-nums" style={{ color: INK }}>{PAY_ACCOUNT.number}</p>
                     <button
                       type="button"
                       onClick={onCopyAccount}
-                      className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)]"
+                      className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
                       style={{ borderColor: BORDER_INPUT, color: INK }}
                     >
                       {acctCopy === 'copied' ? 'คัดลอกเลขบัญชีแล้ว' : 'คัดลอกเลขบัญชี'}
@@ -1205,6 +1299,8 @@ export function StatusSection() {
                   submitLabel="ยืนยันและส่งหลักฐานสลิป"
                   onUploaded={(status, _message, src) => {
                     setSource(src);
+                    setError(null);
+                    setVerifyError(null);
                     setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
                   }}
                 />

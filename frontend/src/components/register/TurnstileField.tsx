@@ -9,7 +9,7 @@
  * - The token lives in React state only; it is never written to browser storage.
  */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { RotateCw } from 'lucide-react';
+import { RotateCw, TriangleAlert } from 'lucide-react';
 
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 
@@ -190,10 +190,7 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
       )}
       {error && (
         <p id={errorId} className="rw-err" role="alert">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.5" />
-            <path d="M8 4.5v4M8 11v.01" />
-          </svg>
+          <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
           <span>{error}</span>
         </p>
       )}

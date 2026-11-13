@@ -8,6 +8,21 @@ export const SEATS = 30;
 export const FEE_TEXT = '1,000';
 export const FB_URL = 'https://www.facebook.com/CCCSMJU';
 
+/** Format campFee from PublicSettings into Thai locale text, falling back to FEE_TEXT. */
+export function formatCampFee(fee: number | string | null | undefined): string {
+  if (fee === null || fee === undefined || fee === '') return FEE_TEXT;
+  const n = typeof fee === 'number' ? fee : Number(fee);
+  if (!Number.isFinite(n) || n < 0) return FEE_TEXT;
+  return n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+}
+
+export const NAME_PART_MAX = 100;
+export const NICKNAME_MAX = 50;
+export const EMAIL_MAX = 150;
+export const SCHOOL_MAX = 150;
+export const PROVINCE_MAX = 100;
+export const MOTIVATION_MAX = 2000;
+
 export const GRADES = ['ม.4', 'ม.5', 'ม.6', 'ปวช.1', 'ปวช.2', 'ปวช.3'] as const;
 /** Select value for "other"; the applicant then types their own level, which is what gets submitted. */
 export const GRADE_OTHER = 'อื่นๆ';
@@ -51,6 +66,8 @@ export function validateGradeFields(grade: string, gradeOther: string): string |
   const text = gradeOther.trim();
   if (text.length < 2) return 'กรุณาระบุระดับชั้นของคุณ (อย่างน้อย 2 ตัวอักษร)';
   if (text.length > GRADE_OTHER_MAX) return `ระบุได้ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร`;
+  if (text === GRADE_OTHER) return 'กรุณาระบุชื่อระดับชั้นของคุณให้ชัดเจน';
+  if (/[\u0000-\u001F\u007F]/.test(text)) return 'ระดับชั้นต้องไม่มีอักขระควบคุม';
   return undefined;
 }
 
@@ -142,7 +159,13 @@ export const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /* ───────────────────────── Validation ───────────────────────── */
 
-const onlyDigits = (s: string) => s.replace(/\D/g, '');
+const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
+
+export function normalizeThaiDigits(s: string): string {
+  return s.replace(/[๐-๙]/g, (c) => String(THAI_DIGITS.indexOf(c)));
+}
+
+export const onlyDigits = (s: string) => normalizeThaiDigits(s).replace(/\D/g, '');
 
 /** 13 digits whose last digit is the Thai Mod-11 check digit (mirrors the Go backend). */
 export function isValidThaiNationalID(id: string): boolean {
@@ -154,10 +177,22 @@ export function isValidThaiNationalID(id: string): boolean {
 
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
   switch (key) {
-    case 'fullName':
-      return form.fullName.trim() ? undefined : 'กรุณากรอกชื่อและนามสกุล';
-    case 'nickname':
-      return form.nickname.trim() ? undefined : 'กรุณากรอกชื่อเล่น';
+    case 'fullName': {
+      const full = form.fullName.trim().replace(/\s+/g, ' ');
+      if (!full) return 'กรุณากรอกชื่อและนามสกุล';
+      const spaceIdx = full.indexOf(' ');
+      const first = spaceIdx === -1 ? full : full.slice(0, spaceIdx);
+      const last = spaceIdx === -1 ? '' : full.slice(spaceIdx + 1).trim();
+      if (first.length > NAME_PART_MAX || last.length > NAME_PART_MAX) {
+        return `ชื่อและนามสกุลแต่ละส่วนต้องยาวไม่เกิน ${NAME_PART_MAX} ตัวอักษร`;
+      }
+      return undefined;
+    }
+    case 'nickname': {
+      const n = form.nickname.trim();
+      if (!n) return 'กรุณากรอกชื่อเล่น';
+      return n.length > NICKNAME_MAX ? `ชื่อเล่นต้องยาวไม่เกิน ${NICKNAME_MAX} ตัวอักษร` : undefined;
+    }
     case 'nationalId': {
       const id = onlyDigits(form.nationalId);
       if (id.length === 0) return 'กรุณากรอกเลขบัตรประชาชน 13 หลัก';
@@ -173,24 +208,35 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     }
     case 'email': {
       const e = form.email.trim();
-      return !e || /^\S+@\S+\.\S+$/.test(e) ? undefined : 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
+      if (!e) return undefined;
+      if (e.length > EMAIL_MAX) return `อีเมลต้องยาวไม่เกิน ${EMAIL_MAX} ตัวอักษร`;
+      return /^\S+@\S+\.\S+$/.test(e) ? undefined : 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
     }
-    case 'school':
-      return form.school.trim() ? undefined : 'กรุณากรอกชื่อโรงเรียนหรือสถานศึกษา';
-    case 'province':
-      return form.province.trim() ? undefined : 'กรุณากรอกจังหวัด';
+    case 'school': {
+      const s = form.school.trim();
+      if (!s) return 'กรุณากรอกชื่อโรงเรียนหรือสถานศึกษา';
+      return s.length > SCHOOL_MAX ? `ชื่อโรงเรียนต้องยาวไม่เกิน ${SCHOOL_MAX} ตัวอักษร` : undefined;
+    }
+    case 'province': {
+      const p = form.province.trim();
+      if (!p) return 'กรุณากรอกจังหวัด';
+      return p.length > PROVINCE_MAX ? `ชื่อจังหวัดต้องยาวไม่เกิน ${PROVINCE_MAX} ตัวอักษร` : undefined;
+    }
     case 'grade':
       return (GRADES as readonly string[]).includes(form.grade) || form.grade === GRADE_OTHER ? undefined : 'กรุณาเลือกระดับชั้น';
     case 'gradeOther':
       if (form.grade !== GRADE_OTHER) return undefined;
-      if (!form.gradeOther.trim()) return 'กรุณาระบุระดับชั้นของคุณ';
-      return form.gradeOther.trim().length > GRADE_OTHER_MAX ? `ระบุได้ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร` : undefined;
+      return validateGradeFields(form.grade, form.gradeOther);
     case 'shirtSize':
       return form.shirtSize ? undefined : 'กรุณาเลือกไซส์เสื้อ';
+    case 'motivation': {
+      const m = form.motivation.trim();
+      return m.length > MOTIVATION_MAX ? `ความยาวต้องไม่เกิน ${MOTIVATION_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
+    }
     case 'consent':
       return consent ? undefined : 'กรุณาติ๊กยอมรับเงื่อนไขการใช้ข้อมูลก่อนส่งใบสมัคร';
     default:
-      return undefined; // motivation is optional
+      return undefined;
   }
 }
 

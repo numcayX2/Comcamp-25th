@@ -5,7 +5,7 @@
  * inside the receipt card. The upload itself is the shared SlipUploadPanel.
  */
 import type { CSSProperties } from 'react';
-import { holdsSeat, type ApplicationStatus, type SlipStatus } from '../../lib/api';
+import type { ApplicationStatus, SlipStatus } from '../../lib/api';
 import { SlipUploadPanel } from '../slip/SlipUploadPanel';
 
 /** The dot colour carries the state, the label carries the meaning (never colour alone). */
@@ -30,7 +30,8 @@ export function SlipBlock({
   synced: boolean;
   onUploaded: (status: SlipStatus) => void;
 }) {
-  const closed = appStatus !== null && !holdsSeat(appStatus);
+  // Backend PaymentService.UploadSlip only allows PASSED and CONFIRMED.
+  const closed = appStatus !== null && appStatus !== 'PASSED' && appStatus !== 'CONFIRMED';
   const badge = SLIP_BADGE[slip ?? 'NONE'];
 
   return (
@@ -50,7 +51,7 @@ export function SlipBlock({
 
       {closed && (
         <p className="rw-slip__note">
-          ใบสมัครนี้ไม่ได้ถือที่นั่งแล้ว จึงส่งสลิปไม่ได้ หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ
+          ใบสมัครนี้ไม่อยู่ในสถานะที่ส่งสลิปได้แล้ว หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ
         </p>
       )}
 
@@ -60,7 +61,7 @@ export function SlipBlock({
           slip={slip}
           disabled={closed}
           onUploaded={(status) => onUploaded(status)}
-          deferLink={{ href: '/status', label: 'ยังไม่สะดวกตอนนี้? ส่งสลิปทีหลังที่หน้าตรวจสอบสถานะ' }}
+          deferLink={{ href: `/status?id=${encodeURIComponent(appId)}`, label: 'ยังไม่สะดวกตอนนี้? ส่งสลิปทีหลังที่หน้าตรวจสอบสถานะ' }}
         />
       </div>
     </section>
