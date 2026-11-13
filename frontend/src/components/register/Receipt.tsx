@@ -180,6 +180,7 @@ export function Receipt({
   source,
   showSource,
   feeText = FEE_TEXT,
+  defaultVerifyCode,
   headingRef,
   onWithdrawn,
 }: {
@@ -187,6 +188,8 @@ export function Receipt({
   source: ApiSource | null;
   showSource: boolean;
   feeText?: string;
+  /** Last 4 digits of the national ID kept in React memory from /register step 01 (never stored). */
+  defaultVerifyCode?: string;
   headingRef: Ref<HTMLHeadingElement>;
   onWithdrawn: (id: string) => void;
 }) {
@@ -367,7 +370,7 @@ export function Receipt({
         </article>
       </section>
 
-      <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} onUploaded={setSlip} />
+      <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} defaultVerifyCode={defaultVerifyCode} onUploaded={setSlip} />
 
       <section className="rw-block" aria-labelledby="rw-next-title">
         <h3 id="rw-next-title" className="rw-block__title">ขั้นตอนถัดไป</h3>

@@ -779,6 +779,8 @@ export function RegisterSection() {
   /* ── derived view state ── */
 
   const wizard = gate === 'open' && appId === null;
+  const receiptDigits = sanitizeDigits(form.nationalId);
+  const receiptVerifyCode = receiptDigits.length === 13 ? receiptDigits.slice(-4) : undefined;
   const stepNo = Math.min(step, LAST_FORM_STEP);
   const current = gate === 'open' || appId ? step : -1;
   // One scale everywhere: the sidebar shows 6 steps (5 form steps + payment), so does the phone bar.
@@ -1344,7 +1346,15 @@ export function RegisterSection() {
             {noticeBanner}
             {errorBanner}
             {appId ? (
-              <Receipt appId={appId} feeText={feeText} source={source} showSource={isDev} headingRef={headingRef} onWithdrawn={onWithdrawn} />
+              <Receipt
+                appId={appId}
+                feeText={feeText}
+                source={source}
+                showSource={isDev}
+                defaultVerifyCode={receiptVerifyCode}
+                headingRef={headingRef}
+                onWithdrawn={onWithdrawn}
+              />
             ) : gate === 'checking' ? (
               <p className="rw-checking" role="status">
                 กำลังตรวจสอบสถานะการรับสมัคร…

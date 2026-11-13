@@ -21,6 +21,7 @@ export function SlipBlock({
   slip,
   appStatus,
   synced,
+  defaultVerifyCode,
   onUploaded,
 }: {
   appId: string;
@@ -28,6 +29,8 @@ export function SlipBlock({
   appStatus: ApplicationStatus | null;
   /** False until the first status sync finished (the badge shows a neutral "checking" label). */
   synced: boolean;
+  /** In-memory 4-digit verify code passed from the register wizard (never persisted). */
+  defaultVerifyCode?: string;
   onUploaded: (status: SlipStatus) => void;
 }) {
   // Backend PaymentService.UploadSlip only allows PASSED and CONFIRMED.
@@ -60,6 +63,7 @@ export function SlipBlock({
           appId={appId}
           slip={slip}
           disabled={closed}
+          defaultVerifyCode={defaultVerifyCode}
           onUploaded={(status) => onUploaded(status)}
           deferLink={{ href: `/status?id=${encodeURIComponent(appId)}`, label: 'ยังไม่สะดวกตอนนี้? ส่งสลิปทีหลังที่หน้าตรวจสอบสถานะ' }}
         />

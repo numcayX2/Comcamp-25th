@@ -20,7 +20,6 @@ import {
   ApiHttpError,
   fetchPublicSettings,
   getApplicationStatus,
-  confirmAttendance,
   updateOwnProfile,
   withdrawApplication,
   hasSlip,
@@ -217,17 +216,9 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       break;
   }
 
-  // PASSED: attendanceConfirmed (confirming availability) and slipStatus (deposit review) are separate steps.
+  // PASSED: single-track flow — register (PASSED) -> pay & upload slip -> staff approve (CONFIRMED).
   if (slip === 'APPROVED') {
-    return app.attendanceConfirmed
-      ? confirmedHighlight()
-      : {
-          tone: 'success',
-          icon: CircleCheck,
-          badge: 'สลิปมัดจำผ่านการตรวจสอบแล้ว',
-          title: 'สลิปผ่านการตรวจสอบแล้ว — กรุณากดยืนยันเข้าร่วมค่าย',
-          body: 'สลิปค่ามัดจำผ่านการตรวจสอบเรียบร้อยแล้ว อย่าลืมกดปุ่ม “ยืนยันว่าจะเข้าร่วมค่ายได้” ด้านล่างให้ครบถ้วนนะ',
-        };
+    return confirmedHighlight();
   }
   if (slip === 'PENDING') {
     return {
@@ -235,9 +226,7 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       icon: Clock,
       badge: 'ได้รับสลิปแล้ว · รอทีมงานตรวจสลิป',
       title: 'ได้รับสลิปแล้ว กำลังรอทีมงานตรวจสอบ',
-      body: app.attendanceConfirmed
-        ? 'น้องยืนยันเข้าร่วมค่ายได้และส่งสลิปเรียบร้อยแล้ว ทีมงานจะตรวจสอบสลิปและยืนยันสิทธิ์สมบูรณ์ให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ'
-        : 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ ระหว่างนี้สามารถกดยืนยันว่าจะเข้าร่วมค่ายได้ที่หัวข้อด้านล่างด้วยนะ',
+      body: 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ เมื่อสลิปผ่านการตรวจสอบ สถานะจะอัปเดตเป็น “ยืนยันสิทธิ์สมบูรณ์” โดยอัตโนมัติ',
     };
   }
   if (slip === 'REJECTED') {
@@ -251,22 +240,12 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       contact: true,
     };
   }
-  if (app.attendanceConfirmed) {
-    return {
-      tone: 'tech',
-      icon: Ticket,
-      badge: 'ยืนยันเข้าร่วมค่ายได้แล้ว · รออัปโหลดสลิป',
-      title: 'ยืนยันว่าจะเข้าร่วมค่ายได้แล้ว — ขั้นตอนถัดไป: โอนค่าสมัครและส่งสลิป',
-      body: `บันทึกการยืนยันเข้าร่วมค่ายเรียบร้อย (คนละขั้นตอนกับการตรวจสลิป) กรุณาโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
-      toSlip: true,
-    };
-  }
   return {
     tone: 'tech',
     icon: Ticket,
     badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณากดยืนยันว่าจะเข้าร่วมค่ายได้ และโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์ให้สมบูรณ์`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์เข้าร่วมค่ายให้สมบูรณ์`,
     toSlip: true,
   };
 }
@@ -276,7 +255,7 @@ function confirmedHighlight(): Highlight {
     tone: 'success',
     icon: CircleCheck,
     badge: 'สลิปมัดจำผ่านการตรวจสอบแล้ว',
-    title: 'สลิปผ่านการตรวจสอบ / ยืนยันสิทธิ์สมบูรณ์แล้ว',
+    title: 'สลิปผ่านการตรวจสอบ / ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์แล้ว',
     body: 'น้องมีที่นั่งในค่าย ComCamp #25 เรียบร้อย ไม่ต้องดำเนินการอะไรเพิ่ม รอรับข่าวสารจากทีมงานได้เลย',
   };
 }
@@ -452,14 +431,13 @@ function VerifyCodePrompt({ onFocusCode, action }: { onFocusCode: () => void; ac
 export function StatusSection() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
-  const [confirmBusy, setConfirmBusy] = useState(false);
   const [app, setApp] = useState<Application | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
   const [error, setError] = useState<string | null>(null);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
-  /** A wrong verify code reported by the slip upload or attendance confirmation, shown beneath #verify-code. */
+  /** A wrong verify code reported by the slip upload or profile edit, shown beneath #verify-code. */
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -468,6 +446,9 @@ export function StatusSection() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
   const [verifyCode, setVerifyCode] = useState('');
+  const [autoVerifiedById, setAutoVerifiedById] = useState(false);
+  const [showManualVerifyCode, setShowManualVerifyCode] = useState(false);
+  const manualCodeFocusRef = useRef(false);
   const codeReady = verifyCode.length === 4;
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -504,12 +485,16 @@ export function StatusSection() {
     // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
     const query = normalizeLookupQuery(rawQuery);
     if (!query) return;
+    const digitsOnly = /^\d+$/.test(query) ? query : '';
+    const isNationalIdLookup = !opts?.fromStoredReceipt && digitsOnly.length === 13;
     const run = ++searchRun.current;
     setBusy(true);
     setError(null);
     setStoredNotice(null);
     setVerifyError(null);
-    setVerifyCode('');
+    setShowManualVerifyCode(false);
+    setVerifyCode(isNationalIdLookup ? digitsOnly.slice(-4) : '');
+    setAutoVerifiedById(isNationalIdLookup);
     setWithdrawOpen(false);
     setWithdrawNid('');
     setWithdrawErr(null);
@@ -526,6 +511,9 @@ export function StatusSection() {
       setSource(res.source);
     } catch (err) {
       if (run !== searchRun.current) return;
+      setAutoVerifiedById(false);
+      setVerifyCode('');
+      setShowManualVerifyCode(false);
       if (opts?.fromStoredReceipt && err instanceof ApiHttpError && err.status === 404) {
         clearReceipt();
         setQ('');
@@ -590,39 +578,20 @@ export function StatusSection() {
       editToggleRef.current?.focus();
     }
   }, [editOpen]);
+  useEffect(() => {
+    if (showManualVerifyCode && manualCodeFocusRef.current) {
+      manualCodeFocusRef.current = false;
+      const el = document.getElementById('verify-code');
+      if (el instanceof HTMLInputElement) {
+        el.focus();
+        el.select();
+      }
+    }
+  }, [showManualVerifyCode]);
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
     void runSearch(q);
-  }
-
-  async function setAttendance(confirmed: boolean) {
-    if (!app || !codeReady) return;
-    setConfirmBusy(true);
-    setError(null);
-    setVerifyError(null);
-    try {
-      const res = await confirmAttendance(app.id, confirmed, verifyCode);
-      setApp(res.data);
-      setSource(res.source);
-    } catch (err) {
-      const locked = describeVerifyLock(err);
-      if (locked) {
-        setVerifyError(locked);
-        document.getElementById('verify-code')?.focus();
-      } else if (
-        err instanceof ApiHttpError &&
-        (err.code === 'INVALID_VERIFY_CODE' ||
-          (err.code === 'VALIDATION_ERROR' && err.message.toLowerCase().includes('verify')))
-      ) {
-        setVerifyError(describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง'));
-        document.getElementById('verify-code')?.focus();
-      } else {
-        setError(describeError(err, confirmed ? 'ยืนยันเข้าร่วมค่ายไม่สำเร็จ' : 'ยกเลิกการยืนยันเข้าร่วมไม่สำเร็จ'));
-      }
-    } finally {
-      setConfirmBusy(false);
-    }
   }
 
   function openEdit() {
@@ -688,10 +657,13 @@ export function StatusSection() {
       if (locked) {
         setEditError(locked);
         setVerifyError(locked);
+        setShowManualVerifyCode(true);
       } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
         const msg = describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง');
         setEditError(msg);
         setVerifyError(msg);
+        manualCodeFocusRef.current = true;
+        setShowManualVerifyCode(true);
       } else if (err instanceof ApiHttpError && err.status === 409) {
         setEditError('ใบสมัครนี้อยู่ในสถานะที่แก้ไขเองไม่ได้ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ');
       } else if (err instanceof ApiHttpError && err.code === 'VALIDATION_ERROR') {
@@ -724,6 +696,8 @@ export function StatusSection() {
       setApp(null);
       setSource(null);
       setVerifyCode('');
+      setAutoVerifiedById(false);
+      setShowManualVerifyCode(false);
       setWithdrawNid('');
       setWithdrawOpen(false);
       setVerifyError(null);
@@ -760,9 +734,6 @@ export function StatusSection() {
     }
   }
 
-  const onConfirm = () => setAttendance(true);
-  const onCancelConfirm = () => setAttendance(false);
-
   function focusVerifyCode() {
     const el = document.getElementById('verify-code');
     if (el instanceof HTMLInputElement) {
@@ -788,7 +759,7 @@ export function StatusSection() {
 
   const slipUploaded = hasSlip(app);
   const slipState = slipUploaded ? (app?.slipStatus ?? 'PENDING') : null;
-  // Separate attendanceConfirmed from slip approval: never treat status === 'CONFIRMED' without an approved slip as slipApproved.
+  // Never treat status === 'CONFIRMED' without an approved slip as slipApproved.
   const slipApproved = slipState === 'APPROVED';
   const slipRejected = slipState === 'REJECTED';
   const isEligibleForPayment = app && (app.status === 'PASSED' || app.status === 'CONFIRMED');
@@ -803,15 +774,15 @@ export function StatusSection() {
   // Secondary fields stay editable while the application holds a seat (also once CONFIRMED).
   const canEditProfile = seatHeld;
   // The code is asked for only while there is something left to do on this application.
-  const needsVerifyCode = Boolean(isEligibleForPayment && (app?.status === 'PASSED' || !slipApproved)) || canEditProfile;
+  const needsVerifyCode = Boolean(isEligibleForPayment && !slipApproved) || canEditProfile;
   const verifyHint = !app
     ? ''
     : app.status === 'PENDING' || app.status === 'RESERVE'
-      ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป (ในสถานะนี้ยังไม่ต้องยืนยันเข้าร่วมหรือส่งสลิป)'
+      ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป (ในสถานะนี้ยังไม่ต้องส่งสลิป)'
       : slipApproved && app.status === 'CONFIRMED'
         ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป'
         : isEligibleForPayment && !slipApproved
-          ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนยืนยันเข้าร่วมค่าย ส่งสลิปโอนเงิน หรือแก้ไขข้อมูลทั่วไป'
+          ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนส่งสลิปโอนเงิน หรือแก้ไขข้อมูลทั่วไป'
           : 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป';
 
   return (
@@ -986,9 +957,6 @@ export function StatusSection() {
 
             {isEligibleForPayment && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-b pb-4" style={{ borderColor: RULE }}>
-                <DotPill color={app.attendanceConfirmed ? 'var(--color-success)' : 'var(--color-ink-subtle)'}>
-                  1. ยืนยันเข้าร่วมค่าย: {app.attendanceConfirmed ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}
-                </DotPill>
                 <DotPill
                   color={
                     slipApproved
@@ -1000,7 +968,7 @@ export function StatusSection() {
                           : 'var(--color-ink-subtle)'
                   }
                 >
-                  2. สลิปค่ามัดจำ:{' '}
+                  สลิปค่ามัดจำ:{' '}
                   {slipApproved
                     ? 'ผ่านการตรวจสอบแล้ว'
                     : slipRejected
@@ -1033,75 +1001,40 @@ export function StatusSection() {
             </dl>
 
             {/* Second factor (AGENTS.md §13.5): an application ID or a phone number alone is not
-                enough to confirm or send a slip. The phone's digits are not accepted on purpose:
-                the record above shows them. */}
+                enough to edit profile or send a slip. The phone's digits are not accepted on purpose:
+                the record above shows them. Searching by full 13-digit national ID already proves identity. */}
             {needsVerifyCode && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
-                <VerifyCodeField
-                  id="verify-code"
-                  value={verifyCode}
-                  onChange={(v) => {
-                    setVerifyCode(v);
-                    if (verifyError) setVerifyError(null);
-                  }}
-                  error={verifyError}
-                  notPhone
-                  hintId="verify-code-hint"
-                  hint={verifyHint}
-                />
-              </div>
-            )}
-
-            {/* Attendance confirmation (separate from payment slip review) */}
-            {isEligibleForPayment && (
-              <div className="mt-6 border-t pt-4" style={{ borderColor: INK }}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-base font-bold leading-7" style={{ color: INK }}>การยืนยันว่าจะเข้าร่วมค่าย</h3>
-                    <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                      {app.attendanceConfirmed
-                        ? 'ยืนยันว่าจะเข้าร่วมค่ายได้เรียบร้อยแล้ว (คนละขั้นตอนกับการตรวจสลิปมัดจำ)'
-                        : 'กรุณากดยืนยันว่าน้องสามารถเข้าร่วมค่ายตามกำหนดการได้ (คนละขั้นตอนกับการส่งสลิปด้านล่าง)'}
+                {autoVerifiedById && !showManualVerifyCode ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm leading-6">
+                    <p className="inline-flex items-center gap-2 font-medium" style={{ color: INK }}>
+                      <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} className="shrink-0" style={{ color: 'var(--color-success)' }} />
+                      <span>ยืนยันตัวตนด้วยเลขบัตรประชาชนแล้ว (ส่งสลิป / แก้ไขข้อมูลได้ทันที)</span>
                     </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={onConfirm}
-                      disabled={confirmBusy || app.attendanceConfirmed || !codeReady}
-                      aria-describedby={!codeReady && !app.attendanceConfirmed ? 'verify-code-hint' : undefined}
-                      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
-                      style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
+                      onClick={() => {
+                        manualCodeFocusRef.current = true;
+                        setShowManualVerifyCode(true);
+                      }}
+                      className={`inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 transition-opacity hover:opacity-80 ${FOCUS_RING}`}
+                      style={{ color: INK_MUTED }}
                     >
-                      {confirmBusy ? (
-                        'กำลังดำเนินการ…'
-                      ) : app.attendanceConfirmed ? (
-                        <>
-                          <Check aria-hidden="true" size={16} strokeWidth={2} />
-                          <span>ยืนยันเข้าร่วมค่ายแล้ว</span>
-                        </>
-                      ) : (
-                        'ยืนยันว่าจะเข้าร่วมค่ายได้'
-                      )}
+                      เปลี่ยนรหัส
                     </button>
-                    {app.attendanceConfirmed && (
-                      <button
-                        type="button"
-                        onClick={onCancelConfirm}
-                        disabled={confirmBusy || !codeReady}
-                        aria-describedby={!codeReady ? 'verify-code-hint' : undefined}
-                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
-                        style={{ borderColor: RULE, color: INK_MUTED, backgroundColor: SURFACE }}
-                      >
-                        ยกเลิกการยืนยันเข้าร่วม
-                      </button>
-                    )}
                   </div>
-                </div>
-                {!codeReady && (
-                  <VerifyCodePrompt
-                    onFocusCode={focusVerifyCode}
-                    action={app.attendanceConfirmed ? 'ยกเลิกการยืนยันเข้าร่วม' : 'ยืนยันเข้าร่วมค่าย'}
+                ) : (
+                  <VerifyCodeField
+                    id="verify-code"
+                    value={verifyCode}
+                    onChange={(v) => {
+                      setVerifyCode(v);
+                      if (verifyError) setVerifyError(null);
+                    }}
+                    error={verifyError}
+                    notPhone
+                    hintId="verify-code-hint"
+                    hint={verifyHint}
                   />
                 )}
               </div>
@@ -1526,7 +1459,10 @@ export function StatusSection() {
                   slip={slipApproved ? 'APPROVED' : slipState}
                   verifyCode={verifyCode}
                   codeInputId="verify-code"
-                  onCodeInvalid={setVerifyError}
+                  onCodeInvalid={(msg) => {
+                    setVerifyError(msg);
+                    if (msg) setShowManualVerifyCode(true);
+                  }}
                   submitLabel="ยืนยันและส่งหลักฐานสลิป"
                   onUploaded={(status, _message, src) => {
                     setSource(src);

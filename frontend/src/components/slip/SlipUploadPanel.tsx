@@ -44,6 +44,7 @@ export function SlipUploadPanel({
   slip,
   disabled,
   verifyCode: externalCode,
+  defaultVerifyCode,
   codeInputId,
   onCodeInvalid,
   onUploaded,
@@ -58,6 +59,8 @@ export function SlipUploadPanel({
   disabled?: boolean;
   /** Controlled by the parent when the code field lives elsewhere on the page. */
   verifyCode?: string;
+  /** Pre-filled 4-digit verify code kept in React memory (never persisted); hides the redundant input until edited. */
+  defaultVerifyCode?: string;
   /** DOM id of that external field: refocused and selected after a wrong code. */
   codeInputId?: string;
   /** External mode: show (or clear with null) the wrong-code message beneath the parent's field. */
@@ -71,7 +74,9 @@ export function SlipUploadPanel({
   const uid = useId();
   const ids = { file: `${uid}-file`, code: `${uid}-code`, fileErr: `${uid}-fileerr`, subErr: `${uid}-suberr`, hint: `${uid}-hint` };
   const external = externalCode !== undefined;
-  const [innerCode, setInnerCode] = useState('');
+  const validDefaultCode = !external && defaultVerifyCode && /^\d{4}$/.test(defaultVerifyCode) ? defaultVerifyCode : '';
+  const [innerCode, setInnerCode] = useState(validDefaultCode);
+  const [editingCode, setEditingCode] = useState(false);
   const code = external ? externalCode : innerCode;
 
   const [file, setFile] = useState<File | null>(null);
@@ -191,6 +196,17 @@ export function SlipUploadPanel({
     return () => window.removeEventListener('paste', onPaste);
   }, [showForm, busy, preparing]);
 
+  // Keep in-memory default code in sync in internal mode without ever touching browser storage.
+  useEffect(() => {
+    if (external) return;
+    if (validDefaultCode) {
+      if (!editingCode) setInnerCode(validDefaultCode);
+    } else {
+      setEditingCode(false);
+      setInnerCode('');
+    }
+  }, [external, validDefaultCode, editingCode]);
+
   // A disabled input cannot take focus, so a wrong code refocuses and selects the digits once busy clears.
   useEffect(() => {
     if (busy || !refocusCode.current) return;
@@ -200,7 +216,7 @@ export function SlipUploadPanel({
       el.focus();
       el.select();
     }
-  }, [busy, codeInputId, ids.code]);
+  }, [busy, editingCode, codeInputId, ids.code]);
 
   function onDrop(e: DragEvent<HTMLElement>) {
     e.preventDefault();
@@ -246,7 +262,10 @@ export function SlipUploadPanel({
       setFile(null);
       setResized(false);
       setReplace(false);
-      if (!external) setInnerCode('');
+      if (!external) {
+        setInnerCode(validDefaultCode);
+        setEditingCode(false);
+      }
       focusStatus.current = true;
       setMessage(SLIP_OK_HEADLINE);
       onUploaded(res.data.slipStatus ?? 'PENDING', SLIP_OK_HEADLINE, res.source);
@@ -259,7 +278,10 @@ export function SlipUploadPanel({
           (err.code === 'VALIDATION_ERROR' && /verifycode/i.test(err.message)));
       if (isCodeError) {
         if (external) onCodeInvalid?.(text);
-        else setCodeError(text);
+        else {
+          setEditingCode(true);
+          setCodeError(text);
+        }
         refocusCode.current = true;
       } else {
         setSubmitError(text);
@@ -391,20 +413,36 @@ export function SlipUploadPanel({
             )}
           </div>
 
-          {!external && (
-            <VerifyCodeField
-              id={ids.code}
-              value={innerCode}
-              onChange={(v) => {
-                setInnerCode(v);
-                if (codeError) setCodeError(null);
-              }}
-              error={codeError}
-              enterKeyHint="send"
-              disabled={busy}
-              notPhone={notPhone}
-            />
-          )}
+          {!external &&
+            (validDefaultCode && !editingCode ? (
+              <div className="su-code-prompt">
+                <p className="su-note">ใช้รหัสยืนยันจากบัตรประชาชนที่คุณกรอกสมัครอัตโนมัติ</p>
+                <button
+                  type="button"
+                  className="su-link-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    refocusCode.current = true;
+                    setEditingCode(true);
+                  }}
+                >
+                  แก้ไขรหัส 4 ตัว
+                </button>
+              </div>
+            ) : (
+              <VerifyCodeField
+                id={ids.code}
+                value={innerCode}
+                onChange={(v) => {
+                  setInnerCode(v);
+                  if (codeError) setCodeError(null);
+                }}
+                error={codeError}
+                enterKeyHint="send"
+                disabled={busy}
+                notPhone={notPhone}
+              />
+            ))}
           {external && !codeReady && (
             <div className="su-code-prompt">
               <p className="su-note">
@@ -436,7 +474,7 @@ export function SlipUploadPanel({
             </div>
             {!ready && !busy && !preparing && (!external || (codeReady && !file)) && (
               <p className="su-hint" aria-live="polite">
-                {external ? 'เลือกรูปสลิปก่อนจึงจะส่งได้' : 'เลือกรูปสลิปและกรอกเลข 4 ตัวท้ายให้ครบก่อนจึงจะส่งได้'}
+                {external || codeReady ? 'เลือกรูปสลิปก่อนจึงจะส่งได้' : 'เลือกรูปสลิปและกรอกเลข 4 ตัวท้ายให้ครบก่อนจึงจะส่งได้'}
               </p>
             )}
             {submitError && (
