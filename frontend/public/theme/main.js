@@ -52,85 +52,138 @@
     var mini = $('sticky-mini');
     var seatsBig = $('bento-seats-num');
     var seatsCaption = $('bento-seats-caption');
-    if (!primary || !secondary || !sticky || !mini) return;
+    var extraCtas = document.querySelectorAll('[data-register-cta]');
     // Nobody can have applied before opening, so the status check has nothing to look up.
-    secondary.style.display = (s === 'LOADING' || s === 'PRE_OPEN') ? 'none' : '';
+    if (secondary) secondary.style.display = (s === 'LOADING' || s === 'PRE_OPEN') ? 'none' : '';
 
     var maxCap = state.maxCapacity || MAX;
     var seatsLeft = Math.max(0, maxCap - state.currentCount);
     var ctaText = 'เปิดรับสมัคร 16 พ.ย.', ctaHref = '#experience', miniLabel = 'เปิดรับ 16 พ.ย. 69', stickyDisabled = true;
+    var regCtaText = 'เปิดรับ 16 พ.ย. 69', regCtaHref = '/register', regCtaMuted = true;
 
-    if (seatsBig) seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
+    if (seatsBig) {
+      seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
+      var seatsCard = seatsBig.closest ? seatsBig.closest('.bento-feature') : null;
+      if (seatsCard) seatsCard.setAttribute('data-reg-state', s);
+    }
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
       ctaText = 'เปิดรับสมัคร 16 พ.ย.';
       ctaHref = '#experience';
+      regCtaText = 'เปิดรับ 16 พ.ย. 69';
+      regCtaHref = '/register';
+      regCtaMuted = true;
       miniLabel = 'เปิดรับ 16 พ.ย. 69';
       stickyDisabled = true;
-      sticky.textContent = '16 พ.ย. 69';
-      secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-      secondary.setAttribute('href', '/status');
+      if (sticky) sticky.textContent = '16 พ.ย. 69';
+      if (secondary) {
+        secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
+        secondary.setAttribute('href', '/status');
+      }
       if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
     } else if (s === 'FAILED') {
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
+      regCtaText = 'ดูรายละเอียดค่าย';
+      regCtaHref = '#experience';
+      regCtaMuted = true;
       miniLabel = 'เชื่อมต่อไม่สำเร็จ';
       stickyDisabled = true;
-      sticky.textContent = 'ตรวจสอบ';
-      secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
-      secondary.setAttribute('href', '#retry-status');
+      if (sticky) sticky.textContent = 'ตรวจสอบ';
+      if (secondary) {
+        secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
+        secondary.setAttribute('href', '#retry-status');
+      }
       if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
     } else if (s === 'OPEN') {
       ctaText = 'สมัครค่าย';
       ctaHref = '/register';
+      regCtaText = 'สมัครค่าย';
+      regCtaHref = '/register';
+      regCtaMuted = false;
       miniLabel = 'เหลือ ' + seatsLeft + '/' + maxCap + ' ที่นั่ง';
       stickyDisabled = false;
-      sticky.textContent = 'สมัครค่าย';
-      secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-      secondary.setAttribute('href', '/status');
+      if (sticky) sticky.textContent = 'สมัครค่าย';
+      if (secondary) {
+        secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
+        secondary.setAttribute('href', '/status');
+      }
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served)';
     } else if (s === 'ALMOST_FULL') {
       ctaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
       ctaHref = '/register';
+      regCtaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ')';
+      regCtaHref = '/register';
+      regCtaMuted = false;
       miniLabel = 'เหลือ ' + seatsLeft + ' ที่นั่ง';
       stickyDisabled = false;
-      sticky.textContent = 'สมัคร';
-      secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-      secondary.setAttribute('href', '/status');
+      if (sticky) sticky.textContent = 'สมัคร';
+      if (secondary) {
+        secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
+        secondary.setAttribute('href', '/status');
+      }
       if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบ First-Come, First-Served';
     } else if (s === 'FULL') {
       // /register is locked once the camp is full, so the CTA leads to the status page instead.
       ctaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
       ctaHref = '/status';
+      regCtaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
+      regCtaHref = '/status';
+      regCtaMuted = true;
       miniLabel = 'ที่นั่งเต็มแล้ว';
       stickyDisabled = false;
-      sticky.textContent = 'ตรวจสถานะ';
+      if (sticky) sticky.textContent = 'ตรวจสถานะ';
       // The primary CTA already leads to /status, so the secondary link points at the camp details.
-      secondary.textContent = 'ดูรายละเอียดค่าย →';
-      secondary.setAttribute('href', '#experience');
+      if (secondary) {
+        secondary.textContent = 'ดูรายละเอียดค่าย →';
+        secondary.setAttribute('href', '#experience');
+      }
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้มีผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว หากมีผู้สละสิทธิ์ระบบจะคืนที่นั่งว่างให้สมัครได้ทันที';
     } else { // CLOSED
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
+      regCtaText = 'ปิดรับสมัครแล้ว';
+      regCtaHref = '/status';
+      regCtaMuted = true;
       miniLabel = 'ปิดรับสมัครแล้ว';
       stickyDisabled = true;
-      sticky.textContent = 'ปิดแล้ว';
-      secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-      secondary.setAttribute('href', '/status');
+      if (sticky) sticky.textContent = 'ปิดแล้ว';
+      if (secondary) {
+        secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
+        secondary.setAttribute('href', '/status');
+      }
       if (seatsCaption) seatsCaption.textContent = 'ปิดรับสมัครแล้ว สามารถตรวจสอบสถานะใบสมัครได้ตลอดเวลา';
     }
 
-    var primarySpan = primary.querySelector('span');
-    if (primarySpan) {
-      primarySpan.textContent = ctaText;
-    } else {
-      primary.textContent = ctaText;
+    if (primary) {
+      var primarySpan = primary.querySelector('span');
+      if (primarySpan) {
+        primarySpan.textContent = ctaText;
+      } else {
+        primary.textContent = ctaText;
+      }
+      primary.setAttribute('href', ctaHref);
     }
-    primary.setAttribute('href', ctaHref);
 
-    mini.textContent = miniLabel;
-    sticky.disabled = stickyDisabled;
-    sticky.setAttribute('aria-disabled', stickyDisabled ? 'true' : 'false');
+    if (extraCtas.length) {
+      extraCtas.forEach(function(el){
+        var target = el.querySelector('[data-register-cta-label]') || el.querySelector('span');
+        if (target) {
+          target.textContent = regCtaText;
+        } else {
+          el.textContent = regCtaText;
+        }
+        el.setAttribute('href', regCtaHref);
+        el.setAttribute('data-reg-state', s);
+        el.classList.toggle('is-pre-open', regCtaMuted);
+      });
+    }
+
+    if (mini) mini.textContent = miniLabel;
+    if (sticky) {
+      sticky.disabled = stickyDisabled;
+      sticky.setAttribute('aria-disabled', stickyDisabled ? 'true' : 'false');
+    }
     checkMidnightResync();
   }
 
@@ -283,7 +336,8 @@
     var mm = gsap.matchMedia();
     mm.add('(prefers-reduced-motion: no-preference)', function(){
       var ease = 'power3.out';
-      var desktop = window.matchMedia('(min-width: 900px)').matches;
+      var isDesktop = function(){ return window.matchMedia('(min-width: 900px)').matches; };
+      var revealTimelines = [];
 
       // 1) Page progress hairline (mix-blend keeps it visible on the dark gallery)
       var bar = document.createElement('div');
@@ -298,9 +352,9 @@
       var hero = document.querySelector('.hero');
       if (hero) {
         var heroTl = gsap.timeline({ defaults: { ease: 'none' },
-          scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: 0.5 } });
+          scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: 0.5, invalidateOnRefresh: true } });
         if (hero.querySelector('.hero__copy')) heroTl.to('.hero__copy', { yPercent: -14, opacity: 0.15 }, 0);
-        if (hero.querySelector('.hero__stage-wrap')) heroTl.to('.hero__stage-wrap', { yPercent: desktop ? -7 : -4, scale: 0.94, opacity: 0.35 }, 0);
+        if (hero.querySelector('.hero__stage-wrap')) heroTl.to('.hero__stage-wrap', { yPercent: function(){ return isDesktop() ? -7 : -4; }, scale: 0.94, opacity: 0.35 }, 0);
         if (hero.querySelector('.hero__bar')) heroTl.to('.hero__bar', { opacity: 0 }, 0);
       }
 
@@ -310,21 +364,21 @@
         var title = sec.querySelector('.section-title, .exp-title');
         var lead = sec.querySelector('.section-head .body, .exp-lead');
         var tl = gsap.timeline({ defaults: { ease: ease },
-          scrollTrigger: { trigger: sec, start: 'top 72%', once: true } });
-        if (idx) tl.from(idx, { x: -18, opacity: 0, duration: 0.6 }, 0);
-        if (title) tl.from(title, { yPercent: 40, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 1.0, clearProps: 'clipPath,transform,opacity' }, 0.08);
-        if (lead) tl.from(lead, { y: 18, opacity: 0, duration: 0.8 }, 0.3);
+          scrollTrigger: { trigger: sec, start: 'top 92%', once: true, fastScrollEnd: true } });
+        if (idx) tl.from(idx, { x: -16, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, 0);
+        if (title) tl.from(title, { yPercent: 28, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.62, clearProps: 'clipPath,transform,opacity' }, 0.04);
+        if (lead) tl.from(lead, { y: 12, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' }, 0.12);
+        revealTimelines.push({ el: sec, tl: tl });
 
         // Hairline draws left → right (container top rules use --rule-p)
         sec.querySelectorAll('.exp-list, .bento, .journey, .tm-bento, .faq').forEach(function(box){
-          gsap.fromTo(box, { '--rule-p': 0 }, { '--rule-p': 1, duration: 1.3, ease: 'expo.out',
-            scrollTrigger: { trigger: box, start: 'top 88%', once: true } });
+          gsap.fromTo(box, { '--rule-p': 0 }, { '--rule-p': 1, duration: 0.95, ease: 'expo.out',
+            scrollTrigger: { trigger: box, start: 'top 94%', once: true, fastScrollEnd: true } });
         });
 
         // Section 04 Journey (Option C): scrubbed numeral parallax, staged reveal, and contiguous active step spy
         if (sec.id === 'journey') {
           var jSteps = gsap.utils.toArray('.journey .step', sec);
-          var py = desktop ? 18 : 10;
           var setActiveStep = function(activeIdx){
             jSteps.forEach(function(s, i){
               s.classList.toggle('is-active', i === activeIdx);
@@ -340,19 +394,20 @@
 
             if (bigNum) {
               gsap.fromTo(bigNum,
-                { y: py },
-                { y: -py, ease: 'none',
+                { y: function(){ return isDesktop() ? 18 : 10; } },
+                { y: function(){ return isDesktop() ? -18 : -10; }, ease: 'none',
                   scrollTrigger: { trigger: step, start: 'top bottom', end: 'bottom top', scrub: 0.25, invalidateOnRefresh: true } });
             }
 
             var stepTl = gsap.timeline({
-              scrollTrigger: { trigger: step, start: 'top 86%', once: true, fastScrollEnd: true }
+              scrollTrigger: { trigger: step, start: 'top 96%', once: true, fastScrollEnd: true }
             });
-            if (bigNum) stepTl.from(bigNum, { opacity: 0, duration: 0.45, ease: 'power2.out', clearProps: 'opacity' }, 0);
-            if (tag) stepTl.from(tag, { x: -14, opacity: 0, duration: 0.45, ease: 'power2.out', clearProps: 'transform,opacity' }, 0);
-            if (title) stepTl.from(title, { yPercent: 40, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.65, ease: ease, clearProps: 'clipPath,transform,opacity' }, 0.06);
+            if (bigNum) stepTl.from(bigNum, { opacity: 0, duration: 0.36, ease: 'power2.out', clearProps: 'opacity' }, 0);
+            if (tag) stepTl.from(tag, { x: -12, opacity: 0, duration: 0.36, ease: 'power2.out', clearProps: 'transform,opacity' }, 0);
+            if (title) stepTl.from(title, { yPercent: 26, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.45, ease: ease, clearProps: 'clipPath,transform,opacity' }, 0.04);
             var follow = [day, body].filter(Boolean);
-            if (follow.length) stepTl.from(follow, { y: 14, opacity: 0, duration: 0.5, stagger: 0.06, ease: 'power2.out', clearProps: 'transform,opacity' }, 0.16);
+            if (follow.length) stepTl.from(follow, { y: 12, opacity: 0, duration: 0.42, stagger: 0.04, ease: 'power2.out', clearProps: 'transform,opacity' }, 0.09);
+            revealTimelines.push({ el: step, tl: stepTl });
 
             ScrollTrigger.create({
               trigger: step,
@@ -368,40 +423,138 @@
       });
 
       // 4) Row reveals: batched so rows entering together cascade (Section 04 handled with Option C choreography)
-      ScrollTrigger.batch('.exp-item, .bento .card, .tm-tile, .faq-item', {
-        start: 'top 90%',
-        once: true,
-        interval: 0.08,
-        onEnter: function(els){
-          gsap.fromTo(els, { y: 34, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.9, ease: ease, stagger: 0.09, overwrite: 'auto', clearProps: 'transform,opacity' });
-        }
-      });
-      // Hold rows hidden until their batch fires (set after the batch so first paint is never blank)
-      gsap.set('.exp-item, .bento .card, .tm-tile, .faq-item', { opacity: 0, y: 34 });
-      ScrollTrigger.refresh();
+      var rowEls = gsap.utils.toArray('.exp-item, .bento .card, .tm-tile, .faq-item');
+      var revealRows = function(els){
+        var pending = els.filter(function(el){ return el.dataset.ccRevealed !== '1'; });
+        if (!pending.length) return;
+        pending.forEach(function(el){ el.dataset.ccRevealed = '1'; });
+        gsap.to(pending, {
+          y: 0,
+          opacity: 1,
+          duration: 0.42,
+          ease: ease,
+          stagger: { amount: 0.12 },
+          overwrite: 'auto',
+          clearProps: 'opacity,transform'
+        });
+      };
 
-      // 5) Big figures: mask-rise + gentle scrubbed parallax (desktop)
-      gsap.utils.toArray('.bento-big, .tm-figure').forEach(function(fig){
-        gsap.from(fig, { yPercent: 35, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 1.1, ease: 'expo.out', clearProps: 'clipPath,transform,opacity',
-          scrollTrigger: { trigger: fig, start: 'top 92%', once: true } });
-        if (desktop) {
-          gsap.fromTo(fig, { '--py': 24 }, { '--py': -24, ease: 'none',
-            scrollTrigger: { trigger: fig, start: 'top bottom', end: 'bottom top', scrub: 0.6 } });
+      var initialVh = window.innerHeight || document.documentElement.clientHeight;
+      var pendingBatchEls = rowEls.filter(function(el){
+        if (el.getBoundingClientRect().top < initialVh) {
+          el.dataset.ccRevealed = '1';
+          return false;
         }
+        return true;
       });
+      if (pendingBatchEls.length) {
+        gsap.set(pendingBatchEls, { opacity: 0, y: 12 });
+        ScrollTrigger.batch(pendingBatchEls, {
+          start: 'top bottom',
+          once: true,
+          interval: 0.03,
+          onEnter: function(els){ revealRows(els); }
+        });
+      }
+
+      // 5) Big figures: mask-rise reveal (scrubbed parallax is desktop-only in separate matchMedia below)
+      gsap.utils.toArray('.bento-big, .tm-figure').forEach(function(fig){
+        var figTl = gsap.timeline({
+          scrollTrigger: { trigger: fig, start: 'top 96%', once: true, fastScrollEnd: true }
+        });
+        figTl.from(fig, { yPercent: 18, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.65, ease: 'expo.out', clearProps: 'clipPath,transform,opacity' });
+        revealTimelines.push({ el: fig, tl: figTl });
+      });
+
+      // 5b) Closing CTA band top hairline draw
+      var ctaBand = document.querySelector('.ed-cta-band');
+      if (ctaBand) {
+        gsap.fromTo(ctaBand, { '--rule-p': 0 }, { '--rule-p': 1, duration: 0.95, ease: 'expo.out',
+          scrollTrigger: { trigger: ctaBand, start: 'top 94%', once: true, fastScrollEnd: true } });
+      }
 
       // 6) Footer colophon
       var foot = document.querySelector('.ed-footer');
       if (foot) {
-        gsap.from(foot.querySelectorAll('.ed-index, .footer-title, .footer-meta'), {
-          y: 24, opacity: 0, duration: 0.9, ease: ease, stagger: 0.1, clearProps: 'transform,opacity',
-          scrollTrigger: { trigger: foot, start: 'top 90%', once: true } });
+        var footTargets = foot.querySelectorAll('.ed-index, .footer-title, .footer-meta');
+        if (footTargets.length) {
+          var footTl = gsap.timeline({
+            scrollTrigger: { trigger: foot, start: 'top 96%', once: true, fastScrollEnd: true }
+          });
+          footTl.from(footTargets, { y: 16, opacity: 0, duration: 0.5, ease: ease, stagger: 0.06, clearProps: 'transform,opacity' });
+          revealTimelines.push({ el: foot, tl: footTl });
+        }
       }
 
-      if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ ScrollTrigger.refresh(); });
+      // Safety check so rows/steps near the bottom of the viewport or scrolled past never stay dimmed
+      var ensureVisibleRevealed = function(){
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        var docH = document.documentElement.scrollHeight;
+        var nearBottom = (window.scrollY + vh) >= (docH - 80);
+        var missedRows = [];
+        rowEls.forEach(function(el){
+          if (el.dataset.ccRevealed === '1') return;
+          var rect = el.getBoundingClientRect();
+          if (rect.bottom <= 0) {
+            el.dataset.ccRevealed = '1';
+            gsap.set(el, { clearProps: 'opacity,transform' });
+          } else if (rect.top < vh + 12 || (nearBottom && rect.top <= vh + 24)) {
+            missedRows.push(el);
+          }
+        });
+        if (missedRows.length) revealRows(missedRows);
 
-      return function(){ if (bar.parentNode) bar.parentNode.removeChild(bar); };
+        revealTimelines.forEach(function(item){
+          if (item.tl.progress() >= 1) return;
+          var rect = item.el.getBoundingClientRect();
+          if (rect.bottom <= 0) {
+            item.tl.progress(1);
+          } else if ((rect.top < vh || (nearBottom && rect.top <= vh + 24)) && item.tl.progress() === 0) {
+            item.tl.play();
+          }
+        });
+      };
+
+      var settleTimer = 0;
+      var onScrollSafety = function(){
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        if ((window.scrollY + vh) >= (document.documentElement.scrollHeight - 80)) {
+          ensureVisibleRevealed();
+          return;
+        }
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(ensureVisibleRevealed, 120);
+      };
+      window.addEventListener('scroll', onScrollSafety, { passive: true });
+
+      ScrollTrigger.refresh();
+      ensureVisibleRevealed();
+
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function(){
+          ScrollTrigger.refresh();
+          ensureVisibleRevealed();
+        });
+      }
+
+      return function(){
+        clearTimeout(settleTimer);
+        window.removeEventListener('scroll', onScrollSafety);
+        rowEls.forEach(function(el){ delete el.dataset.ccRevealed; });
+        if (bar.parentNode) bar.parentNode.removeChild(bar);
+      };
+    });
+
+    // Desktop-only (>=900px) scrubbed parallax on big figures, clamped within tile gap (AGENTS.md §12.3)
+    mm.add('(min-width: 900px) and (prefers-reduced-motion: no-preference)', function(){
+      var figs = gsap.utils.toArray('.bento-big, .tm-figure');
+      figs.forEach(function(fig){
+        gsap.fromTo(fig, { '--py': 6 }, { '--py': -6, ease: 'none',
+          scrollTrigger: { trigger: fig, start: 'top bottom', end: 'bottom top', scrub: 0.6 } });
+      });
+      return function(){
+        figs.forEach(function(fig){ fig.style.removeProperty('--py'); });
+      };
     });
   }
 
@@ -775,7 +928,7 @@
       document.addEventListener('keydown', function(e){
         if (e.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true'){ setOpen(false); toggle.focus(); }
       });
-      var wide = window.matchMedia('(min-width:768px)');
+      var wide = window.matchMedia('(min-width:900px)');
       var onWide = function(){ if (wide.matches) setOpen(false); };
       if (wide.addEventListener) wide.addEventListener('change', onWide);
       else if (wide.addListener) wide.addListener(onWide);
@@ -809,26 +962,60 @@
         window.addEventListener('load', updateNav);
         updateNav();
       }
-      if (menu && 'IntersectionObserver' in window) {
+      if (menu) {
         var links = Array.prototype.slice.call(menu.querySelectorAll('a[href^="#"]'));
-        var byId = {}, current = '';
+        var targets = [];
         links.forEach(function(a){
-          var el = document.getElementById(a.getAttribute('href').slice(1));
-          if (el) byId[el.id] = a;
+          var href = a.getAttribute('href') || '';
+          var id = href.slice(1);
+          var el = id ? document.getElementById(id) : null;
+          if (el) targets.push({ id: id, el: el, link: a });
         });
-        var spy = new IntersectionObserver(function(entries){
-          entries.forEach(function(entry){
-            if (!entry.isIntersecting || entry.target.id === current) return;
-            current = entry.target.id;
+        if (targets.length) {
+          var currentSpyId = null;
+          var spyTick = 0;
+          var updateSpy = function(){
+            spyTick = 0;
+            var navH = nav.offsetHeight || 64;
+            var probeY = Math.max(navH + 40, Math.round(window.innerHeight * 0.35));
+            var activeId = '';
+            for (var i = 0; i < targets.length; i++) {
+              if (targets[i].el.getBoundingClientRect().top <= probeY) {
+                activeId = targets[i].id;
+              }
+            }
+            if (activeId === currentSpyId) return;
+            currentSpyId = activeId;
             links.forEach(function(a){ a.removeAttribute('aria-current'); });
-            if (byId[current]) byId[current].setAttribute('aria-current', 'true');
-          });
-        }, {rootMargin: '-42% 0px -52% 0px'});
-        Object.keys(byId).forEach(function(id){ spy.observe(document.getElementById(id)); });
+            targets.forEach(function(t){
+              if (t.id === activeId) t.link.setAttribute('aria-current', 'true');
+            });
+          };
+          var requestSpy = function(){ if (!spyTick) spyTick = requestAnimationFrame(updateSpy); };
+          window.addEventListener('scroll', requestSpy, { passive: true });
+          window.addEventListener('resize', requestSpy);
+          window.addEventListener('load', updateSpy);
+          window.addEventListener('hashchange', updateSpy);
+          updateSpy();
+        }
       }
     }
   })();
 
-  if (document.readyState === 'complete') initGsap();
-  else window.addEventListener('load', initGsap);
+  var gsapBooted = false;
+  function bootGsapOnce(){
+    if (gsapBooted) return;
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+    gsapBooted = true;
+    initGsap();
+  }
+  bootGsapOnce();
+  if (!gsapBooted) {
+    document.addEventListener('DOMContentLoaded', bootGsapOnce, { once: true });
+    window.addEventListener('load', bootGsapOnce, { once: true });
+  } else if (document.readyState !== 'complete') {
+    window.addEventListener('load', function(){
+      try { if (typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh(); } catch(e){}
+    }, { once: true });
+  }
 })();

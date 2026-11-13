@@ -1,38 +1,75 @@
 /* ==========================================================================
-   ComCamp #25 — Editorial Minimalism (HomePage sections 02–06 + footer)
+   ComCamp #25 — Editorial Minimalism (HomePage sections 02–06 + CTA + footer)
    Loaded after styles.css / page.css. Gallery (#gallery, .mt*) is untouched.
 
    Principles
-   - Structure: every section is a 12-col spread. Left = sticky index + title,
-     right = content. Hairline rules instead of cards, shadows or fills.
-   - Type: Thai sans for reading, IBM Plex Mono only for indexes / specs.
-   - Colour: ink on canvas. Blue is reserved for the active step + link hover.
+   - Structure: every section is a 12-col spread (4fr sticky chapter margin /
+     8fr architectural ledger). Hairline 1px rules replace card stacks & shadows.
+   - Surface rhythm: Hero & 02/04/06/CTA/Footer sit on --canvas-0 so transitions
+     from Hero and into .mt-fade have zero seam; 03 (#essentials) & 05 (#timeline)
+     alternate onto Warm Alabaster --canvas-1 (#F2F0E8 light / #121724 dark).
+   - Focal Anchor (Option 2B): #essentials features one full-bleed high-contrast
+     architectural plate for the 30-seat quota, balanced within a precision-ruled
+     2-column spec matrix.
+   - Type: IBM Plex Sans Thai for reading (letter-spacing: 0 strictly), IBM Plex
+     Mono only for English indexes, numerals, and technical specs.
    ========================================================================== */
 
+/* ---------- Veil Preloader Performance & Containment ---------- */
+.veil {
+  contain: layout style paint;
+  will-change: transform, opacity;
+}
+.veil.is-done {
+  pointer-events: none !important;
+  transition-duration: 0.62s !important;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/* ---------- Editorial Section Tokens ---------- */
 .ed-sec,
+.ed-cta-band,
 .ed-footer {
-  --ed-gap: clamp(32px, 6vw, 112px);
-  --ed-pad: clamp(72px, 10vw, 144px);
+  --ed-gap: clamp(36px, 6vw, 108px);
+  --ed-pad: clamp(76px, 10vw, 140px);
+  --ed-cell-pad-y: clamp(22px, 2.6vw, 32px);
+  --ed-cell-pad-x: clamp(20px, 3vw, 36px);
   --ed-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .ed-sec {
   padding: var(--ed-pad) 0;
   border-top: 1px solid var(--rule);
-  background: transparent;
+  background: var(--canvas-0);
+}
+
+.ed-sec.ed-sec--alt {
+  background: var(--canvas-1);
 }
 
 .ed-sec > .wrap,
+.ed-cta-band > .wrap,
 .ed-footer > .wrap {
-  width: min(1240px, calc(100% - 48px));
+  width: min(1240px, calc(100% - 40px));
+}
+@media (min-width: 768px) {
+  .ed-sec > .wrap,
+  .ed-cta-band > .wrap,
+  .ed-footer > .wrap {
+    width: min(1240px, calc(100% - 48px));
+  }
 }
 
-/* ---------- Shared index label  "03 ── ข้อมูลก่อนสมัคร" ---------- */
+.ed-main {
+  min-width: 0;
+}
+
+/* ---------- Shared Chapter Index  "03 ── ข้อมูลก่อนสมัคร · ESSENTIALS" ---------- */
 .ed-index {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin: 0 0 clamp(18px, 2.2vw, 28px);
+  gap: 12px;
+  margin: 0 0 clamp(18px, 2.2vw, 26px);
   font-family: var(--font-thai);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -42,6 +79,8 @@
 }
 .ed-index__no {
   font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
@@ -50,50 +89,54 @@
 .ed-en {
   font-family: var(--ed-mono);
   font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .ed-index__label::before {
   content: "";
   display: inline-block;
-  width: 28px;
+  width: 24px;
   height: 1px;
-  margin-right: 14px;
+  margin-right: 12px;
   vertical-align: middle;
   background: var(--rule-strong);
 }
 
-/* ---------- Spread layout ---------- */
+/* ---------- 4fr / 8fr Sticky Spread Layout ---------- */
 .ed-sec > .wrap:not(.exp),
-#experience .exp {
+#experience .exp,
+.ed-cta-band > .wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: clamp(36px, 5vw, 56px);
+  gap: clamp(32px, 5vw, 56px);
   align-items: start;
 }
 @media (min-width: 900px) {
   .ed-sec > .wrap:not(.exp),
-  #experience .exp {
+  #experience .exp,
+  .ed-cta-band > .wrap {
     grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
     column-gap: var(--ed-gap);
   }
   .ed-sec .section-head,
   #experience .exp-intro {
     position: sticky;
-    top: calc(var(--nav-h) + 32px);
+    top: calc(var(--nav-h, 64px) + 36px);
   }
 }
 
-/* ---------- Titles + lead ---------- */
-.ed-sec .section-head {
+/* ---------- Left Margin Titles, Lead & Aside Metadata ---------- */
+.ed-sec .section-head,
+#experience .exp-intro {
   margin: 0;
 }
 .ed-sec .section-title,
 #experience .exp-title {
   max-width: 14ch;
-  font-size: clamp(1.9rem, 2.6vw + 0.9rem, 3.1rem);
-  line-height: 1.22;
-  font-weight: 600;
+  font-size: clamp(1.85rem, 2.5vw + 0.85rem, 2.95rem);
+  line-height: 1.25;
+  font-weight: 700;
   letter-spacing: 0;
   text-wrap: balance;
   color: var(--ink);
@@ -101,13 +144,67 @@
 .ed-sec .section-head .body,
 #experience .exp-lead {
   max-width: 34ch;
-  margin-top: clamp(16px, 2vw, 24px);
+  margin-top: clamp(14px, 1.8vw, 22px);
   font-size: 0.9375rem;
-  line-height: 1.8;
+  line-height: 1.78;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
+.ed-aside-meta {
+  display: none;
+}
+@media (min-width: 900px) {
+  .ed-aside-meta {
+    display: block;
+    max-width: 32ch;
+    margin: 22px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-thai);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    letter-spacing: 0;
+    color: var(--ink-3);
+  }
+  .ed-aside-meta .ed-en {
+    font-size: 0.6875rem;
+    color: var(--ink-2);
+  }
+}
 
-/* ---------- 02 Experience: align with the spread ---------- */
+/* ---------- Inline Editorial Links ---------- */
+.ed-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 0;
+  font-family: var(--font-thai);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+  transition: color 0.16s ease, text-decoration-color 0.16s ease;
+}
+.ed-inline-link:hover {
+  color: var(--blue-600);
+  text-decoration-color: var(--blue-600);
+}
+.ed-inline-link:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 3px;
+}
+.ed-inline-link--strong {
+  font-size: 1rem;
+}
+
+/* ==========================================================================
+   02. EXPERIENCE — Numbered Lab Chapters + Datasheet Spec Strip
+   ========================================================================== */
 #experience {
   padding: var(--ed-pad) 0;
 }
@@ -115,19 +212,125 @@
   border-top: 1px solid var(--ink);
 }
 #experience .exp-item {
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: clamp(12px, 2.2vw, 24px);
   padding: clamp(24px, 3vw, 36px) 0;
+  align-items: start;
+}
+@media (min-width: 640px) {
+  #experience .exp-item {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
 }
 #experience .exp-item:last-child {
   border-bottom: 1px solid var(--rule);
   padding-bottom: clamp(24px, 3vw, 36px);
 }
+#experience .exp-num {
+  font-family: var(--ed-mono);
+  font-size: clamp(0.9375rem, 0.5vw + 0.8rem, 1.125rem);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  padding-top: 2px;
+  color: var(--ink-3);
+  transition: color 0.22s ease;
+}
+#experience .exp-item:hover .exp-num {
+  color: var(--blue-600);
+}
 #experience .exp-item-title {
+  font-size: clamp(1.15rem, 0.85vw + 0.95rem, 1.375rem);
   font-weight: 600;
+  line-height: 1.35;
   letter-spacing: 0;
+  color: var(--ink);
+}
+#experience .exp-item-text {
+  max-width: 56ch;
+  margin-top: 8px;
+  font-size: 0.9375rem;
+  line-height: 1.78;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+#experience .exp-spec {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+#experience .exp-key {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+#experience .exp-key::after {
+  content: "·";
+  margin-left: 12px;
+  color: var(--rule-strong);
+}
+#experience .exp-val {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ink);
 }
 
-/* ---------- 03 Essentials: ruled spec sheet (no cards) ---------- */
+/* ==========================================================================
+   03. ESSENTIALS — Framing Strip + 2-Col Ruled Spec Matrix + Option 2B Plate
+   ========================================================================== */
+.ed-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  margin: 0 0 clamp(22px, 2.8vw, 30px);
+  padding: 0;
+}
+.ed-metric:last-child {
+  grid-column: 1 / -1;
+}
+@media (min-width: 560px) {
+  .ed-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 28px;
+  }
+  .ed-metric:last-child {
+    grid-column: auto;
+  }
+  .ed-metric:not(:first-child) {
+    padding-left: 24px;
+    border-left: 1px solid var(--rule-strong);
+  }
+}
+.ed-metric__label {
+  font-family: var(--ed-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.ed-metric__val {
+  margin: 3px 0 0;
+  font-family: var(--font-thai);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+/* Architectural 2-column ruled spec grid */
 .ed-sec .bento {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -137,14 +340,16 @@
 @media (min-width: 640px) {
   .ed-sec .bento {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: clamp(28px, 4vw, 56px);
+    column-gap: 0;
   }
 }
+
 .ed-sec .bento .card {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: clamp(22px, 2.6vw, 30px) 0 !important;
+  min-width: 0;
+  padding: var(--ed-cell-pad-y) 0 !important;
   background: transparent !important;
   border: 0 !important;
   border-bottom: 1px solid var(--rule) !important;
@@ -152,6 +357,17 @@
   box-shadow: none !important;
   color: var(--ink);
 }
+
+@media (min-width: 640px) {
+  .ed-sec .bento .card.ed-cell--split:nth-child(odd) {
+    padding-right: var(--ed-cell-pad-x) !important;
+    border-right: 1px solid var(--rule) !important;
+  }
+  .ed-sec .bento .card.ed-cell--split:nth-child(even) {
+    padding-left: var(--ed-cell-pad-x) !important;
+  }
+}
+
 .ed-sec .bento .bento-icon {
   display: none;
 }
@@ -159,73 +375,265 @@
   display: block;
 }
 .ed-sec .bento .bento-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ed-mono);
   font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--ink-3);
 }
 .ed-sec .bento .card h3 {
   margin: 0 !important;
-  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.3rem);
+  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.275rem);
   font-weight: 600;
+  line-height: 1.38;
   letter-spacing: 0;
   color: var(--ink) !important;
 }
 .ed-sec .bento .card p {
-  max-width: 40ch;
+  max-width: 42ch;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  letter-spacing: 0;
   color: var(--ink-2) !important;
 }
-/* Seats: big mono figure, same ink — no inverted block */
-.ed-sec .bento .bento-feature {
-  grid-column: auto;
-}
-.ed-sec .bento .bento-feature .bento-tag {
-  color: var(--ink-3);
-}
-.ed-sec .bento .bento-big {
+
+/* Option 2B: Full-width High-Contrast Focal Anchor Plate for 30 Seats */
+.ed-sec .bento .card.bento-feature {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
   margin: 0;
+  padding: clamp(24px, 3vw, 34px) clamp(22px, 3.2vw, 36px) !important;
+  background: #121316 !important;
+  border: 1px solid #121316 !important;
+  border-radius: 0 !important;
+  color: #F9F8F4 !important;
+}
+@media (min-width: 640px) {
+  .ed-sec .bento .card.bento-feature {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: clamp(28px, 4.5vw, 56px);
+  }
+  .ed-sec .bento .bento-feature__right {
+    padding-left: clamp(24px, 3.5vw, 44px);
+    border-left: 1px solid rgba(249, 248, 244, 0.16);
+  }
+}
+.ed-sec .bento .bento-feature__left {
+  min-width: 0;
+}
+.ed-sec .bento .bento-feature__right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.bento-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #03B800;
+  flex: none;
+}
+.ed-sec .bento .card.bento-feature[data-reg-state="ALMOST_FULL"] .bento-live-dot {
+  background: #F5A524;
+}
+.ed-sec .bento .card.bento-feature[data-reg-state="FULL"] .bento-live-dot,
+.ed-sec .bento .card.bento-feature[data-reg-state="CLOSED"] .bento-live-dot {
+  background: rgba(249, 248, 244, 0.45);
+}
+.ed-sec .bento .card.bento-feature .bento-tag {
+  color: rgba(249, 248, 244, 0.72);
+}
+.ed-sec .bento .card.bento-feature .bento-big {
+  margin: 10px 0 0;
+  padding: 4px 0;
   display: flex;
   align-items: baseline;
   gap: 12px;
   font-family: var(--ed-mono);
-  font-size: clamp(3.5rem, 8vw, 6.5rem);
+  font-size: clamp(3.25rem, 6.5vw, 5.25rem);
   font-weight: 500;
-  line-height: 0.95;
+  line-height: 0.96;
   letter-spacing: -0.04em;
-  color: var(--ink);
+  color: #F9F8F4;
 }
-.ed-sec .bento .bento-big small {
+.ed-sec .bento .card.bento-feature .bento-big small {
   margin: 0;
   font-family: var(--font-thai);
-  font-size: 1rem;
+  font-size: 1.0625rem;
   font-weight: 500;
+  line-height: 1.35;
   letter-spacing: 0;
-  color: var(--ink-2);
+  color: rgba(249, 248, 244, 0.88);
 }
+.ed-sec .bento .card.bento-feature p {
+  max-width: 46ch;
+  color: rgba(249, 248, 244, 0.9) !important;
+}
+.ed-sec .bento .card.bento-feature .bento-feature__meta {
+  font-family: var(--ed-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(249, 248, 244, 0.56) !important;
+}
+
+/* Full-width bottom Fee & Action Ledger Row */
+.ed-sec .bento .card.ed-cell--ledger {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .ed-sec .bento .card.ed-cell--ledger {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+  }
+}
+.ed-ledger__info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ed-ledger__price {
+  display: inline-block;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--rule-strong);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Official "รอประกาศ" notice in --amber per AGENTS.md §12.2 */
 .ed-sec .bento .todo,
 .ed-sec .tm-tile .todo {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   padding: 0;
   font-family: var(--font-thai);
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.55;
   letter-spacing: 0;
-  color: var(--amber);
+  color: var(--amber) !important;
 }
 .ed-sec .tm-tile .todo::before,
 .ed-sec .bento .todo::before {
   content: "— ";
 }
+.ed-sec .bento .card .ed-card-action {
+  flex: none;
+}
 
-/* ---------- 04 Journey: typographic parallax index (Option C) ---------- */
+/* Workshop Archive Photo Triptych inside #essentials */
+.ed-photo-strip {
+  margin-top: clamp(32px, 4vw, 48px);
+  padding-top: clamp(22px, 2.8vw, 30px);
+  border-top: 1px solid var(--rule);
+}
+.ed-photo-strip__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin-bottom: 16px;
+}
+.ed-photo-strip__kicker {
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ed-photo-strip__note {
+  font-family: var(--font-thai);
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.ed-photo-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ed-photo-card {
+  margin: 0;
+  min-width: 0;
+}
+.ed-photo-card:first-child {
+  grid-column: 1 / -1;
+}
+@media (min-width: 640px) {
+  .ed-photo-strip__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .ed-photo-card:first-child {
+    grid-column: auto;
+  }
+}
+.ed-photo-card__frame {
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border: 1px solid var(--rule-strong);
+  background: var(--canvas-0);
+}
+.ed-photo-card__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ed-photo-card:hover .ed-photo-card__frame img {
+    transform: scale(1.03);
+  }
+}
+.ed-photo-card__cap {
+  margin-top: 8px;
+  font-family: var(--font-thai);
+  font-size: 0.8125rem;
+  line-height: 1.58;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.ed-photo-card__idx {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--ed-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+/* ==========================================================================
+   04. JOURNEY — Typographic Parallax Index & Unified Baseline Metadata
+   ========================================================================== */
 .ed-sec .journey {
   border-top: 1px solid var(--ink);
 }
 .ed-sec .step {
   display: grid;
-  grid-template-columns: clamp(48px, 8vw, 96px) minmax(0, 1fr);
+  grid-template-columns: clamp(48px, 7.5vw, 92px) minmax(0, 1fr);
   align-items: start;
-  gap: 0 clamp(16px, 3vw, 40px);
+  gap: 0 clamp(16px, 3vw, 36px);
   padding: clamp(28px, 3.2vw, 40px) 0;
   border-bottom: 1px solid var(--rule) !important;
 }
@@ -234,10 +642,11 @@
 }
 .ed-sec .step-big-num {
   font-family: var(--ed-mono);
-  font-size: clamp(2rem, 3.8vw, 3.35rem);
+  font-size: clamp(2rem, 3.6vw, 3.25rem);
   font-weight: 600;
   line-height: 0.95;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
   padding-top: 2px;
   color: var(--rule-strong);
   user-select: none;
@@ -250,57 +659,160 @@
 .ed-sec .step.is-done .step-big-num {
   color: var(--ink-3);
 }
-.ed-sec .step-num {
+.ed-sec .step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
   margin-bottom: 8px;
-  letter-spacing: 0.08em;
 }
-.ed-sec .step h3 {
-  margin: 0 0 6px;
-  font-size: clamp(1.15rem, 0.9vw + 0.95rem, 1.4rem);
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.ed-sec .step .day {
-  padding: 0;
-  margin: 0 0 12px;
-  background: transparent;
-  border-radius: 0;
+.ed-sec .step-num {
+  margin: 0;
+  font-family: var(--ed-mono);
   font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
+.ed-sec .step .day {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ed-sec .step h3 {
+  margin: 0 0 8px;
+  font-size: clamp(1.15rem, 0.9vw + 0.95rem, 1.4rem);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink);
+}
 .ed-sec .step p {
   max-width: 54ch;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.78;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.ed-journey-signoff {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+@media (min-width: 640px) {
+  .ed-journey-signoff {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+}
+.ed-signoff-note {
+  font-family: var(--font-thai);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  letter-spacing: 0;
+  color: var(--ink-3);
 }
 
-/* ---------- 05 Timeline & care: ruled table ---------- */
+/* ==========================================================================
+   05. TIMELINE & PARENTAL ASSURANCE — Part A Ledger + Part B 2x2 Trust Matrix
+   ========================================================================== */
+.tm-group-head {
+  margin: 0 0 12px;
+}
+.tm-group-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin: 0;
+  font-family: var(--font-thai);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.tm-group-kicker .ed-en {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
 .ed-sec .tm-bento {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 clamp(24px, 4vw, 56px);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   border-top: 1px solid var(--ink);
 }
+@media (min-width: 640px) {
+  .ed-sec .tm-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 0;
+  }
+}
+
 .ed-sec .tm-tile {
-  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding: clamp(20px, 2.4vw, 28px) 0;
+  min-width: 0;
+  padding: var(--ed-cell-pad-y) 0;
   background: transparent !important;
   border: 0 !important;
   border-bottom: 1px solid var(--rule) !important;
   border-radius: 0;
   box-shadow: none !important;
 }
+
 @media (min-width: 640px) {
   .ed-sec .tm-tile--01,
-  .ed-sec .tm-tile--04 { grid-column: span 2; }
+  .ed-sec .tm-tile--04 {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: clamp(24px, 4vw, 48px);
+    align-items: end;
+  }
+  .ed-sec .tm-tile--04 {
+    align-items: center;
+  }
   .ed-sec .tm-tile--02,
-  .ed-sec .tm-tile--03,
   .ed-sec .tm-tile--care-a,
+  .ed-sec .tm-tile--care-c {
+    grid-column: span 1;
+    padding-right: var(--ed-cell-pad-x);
+    border-right: 1px solid var(--rule) !important;
+  }
+  .ed-sec .tm-tile--03,
   .ed-sec .tm-tile--care-b,
-  .ed-sec .tm-tile--care-c,
-  .ed-sec .tm-tile--care-d { grid-column: span 1; }
+  .ed-sec .tm-tile--care-d {
+    grid-column: span 1;
+    padding-left: var(--ed-cell-pad-x);
+  }
 }
+
+.tm-tile__lead,
+.tm-tile__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
 .ed-sec .tm-num {
   font-family: var(--font-thai);
   font-size: 0.8125rem;
@@ -308,31 +820,51 @@
   letter-spacing: 0;
   color: var(--ink-3);
 }
-.ed-sec .tm-num .font-mono { font-family: var(--ed-mono); letter-spacing: 0.04em; }
+.ed-sec .tm-num .font-mono {
+  font-family: var(--ed-mono);
+  letter-spacing: 0.04em;
+}
 .ed-sec .tm-tile h3 {
   margin: 0;
-  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.3rem);
+  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.275rem);
   font-weight: 600;
+  line-height: 1.38;
   letter-spacing: 0;
   color: var(--ink);
 }
 .ed-sec .tm-tile p {
-  max-width: 44ch;
+  max-width: 48ch;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
 .ed-sec .tm-tile .tm-figure {
-  font-size: clamp(2.25rem, 4.5vw, 3.75rem);
-  font-weight: 500;
-  line-height: 1.05;
+  margin-top: 8px;
+  padding: 4px 0;
+  font-size: clamp(2.05rem, 3.8vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.24;
   letter-spacing: 0;
+  color: var(--ink);
 }
 .ed-sec .tm-tile .tm-figure small {
+  display: inline-block;
+  margin-left: 6px;
   font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: 0;
+  color: var(--ink-3);
 }
-/* Feature tile: same ink, larger — no inverted fill */
-html .ed-sec .tm-tile.tm-tile--feature {
+.ed-sec .tm-tile-link {
+  margin-top: 2px;
+}
+
+/* Feature tile 04: transparent ruled row in both light and dark (overrides styles.css dark rule) */
+html .ed-sec .tm-tile.tm-tile--feature,
+html.dark .ed-sec .tm-tile.tm-tile--feature,
+html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
   background: transparent !important;
   border-color: var(--rule) !important;
 }
@@ -340,55 +872,287 @@ html .ed-sec .tm-tile.tm-tile--feature {
 .ed-sec .tm-tile--01 .tm-figure * {
   color: var(--ink);
 }
+.ed-sec .tm-tile--01 .tm-figure small {
+  color: var(--ink-3);
+}
 .ed-sec .tm-tile--feature h3 {
-  font-size: clamp(1.4rem, 1.6vw + 0.9rem, 2rem);
-  line-height: 1.3;
+  font-size: clamp(1.2rem, 1.2vw + 0.9rem, 1.65rem);
+  line-height: 1.34;
   color: var(--ink);
 }
-.ed-sec .tm-tile--feature .tm-num,
+.ed-sec .tm-tile--feature .tm-num {
+  color: var(--ink-3);
+}
 .ed-sec .tm-tile--feature p {
   color: var(--ink-2);
 }
-.ed-sec .tm-tile--feature .todo {
-  color: var(--amber);
+
+/* Group B: Parental Assurance */
+.tm-care-section {
+  margin-top: clamp(40px, 5vw, 60px);
 }
-.ed-sec .tm-tile a {
-  text-decoration-color: var(--ink-3);
+.tm-care-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  color: var(--ink-3);
+}
+.tm-care-icon {
+  flex: none;
+  color: var(--ink);
 }
 
-/* ---------- 06 FAQ ---------- */
+/* Editorial Footnote (unboxed hairline note, amber status accent per AGENTS.md §12.2) */
+.tm-status-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-thai);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.tm-status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  margin-top: 0.6em;
+  background: var(--amber);
+}
+.tm-status-tag {
+  font-weight: 600;
+  color: var(--amber);
+}
+
+/* ==========================================================================
+   06. FAQ — Numbered Editorial Index Accordion
+   ========================================================================== */
 .ed-sec .faq {
   max-width: none;
   margin: 0;
   border-top: 1px solid var(--ink);
 }
+.ed-sec details.faq-item {
+  border-bottom: 1px solid var(--rule);
+}
 .ed-sec details.faq-item summary {
+  min-height: 48px;
   padding: clamp(20px, 2.4vw, 28px) 0;
-  font-size: clamp(1.05rem, 0.6vw + 0.95rem, 1.25rem);
-  font-weight: 500;
+  font-size: clamp(1.05rem, 0.6vw + 0.95rem, 1.225rem);
+  font-weight: 600;
+  line-height: 1.48;
   letter-spacing: 0;
+  color: var(--ink);
   transition: color 0.18s ease;
 }
-.ed-sec details.faq-item summary:hover {
+.faq-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+@media (min-width: 640px) {
+  .faq-head {
+    grid-template-columns: 42px minmax(0, 1fr);
+    column-gap: 16px;
+  }
+}
+.faq-idx {
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  transition: color 0.18s ease;
+}
+.faq-q {
+  letter-spacing: 0;
+  min-width: 0;
+}
+.ed-sec details.faq-item summary:hover,
+.ed-sec details.faq-item[open] summary .faq-idx,
+.ed-sec details.faq-item summary:hover .faq-idx {
   color: var(--blue-600);
+}
+.ed-sec details.faq-item summary:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 4px;
 }
 .ed-sec details.faq-item summary::after {
   font-size: 1.25rem;
   color: var(--ink);
 }
 .ed-sec .faq-body {
-  max-width: 58ch;
-  padding-bottom: clamp(22px, 2.6vw, 32px);
+  max-width: 60ch;
+  padding: 0 0 clamp(22px, 2.6vw, 32px) 46px;
   font-size: 0.9375rem;
+  line-height: 1.8;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+@media (min-width: 640px) {
+  .ed-sec .faq-body {
+    padding-left: 58px;
+  }
+}
+@media (max-width: 399px) {
+  .ed-sec .faq-body {
+    padding-left: 0;
+  }
+}
+.ed-sec .faq-body a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+}
+.ed-sec .faq-body a:hover {
+  color: var(--blue-600);
+  text-decoration-color: var(--blue-600);
 }
 
-/* ---------- Footer / colophon ---------- */
+/* ==========================================================================
+   Pre-Gallery Closing Manifesto CTA Band
+   ========================================================================== */
+.ed-cta-band {
+  --rule-p: 1;
+  padding: clamp(64px, 8.5vw, 112px) 0;
+  border-top: 0;
+  background:
+    linear-gradient(var(--ink), var(--ink)) 0 0 / calc(var(--rule-p) * 100%) 1px no-repeat,
+    var(--canvas-0);
+}
+.ed-cta-band__aside .ed-index {
+  margin-bottom: 0;
+}
+.ed-cta-band__eyebrow {
+  margin: 0 0 10px;
+  font-family: var(--ed-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ed-cta-band__title {
+  margin: 0;
+  max-width: 20ch;
+  font-size: clamp(1.65rem, 2.5vw + 0.75rem, 2.6rem);
+  font-weight: 700;
+  line-height: 1.26;
+  letter-spacing: 0;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.ed-cta-band__sub {
+  margin: 12px 0 0;
+  max-width: 54ch;
+  font-size: 1rem;
+  line-height: 1.75;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.ed-cta-band__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+.ed-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 26px;
+  border-radius: 9999px;
+  font-family: var(--font-thai);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-decoration: none;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.ed-pill:active {
+  transform: translateY(1px);
+}
+.ed-pill:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 3px;
+  border-radius: 9999px;
+}
+/* AGENTS.md §4.1: text on fern-500 MUST be #121316 (even in Dark Mode) */
+.ed-pill--primary {
+  background: var(--fern-500);
+  border: 1px solid var(--fern-500);
+  color: #121316;
+}
+.ed-pill--primary:hover {
+  background: var(--fern-600);
+  border-color: var(--fern-600);
+  color: #121316;
+  text-decoration: none;
+}
+/* Pre-open / full / closed quiet surface while staying clearly clickable */
+.ed-pill--primary.is-pre-open {
+  background: var(--canvas-1);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.ed-pill--primary.is-pre-open:hover {
+  background: var(--canvas-1);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.ed-pill--secondary {
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink);
+}
+.ed-pill--secondary:hover {
+  background: var(--canvas-1);
+  border-color: var(--ink);
+  color: var(--ink);
+  text-decoration: none;
+}
+@media (max-width: 459px) {
+  .ed-cta-band__actions .ed-pill {
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   08. FOOTER / COLOPHON
+   ========================================================================== */
 .ed-footer {
-  padding: clamp(56px, 8vw, 104px) 0 calc(32px + env(safe-area-inset-bottom));
+  padding: clamp(56px, 8vw, 104px) 0 calc(72px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--ink);
+  background: var(--canvas-0);
+}
+@media (min-width: 768px) {
+  .ed-footer {
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  }
 }
 .ed-footer .footer-grid {
-  gap: clamp(28px, 4vw, 48px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 56px);
 }
 @media (min-width: 900px) {
   .ed-footer .footer-grid {
@@ -398,27 +1162,85 @@ html .ed-sec .tm-tile.tm-tile--feature {
 }
 .ed-footer .footer-title {
   max-width: 24ch;
-  font-size: clamp(1.25rem, 1.2vw + 1rem, 1.75rem);
+  font-size: clamp(1.25rem, 1.2vw + 1rem, 1.7rem);
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.36;
   letter-spacing: 0;
+  color: var(--ink);
 }
 .ed-footer .footer-meta {
+  margin-top: 10px;
   font-size: 0.875rem;
+  line-height: 1.72;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
-@media (min-width: 900px) {
-  .ed-footer .footer-grid > div:last-child {
-    padding-top: calc(0.75rem * 1.4 + clamp(18px, 2.2vw, 28px));
+.ed-footer .footer-right {
+  min-width: 0;
+}
+.ed-footer .footer-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+@media (min-width: 640px) {
+  .ed-footer .footer-cols {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .ed-sec details.faq-item summary { transition: none; }
+.ed-footer .footer-col__head {
+  margin: 0 0 10px;
+  font-family: var(--font-thai);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+.ed-footer .footer-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.ed-footer .footer-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  font-size: 0.9375rem;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+  transition: color 0.16s ease, text-decoration-color 0.16s ease;
+}
+.ed-footer .footer-links a:hover {
+  color: var(--blue-600);
+  text-decoration-color: var(--blue-600);
+}
+.ed-footer .footer-links a:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 2px;
+}
+.ed-footer .footer-col__note {
+  margin: 10px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.ed-footer .footer-legal {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  max-width: none;
 }
 
 /* ==========================================================================
-   Motion layer (driven by initEditorialMotion() in main.js)
+   Motion & Dark Theme Layer (driven by initEditorialMotion() in main.js)
    ========================================================================== */
 
 /* Top rules draw in via --rule-p (0 → 1). Defaults to 1 so no-JS / reduced motion is fully drawn. */
@@ -432,21 +1254,74 @@ html .ed-sec .tm-tile.tm-tile--feature {
   background: linear-gradient(var(--ink), var(--ink)) 0 0 / calc(var(--rule-p) * 100%) 1px no-repeat;
 }
 
-/* Fee numeral (was inline style) */
-.ed-sec .fee-num { font-weight: 600; font-size: 1.125rem; color: var(--ink); }
+/* Fee numeral */
+.ed-sec .fee-num {
+  font-weight: 600;
+  font-size: 1.1875rem;
+  color: var(--ink);
+}
 
-/* Big-figure parallax rides the individual `translate` property via --py so it
-   never fights the reveal tween's transform / clearProps. */
-.ed-sec .bento-big,
-.ed-sec .tm-figure { translate: 0 calc(var(--py, 0) * 1px); }
+/* Big-figure parallax rides the individual 'translate' property on desktop only
+   so mobile (<900px) never shifts .tm-figure over .tm-num. */
+@media (min-width: 900px) {
+  .ed-sec .bento-big,
+  .ed-sec .tm-figure {
+    translate: 0 calc(var(--py, 0) * 1px);
+  }
+}
 
-/* Dark theme: lighter amber/blue so small text clears AA (scoped; hero/gallery untouched) */
+/* Dark theme tokens scoped to editorial bands + footer (hero/gallery untouched) */
 html.dark .ed-sec,
+html.dark .ed-cta-band,
 html.dark .ed-footer,
 html[data-theme="dark"] .ed-sec,
+html[data-theme="dark"] .ed-cta-band,
 html[data-theme="dark"] .ed-footer {
+  --canvas-1: #121724;
   --amber: #F5A524;
   --blue-600: #7FA8FF;
+  --fern-500: #03B800;
+  --fern-600: #22D31E;
+}
+
+/* Dark theme Option 2B focal plate on #essentials Seats block */
+html.dark .ed-sec .bento .card.bento-feature,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature {
+  background: #182032 !important;
+  border: 1px solid rgba(127, 168, 255, 0.38) !important;
+  color: #F5F4EF !important;
+}
+@media (min-width: 640px) {
+  html.dark .ed-sec .bento .bento-feature__right,
+  html[data-theme="dark"] .ed-sec .bento .bento-feature__right {
+    border-left-color: rgba(213, 220, 240, 0.16);
+  }
+}
+html.dark .ed-sec .bento .card.bento-feature .bento-tag,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-tag {
+  color: #A9C2FF;
+}
+html.dark .ed-sec .bento .card.bento-feature .bento-big,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-big {
+  color: #F5F4EF;
+}
+html.dark .ed-sec .bento .card.bento-feature .bento-big small,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-big small {
+  color: #D5DCF0;
+}
+html.dark .ed-sec .bento .card.bento-feature p,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature p {
+  color: #DCE3F5 !important;
+}
+html.dark .ed-sec .bento .card.bento-feature .bento-feature__meta,
+html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-feature__meta {
+  color: rgba(213, 220, 240, 0.62) !important;
+}
+
+/* Dark theme FAQ chevron & summary contrast */
+html.dark .ed-sec details.faq-item summary::after,
+html[data-theme="dark"] .ed-sec details.faq-item summary::after {
+  color: var(--ink);
 }
 
 /* Page progress hairline */
@@ -469,24 +1344,32 @@ html[data-theme="dark"] .ed-footer {
 }
 .ed-sec .step.is-active h3,
 .ed-sec .step.is-active .step-num {
-  transform: translateX(10px);
+  transform: translateX(8px);
 }
 .ed-sec .step.is-active .step-num {
   color: var(--ink);
 }
 
-/* Experience rows: number brightens + title slides on hover */
+/* Experience rows: title glides subtly on hover */
 #experience .exp-item-title {
-  transition: transform 0.4s var(--ease-out);
+  transition: transform 0.35s var(--ease-out);
 }
 #experience .exp-item:hover .exp-item-title {
-  transform: translateX(6px);
+  transform: translateX(5px);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ed-progress { display: none; }
+  .ed-sec details.faq-item summary,
+  .ed-inline-link,
+  .ed-pill,
+  .ed-photo-card__frame img,
+  #experience .exp-num,
   .ed-sec .step-big-num,
   .ed-sec .step h3,
   .ed-sec .step .step-num,
-  #experience .exp-item-title { transition: none; transform: none !important; }
+  #experience .exp-item-title {
+    transition: none !important;
+    transform: none !important;
+  }
 }
