@@ -12,7 +12,7 @@ import (
 
 func TestRequireRoles(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	guarded := RequireRoles(domain.RoleSuperadmin, domain.RoleFinance)(ok)
+	guarded := RequireRoles(domain.RoleAdmin)(ok)
 
 	serve := func(claims *service.AdminClaims) int {
 		req := httptest.NewRequest(http.MethodGet, "/api/admin/x", nil)
@@ -28,12 +28,11 @@ func TestRequireRoles(t *testing.T) {
 		t.Fatalf("no claims (RequireAuth missing) must fail closed with 401, got %d", code)
 	}
 	for role, want := range map[domain.AdminRole]int{
-		domain.RoleSuperadmin:    http.StatusOK,
-		domain.RoleFinance:       http.StatusOK,
-		domain.RoleStaff:         http.StatusForbidden,
-		domain.RoleReviewer:      http.StatusForbidden,
-		domain.AdminRole(""):     http.StatusForbidden,
-		domain.AdminRole("root"): http.StatusForbidden,
+		domain.RoleAdmin:               http.StatusOK,
+		domain.AdminRole("superadmin"): http.StatusForbidden,
+		domain.AdminRole("staff"):      http.StatusForbidden,
+		domain.AdminRole(""):           http.StatusForbidden,
+		domain.AdminRole("root"):       http.StatusForbidden,
 	} {
 		if code := serve(&service.AdminClaims{AdminID: 1, Role: role}); code != want {
 			t.Errorf("role %q: expected %d, got %d", role, want, code)
@@ -43,7 +42,7 @@ func TestRequireRoles(t *testing.T) {
 	if code := func() int {
 		rec := httptest.NewRecorder()
 		RequireRoles()(ok).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(
-			context.WithValue(context.Background(), AdminContextKey, &service.AdminClaims{Role: domain.RoleSuperadmin})))
+			context.WithValue(context.Background(), AdminContextKey, &service.AdminClaims{Role: domain.RoleAdmin})))
 		return rec.Code
 	}(); code != http.StatusForbidden {
 		t.Fatalf("an empty allow-list must allow nobody, got %d", code)

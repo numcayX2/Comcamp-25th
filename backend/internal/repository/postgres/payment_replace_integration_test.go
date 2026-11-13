@@ -67,7 +67,7 @@ func seedAdmin(t *testing.T, pool *pgxpool.Pool) *domain.Admin {
 	if err != nil {
 		t.Fatal(err)
 	}
-	admin := &domain.Admin{Username: "slip-" + uuid.NewString()[:8], PasswordHash: hash, FullName: "slip test", Role: domain.RoleStaff, IsActive: true}
+	admin := &domain.Admin{Username: "slip-" + uuid.NewString()[:8], PasswordHash: hash, FullName: "slip test", Role: domain.RoleAdmin, IsActive: true}
 	if err := postgres.NewAdminPostgresRepo(pool).Create(context.Background(), admin); err != nil {
 		t.Fatal(err)
 	}

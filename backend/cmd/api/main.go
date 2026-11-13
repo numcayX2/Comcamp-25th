@@ -71,7 +71,7 @@ func main() {
 				Username:     cfg.DevAdminUsername,
 				PasswordHash: hash,
 				FullName:     "Development Administrator",
-				Role:         domain.RoleSuperadmin,
+				Role:         domain.RoleAdmin,
 				IsActive:     true,
 			})
 			log.Printf("Seeded in-memory dev admin %q from DEV_ADMIN_PASSWORD", cfg.DevAdminUsername)

@@ -16,21 +16,13 @@ import (
 	"comcamp25-backend/internal/service"
 )
 
-// Admin permissions (AGENTS.md §13.2). Every /api/admin/* route names the roles allowed to call
-// it; there is no route that any valid token can reach by default.
-//
-//	route                                          superadmin  staff  finance  reviewer
-//	GET    /admin/applications, /admin/settings        ✓         ✓       ✓        ✓
-//	GET    /admin/applications/{id}/slip               ✓         ✓       ✓
-//	PATCH  /admin/applications/{id}/verify-slip        ✓         ✓       ✓
-//	PATCH  /admin/applications/{id}, …/{id}/profile    ✓         ✓
-//	DELETE /admin/applications/{id}                    ✓
-//	PATCH  /admin/settings                             ✓
+// Admin permissions (AGENTS.md §13.2). Every /api/admin/* route explicitly requires RoleAdmin;
+// there is no route that an unauthenticated or unknown-role token can reach by default.
 var (
-	rolesAnyAdmin = domain.AllAdminRoles
-	rolesPayments = []domain.AdminRole{domain.RoleSuperadmin, domain.RoleFinance, domain.RoleStaff}
-	rolesEditors  = []domain.AdminRole{domain.RoleSuperadmin, domain.RoleStaff}
-	rolesSuper    = []domain.AdminRole{domain.RoleSuperadmin}
+	rolesAnyAdmin = []domain.AdminRole{domain.RoleAdmin}
+	rolesPayments = []domain.AdminRole{domain.RoleAdmin}
+	rolesEditors  = []domain.AdminRole{domain.RoleAdmin}
+	rolesSuper    = []domain.AdminRole{domain.RoleAdmin}
 )
 
 // RateLimits are per client IP. They are generous enough for a school computer lab or a mobile

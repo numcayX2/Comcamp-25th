@@ -8,14 +8,11 @@ import (
 type AdminRole string
 
 const (
-	RoleSuperadmin AdminRole = "superadmin"
-	RoleStaff      AdminRole = "staff"
-	RoleFinance    AdminRole = "finance"
-	RoleReviewer   AdminRole = "reviewer"
+	RoleAdmin AdminRole = "admin"
 )
 
 // AllAdminRoles are the roles an active admin account can hold (the admins.role CHECK).
-var AllAdminRoles = []AdminRole{RoleSuperadmin, RoleStaff, RoleFinance, RoleReviewer}
+var AllAdminRoles = []AdminRole{RoleAdmin}
 
 type Admin struct {
 	ID           int64      `db:"id" json:"id"`

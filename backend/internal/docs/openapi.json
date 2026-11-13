@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "ComCamp #25 API Documentation",
-    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับพี่ค่าย (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- ดูรายชื่อ / ดูการตั้งค่า: superadmin, staff, finance, reviewer\n- ดูสลิป / อนุมัติหรือปฏิเสธสลิป: superadmin, finance, staff\n- เปลี่ยนสถานะ / แก้ไขข้อมูลใบสมัคร: superadmin, staff\n- ลบใบสมัคร / แก้การตั้งค่า: superadmin เท่านั้น\nบทบาทที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\nเลขบัตรประชาชนใน GET /admin/applications: superadmin และ staff ได้เลขเต็ม 13 หลัก ส่วน finance และ reviewer ได้ค่าที่ mask เหมือนหน้า /status (1-5099-XXXXX-XX-X) เพราะเลขเต็มใช้ยกเลิกใบสมัครผ่าน POST /applications/{id}/withdraw ซึ่งต้องเป็นสิทธิ์ของ superadmin เท่านั้น\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nEndpoint สาธารณะที่ยืนยันตัวตนด้วย verifyCode หรือ nationalId นับการตอบผิดต่อใบสมัคร: ผิด 5 ครั้งใน 15 นาที ล็อก 15 นาที ตอบ 429 RATE_LIMITED + Retry-After",
+    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับผู้ดูแลระบบ (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป, ตั้งค่าค่าย)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- มีบทบาทเดียวคือ admin สำหรับทุก endpoint ภายใต้ /admin/*\n- บทบาทอื่นหรือบัญชีที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\n- GET /admin/applications ส่งเลขบัตรประชาชนเต็ม 13 หลักให้ผู้ดูแลระบบบทบาท admin\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nEndpoint สาธารณะที่ยืนยันตัวตนด้วย verifyCode หรือ nationalId นับการตอบผิดต่อใบสมัคร: ผิด 5 ครั้งใน 15 นาที ล็อก 15 นาที ตอบ 429 RATE_LIMITED + Retry-After",
     "version": "1.0.0",
     "contact": {
       "name": "ComCamp 25 Technical Team",
@@ -383,7 +383,7 @@
                 "schema": { "$ref": "#/components/schemas/LoginResponse" },
                 "example": {
                   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                  "role": "staff"
+                  "role": "admin"
                 }
               }
             }
@@ -399,7 +399,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Admin List Applications",
-        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: superadmin, staff, finance, reviewer nationalId เป็นเลขเต็มสำหรับ superadmin และ staff เท่านั้น finance และ reviewer ได้ค่าที่ mask (1-5099-XXXXX-XX-X) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป",
+        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: admin (nationalId เป็นเลขเต็ม 13 หลัก) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -426,7 +426,7 @@
             "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff, finance, reviewer", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -434,7 +434,7 @@
       "post": {
         "tags": ["Admin Management"],
         "summary": "Admin Record CSV Export",
-        "description": "บันทึกการส่งออกรายชื่อผู้สมัครเป็นไฟล์ CSV ลง audit_logs (action application.export.csv: จำนวนแถว รหัสใบสมัคร ตัวกรองสถานะ ผู้ส่งออกและ IP) หน้าแอดมินเรียกก่อนสร้างไฟล์ และสร้างไฟล์เมื่อบันทึกสำเร็จเท่านั้น ข้อความที่ค้นหาไม่ถูกบันทึก (มักเป็นเบอร์โทรหรือเลขบัตร) สิทธิ์: superadmin, staff",
+        "description": "บันทึกการส่งออกรายชื่อผู้สมัครเป็นไฟล์ CSV ลง audit_logs (action application.export.csv: จำนวนแถว รหัสใบสมัคร ตัวกรองสถานะ ผู้ส่งออกและ IP) หน้าแอดมินเรียกก่อนสร้างไฟล์ และสร้างไฟล์เมื่อบันทึกสำเร็จเท่านั้น ข้อความที่ค้นหาไม่ถูกบันทึก (มักเป็นเบอร์โทรหรือเลขบัตร) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -467,7 +467,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "403": {
-            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff",
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           }
         }
@@ -477,7 +477,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Update Application Status",
-        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ตัวสำรอง (RESERVE), รอคืนเงิน (REFUND_PENDING) หรือคืนเงินแล้ว (REFUNDED) การเปลี่ยนจาก REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่ง จะตรวจโควตาแบบ atomic ถ้าเต็มตอบ 409 QUOTA_FULL (ใบสมัครคงสถานะเดิม) สิทธิ์: superadmin, staff",
+        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ตัวสำรอง (RESERVE), รอคืนเงิน (REFUND_PENDING) หรือคืนเงินแล้ว (REFUNDED) การเปลี่ยนจาก REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่ง จะตรวจโควตาแบบ atomic ถ้าเต็มตอบ 409 QUOTA_FULL (ใบสมัครคงสถานะเดิม) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -513,13 +513,13 @@
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "code QUOTA_FULL = ที่นั่งเต็ม ไม่สามารถคืนใบสมัครที่ REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่งได้", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       },
       "delete": {
         "tags": ["Admin Management"],
         "summary": "Admin Delete Application",
-        "description": "ลบใบสมัคร (soft delete: คืนที่นั่งและปล่อยเลขบัตร/เบอร์/อีเมลให้สมัครใหม่ได้) body เป็นทางเลือก { reason } บันทึก audit_logs ถ้าผู้สมัครจ่ายเงินแล้ว ให้ใช้สถานะ REFUND_PENDING แทนเพื่อไม่ให้หายจากบัญชี สิทธิ์: superadmin เท่านั้น",
+        "description": "ลบใบสมัคร (soft delete: คืนที่นั่งและปล่อยเลขบัตร/เบอร์/อีเมลให้สมัครใหม่ได้) body เป็นทางเลือก { reason } บันทึก audit_logs ถ้าผู้สมัครจ่ายเงินแล้ว ให้ใช้สถานะ REFUND_PENDING แทนเพื่อไม่ให้หายจากบัญชี สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -539,7 +539,7 @@
           "400": { "description": "body ไม่ใช่ JSON ที่ถูกต้อง (ใบสมัครไม่ถูกลบ)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin เท่านั้น", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -547,7 +547,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Edit Application Profile",
-        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ XS–3XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: superadmin, staff",
+        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ XS–3XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -574,7 +574,7 @@
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "code DUPLICATE_APPLICATION = เลขบัตร / เบอร์ / อีเมลซ้ำกับผู้สมัครอื่น", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -582,7 +582,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Download Latest Payment Slip",
-        "description": "ส่งรูปสลิปล่าสุดของผู้สมัครให้พี่ค่ายที่ login แล้วเท่านั้น (ทุกการเปิดดูถูกบันทึกใน audit_logs) header X-Slip-Payment-Id บอกรหัสสลิปที่ส่งมา ใช้เป็น paymentId ตอนอนุมัติ/ปฏิเสธ สิทธิ์: superadmin, finance, staff",
+        "description": "ส่งรูปสลิปล่าสุดของผู้สมัครให้พี่ค่ายที่ login แล้วเท่านั้น (ทุกการเปิดดูถูกบันทึกใน audit_logs) header X-Slip-Payment-Id บอกรหัสสลิปที่ส่งมา ใช้เป็น paymentId ตอนอนุมัติ/ปฏิเสธ สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -610,7 +610,7 @@
           },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, finance, staff", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -618,7 +618,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Manual Slip Verification",
-        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ส่ง paymentId (slipPaymentId ของสลิปที่เปิดดู) เพื่อกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างที่พี่ค่ายกำลังดูใบเดิม: ถ้าไม่ใช่สลิปล่าสุดแล้วตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร (ไม่ส่ง paymentId = ตัดสินสลิปล่าสุดเหมือนเดิม) สิทธิ์: superadmin, finance, staff",
+        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ส่ง paymentId (slipPaymentId ของสลิปที่เปิดดู) เพื่อกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างที่พี่ค่ายกำลังดูใบเดิม: ถ้าไม่ใช่สลิปล่าสุดแล้วตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร (ไม่ส่ง paymentId = ตัดสินสลิปล่าสุดเหมือนเดิม) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -656,7 +656,7 @@
           "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "code SLIP_CHANGED = ผู้สมัครอัปโหลดสลิปใหม่แทนใบที่เปิดดู หรือ paymentId ไม่ใช่สลิปล่าสุดของใบสมัครนี้ (ไม่มีการอนุมัติ/ปฏิเสธ ให้โหลดรายการใหม่แล้วดูสลิปล่าสุด), code ALREADY_VERIFIED = สลิปนี้ถูกตรวจไปแล้ว, code FORBIDDEN = ใบสมัครเป็น REJECTED / REFUND_PENDING / REFUNDED จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ (ยังดูรูปสลิปได้เพื่อทำบัญชี)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, finance, staff", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -664,7 +664,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Get Admin Settings",
-        "description": "ดึงข้อมูลการตั้งค่าค่ายทั้งหมด รวมถึงเวลาเปิด-ปิด โควตา และสถานะระบบ สิทธิ์: superadmin, staff, finance, reviewer",
+        "description": "ดึงข้อมูลการตั้งค่าค่ายทั้งหมด รวมถึงเวลาเปิด-ปิด โควตา และสถานะระบบ สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "responses": {
           "200": {
@@ -676,13 +676,13 @@
             }
           },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin, staff, finance, reviewer", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       },
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Update Admin Settings",
-        "description": "อัปเดตการตั้งค่าค่าย เช่น ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), วันเปิด-ปิดรับสมัคร, ค่าสมัครค่าย, หรือสวิตช์ปิดระบบฉุกเฉิน สิทธิ์: superadmin เท่านั้น",
+        "description": "อัปเดตการตั้งค่าค่าย เช่น ปรับเปลี่ยนโควตารับสมัคร (maxCapacity), วันเปิด-ปิดรับสมัคร, ค่าสมัครค่าย, หรือสวิตช์ปิดระบบฉุกเฉิน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -708,7 +708,7 @@
             }
           },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: superadmin เท่านั้น", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     }
@@ -857,7 +857,7 @@
         "type": "object",
         "properties": {
           "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
-          "role": { "type": "string", "enum": ["superadmin", "staff", "finance", "reviewer"], "example": "staff", "description": "บทบาทของบัญชี ใช้เลือกปุ่มที่แสดงในหน้า /admin เท่านั้น เซิร์ฟเวอร์ตรวจสิทธิ์จากฐานข้อมูลทุก request" }
+          "role": { "type": "string", "enum": ["admin"], "example": "admin", "description": "บทบาทของบัญชี (บทบาทเดียว: admin) ใช้แสดงผลในหน้า /admin เท่านั้น เซิร์ฟเวอร์ตรวจสิทธิ์จากฐานข้อมูลทุก request" }
         }
       },
       "UpdateStatusRequest": {

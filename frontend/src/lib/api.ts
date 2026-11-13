@@ -181,12 +181,12 @@ export interface HealthResponse {
 }
 
 /** Admin roles (backend domain.AdminRole). */
-export type AdminRole = 'superadmin' | 'staff' | 'finance' | 'reviewer';
+export type AdminRole = 'admin';
 
 export interface LoginResponse {
   token: string;
   /**
-   * The account's role, so the dashboard can hide what it may not do. Only a UI hint: the server
+   * The account's role, so the dashboard can verify UI state. Only a UI hint: the server
    * re-reads the role from the database on every /api/admin request and answers 403 FORBIDDEN.
    */
   role?: AdminRole | string;
@@ -201,30 +201,26 @@ export interface AdminPermissions {
   verifySlip: boolean;
   editSettings: boolean;
   /**
-   * The CSV export: superadmin and staff only, the roles the server gives full national IDs and the
-   * only roles POST /admin/applications/export-audit accepts. Every export is recorded in
-   * audit_logs before the file is built.
+   * The CSV export: admin only, matching POST /admin/applications/export-audit.
+   * Every export is recorded in audit_logs before the file is built.
    */
   exportCsv: boolean;
 }
 
 /**
  * Mirrors the route permissions in backend/internal/server/router.go. The server is the only
- * check that counts; this keeps finance / staff / reviewer accounts from seeing buttons that would
- * only answer 403. Every role (and only these four) may read the list and the settings.
+ * check that counts; fails closed when role is not `'admin'`.
  */
 export function adminPermissions(role: string | null | undefined): AdminPermissions {
-  const superadmin = role === 'superadmin';
-  const editor = superadmin || role === 'staff';
-  const payments = editor || role === 'finance';
+  const isAdmin = role === 'admin';
   return {
-    changeStatus: editor,
-    editProfile: editor,
-    deleteApplication: superadmin,
-    viewSlip: payments,
-    verifySlip: payments,
-    editSettings: superadmin,
-    exportCsv: editor,
+    changeStatus: isAdmin,
+    editProfile: isAdmin,
+    deleteApplication: isAdmin,
+    viewSlip: isAdmin,
+    verifySlip: isAdmin,
+    editSettings: isAdmin,
+    exportCsv: isAdmin,
   };
 }
 
@@ -639,7 +635,7 @@ export function adminLogin(username: string, password: string): Promise<ApiResul
         method: 'POST',
         body: JSON.stringify({ username, password }),
       }),
-    () => ({ token: 'mock-jwt-token', role: 'superadmin' }),
+    () => ({ token: 'mock-jwt-token', role: 'admin' }),
   );
 }
 

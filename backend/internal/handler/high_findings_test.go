@@ -19,7 +19,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------------------------
-// Cross-endpoint PII: finance and reviewer must not read raw national IDs
+// Cross-endpoint PII: only RoleAdmin may access admin endpoints and read raw national IDs
 // ---------------------------------------------------------------------------------------------
 
 // adminListIDs returns application ID -> nationalId as the given token sees it.
@@ -43,70 +43,48 @@ func (a *testApp) adminListIDs(t *testing.T, token, query string) (map[string]st
 	return out, rec.Body.String()
 }
 
-func TestAdminList_NationalIDIsMaskedForFinanceAndReviewerOnly(t *testing.T) {
+func TestAdminList_NationalIDIsVisibleToAdminAndPublicStatusRemainsMasked(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	nid := validTestNationalID(80_001)
 	created := app.submit(t, nid, "0880000001", "pii1@example.com")
 
-	cases := []struct {
-		role domain.AdminRole
-		raw  bool
-	}{
-		{domain.RoleSuperadmin, true},
-		{domain.RoleStaff, true},
-		{domain.RoleFinance, false},
-		{domain.RoleReviewer, false},
+	token, _ := app.loginAs(t, "pii-admin", domain.RoleAdmin)
+	for _, q := range []string{"", "?status=PASSED"} {
+		ids, _ := app.adminListIDs(t, token, q)
+		got, ok := ids[created.ID]
+		if !ok {
+			t.Fatalf("admin: application missing from list%s", q)
+		}
+		if got != nid {
+			t.Fatalf("admin%s must get the raw national ID, got %q", q, got)
+		}
 	}
-	for _, tc := range cases {
-		t.Run(string(tc.role), func(t *testing.T) {
-			token, _ := app.loginAs(t, "pii-"+string(tc.role), tc.role)
-			// Plain list and a status-filtered list share the path; check both.
-			for _, q := range []string{"", "?status=PASSED"} {
-				ids, body := app.adminListIDs(t, token, q)
-				got, ok := ids[created.ID]
-				if !ok {
-					t.Fatalf("%s: application missing from list%s", tc.role, q)
-				}
-				if tc.raw {
-					if got != nid {
-						t.Fatalf("%s must get the raw national ID, got %q", tc.role, got)
-					}
-					continue
-				}
-				if want := service.MaskNationalID(nid); got != want {
-					t.Fatalf("%s%s: nationalId = %q, want masked %q", tc.role, q, got, want)
-				}
-				if strings.Contains(body, nid) || strings.Contains(body, nid[9:]) {
-					t.Fatalf("%s%s: the raw ID (or its last digits) leaks elsewhere in the response", tc.role, q)
-				}
-			}
-		})
+
+	// Public status endpoint remains masked.
+	pub := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil)
+	if pub.Code != http.StatusOK {
+		t.Fatalf("public status: expected 200, got %d", pub.Code)
+	}
+	if want := service.MaskNationalID(nid); !strings.Contains(pub.Body.String(), want) || strings.Contains(pub.Body.String(), nid) {
+		t.Fatalf("public status must mask national ID (%q), got %s", want, pub.Body.String())
 	}
 }
 
-// The attack the masking closes: public /withdraw needs only the national ID, so a role that may
-// not DELETE must not be able to read it and withdraw the application instead.
-func TestAdminList_ReviewerAndFinanceCannotWithdrawWithWhatTheySee(t *testing.T) {
+func TestAdminList_NonAdminCannotReadOrDelete(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	nid := validTestNationalID(80_002)
 	created := app.submit(t, nid, "0880000002", "pii2@example.com")
 	app.nationalIDs[created.ID] = nid
 
-	for _, role := range []domain.AdminRole{domain.RoleReviewer, domain.RoleFinance} {
-		token, _ := app.loginAs(t, "attacker-"+string(role), role)
-		ids, _ := app.adminListIDs(t, token, "")
-		seen := ids[created.ID]
-
-		// What the account can see is useless as a credential: format check fails (400), no lock.
-		body := fmt.Sprintf(`{"nationalId":%q}`, seen)
-		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/withdraw", bytes.NewBufferString(body), nil)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s: withdraw with the visible (masked) value should be 400, got %d (%s)", role, rec.Code, rec.Body.String())
+	for _, role := range []domain.AdminRole{domain.AdminRole("auditor"), domain.AdminRole("")} {
+		token, _ := app.loginAs(t, "nonadmin-"+string(role), role)
+		listRec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token))
+		if listRec.Code != http.StatusForbidden {
+			t.Fatalf("role %q: GET /api/admin/applications should be 403, got %d", role, listRec.Code)
 		}
-		// And the DELETE route itself stays superadmin-only.
-		del := app.do(t, http.MethodDelete, "/api/admin/applications/"+created.ID, nil, bearer(token))
-		if del.Code != http.StatusForbidden {
-			t.Fatalf("%s: DELETE should be 403, got %d", role, del.Code)
+		delRec := app.do(t, http.MethodDelete, "/api/admin/applications/"+created.ID, nil, bearer(token))
+		if delRec.Code != http.StatusForbidden {
+			t.Fatalf("role %q: DELETE should be 403, got %d", role, delRec.Code)
 		}
 	}
 	if a, err := app.applicant(t, created.ID); err != nil || a.Status == domain.StatusRejected {
@@ -119,26 +97,28 @@ func TestAdminList_ReviewerAndFinanceCannotWithdrawWithWhatTheySee(t *testing.T)
 	}
 }
 
-func TestAdminList_RoleChangeToReviewerMasksImmediately(t *testing.T) {
+func TestAdminList_RoleDemotionRevokesAccessImmediately(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	nid := validTestNationalID(80_003)
 	created := app.submit(t, nid, "0880000003", "pii3@example.com")
-	token, adminID := app.loginAs(t, "pii-demoted", domain.RoleStaff)
+	token, adminID := app.loginAs(t, "pii-demoted", domain.RoleAdmin)
 
 	if ids, _ := app.adminListIDs(t, token, ""); ids[created.ID] != nid {
-		t.Fatalf("staff should see the raw ID, got %q", ids[created.ID])
+		t.Fatalf("admin should see the raw ID, got %q", ids[created.ID])
 	}
-	app.adminRepo.SetRole(adminID, domain.RoleReviewer) // role is re-read from the DB on every request
-	if ids, _ := app.adminListIDs(t, token, ""); ids[created.ID] != service.MaskNationalID(nid) {
-		t.Fatalf("after the demotion the same token must get the masked ID, got %q", ids[created.ID])
+	app.adminRepo.SetRole(adminID, domain.AdminRole("auditor")) // role is re-read from the DB on every request
+	if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token)); rec.Code != http.StatusForbidden {
+		t.Fatalf("after demotion to non-admin role the same token must get 403, got %d", rec.Code)
 	}
 }
 
 func TestCanSeeFullNationalID_FailsClosed(t *testing.T) {
 	for role, want := range map[domain.AdminRole]bool{
-		domain.RoleSuperadmin: true, domain.RoleStaff: true,
-		domain.RoleFinance: false, domain.RoleReviewer: false,
-		"": false, "auditor": false, "SUPERADMIN": false,
+		domain.RoleAdmin: true,
+		"":               false,
+		"auditor":        false,
+		"ADMIN":          false,
+		"superadmin":     false,
 	} {
 		if got := service.CanSeeFullNationalID(role); got != want {
 			t.Errorf("CanSeeFullNationalID(%q) = %v, want %v", role, got, want)

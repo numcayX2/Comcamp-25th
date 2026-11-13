@@ -571,12 +571,10 @@ func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo,
 }
 
 // CanSeeFullNationalID reports whether an admin role may receive the raw 13-digit national ID.
-// Only superadmin and staff may. The ID authorises the public withdraw endpoint
-// (POST /api/applications/{id}/withdraw), so handing it to a finance or reviewer account would let
-// that account cancel applications, which the router reserves for superadmin. Fail closed: an
-// empty or unknown role gets the masked value.
+// Only admin may, because the ID authorises the public withdraw endpoint
+// (POST /api/applications/{id}/withdraw). Fail closed: an empty or unknown role gets the masked value.
 func CanSeeFullNationalID(role domain.AdminRole) bool {
-	return role == domain.RoleSuperadmin || role == domain.RoleStaff
+	return role == domain.RoleAdmin
 }
 
 // ListAll is the admin list. role is the caller's role: callers that may not see full national IDs

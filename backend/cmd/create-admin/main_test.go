@@ -13,7 +13,7 @@ import (
 	"comcamp25-backend/internal/repository"
 )
 
-// Needs a database with migrations 000001-000006 applied (TEST_DATABASE_DSN, as for
+// Needs a database with migrations 000001-000007 applied (TEST_DATABASE_DSN, as for
 // internal/repository/postgres); skipped otherwise.
 func TestSaveAdmin_WritesAccountAndAuditInOneTransaction(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_DSN")
@@ -35,7 +35,7 @@ func TestSaveAdmin_WritesAccountAndAuditInOneTransaction(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM admins WHERE username = $1`, username)
 	})
 
-	id, err := saveAdmin(ctx, pool, username, "$2a$12$hash-one", "พี่ทดสอบ", string(domain.RoleStaff))
+	id, err := saveAdmin(ctx, pool, username, "$2a$12$hash-one", "พี่ทดสอบ", string(domain.RoleAdmin))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestSaveAdmin_WritesAccountAndAuditInOneTransaction(t *testing.T) {
 	}
 
 	// Running it again resets the same account and writes a second audit row.
-	id2, err := saveAdmin(ctx, pool, username, "$2a$12$hash-two", "พี่ทดสอบ ใหม่", string(domain.RoleFinance))
+	id2, err := saveAdmin(ctx, pool, username, "$2a$12$hash-two", "พี่ทดสอบ ใหม่", string(domain.RoleAdmin))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestSaveAdmin_WritesAccountAndAuditInOneTransaction(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT password_hash, role, updated_at FROM admins WHERE id = $1`, id).Scan(&hash, &role, &updated); err != nil {
 		t.Fatal(err)
 	}
-	if hash != "$2a$12$hash-two" || role != string(domain.RoleFinance) || updated.Before(firstUpdated) {
+	if hash != "$2a$12$hash-two" || role != string(domain.RoleAdmin) || updated.Before(firstUpdated) {
 		t.Fatalf("account not reset: hash=%q role=%q updated=%v (was %v)", hash, role, updated, firstUpdated)
 	}
 
@@ -70,7 +70,7 @@ func TestSaveAdmin_WritesAccountAndAuditInOneTransaction(t *testing.T) {
 		Role     string `json:"role"`
 		FullName string `json:"fullName"`
 	}
-	want := []detail{{string(domain.RoleStaff), "พี่ทดสอบ"}, {string(domain.RoleFinance), "พี่ทดสอบ ใหม่"}}
+	want := []detail{{string(domain.RoleAdmin), "พี่ทดสอบ"}, {string(domain.RoleAdmin), "พี่ทดสอบ ใหม่"}}
 	n := 0
 	for rows.Next() {
 		var adminID *int64

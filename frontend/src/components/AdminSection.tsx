@@ -52,10 +52,7 @@ const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUN
 
 /** What each role can do, in the words staff use. Mirrors adminPermissions() in lib/api.ts. */
 const ROLE_NOTE: Record<string, string> = {
-  superadmin: 'จัดการได้ทุกอย่าง รวมถึงลบใบสมัครและแก้การตั้งค่า',
-  staff: 'เปลี่ยนสถานะ แก้ข้อมูล และตรวจสลิปได้ ลบใบสมัครและแก้การตั้งค่าไม่ได้',
-  finance: 'ดูและตรวจสลิปได้ เปลี่ยนสถานะหรือแก้ข้อมูลผู้สมัครไม่ได้',
-  reviewer: 'ดูรายชื่อผู้สมัครและการตั้งค่าได้อย่างเดียว',
+  admin: 'จัดการได้ทุกอย่าง รวมถึงดู/ตรวจสลิป ปรับสถานะ แก้ข้อมูล ลบใบสมัคร และแก้การตั้งค่า',
 };
 
 /* Editorial ledger: no cards, no shadows. Structure comes from whitespace and 1px rules; colour
@@ -262,9 +259,8 @@ export function AdminSection() {
   const focusListAfterDelete = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
 
-  /* Hide what this role would only get 403 for (the server enforces it either way). A token with no
-     readable role, i.e. the dev mock token, keeps the full dashboard as before. */
-  const can = adminPermissions(role ?? 'superadmin');
+  /* Fail closed when role is unknown; an offline dev mock token with no role claim defaults to 'admin'. */
+  const can = adminPermissions(role ?? 'admin');
 
   /** Expired or deactivated session: drop the token and show the login form again. */
   function handleAuthError(err: unknown): boolean {

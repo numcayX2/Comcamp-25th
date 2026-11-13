@@ -83,7 +83,7 @@ func TestPostgres_FullIntegration(t *testing.T) {
 			Username:     testUsername,
 			PasswordHash: "$2a$10$abcdefghijklmnopqrstuvwxyz123456",
 			FullName:     "พี่ค่ายทดสอบ",
-			Role:         domain.RoleSuperadmin,
+			Role:         domain.RoleAdmin,
 			IsActive:     true,
 		}
 		err := admRepo.Create(ctx, admin)
