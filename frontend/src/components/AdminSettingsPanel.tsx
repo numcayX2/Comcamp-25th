@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { ChevronDown, CircleCheck, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ChevronDown, CircleCheck, RotateCcw, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchAdminSettings,
@@ -21,6 +21,8 @@ import {
   PILL_GHOST,
   RULE,
   SUCCESS,
+  SURFACE_SUBTLE,
+  WARNING,
 } from './admin-ui';
 
 /** Seat quota ceiling (backend: maxCapacity 1–1000). */
@@ -31,6 +33,15 @@ const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 const numberFmt = new Intl.NumberFormat('en-US');
+const BANGKOK_PREVIEW_FMT = new Intl.DateTimeFormat('th-TH', {
+  timeZone: 'Asia/Bangkok',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null;
 type FieldErrors = {
@@ -47,6 +58,8 @@ interface Props {
   canEdit?: boolean;
   /** Applicants who are not rejected. This is the count the server checks the quota against. */
   currentCount: number;
+  /** Incremented by parent when staff clicks ledger "รีเฟรช" so settings stay in sync. */
+  refreshSignal?: number;
   /** Returns true when the error was an expired session, in which case the parent has logged out. */
   onAuthError: (err: unknown) => boolean;
   /** Reports each settings snapshot so the parent can use the fee elsewhere. */
@@ -69,10 +82,20 @@ function fromBangkokDatetimeInput(local: string): string | null {
   return Number.isFinite(Date.parse(rfc)) ? rfc : null;
 }
 
+/** Renders an unambiguous Bangkok (+07:00) 24-hour preview with CE year to prevent BE/12h confusion. */
+function formatBangkokPreview(local: string): string | null {
+  const rfc = fromBangkokDatetimeInput(local);
+  if (!rfc) return null;
+  const ms = Date.parse(rfc);
+  if (!Number.isFinite(ms)) return null;
+  const ceYear = new Date(ms + BANGKOK_OFFSET_MS).getUTCFullYear();
+  return `${BANGKOK_PREVIEW_FMT.format(new Date(ms))} น. (ค.ศ. ${ceYear}, +07:00)`;
+}
+
 function errorText(err: unknown, fallback: string): string {
   if (err instanceof ApiHttpError) {
     if (err.status === 401 || err.status === 403) {
-      return 'สิทธิ์การใช้งานหมดอายุหรือไม่เพียงพอ กรุณาเข้าสู่ระบบใหม่';
+      return 'เซสชันหมดอายุหรือไม่เพียงพอ กรุณาเข้าสู่ระบบใหม่';
     }
     if (err.status === 429) {
       return err.retryAfterSeconds
@@ -106,11 +129,40 @@ function errorText(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function NoticeBanner({ notice, announced = true }: { notice: NonNullable<Notice>; announced?: boolean }) {
+  return (
+    <p
+      role={announced ? (notice.kind === 'error' ? 'alert' : 'status') : undefined}
+      aria-hidden={announced ? undefined : true}
+      className="flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-sm leading-6 md:col-span-2"
+      style={{
+        borderColor: notice.kind === 'error' ? DANGER : SUCCESS,
+        backgroundColor: SURFACE_SUBTLE,
+        color: notice.kind === 'error' ? DANGER : INK,
+      }}
+    >
+      {notice.kind === 'ok' ? (
+        <CircleCheck aria-hidden="true" size={16} strokeWidth={2} className="mt-1 shrink-0" style={{ color: SUCCESS }} />
+      ) : (
+        <TriangleAlert aria-hidden="true" size={16} strokeWidth={2} className="mt-1 shrink-0" style={{ color: DANGER }} />
+      )}
+      <span>{notice.text}</span>
+    </p>
+  );
+}
+
 /**
  * Collapsible control panel for camp admins: registration schedule, certificate release time,
  * seat quota, camp fee, and the emergency switch.
  */
-export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuthError, onSettings }: Props) {
+export function AdminSettingsPanel({
+  token,
+  canEdit = true,
+  currentCount,
+  refreshSignal = 0,
+  onAuthError,
+  onSettings,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -124,7 +176,12 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [confirmToggleClosed, setConfirmToggleClosed] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+
+  const settingsRef = useRef<AdminSettings | null>(null);
+  const inputsRef = useRef({ quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput });
+  inputsRef.current = { quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput };
 
   const quotaFloor = Math.max(1, currentCount);
   const closed = settings?.isManualClosed ?? false;
@@ -134,7 +191,26 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
   const feeNum = settings ? Number(settings.campFee) : NaN;
   const feeShown = settings && Number.isFinite(feeNum) ? numberFmt.format(feeNum) : '–';
 
+  const openPreview = formatBangkokPreview(openAtInput);
+  const closePreview = formatBangkokPreview(closeAtInput);
+  const certPreview = formatBangkokPreview(certReleaseInput);
+
+  function isFormDirty(s: AdminSettings | null): boolean {
+    if (!s) return false;
+    const cur = inputsRef.current;
+    const parsedFee = Number(s.campFee);
+    const savedFee = Number.isFinite(parsedFee) ? String(parsedFee) : '0';
+    return (
+      cur.quotaInput !== String(s.maxCapacity) ||
+      cur.feeInput !== savedFee ||
+      cur.openAtInput !== toBangkokDatetimeInput(s.registrationOpenAt) ||
+      cur.closeAtInput !== toBangkokDatetimeInput(s.registrationCloseAt) ||
+      cur.certReleaseInput !== toBangkokDatetimeInput(s.certificateReleaseAt)
+    );
+  }
+
   function receive(s: AdminSettings) {
+    settingsRef.current = s;
     setSettings(s);
     onSettings?.(s);
   }
@@ -156,22 +232,38 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
 
   useEffect(() => {
     let cancelled = false;
+    const hadLoaded = settingsRef.current !== null;
+    const dirtyBeforeRefresh = hadLoaded && isFormDirty(settingsRef.current);
+
     fetchAdminSettings(token)
       .then((res) => {
         if (cancelled) return;
         receive(res.data);
-        resetInputs(res.data);
+        if (!dirtyBeforeRefresh) {
+          resetInputs(res.data);
+        }
         setLoadError(null);
       })
       .catch((err) => {
         if (cancelled || onAuthError(err)) return;
         setLoadError(errorText(err, 'โหลดการตั้งค่าไม่สำเร็จ'));
       });
-    refreshStatus();
+    refreshStatus(refreshSignal > 0);
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, refreshSignal]);
+
+  useEffect(() => {
+    if (!confirmToggleClosed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !toggling) {
+        setConfirmToggleClosed(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmToggleClosed, toggling]);
 
   /** Validates schedule, quota, and fee before submitting. Returns null when a field is invalid. */
   function checkInputs(): UpdateAdminSettingsPayload | null {
@@ -225,11 +317,22 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
         certRfc = parsed;
       }
     } else if (settings?.certificateReleaseAt) {
-      next.certReleaseAt = 'ไม่สามารถล้างวัน-เวลาปล่อยเกียรติบัตรที่ตั้งไว้แล้วได้ กรุณาเลือกเวลาใหม่';
+      next.certReleaseAt = 'ระบบยังไม่รองรับการล้างเวลาปล่อยเกียรติบัตรที่ตั้งไว้แล้ว กรุณาเลือกวัน-เวลาใหม่หรือกดคืนค่าเดิม';
     }
 
     setFieldErrors(next);
-    if (next.quota || next.fee || next.openAt || next.closeAt || next.certReleaseAt) {
+    const orderedFields: Array<[keyof FieldErrors, string]> = [
+      ['openAt', 'open-at-input'],
+      ['closeAt', 'close-at-input'],
+      ['certReleaseAt', 'cert-release-input'],
+      ['quota', 'quota-input'],
+      ['fee', 'fee-input'],
+    ];
+    const firstBad = orderedFields.find(([k]) => Boolean(next[k]));
+    if (firstBad) {
+      const firstMsg = next[firstBad[0]] ?? 'กรุณาตรวจสอบข้อมูลการตั้งค่าที่ระบุไม่ถูกต้อง';
+      setNotice({ kind: 'error', text: `ไม่สามารถบันทึกได้: ${firstMsg}` });
+      document.getElementById(firstBad[1])?.focus();
       return null;
     }
 
@@ -268,15 +371,16 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
     }
   }
 
-  /** The emergency switch saves on its own, so it works even while the quota form has unsaved edits. */
-  async function onToggleClosed() {
-    if (!settings || !canEdit) return;
+  /** Confirmed emergency switch mutation; runs independently of the schedule/quota form. */
+  async function confirmEmergencyToggle() {
+    if (!settings || !canEdit || toggling) return;
     const next = !settings.isManualClosed;
     setToggling(true);
     setNotice(null);
     try {
       const res = await updateAdminSettings(token, { isManualClosed: next });
       receive(res.data);
+      setConfirmToggleClosed(false);
       setNotice({
         kind: 'ok',
         text: next
@@ -310,7 +414,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
           <span className="inline-flex items-center gap-2">
             <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: statusDot }} />
             {statusLabel}
-            {closed ? <span style={{ color: INK_3 }}>(ปิดฉุกเฉิน)</span> : null}
+            {closed ? <span style={{ color: DANGER }}>(ปิดฉุกเฉิน)</span> : null}
           </span>
           <span>
             ที่นั่ง{' '}
@@ -336,7 +440,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
       </button>
 
       {open && (
-        <div id={panelId} className="grid gap-x-12 gap-y-8 pb-8 md:grid-cols-2">
+        <div id={panelId} className="grid gap-x-12 gap-y-6 pb-8 md:grid-cols-2">
           {loadError && (
             <p role="alert" className="text-sm leading-7 md:col-span-2" style={{ color: DANGER }}>
               {loadError}
@@ -347,6 +451,8 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
               กำลังโหลดการตั้งค่า…
             </p>
           )}
+
+          {notice && <NoticeBanner notice={notice} announced />}
 
           {settings && (
             <>
@@ -360,15 +466,21 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                       id="open-at-input"
                       type="datetime-local"
                       value={openAtInput}
-                      onChange={(e) => setOpenAtInput(e.target.value)}
+                      onChange={(e) => {
+                        setOpenAtInput(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, openAt: undefined, closeAt: undefined }));
+                      }}
                       disabled={!canEdit}
                       aria-invalid={fieldErrors.openAt ? true : undefined}
-                      aria-describedby={fieldErrors.openAt ? 'open-at-error' : undefined}
+                      aria-describedby={fieldErrors.openAt ? 'open-at-preview open-at-error' : 'open-at-preview'}
                       className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
                       style={{ borderColor: fieldErrors.openAt ? DANGER : INPUT_BORDER, color: INK }}
                     />
+                    <p id="open-at-preview" className="mt-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                      {openPreview ?? 'ยังไม่ระบุเวลาเปิดรับสมัคร'}
+                    </p>
                     {fieldErrors.openAt && (
-                      <p id="open-at-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                      <p id="open-at-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
                         {fieldErrors.openAt}
                       </p>
                     )}
@@ -382,15 +494,21 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                       id="close-at-input"
                       type="datetime-local"
                       value={closeAtInput}
-                      onChange={(e) => setCloseAtInput(e.target.value)}
+                      onChange={(e) => {
+                        setCloseAtInput(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, closeAt: undefined }));
+                      }}
                       disabled={!canEdit}
                       aria-invalid={fieldErrors.closeAt ? true : undefined}
-                      aria-describedby={fieldErrors.closeAt ? 'close-at-error' : undefined}
+                      aria-describedby={fieldErrors.closeAt ? 'close-at-preview close-at-error' : 'close-at-preview'}
                       className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
                       style={{ borderColor: fieldErrors.closeAt ? DANGER : INPUT_BORDER, color: INK }}
                     />
+                    <p id="close-at-preview" className="mt-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                      {closePreview ?? 'ยังไม่ระบุเวลาปิดรับสมัคร'}
+                    </p>
                     {fieldErrors.closeAt && (
-                      <p id="close-at-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                      <p id="close-at-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
                         {fieldErrors.closeAt}
                       </p>
                     )}
@@ -399,26 +517,52 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
 
                 <div>
                   <label htmlFor="cert-release-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
-                    วัน-เวลาปล่อยเกียรติบัตร (เวลาไทย, ไม่บังคับ)
+                    วัน-เวลาปล่อยเกียรติบัตร (เวลาไทย{settings.certificateReleaseAt ? '' : ', ไม่บังคับ'})
                   </label>
                   <input
                     id="cert-release-input"
                     type="datetime-local"
                     value={certReleaseInput}
-                    onChange={(e) => setCertReleaseInput(e.target.value)}
+                    onChange={(e) => {
+                      setCertReleaseInput(e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, certReleaseAt: undefined }));
+                    }}
                     disabled={!canEdit}
                     aria-invalid={fieldErrors.certReleaseAt ? true : undefined}
-                    aria-describedby={fieldErrors.certReleaseAt ? 'cert-help cert-error' : 'cert-help'}
+                    aria-describedby={
+                      fieldErrors.certReleaseAt ? 'cert-preview cert-help cert-error' : 'cert-preview cert-help'
+                    }
                     className={`${INPUT_BASE} min-h-11 rounded-xl font-mono text-sm tabular-nums`}
                     style={{ borderColor: fieldErrors.certReleaseAt ? DANGER : INPUT_BORDER, color: INK }}
                   />
-                  <p id="cert-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
-                    ผู้สมัครที่ยืนยันสิทธิ์แล้วจะดาวน์โหลดเกียรติบัตรได้เมื่อถึงเวลาที่กำหนด
+                  <p id="cert-preview" className="mt-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                    {certPreview ?? 'ยังไม่กำหนดเวลาปล่อยเกียรติบัตร'}
+                  </p>
+                  <p id="cert-help" className="mt-1.5 text-sm leading-6" style={{ color: INK_3 }}>
+                    {settings.certificateReleaseAt
+                      ? 'ผู้สมัครที่ยืนยันสิทธิ์แล้วจะดาวน์โหลดเกียรติบัตรได้เมื่อถึงเวลาที่กำหนด (เมื่อตั้งค่าแล้วระบบยังไม่รองรับการล้างให้ว่าง แต่สามารถเปลี่ยนเป็นเวลาอื่นได้)'
+                      : 'ผู้สมัครที่ยืนยันสิทธิ์แล้วจะดาวน์โหลดเกียรติบัตรได้เมื่อถึงเวลาที่กำหนด (เว้นว่างไว้ได้หากยังไม่กำหนด)'}
                   </p>
                   {fieldErrors.certReleaseAt && (
-                    <p id="cert-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
-                      {fieldErrors.certReleaseAt}
-                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <p id="cert-error" className="text-sm leading-6" style={{ color: DANGER }}>
+                        {fieldErrors.certReleaseAt}
+                      </p>
+                      {settings.certificateReleaseAt && !certReleaseInput.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCertReleaseInput(toBangkokDatetimeInput(settings.certificateReleaseAt));
+                            setFieldErrors((prev) => ({ ...prev, certReleaseAt: undefined }));
+                          }}
+                          className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${FOCUS}`}
+                          style={{ borderColor: RULE, color: INK }}
+                        >
+                          <RotateCcw aria-hidden="true" size={13} strokeWidth={1.75} />
+                          คืนค่าเวลาเดิม
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -434,7 +578,10 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     min={quotaFloor}
                     max={MAX_CAPACITY}
                     value={quotaInput}
-                    onChange={(e) => setQuotaInput(e.target.value)}
+                    onChange={(e) => {
+                      setQuotaInput(e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, quota: undefined }));
+                    }}
                     disabled={!canEdit}
                     aria-invalid={fieldErrors.quota ? true : undefined}
                     aria-describedby={fieldErrors.quota ? 'quota-help quota-error' : 'quota-help'}
@@ -446,7 +593,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     {numberFmt.format(MAX_CAPACITY)} ที่นั่ง
                   </p>
                   {fieldErrors.quota && (
-                    <p id="quota-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                    <p id="quota-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
                       {fieldErrors.quota}
                     </p>
                   )}
@@ -464,7 +611,10 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     min={0}
                     max={MAX_FEE}
                     value={feeInput}
-                    onChange={(e) => setFeeInput(e.target.value)}
+                    onChange={(e) => {
+                      setFeeInput(e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, fee: undefined }));
+                    }}
                     disabled={!canEdit}
                     aria-invalid={fieldErrors.fee ? true : undefined}
                     aria-describedby={fieldErrors.fee ? 'fee-help fee-error' : 'fee-help'}
@@ -475,7 +625,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                     ค่าเริ่มต้นของค่ายคือ 1,000 บาท
                   </p>
                   {fieldErrors.fee && (
-                    <p id="fee-error" className="mt-1 text-sm leading-7" style={{ color: DANGER }}>
+                    <p id="fee-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
                       {fieldErrors.fee}
                     </p>
                   )}
@@ -493,7 +643,10 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                   <button
                     type="button"
                     disabled={saving}
-                    onClick={() => resetInputs(settings)}
+                    onClick={() => {
+                      resetInputs(settings);
+                      setNotice(null);
+                    }}
                     className={PILL_GHOST}
                     style={{ borderColor: RULE, color: INK_2 }}
                   >
@@ -524,62 +677,111 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
                   </p>
                 </div>
 
-                <div className="flex items-start justify-between gap-6 py-6">
-                  <div className="min-w-0">
-                    <p id="closed-label" className="text-base font-semibold leading-7" style={{ color: INK }}>
-                      ปิดรับสมัครฉุกเฉิน
-                    </p>
-                    <p id="closed-desc" className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
-                      {closed
-                        ? 'กำลังปิดรับ ผู้สมัครใหม่จะถูกปฏิเสธจนกว่าจะปิดสวิตช์นี้'
-                        : 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={closed}
-                    aria-labelledby="closed-label"
-                    aria-describedby="closed-desc"
-                    disabled={toggling || !canEdit}
-                    onClick={onToggleClosed}
-                    className={`inline-flex min-h-11 min-w-14 shrink-0 items-center justify-center rounded-full disabled:opacity-50 ${FOCUS}`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="relative block h-8 w-14 rounded-full border transition-colors"
-                      style={{
-                        backgroundColor: closed ? BTN_DARK : 'transparent',
-                        borderColor: closed ? BTN_DARK : INPUT_BORDER,
-                      }}
+                <div className="border-b py-6" style={{ borderColor: RULE }}>
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="min-w-0">
+                      <p id="closed-label" className="text-base font-semibold leading-7" style={{ color: INK }}>
+                        ปิดรับสมัครฉุกเฉิน
+                      </p>
+                      <p id="closed-desc" className="mt-1 text-sm leading-7" style={{ color: INK_3 }}>
+                        {closed
+                          ? 'กำลังปิดรับ ผู้สมัครใหม่จะถูกปฏิเสธจนกว่าจะปิดสวิตช์นี้'
+                          : 'เปิดสวิตช์เพื่อหยุดรับใบสมัครใหม่ทันที ไม่ต้องรอถึงกำหนดการ'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={closed}
+                      aria-expanded={confirmToggleClosed}
+                      aria-labelledby="closed-label"
+                      aria-describedby="closed-desc"
+                      disabled={toggling || !canEdit}
+                      onClick={() => setConfirmToggleClosed(true)}
+                      className={`inline-flex min-h-11 min-w-14 shrink-0 items-center justify-center rounded-full disabled:opacity-50 ${FOCUS}`}
                     >
                       <span
-                        className={`absolute left-[3px] top-[3px] size-6 rounded-full transition-transform motion-reduce:transition-none ${
-                          closed ? 'translate-x-6' : 'translate-x-0'
-                        }`}
-                        style={{ backgroundColor: closed ? BTN_DARK_TEXT : INK_3 }}
-                      />
-                    </span>
-                  </button>
+                        aria-hidden="true"
+                        className="relative block h-8 w-14 rounded-full border transition-colors"
+                        style={{
+                          backgroundColor: closed ? BTN_DARK : 'transparent',
+                          borderColor: closed ? BTN_DARK : INPUT_BORDER,
+                        }}
+                      >
+                        <span
+                          className={`absolute left-[3px] top-[3px] size-6 rounded-full transition-transform motion-reduce:transition-none ${
+                            closed ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                          style={{ backgroundColor: closed ? BTN_DARK_TEXT : INK_3 }}
+                        />
+                      </span>
+                    </button>
+                  </div>
+
+                  {confirmToggleClosed && (
+                    <div
+                      role="region"
+                      aria-label="ยืนยันการเปลี่ยนสถานะปิดรับสมัครฉุกเฉิน"
+                      className="mt-4 rounded-xl border p-4"
+                      style={{
+                        borderColor: closed ? RULE : DANGER,
+                        backgroundColor: SURFACE_SUBTLE,
+                      }}
+                    >
+                      <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
+                        <TriangleAlert
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.75}
+                          className="mt-1 shrink-0"
+                          style={{ color: closed ? WARNING : DANGER }}
+                        />
+                        <span>
+                          {closed
+                            ? 'ยืนยันยกเลิกการปิดรับสมัครฉุกเฉิน?'
+                            : 'ยืนยันปิดรับสมัครฉุกเฉินทันที?'}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
+                        {closed
+                          ? 'หลังยกเลิก ระบบจะกลับไปเปิดรับสมัครตามช่วงเวลาที่กำหนดไว้'
+                          : 'ผู้สมัครใหม่ทุกคนจะถูกปฏิเสธทันทีจนกว่าทีมงานจะกลับมายกเลิกสวิตช์นี้'}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={toggling}
+                          onClick={confirmEmergencyToggle}
+                          className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                          style={{
+                            borderColor: closed ? RULE : DANGER,
+                            color: closed ? INK : DANGER,
+                          }}
+                        >
+                          {toggling
+                            ? 'กำลังบันทึก…'
+                            : closed
+                              ? 'ยืนยันยกเลิกปิดฉุกเฉิน'
+                              : 'ยืนยันปิดรับฉุกเฉิน'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={toggling}
+                          onClick={() => setConfirmToggleClosed(false)}
+                          className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                          style={{ color: INK_2 }}
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
           )}
 
-          {notice && (
-            <p
-              role={notice.kind === 'error' ? 'alert' : 'status'}
-              className="flex items-center gap-2 text-sm leading-7 md:col-span-2"
-              style={{ color: notice.kind === 'error' ? DANGER : INK }}
-            >
-              {notice.kind === 'ok' ? (
-                <CircleCheck aria-hidden="true" size={16} strokeWidth={2} style={{ color: SUCCESS }} />
-              ) : (
-                <TriangleAlert aria-hidden="true" size={16} strokeWidth={2} style={{ color: DANGER }} />
-              )}
-              <span>{notice.text}</span>
-            </p>
-          )}
+          {notice && <NoticeBanner notice={notice} announced={false} />}
         </div>
       )}
     </section>

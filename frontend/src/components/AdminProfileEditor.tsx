@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
@@ -19,7 +19,21 @@ import {
   splitGrade,
   validateGradeFields,
 } from './register/model';
-import { BTN_DARK, BTN_DARK_TEXT, DANGER, FOCUS, INK, INK_2, INK_3, INPUT_BASE, INPUT_BORDER, RULE } from './admin-ui';
+import {
+  BTN_DARK,
+  BTN_DARK_TEXT,
+  DANGER,
+  FOCUS,
+  INK,
+  INK_2,
+  INK_3,
+  INPUT_BASE,
+  INPUT_BORDER,
+  PILL_GHOST,
+  RULE,
+  SURFACE_SUBTLE,
+  WARNING,
+} from './admin-ui';
 
 interface Form {
   fullName: string;
@@ -67,6 +81,10 @@ function initialForm(a: Application): Form {
     motivation: a.motivation ?? '',
     reason: '',
   };
+}
+
+function isFormDirty(form: Form, base: Form): boolean {
+  return ORDER.some((k) => form[k] !== base[k]);
 }
 
 function cleanSingleLine(s: string): string {
@@ -181,6 +199,7 @@ export function AdminProfileEditor({
   onSaved,
   onClose,
   onAuthError,
+  onDirtyChange,
 }: {
   app: Application;
   token: string;
@@ -188,21 +207,54 @@ export function AdminProfileEditor({
   onClose: () => void;
   /** Returns true when the error was an expired session (the parent then shows the login form). */
   onAuthError: (err: unknown) => boolean;
+  /** Notifies parent when the editor has unsaved changes so row switches can guard against accidental loss. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const baseForm = useMemo(() => initialForm(app), [app]);
   const [form, setForm] = useState<Form>(() => initialForm(app));
   const [errors, setErrors] = useState<Errors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
+  const keepEditingRef = useRef<HTMLButtonElement>(null);
   const pid = `pe-${app.id}`;
+
+  const dirty = useMemo(() => isFormDirty(form, baseForm), [form, baseForm]);
 
   useEffect(() => {
     firstRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      onDirtyChange?.(false);
+    };
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    if (confirmDiscard) {
+      keepEditingRef.current?.focus();
+    }
+  }, [confirmDiscard]);
+
   function set<K extends keyof Form>(key: K, value: Form[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
+    if (confirmDiscard) setConfirmDiscard(false);
+  }
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
   }
 
   async function onSubmit(e: FormEvent) {
@@ -233,6 +285,7 @@ export function AdminProfileEditor({
     setSaving(true);
     try {
       const res = await updateApplicantProfile(token, app.id, payload);
+      onDirtyChange?.(false);
       onSaved(res.data);
     } catch (err) {
       if (onAuthError(err)) return;
@@ -242,19 +295,24 @@ export function AdminProfileEditor({
     }
   }
 
-  const input = (key: keyof Form, extra: Record<string, unknown> = {}) => ({
-    id: `${pid}-${key}`,
-    value: form[key] as string,
-    onChange: (ev: { target: { value: string } }) => set(key, ev.target.value as never),
-    'aria-invalid': errors[key] ? true : undefined,
-    'aria-describedby': errors[key] ? `${pid}-${key}-err` : undefined,
-    className: `${INPUT_BASE} rounded-xl`,
-    style: { borderColor: INPUT_BORDER, color: INK },
-    ...extra,
-  });
+  const input = (key: keyof Form, extra: Record<string, unknown> = {}) => {
+    const extraStyle = (extra.style as Record<string, unknown> | undefined) ?? {};
+    const { style: _ignored, ...rest } = extra;
+    return {
+      id: `${pid}-${key}`,
+      value: form[key] as string,
+      onChange: (ev: { target: { value: string } }) => set(key, ev.target.value as never),
+      'aria-invalid': errors[key] ? true : undefined,
+      'aria-describedby': errors[key] ? `${pid}-${key}-err` : undefined,
+      className: `${INPUT_BASE} rounded-xl`,
+      style: { ...extraStyle, borderColor: errors[key] ? DANGER : INPUT_BORDER, color: INK },
+      ...rest,
+    };
+  };
 
   return (
     <form
+      id={`profile-editor-${app.id}`}
       onSubmit={onSubmit}
       noValidate
       role="region"
@@ -263,15 +321,29 @@ export function AdminProfileEditor({
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
-          if (!saving) onClose();
+          if (confirmDiscard) {
+            setConfirmDiscard(false);
+            return;
+          }
+          requestClose();
         }
       }}
       className="border-t py-6"
       style={{ borderColor: RULE }}
     >
-      <h2 className="text-lg font-bold leading-[1.35]" style={{ color: INK }}>
-        แก้ไขข้อมูลผู้สมัคร
-      </h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-bold leading-[1.35]" style={{ color: INK }}>
+          แก้ไขข้อมูลผู้สมัคร
+        </h2>
+        {dirty && (
+          <span
+            className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+            style={{ borderColor: WARNING, color: WARNING }}
+          >
+            มีการแก้ไขที่ยังไม่บันทึก
+          </span>
+        )}
+      </div>
       <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_3 }}>
         พี่ค่ายแก้ไขได้ทุกช่อง รวมถึงเลขบัตรประชาชน เบอร์โทร และอีเมล ระบบตรวจสอบข้อมูลเหมือนตอนสมัคร และบันทึกค่าเก่า → ค่าใหม่พร้อมเหตุผลลงประวัติการใช้งาน
       </p>
@@ -284,10 +356,26 @@ export function AdminProfileEditor({
           <input {...input('nickname', { autoComplete: 'off' })} />
         </Field>
         <Field id={`${pid}-nationalId`} label="เลขบัตรประชาชน" hint="13 หลัก" error={errors.nationalId}>
-          <input {...input('nationalId', { inputMode: 'numeric', autoComplete: 'off', spellCheck: false, className: `${INPUT_BASE} rounded-xl font-mono tabular-nums` })} />
+          <input
+            {...input('nationalId', {
+              inputMode: 'numeric',
+              autoComplete: 'off',
+              spellCheck: false,
+              maxLength: 17,
+              className: `${INPUT_BASE} rounded-xl font-mono tabular-nums`,
+            })}
+          />
         </Field>
         <Field id={`${pid}-phone`} label="เบอร์โทรศัพท์" hint="10 หลัก" error={errors.phone}>
-          <input {...input('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', className: `${INPUT_BASE} rounded-xl font-mono tabular-nums` })} />
+          <input
+            {...input('phone', {
+              type: 'tel',
+              inputMode: 'tel',
+              autoComplete: 'off',
+              maxLength: 14,
+              className: `${INPUT_BASE} rounded-xl font-mono tabular-nums`,
+            })}
+          />
         </Field>
         <div className="md:col-span-2">
           <Field id={`${pid}-email`} label="อีเมล" hint="เว้นว่างเพื่อลบ" error={errors.email}>
@@ -301,7 +389,7 @@ export function AdminProfileEditor({
           <input {...input('province')} />
         </Field>
         <Field id={`${pid}-grade`} label="ระดับชั้น" error={errors.grade}>
-          <select {...input('grade', { style: { borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' } })}>
+          <select {...input('grade', { style: { colorScheme: 'inherit' } })}>
             <option value="" disabled>
               เลือกระดับชั้น
             </option>
@@ -314,7 +402,7 @@ export function AdminProfileEditor({
           </select>
         </Field>
         <Field id={`${pid}-shirtSize`} label="ไซส์เสื้อ" error={errors.shirtSize}>
-          <select {...input('shirtSize', { style: { borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' } })}>
+          <select {...input('shirtSize', { style: { colorScheme: 'inherit' } })}>
             <option value="" disabled>
               เลือกไซส์เสื้อ
             </option>
@@ -328,18 +416,18 @@ export function AdminProfileEditor({
         {form.grade === GRADE_OTHER && (
           <div className="md:col-span-2">
             <Field id={`${pid}-gradeOther`} label="ระบุระดับชั้น" hint={`ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร`} error={errors.gradeOther}>
-              <input {...input('gradeOther', { placeholder: 'เช่น ปวส.1' })} />
+              <input {...input('gradeOther', { placeholder: 'เช่น ปวส.1', maxLength: GRADE_OTHER_MAX })} />
             </Field>
           </div>
         )}
         <div className="md:col-span-2">
           <Field id={`${pid}-motivation`} label="เหตุผลการสมัคร" hint="ไม่บังคับ" error={errors.motivation}>
-            <textarea {...input('motivation', { rows: 3 })} />
+            <textarea {...input('motivation', { rows: 3, maxLength: 2000 })} />
           </Field>
         </div>
         <div className="md:col-span-2">
           <Field id={`${pid}-reason`} label="เหตุผลการแก้ไข" hint="บันทึกในประวัติ แนะนำให้ระบุ" error={errors.reason}>
-            <input {...input('reason', { placeholder: 'เช่น ผู้ปกครองแจ้งแก้ไขเลขบัตร' })} />
+            <input {...input('reason', { placeholder: 'เช่น ผู้ปกครองแจ้งแก้ไขเลขบัตร', maxLength: 500 })} />
           </Field>
         </div>
       </div>
@@ -349,6 +437,42 @@ export function AdminProfileEditor({
           <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1.5 shrink-0" style={{ color: DANGER }} />
           <span>{serverError}</span>
         </p>
+      )}
+
+      {confirmDiscard && (
+        <div
+          role="alertdialog"
+          aria-label="ยืนยันการทิ้งการแก้ไข"
+          className="mt-5 rounded-xl border p-4"
+          style={{ borderColor: WARNING, backgroundColor: SURFACE_SUBTLE }}
+        >
+          <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
+            <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: WARNING }} />
+            <span>มีการแก้ไขข้อมูลที่ยังไม่บันทึก ต้องการทิ้งการแก้ไขและปิดหน้านี้หรือไม่?</span>
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onDirtyChange?.(false);
+                onClose();
+              }}
+              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+              style={{ borderColor: DANGER, color: DANGER }}
+            >
+              ทิ้งการแก้ไขและปิด
+            </button>
+            <button
+              ref={keepEditingRef}
+              type="button"
+              onClick={() => setConfirmDiscard(false)}
+              className={PILL_GHOST}
+              style={{ borderColor: RULE, color: INK }}
+            >
+              กลับไปแก้ไขต่อ
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -363,7 +487,7 @@ export function AdminProfileEditor({
         </button>
         <button
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           disabled={saving}
           className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
           style={{ color: INK_2 }}
