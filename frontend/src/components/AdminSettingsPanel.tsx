@@ -102,8 +102,8 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
     setFieldErrors({});
   }
 
-  async function refreshStatus() {
-    const pub = await fetchPublicSettings();
+  async function refreshStatus(fresh = false) {
+    const pub = await fetchPublicSettings({ fresh });
     setAcceptingNow(pub.live ? pub.settings.isOpen : null);
   }
 
@@ -165,7 +165,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
         kind: 'ok',
         text: `บันทึกแล้ว: ${numberFmt.format(values.quota)} ที่นั่ง · ค่าสมัคร ${numberFmt.format(values.fee)} บาท`,
       });
-      refreshStatus();
+      refreshStatus(true);
     } catch (err) {
       if (onAuthError(err)) return;
       setNotice({ kind: 'error', text: `บันทึกไม่สำเร็จ: ${errorText(err, 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')}` });
@@ -189,7 +189,7 @@ export function AdminSettingsPanel({ token, canEdit = true, currentCount, onAuth
           ? 'ปิดรับสมัครฉุกเฉินแล้ว ผู้สมัครใหม่จะถูกปฏิเสธ'
           : 'ยกเลิกการปิดฉุกเฉินแล้ว การรับสมัครเป็นไปตามกำหนดการ',
       });
-      refreshStatus();
+      refreshStatus(true);
     } catch (err) {
       if (onAuthError(err)) return;
       setNotice({ kind: 'error', text: `เปลี่ยนสถานะไม่สำเร็จ: ${errorText(err, 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')}` });

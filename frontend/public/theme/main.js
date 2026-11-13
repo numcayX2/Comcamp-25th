@@ -9,7 +9,6 @@
   var LOCAL_GALLERY_BASE = '/assets/gallery/';
 
   function $(id){ return document.getElementById(id); }
-  function pad(n){ return String(n).padStart(2,'0'); }
 
   // Server-authoritative state (driven by GET /api/settings/public with graceful offline fallback)
   var state = {
@@ -21,6 +20,7 @@
     registrationOpenAt: OPEN_AT,
     failed: false,
     loading: true,
+    explicitClosed: false,
     syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at 00:00:00
   };
 
@@ -48,11 +48,6 @@
     var s = computeHeroState();
     var primary = $('cta-primary');
     var secondary = $('cta-secondary');
-    var dateLine = $('hero-date-line');
-    var dateText = $('hero-date-text');
-    var capVal = $('hero-capacity-val');
-    var capNote = $('hero-capacity-note');
-    var cdNote = $('hero-countdown-note');
     var sticky = $('sticky-cta');
     var mini = $('sticky-mini');
     var seatsBig = $('bento-seats-num');
@@ -63,7 +58,7 @@
 
     var maxCap = state.maxCapacity || MAX;
     var seatsLeft = Math.max(0, maxCap - state.currentCount);
-    var ctaText = 'เปิดรับสมัคร 16 พ.ย.', ctaHref = '#experience', miniLabel = 'เปิดรับ 16 พ.ย. 69', dateMsg = 'เปิดรับสมัครพร้อมกัน 16 พ.ย. 2569 เวลา 00:00 น.', tone = 'ok', stickyDisabled = true;
+    var ctaText = 'เปิดรับสมัคร 16 พ.ย.', ctaHref = '#experience', miniLabel = 'เปิดรับ 16 พ.ย. 69', stickyDisabled = true;
 
     if (seatsBig) seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
 
@@ -71,77 +66,58 @@
       ctaText = 'เปิดรับสมัคร 16 พ.ย.';
       ctaHref = '#experience';
       miniLabel = 'เปิดรับ 16 พ.ย. 69';
-      dateMsg = 'เปิดรับสมัครพร้อมกัน 16 พ.ย. 2569 เวลา 00:00 น.';
-      tone = 'ok';
       stickyDisabled = true;
       sticky.textContent = '16 พ.ย. 69';
       secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
       secondary.setAttribute('href', '/status');
-      if (capVal) capVal.textContent = 'รับ ' + maxCap + ' คน';
-      if (capNote) capNote.textContent = 'ม.4–ม.6 และ ปวช.1–ปวช.3';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
     } else if (s === 'FAILED') {
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
       miniLabel = 'เชื่อมต่อไม่สำเร็จ';
-      dateMsg = 'โหลดสถานะไม่สำเร็จ · กดเพื่อลองใหม่';
-      tone = 'danger';
       stickyDisabled = true;
       sticky.textContent = 'ตรวจสอบ';
       secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
       secondary.setAttribute('href', '#retry-status');
-      if (capVal) capVal.textContent = 'รับ ' + maxCap + ' คน';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
     } else if (s === 'OPEN') {
       ctaText = 'สมัครค่าย';
       ctaHref = '/register';
       miniLabel = 'เหลือ ' + seatsLeft + '/' + maxCap + ' ที่นั่ง';
-      dateMsg = 'เปิดรับสมัครแล้ว · คัดเลือกตามลำดับการสมัคร';
-      tone = 'ok';
       stickyDisabled = false;
       sticky.textContent = 'สมัครค่าย';
       secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
       secondary.setAttribute('href', '/status');
-      if (capVal) capVal.textContent = 'เหลือ ' + seatsLeft + ' / ' + maxCap + ' ที่นั่ง';
-      if (capNote) capNote.textContent = 'คัดเลือกตามลำดับการสมัคร';
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served)';
     } else if (s === 'ALMOST_FULL') {
       ctaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
       ctaHref = '/register';
       miniLabel = 'เหลือ ' + seatsLeft + ' ที่นั่ง';
-      dateMsg = 'ใกล้เต็มแล้ว · เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย';
-      tone = 'amber';
       stickyDisabled = false;
       sticky.textContent = 'สมัคร';
       secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
       secondary.setAttribute('href', '/status');
-      if (capVal) capVal.textContent = 'เหลือ ' + seatsLeft + ' / ' + maxCap + ' ที่นั่ง';
-      if (capNote) capNote.textContent = 'ใกล้เต็มแล้ว';
       if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบ First-Come, First-Served';
     } else if (s === 'FULL') {
       // /register is locked once the camp is full, so the CTA leads to the status page instead.
       ctaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
       ctaHref = '/status';
       miniLabel = 'ที่นั่งเต็มแล้ว';
-      dateMsg = 'ผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว · หากมีผู้สละสิทธิ์จะเปิดรับเพิ่มอัตโนมัติ';
-      tone = 'danger';
       stickyDisabled = false;
       sticky.textContent = 'ตรวจสถานะ';
       // The primary CTA already leads to /status, so the secondary link points at the camp details.
       secondary.textContent = 'ดูรายละเอียดค่าย →';
       secondary.setAttribute('href', '#experience');
-      if (capVal) capVal.textContent = 'เต็มแล้ว (' + maxCap + '/' + maxCap + ')';
-      if (capNote) capNote.textContent = 'เปิดรับเพิ่มเมื่อมีผู้สละสิทธิ์';
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้มีผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว หากมีผู้สละสิทธิ์ระบบจะคืนที่นั่งว่างให้สมัครได้ทันที';
     } else { // CLOSED
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
       miniLabel = 'ปิดรับสมัครแล้ว';
-      dateMsg = 'ปิดรับสมัครแล้ว · ตรวจสอบผลได้ทางหน้าตรวจสอบสถานะ';
-      tone = 'danger';
       stickyDisabled = true;
       sticky.textContent = 'ปิดแล้ว';
       secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
       secondary.setAttribute('href', '/status');
-      if (capVal) capVal.textContent = 'ปิดรับสมัครแล้ว';
+      if (seatsCaption) seatsCaption.textContent = 'ปิดรับสมัครแล้ว สามารถตรวจสอบสถานะใบสมัครได้ตลอดเวลา';
     }
 
     var primarySpan = primary.querySelector('span');
@@ -152,37 +128,10 @@
     }
     primary.setAttribute('href', ctaHref);
 
-    if (dateLine) dateLine.setAttribute('data-tone', tone);
-    if (dateText) dateText.textContent = dateMsg;
-
-    var cdLabel = document.querySelector('[data-dock-cd-label]');
-    var cdVal = document.querySelector('[data-dock-countdown]');
-    if (cdLabel && cdVal) {
-      if (s === 'PRE_OPEN' || s === 'LOADING') {
-        cdLabel.textContent = 'วันเปิดรับสมัคร';
-        cdVal.textContent = '16 พ.ย. 2569';
-      } else {
-        cdLabel.textContent = 'สถานะการรับสมัคร';
-        if (s === 'OPEN') {
-          cdVal.textContent = 'เปิดรับสมัครอยู่';
-          if (cdNote) cdNote.textContent = 'คัดเลือก First-Come, First-Served';
-        } else if (s === 'ALMOST_FULL') {
-          cdVal.textContent = 'ใกล้เต็มแล้ว';
-          if (cdNote) cdNote.textContent = 'เหลือ ' + seatsLeft + ' ที่นั่งสุดท้าย';
-        } else if (s === 'FULL') {
-          cdVal.textContent = 'ที่นั่งเต็มแล้ว';
-          if (cdNote) cdNote.textContent = 'ครบ ' + maxCap + ' ที่นั่ง · เปิดรับเพิ่มเมื่อมีที่ว่าง';
-        } else if (s === 'CLOSED') {
-          cdVal.textContent = 'ปิดรับสมัครแล้ว';
-          if (cdNote) cdNote.textContent = 'ตรวจสอบสถานะใบสมัครได้ตลอดเวลา';
-        }
-      }
-    }
-
     mini.textContent = miniLabel;
     sticky.disabled = stickyDisabled;
     sticky.setAttribute('aria-disabled', stickyDisabled ? 'true' : 'false');
-    tickCountdown();
+    checkMidnightResync();
   }
 
   // Midnight Zero Jitter Buffer (AGENTS.md §8): when a pre-open countdown reaches 00:00:00, every
@@ -190,23 +139,12 @@
   // waits a random 200–2000 ms instead, and schedules at most one such re-fetch per pre-open sync.
   var midnightResyncScheduled = false;
 
-  function tickCountdown(){
+  function checkMidnightResync(){
     var now = getServerNow().getTime();
     var target = new Date(state.registrationOpenAt || OPEN_AT).getTime();
-    var diff = Math.max(0, target - now);
-    if (diff === 0 && state.syncedPreOpen && !midnightResyncScheduled) {
+    if (now >= target && state.syncedPreOpen && !midnightResyncScheduled) {
       midnightResyncScheduled = true;
-      setTimeout(function(){ syncServerStatus(true); }, 200 + Math.floor(Math.random() * 1800));
-    }
-    var total = Math.floor(diff / 1000);
-    var d = Math.min(99, Math.floor(total / 86400));
-    var h = Math.floor((total % 86400) / 3600);
-    var m = Math.floor((total % 3600) / 60);
-    var s = total % 60;
-    var cdNote = $('hero-countdown-note');
-    var st = computeHeroState();
-    if (cdNote && (st === 'PRE_OPEN' || st === 'LOADING')) {
-      cdNote.textContent = 'อีก ' + d + ' วัน ' + pad(h) + ':' + pad(m) + ':' + pad(s) + ' ชม.';
+      setTimeout(function(){ syncServerStatus(true, true); }, 200 + Math.floor(Math.random() * 1800));
     }
   }
 
@@ -224,25 +162,27 @@
     secondaryBtn.addEventListener('click', function(e){
       if (secondaryBtn.getAttribute('href') === '#retry-status') {
         e.preventDefault();
-        syncServerStatus();
+        syncServerStatus(false, true);
       }
     });
   }
 
-  // quiet: background refresh (the midnight re-fetch). The hero keeps its current state while the
-  // request runs instead of flashing the loading state, and a failure keeps the last good data.
-  function syncServerStatus(quiet){
-    if (!quiet) {
-      state.loading = true;
-      state.failed = false;
-      applyHeroState();
+  // Shares the initial page-load /settings/public request with SiteNav.astro via one window slot
+  // (see frontend/src/lib/public-settings-cache.ts). Midnight resyncs and manual retries pass
+  // forceFresh = true to bypass the slot.
+  function fetchPublicSettingsShared(url, forceFresh){
+    var slot = typeof window !== 'undefined' ? window.__CC25_PUBLIC_SETTINGS_SLOT__ : null;
+    if (!forceFresh && slot && slot.url === url) {
+      if (slot.settledAt === 0 || Date.now() - slot.settledAt < 1500) {
+        return slot.promise;
+      }
     }
 
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timeoutId = setTimeout(function(){ if (controller) controller.abort(); }, 3000);
-    var url = API_BASE.replace(/\/$/, '') + '/settings/public';
+    var nextSlot = { url: url, settledAt: 0, promise: null };
 
-    fetch(url, {
+    nextSlot.promise = fetch(url, {
       signal: controller ? controller.signal : undefined,
       headers: { 'Accept': 'application/json' }
     })
@@ -252,6 +192,33 @@
         return res.json();
       })
       .then(function(data){
+        nextSlot.settledAt = Date.now();
+        return data;
+      })
+      .catch(function(err){
+        clearTimeout(timeoutId);
+        if (typeof window !== 'undefined' && window.__CC25_PUBLIC_SETTINGS_SLOT__ === nextSlot) {
+          delete window.__CC25_PUBLIC_SETTINGS_SLOT__;
+        }
+        throw err;
+      });
+
+    if (typeof window !== 'undefined') window.__CC25_PUBLIC_SETTINGS_SLOT__ = nextSlot;
+    return nextSlot.promise;
+  }
+
+  // quiet: background refresh (the midnight re-fetch). The hero keeps its current state while the
+  // request runs instead of flashing the loading state, and a failure keeps the last good data.
+  function syncServerStatus(quiet, forceFresh){
+    if (!quiet) {
+      state.loading = true;
+      state.failed = false;
+      applyHeroState();
+    }
+
+    var url = API_BASE.replace(/\/$/, '') + '/settings/public';
+    fetchPublicSettingsShared(url, Boolean(forceFresh !== undefined ? forceFresh : quiet))
+      .then(function(data){
         state.loading = false;
         state.failed = false;
         state.serverTime = data.serverTime || new Date().toISOString();
@@ -259,23 +226,25 @@
         state.serverOffsetMs = isFinite(serverEpoch) ? (serverEpoch - Date.now()) : 0;
         state.registrationOpenAt = data.registrationOpenAt || OPEN_AT;
         state.isOpen = Boolean(data.isOpen);
+        state.explicitClosed = data.isOpen === false;
         state.currentCount = typeof data.currentCount === 'number' ? data.currentCount : 0;
         state.maxCapacity = typeof data.maxCapacity === 'number' && data.maxCapacity > 0 ? data.maxCapacity : MAX;
         // Still before opening by the server's clock: arm the midnight re-fetch for when the
         // (offset-corrected) countdown reaches zero. Re-armed by each sync that says "not yet".
         state.syncedPreOpen = !state.isOpen && isFinite(serverEpoch) && serverEpoch < new Date(state.registrationOpenAt).getTime();
         if (state.syncedPreOpen) midnightResyncScheduled = false;
-        tickCountdown();
+        checkMidnightResync();
         applyHeroState();
       })
       .catch(function(){
-        clearTimeout(timeoutId);
         // A failed midnight re-fetch keeps the last good server data; no retry, so an overloaded
         // server is not hit again by every tab.
         if (quiet) return;
         // Graceful offline fallback per AGENTS.md §0.2 & §8
         state.loading = false;
         state.failed = false;
+        state.isOpen = false;
+        state.explicitClosed = false;
         state.serverTime = new Date().toISOString();
         state.serverOffsetMs = 0;
         state.registrationOpenAt = OPEN_AT;
@@ -283,27 +252,17 @@
         state.maxCapacity = MAX;
         // Offline before opening: still try the server once (jittered) when the countdown ends.
         state.syncedPreOpen = Date.now() < new Date(OPEN_AT).getTime();
-        tickCountdown();
+        checkMidnightResync();
         applyHeroState();
       });
   }
 
-  tickCountdown();
+  checkMidnightResync();
   applyHeroState();
   syncServerStatus();
-  setInterval(function(){ tickCountdown(); applyHeroState(); }, 1000);
+  setInterval(function(){ checkMidnightResync(); applyHeroState(); }, 1000);
 
-  // Hero 3D stage: rendered by src/scripts/hero-3d.js, which bundles three.js from package.json
-  // (Astro build). The old loader that lived here pulled three.js from a third-party CDN at runtime, without
-  // Subresource Integrity, and only ran on a page without #heroStage. That case now just shows the
-  // static fallback: no third-party script is ever imported from this file.
-  (function initHeroStageFallback(){
-    var canvas = $('heroStageCanvas');
-    if (!canvas || $('heroStage')) return;
-    canvas.hidden = true;
-    var fb = $('heroStageFallback');
-    if (fb) fb.hidden = false;
-  })();
+  // Hero 3D stage is rendered by src/scripts/hero-3d.js (bundled three.js, fallback handled via .hero-stage[data-state="fallback"]).
 
   // GSAP enhance-only motion (content visible at first paint; transform-only, respects reduced motion)
   function initGsap(){

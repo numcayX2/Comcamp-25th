@@ -162,7 +162,9 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       const id = onlyDigits(form.nationalId);
       if (id.length === 0) return 'กรุณากรอกเลขบัตรประชาชน 13 หลัก';
       if (id.length !== 13) return `เลขบัตรประชาชนต้องมี 13 หลัก (ตอนนี้กรอกไว้ ${id.length} หลัก)`;
-      return isValidThaiNationalID(id) ? undefined : 'เลขประจำตัวประชาชนไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
+      return isValidThaiNationalID(id)
+        ? undefined
+        : 'เลข 13 หลักไม่สัมพันธ์กันตามรหัสตรวจสอบบนบัตร (อาจพิมพ์ผิดหรือสลับหลัก กรุณาเทียบทีละกลุ่มอีกครั้ง)';
     }
     case 'phone': {
       const p = onlyDigits(form.phone);

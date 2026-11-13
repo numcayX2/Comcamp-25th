@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
+	"golang.org/x/sync/singleflight"
 
 	"comcamp25-backend/internal/domain"
 )
@@ -26,10 +29,26 @@ type UpdateSettingsRequest struct {
 	IsManualClosed       *bool            `json:"isManualClosed,omitempty"`
 }
 
+// publicSettingsCacheTTL bounds how long GetPublicSettings reuses one snapshot during a burst.
+// Admin settings updates and applicant seat changes invalidate it immediately, and expiresAt is
+// capped at the next scheduled transition (e.g. 00:00:00 open) so flips happen on time.
+const publicSettingsCacheTTL = time.Second
+
+type cachedPublicSettings struct {
+	response  domain.PublicSettingsResponse
+	feeValue  decimal.Decimal
+	expiresAt time.Time
+}
+
 type SettingService struct {
 	settingRepo domain.SettingRepository
 	appRepo     domain.ApplicantRepository
 	auditRepo   domain.AuditRepository
+
+	pubMu    sync.RWMutex
+	pubCache *cachedPublicSettings
+	pubVer   atomic.Uint64
+	pubGroup singleflight.Group
 }
 
 // NewSettingService; auditRepo may be nil (settings changes are then not audited).
@@ -41,29 +60,108 @@ func NewSettingService(settingRepo domain.SettingRepository, appRepo domain.Appl
 	}
 }
 
+// InvalidatePublicCache drops the cached GET /api/settings/public snapshot so the next read
+// queries fresh settings and active seat count. Bumping pubVer stops an in-flight singleflight
+// lookup from writing stale pre-mutation state back into the cache.
+func (s *SettingService) InvalidatePublicCache() {
+	s.pubVer.Add(1)
+	s.pubMu.Lock()
+	s.pubCache = nil
+	s.pubMu.Unlock()
+}
+
+func clonePublicSettings(src domain.PublicSettingsResponse, feeValue decimal.Decimal) *domain.PublicSettingsResponse {
+	out := src
+	fee := feeValue
+	out.CampFee = &fee
+	return &out
+}
+
 func (s *SettingService) GetPublicSettings(ctx context.Context) (*domain.PublicSettingsResponse, error) {
-	settings, err := s.settingRepo.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	now := time.Now().UTC()
-	isOpen := !settings.IsManualClosed &&
-		now.After(settings.RegistrationOpenAt) &&
-		now.Before(settings.RegistrationCloseAt)
+	s.pubMu.RLock()
+	if s.pubCache != nil && now.Before(s.pubCache.expiresAt) {
+		resp := clonePublicSettings(s.pubCache.response, s.pubCache.feeValue)
+		s.pubMu.RUnlock()
+		return resp, nil
+	}
+	s.pubMu.RUnlock()
 
-	activeCount, _ := s.appRepo.CountActive(ctx)
-	isCertReleased := settings.CertificateReleaseAt != nil && now.After(*settings.CertificateReleaseAt)
+	// Coalesce concurrent misses during the midnight refresh spike, isolated from a single
+	// caller's cancellation so one aborted connection never breaks the shared lookup.
+	ch := s.pubGroup.DoChan("public", func() (any, error) {
+		startVer := s.pubVer.Load()
+		qCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	return &domain.PublicSettingsResponse{
-		ServerTime:            now.Format(time.RFC3339),
-		RegistrationOpenAt:    settings.RegistrationOpenAt.Format(time.RFC3339),
-		IsOpen:                isOpen,
-		CurrentCount:          activeCount,
-		MaxCapacity:           settings.MaxCapacity,
-		CampFee:               &settings.CampFee,
-		IsCertificateReleased: isCertReleased,
-	}, nil
+		settings, err := s.settingRepo.Get(qCtx)
+		if err != nil {
+			return nil, err
+		}
+
+		now := time.Now().UTC()
+		isOpen := !settings.IsManualClosed &&
+			now.After(settings.RegistrationOpenAt) &&
+			now.Before(settings.RegistrationCloseAt)
+
+		activeCount, countErr := s.appRepo.CountActive(qCtx)
+		isCertReleased := settings.CertificateReleaseAt != nil && now.After(*settings.CertificateReleaseAt)
+
+		resp := domain.PublicSettingsResponse{
+			ServerTime:            now.Format(time.RFC3339),
+			RegistrationOpenAt:    settings.RegistrationOpenAt.Format(time.RFC3339),
+			IsOpen:                isOpen,
+			CurrentCount:          activeCount,
+			MaxCapacity:           settings.MaxCapacity,
+			CampFee:               &settings.CampFee,
+			IsCertificateReleased: isCertReleased,
+		}
+
+		expiresAt := now.Add(publicSettingsCacheTTL)
+		for _, boundary := range []*time.Time{
+			&settings.RegistrationOpenAt,
+			&settings.RegistrationCloseAt,
+			settings.CertificateReleaseAt,
+		} {
+			if boundary != nil && boundary.After(now) && boundary.Before(expiresAt) {
+				expiresAt = *boundary
+			}
+		}
+
+		if countErr == nil && s.pubVer.Load() == startVer && expiresAt.After(now) {
+			entry := &cachedPublicSettings{
+				response:  resp,
+				feeValue:  settings.CampFee,
+				expiresAt: expiresAt,
+			}
+			s.pubMu.Lock()
+			if s.pubVer.Load() == startVer {
+				s.pubCache = entry
+			}
+			s.pubMu.Unlock()
+		}
+
+		return clonePublicSettings(resp, settings.CampFee), nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		src := res.Val.(*domain.PublicSettingsResponse)
+		fee := settingsFeeCopy(src.CampFee)
+		return clonePublicSettings(*src, fee), nil
+	}
+}
+
+func settingsFeeCopy(fee *decimal.Decimal) decimal.Decimal {
+	if fee == nil {
+		return decimal.Zero
+	}
+	return *fee
 }
 
 func (s *SettingService) GetAdminSettings(ctx context.Context) (*domain.Settings, error) {
@@ -181,6 +279,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, req UpdateSettingsR
 	if err := s.settingRepo.Update(ctx, settings); err != nil {
 		return nil, err
 	}
+	s.InvalidatePublicCache()
 
 	if s.auditRepo != nil {
 		entry := &domain.AuditEntry{

@@ -1,19 +1,22 @@
 /**
  * Shared slip-upload helpers for /status (StatusSection) and the receipt on /register.
  *
- * Limits mirror the backend (AGENTS.md section 13.4): JPG/PNG/WebP only, 5 MB, 4096x4096 px. A
- * photo that is too big is shrunk in the browser first (longest edge 2048 px, re-encoded as JPEG),
- * so a student with a 12-megapixel album screenshot is never turned away. The server still
- * re-validates everything. The verifyCode (last 4 digits of the national ID, section 13.5) is held
- * in component state only: these helpers never touch localStorage or sessionStorage.
+ * Hard server limits mirror the backend (AGENTS.md section 13.4): JPG/PNG/WebP only, 5 MB,
+ * 4096x4096 px. Any PNG screenshot, oversized image (> 1600 px), or file > 300 KB is shrunk to
+ * a longest edge of 1600 px and re-encoded as WebP (with safe JPEG fallback for older WebViews)
+ * in the browser first, keeping banking text and Mini QR crisp while dropping EXIF and upload size.
+ * The server still re-validates everything. The verifyCode (last 4 digits of the national ID,
+ * section 13.5) is held in component state only: these helpers never touch localStorage or
+ * sessionStorage.
  */
 import { ApiHttpError } from './api';
 
 /** Server limit on slip width and height (AGENTS.md section 13.4). */
 export const MAX_SLIP_PX = 4096;
 export const MAX_SLIP_BYTES = 5 * 1024 * 1024;
-/** Longest edge after an automatic downscale. */
-const RESIZE_EDGE = 2048;
+/** Target longest edge and size threshold for automatic client-side WebP optimization. */
+const OPTIMIZE_MAX_EDGE = 1600;
+const OPTIMIZE_TARGET_BYTES = 300 * 1024;
 
 /** Must match the backend allow-list (magic-byte checked server-side). */
 export const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -95,16 +98,34 @@ function decodeWithImage(file: File) {
   });
 }
 
-function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+type EncodedCanvas = {
+  blob: Blob;
+  ext: 'webp' | 'jpg';
+  mime: 'image/webp' | 'image/jpeg';
+};
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
-/** Re-encodes as JPEG at the given longest edge. This also drops EXIF (GPS, device) from camera photos. */
+async function encodeCanvasOptimal(canvas: HTMLCanvasElement, quality: number): Promise<EncodedCanvas | null> {
+  // Prefer WebP for smaller banking slips; verify blob.type because older WebKit WebViews may
+  // silently fall back to returning image/png when asked for image/webp.
+  const webp = await canvasToBlob(canvas, 'image/webp', quality);
+  if (webp && webp.type === 'image/webp') {
+    return { blob: webp, ext: 'webp', mime: 'image/webp' };
+  }
+  const jpeg = await canvasToBlob(canvas, 'image/jpeg', Math.min(0.9, quality + 0.03));
+  if (!jpeg || (jpeg.type && jpeg.type !== 'image/jpeg')) return null;
+  return { blob: jpeg, ext: 'jpg', mime: 'image/jpeg' };
+}
+
+/** Re-encodes via canvas (WebP with JPEG fallback), dropping EXIF metadata from phone photos. */
 async function shrink(
   src: { source: CanvasImageSource; width: number; height: number },
   edge: number,
   quality: number,
-): Promise<Blob | null> {
+): Promise<EncodedCanvas | null> {
   const scale = Math.min(1, edge / Math.max(src.width, src.height));
   const w = Math.max(1, Math.round(src.width * scale));
   const h = Math.max(1, Math.round(src.height * scale));
@@ -113,19 +134,20 @@ async function shrink(
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#fff'; // JPEG has no alpha: transparent PNG areas become white, not black
+  ctx.fillStyle = '#fff'; // fill transparent PNG areas with white so text/QR stay legible
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(src.source, 0, 0, w, h);
-  return toBlob(canvas, quality);
+  return encodeCanvasOptimal(canvas, quality);
 }
 
 const UNREADABLE = 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูปอื่น หรือแคปหน้าจอสลิปจากแอปธนาคารอีกครั้ง';
 const STILL_TOO_BIG = 'รูปนี้ใหญ่เกินไปแม้ย่อให้แล้ว กรุณาแคปหน้าจอสลิปจากแอปธนาคารแล้วเลือกรูปใหม่';
 
 /**
- * Validates a chosen slip: type first, then decoding. An image over 4096 px or 5 MB is shrunk in
- * the browser; it is rejected only when it cannot be decoded or is still over 5 MB afterwards.
- * On success the caller owns `previewUrl` and must URL.revokeObjectURL it when done.
+ * Validates and optimizes a chosen slip: type first, then decoding. Any PNG screenshot, image
+ * wider/taller than 1600 px, or file above 300 KB is shrunk to <= 1600 px as WebP (or JPEG when
+ * WebP encoding is unavailable). Smaller valid JPG/WebP files are sent directly. On success the
+ * caller owns `previewUrl` and must URL.revokeObjectURL it when done.
  */
 export async function prepareSlipFile(file: File): Promise<SlipCheck> {
   if (!SLIP_TYPES.includes(file.type)) {
@@ -135,19 +157,30 @@ export async function prepareSlipFile(file: File): Promise<SlipCheck> {
   if (!img) return { ok: false, message: UNREADABLE };
 
   try {
-    const tooBig = img.width > MAX_SLIP_PX || img.height > MAX_SLIP_PX || file.size > MAX_SLIP_BYTES;
-    if (!tooBig) return { ok: true, file, previewUrl: URL.createObjectURL(file), resized: false };
+    const withinHardLimit = img.width <= MAX_SLIP_PX && img.height <= MAX_SLIP_PX && file.size <= MAX_SLIP_BYTES;
+    const needsOptimize =
+      !withinHardLimit ||
+      img.width > OPTIMIZE_MAX_EDGE ||
+      img.height > OPTIMIZE_MAX_EDGE ||
+      file.size > OPTIMIZE_TARGET_BYTES ||
+      file.type === 'image/png';
+    if (!needsOptimize) return { ok: true, file, previewUrl: URL.createObjectURL(file), resized: false };
 
-    let blob: Blob | null = null;
-    for (const [edge, q] of [[RESIZE_EDGE, 0.86], [1600, 0.78], [1200, 0.7]] as const) {
-      blob = await shrink(img, edge, q);
-      if (blob && blob.size <= MAX_SLIP_BYTES) break;
+    let encoded: EncodedCanvas | null = null;
+    for (const [edge, q] of [[OPTIMIZE_MAX_EDGE, 0.82], [1280, 0.76], [1024, 0.7]] as const) {
+      encoded = await shrink(img, edge, q);
+      if (encoded && encoded.blob.size <= MAX_SLIP_BYTES) break;
     }
-    if (!blob) return { ok: false, message: UNREADABLE };
-    if (blob.size > MAX_SLIP_BYTES) return { ok: false, message: STILL_TOO_BIG };
+    if (!encoded) return { ok: false, message: UNREADABLE };
+    if (encoded.blob.size > MAX_SLIP_BYTES) return { ok: false, message: STILL_TOO_BIG };
+
+    // Rare tiny PNGs may already be smaller than lossy re-encoding; keep the original when valid.
+    if (withinHardLimit && encoded.blob.size >= file.size) {
+      return { ok: true, file, previewUrl: URL.createObjectURL(file), resized: false };
+    }
 
     const base = file.name.replace(/\.[^.]+$/, '') || 'slip';
-    const out = new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+    const out = new File([encoded.blob], `${base}.${encoded.ext}`, { type: encoded.mime, lastModified: Date.now() });
     return { ok: true, file: out, previewUrl: URL.createObjectURL(out), resized: true };
   } finally {
     img.close();

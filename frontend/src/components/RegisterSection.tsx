@@ -328,11 +328,11 @@ export function RegisterSection() {
   const announce = (msg: string) => setLive((prev) => (prev === msg ? `${msg} ` : msg));
 
   /* Registration gate — server-authoritative. Query overrides are dev-only. */
-  const checkGate = useCallback(function checkGateNow() {
+  const checkGate = useCallback(function checkGateNow(fresh = false) {
     const run = ++gateRun.current;
     window.clearTimeout(openTimer.current);
     setGate('checking');
-    fetchPublicSettings()
+    fetchPublicSettings({ fresh })
       .then(({ settings, offsetMs, live: reachable }) => {
         if (run !== gateRun.current) return;
         if (!reachable) return setGate('error');
@@ -347,7 +347,7 @@ export function RegisterSection() {
           // re-check when the server's opening time arrives. The 200–2000 ms jitter keeps every
           // waiting tab from asking at the same instant (AGENTS.md §8, Midnight Zero Jitter Buffer).
           const jitter = 200 + Math.random() * 1800;
-          openTimer.current = window.setTimeout(checkGateNow, Math.min(opensAt - serverNow + jitter, MAX_TIMER_MS));
+          openTimer.current = window.setTimeout(() => checkGateNow(true), Math.min(opensAt - serverNow + jitter, MAX_TIMER_MS));
         } else if (remaining <= 0) setGate('full');
         else if (!settings.isOpen) setGate('closed');
         else setGate('open');
@@ -654,7 +654,7 @@ export function RegisterSection() {
     noticeFocus.current = true;
     setNotice(`ยกเลิกใบสมัคร ${id} เรียบร้อยแล้ว คืนโควตาที่นั่งแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`);
     window.scrollTo({ top: 0 });
-    checkGate(); // the freed seat may reopen a full camp
+    checkGate(true); // the freed seat may reopen a full camp
   }
 
   /* The receipt (and the focused button) is gone: move focus to the notice that replaced it, once
@@ -1239,7 +1239,7 @@ export function RegisterSection() {
                 <p className="rw-gate__body">{GATE_COPY[gate as Exclude<GateState, 'checking' | 'open'>].body}</p>
                 <div className="rw-actions rw-actions--tight">
                   {/* Every state shown here (pre_open, full, closed, error) can change on the server. */}
-                  <button type="button" className="rw-btn rw-btn--primary rw-btn--sm" onClick={() => checkGate()}>
+                  <button type="button" className="rw-btn rw-btn--primary rw-btn--sm" onClick={() => checkGate(true)}>
                     <RotateCw {...ICON} />
                     ลองใหม่อีกครั้ง
                   </button>

@@ -966,6 +966,8 @@ const navLinks = isAdmin ? [] : [
 </style>
 
 <script>
+  import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
+
   function initSiteNav() {
     const nav = document.querySelector<HTMLElement>('.site-nav');
     const toggle = document.querySelector<HTMLButtonElement>('.site-nav .nav-toggle');
@@ -1098,17 +1100,13 @@ const navLinks = isAdmin ? [] : [
   async function initNavRegisterState() {
     if (!document.querySelector('[data-nav-register]')) return;
 
-    const base = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api';
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 4000);
+    const base =
+      import.meta.env.PUBLIC_API_URL ||
+      (typeof window !== 'undefined' && (window as any).__CC25_API_BASE_URL__) ||
+      'http://localhost:8000/api';
 
     try {
-      const res = await fetch(`${base}/settings/public`, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' },
-      });
-      if (!res.ok) throw new Error(`settings ${res.status}`);
-      const settings = (await res.json()) as NavSettings;
+      const settings = (await fetchSharedPublicSettings(base, { timeoutMs: 4000 })) as NavSettings;
       const state = resolveState(settings);
       const max = typeof settings.maxCapacity === 'number' && settings.maxCapacity > 0 ? settings.maxCapacity : 30;
       const count = typeof settings.currentCount === 'number' ? settings.currentCount : 0;
@@ -1118,8 +1116,6 @@ const navLinks = isAdmin ? [] : [
       // Backend unreachable or slow: the server-rendered pre-open label stays as-is.
       applyNavRegisterLabel('PRE_OPEN', 0);
       applyNavStatusVisibility('PRE_OPEN');
-    } finally {
-      window.clearTimeout(timer);
     }
   }
 

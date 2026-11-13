@@ -2,6 +2,7 @@
  * ComCamp #25 - API Client & Server Time Synchronization
  * Aligns client countdown with authentic server time to prevent clock tampering.
  */
+import { fetchSharedPublicSettings } from './public-settings-cache';
 
 export interface PublicSettings {
   serverTime: string;
@@ -32,25 +33,14 @@ let isSynced: boolean = false;
  * Fetch public settings from backend API (/api/settings/public).
  * Smoothly falls back to realistic default specifications if backend is offline.
  */
-export async function fetchPublicSettings(): Promise<{ settings: PublicSettings; offsetMs: number; live: boolean }> {
+export async function fetchPublicSettings(
+  options: { fresh?: boolean } = {},
+): Promise<{ settings: PublicSettings; offsetMs: number; live: boolean }> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-    const response = await fetch(`${API_BASE}/settings/public`, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-      },
+    const data: PublicSettings = await fetchSharedPublicSettings(API_BASE, {
+      forceFresh: Boolean(options.fresh),
+      timeoutMs: 3500,
     });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Server returned HTTP ${response.status}`);
-    }
-
-    const data: PublicSettings = await response.json();
     const serverEpoch = new Date(data.serverTime).getTime();
     const clientEpoch = Date.now();
     const offsetMs = serverEpoch - clientEpoch;

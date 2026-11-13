@@ -139,6 +139,8 @@ type ApplicantService struct {
 	// verify locks an application after repeated wrong verifyCode / nationalId answers. main
 	// shares one guard with PaymentService (WithVerifyGuard) so the limit spans every endpoint.
 	verify *VerifyGuard
+	// onSeatChange notifies SettingService to drop its short public-settings cache when seats change.
+	onSeatChange func()
 }
 
 // WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
@@ -161,6 +163,18 @@ func (s *ApplicantService) WithAudit(a domain.AuditRepository) *ApplicantService
 func (s *ApplicantService) WithTurnstile(v TurnstileVerifier) *ApplicantService {
 	s.captcha = v
 	return s
+}
+
+// WithOnSeatChange registers a hook called after a commit changes active seat count.
+func (s *ApplicantService) WithOnSeatChange(fn func()) *ApplicantService {
+	s.onSeatChange = fn
+	return s
+}
+
+func (s *ApplicantService) notifySeatChange() {
+	if s.onSeatChange != nil {
+		s.onSeatChange()
+	}
 }
 
 func NewApplicantService(
@@ -277,6 +291,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 
 	switch {
 	case err == nil:
+		s.notifySeatChange()
 		return s.toPublic(ctx, applicant), false, nil
 	case errors.Is(err, domain.ErrCapacityReached):
 		return nil, false, ErrQuotaExceeded
@@ -646,6 +661,9 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 			return nil, notFoundOr(err)
 		}
 	}
+	if retakesSeat || applicant.Status.IsActive() != newStatus.IsActive() {
+		s.notifySeatChange()
+	}
 	applicant.Status = newStatus
 
 	return s.toAdmin(ctx, applicant)
@@ -670,7 +688,11 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 		IPAddress: ip,
 	}
 
-	return s.appRepo.SoftDelete(ctx, applicant.ID, &adminID, reason, audit)
+	if err := s.appRepo.SoftDelete(ctx, applicant.ID, &adminID, reason, audit); err != nil {
+		return err
+	}
+	s.notifySeatChange()
+	return nil
 }
 
 // Withdraw lets applicants cancel their own application from the receipt or /status page. It is
@@ -736,6 +758,7 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, national
 		}
 		return notFoundOr(err)
 	}
+	s.notifySeatChange()
 	return nil
 }
 
