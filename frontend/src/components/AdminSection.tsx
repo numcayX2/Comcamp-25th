@@ -371,10 +371,10 @@ export function AdminSection() {
   const [pendingStatus, setPendingStatus] = useState<{ appId: string; from: ApplicationStatus; to: ApplicationStatus } | null>(null);
   const [statusReason, setStatusReason] = useState('');
 
-  // Two-step slip decision & note state.
+  // Slip decision & note state: reject uses two-step inline confirmation; approve submits immediately.
   const [verificationNote, setVerificationNote] = useState('');
   const [verifyNoteError, setVerifyNoteError] = useState<string | null>(null);
-  const [confirmVerifyAction, setConfirmVerifyAction] = useState<'approve' | 'reject' | null>(null);
+  const [confirmRejectSlip, setConfirmRejectSlip] = useState(false);
   const [verifyingAction, setVerifyingAction] = useState<'approve' | 'reject' | null>(null);
   const [slipImage, setSlipImage] = useState<{
     url: string | null;
@@ -423,7 +423,7 @@ export function AdminSection() {
     setStatusReason('');
     setVerificationNote('');
     setVerifyNoteError(null);
-    setConfirmVerifyAction(null);
+    setConfirmRejectSlip(false);
     setVerifyingAction(null);
     setLocalSlipVerdicts({});
     setSlipImage({ url: null, paymentId: null, error: null, loading: false });
@@ -576,28 +576,28 @@ export function AdminSection() {
     setInspectingId(target.id);
     setVerificationNote('');
     setVerifyNoteError(null);
-    setConfirmVerifyAction(null);
+    setConfirmRejectSlip(false);
     focusSlipPanelAfterAdvance.current = true;
   }
 
-  function initiateSlipDecision(action: 'approve' | 'reject') {
+  function initiateSlipReject() {
     const trimmed = stripZeroWidth(verificationNote).trim();
-    if (action === 'reject' && !trimmed) {
+    if (!trimmed) {
       setVerifyNoteError('กรุณาระบุเหตุผลการปฏิเสธสลิป หรือเลือกข้อความสำเร็จรูปด้านล่าง');
-      setConfirmVerifyAction(null);
+      setConfirmRejectSlip(false);
       document.getElementById('verify-note')?.focus();
       return;
     }
     setVerifyNoteError(null);
-    setConfirmVerifyAction(action);
+    setConfirmRejectSlip(true);
   }
 
-  async function confirmSlipDecision(approved: boolean) {
+  async function handleVerifySlip(approved: boolean) {
     if (!token || !inspectingApp || verifying) return;
     const trimmed = stripZeroWidth(verificationNote).trim();
     if (!approved && !trimmed) {
       setVerifyNoteError('กรุณาระบุเหตุผลการปฏิเสธสลิป หรือเลือกข้อความสำเร็จรูปด้านล่าง');
-      setConfirmVerifyAction(null);
+      setConfirmRejectSlip(false);
       document.getElementById('verify-note')?.focus();
       return;
     }
@@ -643,7 +643,7 @@ export function AdminSection() {
         `${approved ? 'อนุมัติสลิปสำเร็จ' : 'ปฏิเสธสลิปแล้ว'}: ${currentId}${nextPendingInView ? ` · เปิดคิวถัดไป ${nextPendingInView.id}` : ''}`,
       );
       setLightboxOpen(false);
-      setConfirmVerifyAction(null);
+      setConfirmRejectSlip(false);
       setVerificationNote('');
 
       if (nextPendingInView) {
@@ -654,7 +654,7 @@ export function AdminSection() {
       }
     } catch (err) {
       if (handleAuthError(err)) return;
-      setConfirmVerifyAction(null);
+      setConfirmRejectSlip(false);
       if (err instanceof ApiHttpError && err.code === 'SLIP_CHANGED') {
         // Keep the panel open, reload list & fetch the newly uploaded slip image without losing staff context.
         setSlipRetryNonce((n) => n + 1);
@@ -730,7 +730,7 @@ export function AdminSection() {
       setEditingDirty(false);
       setDetailId(null);
       setLightboxOpen(false);
-      setConfirmVerifyAction(null);
+      setConfirmRejectSlip(false);
       setVerifyNoteError(null);
       setVerificationNote('');
       setInspectingId((cur) => (cur === a.id ? null : a.id));
@@ -911,8 +911,8 @@ export function AdminSection() {
           setPendingDiscardSwitch(null);
           return;
         }
-        if (confirmVerifyAction && !verifying) {
-          setConfirmVerifyAction(null);
+        if (confirmRejectSlip && !verifying) {
+          setConfirmRejectSlip(false);
           return;
         }
         if (!verifying) setInspectingId(null);
@@ -932,7 +932,7 @@ export function AdminSection() {
     confirmDeleteId,
     pendingStatus,
     pendingDiscardSwitch,
-    confirmVerifyAction,
+    confirmRejectSlip,
     lightboxOpen,
     verifying,
     deletingId,
@@ -2011,8 +2011,12 @@ export function AdminSection() {
                                   placeholder="ระบุหมายเหตุการตรวจ หรือเลือกข้อความสำเร็จรูปด้านล่าง"
                                   value={verificationNote}
                                   onChange={(e) => {
-                                    setVerificationNote(e.target.value);
+                                    const next = e.target.value;
+                                    setVerificationNote(next);
                                     if (verifyNoteError) setVerifyNoteError(null);
+                                    if (confirmRejectSlip && !stripZeroWidth(next).trim()) {
+                                      setConfirmRejectSlip(false);
+                                    }
                                   }}
                                 />
                                 {verificationNote && (
@@ -2021,7 +2025,7 @@ export function AdminSection() {
                                     onClick={() => {
                                       setVerificationNote('');
                                       setVerifyNoteError(null);
-                                      if (confirmVerifyAction === 'reject') setConfirmVerifyAction(null);
+                                      if (confirmRejectSlip) setConfirmRejectSlip(false);
                                     }}
                                     aria-label="ล้างหมายเหตุ"
                                     className={`absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full ${FOCUS}`}
@@ -2093,26 +2097,22 @@ export function AdminSection() {
                                 <span>เปิดดูสลิปรอตรวจคนถัดไปอัตโนมัติหลังบันทึกผล</span>
                               </label>
 
-                              {/* Step 2 inline confirmation before mutating */}
-                              {confirmVerifyAction ? (
+                              {/* Step 2 inline confirmation for reject only; approve submits in 1 click */}
+                              {confirmRejectSlip ? (
                                 <div
                                   role="region"
-                                  aria-label="ยืนยันการบันทึกผลการตรวจสอบสลิป"
+                                  aria-label="ยืนยันการปฏิเสธสลิป"
                                   className="mt-4 rounded-xl border p-4"
                                   style={{
-                                    borderColor: confirmVerifyAction === 'approve' ? SUCCESS : DANGER,
+                                    borderColor: DANGER,
                                     backgroundColor: SURFACE_SUBTLE,
                                   }}
                                 >
                                   <p className="text-sm font-semibold leading-6" style={{ color: INK }}>
-                                    {confirmVerifyAction === 'approve'
-                                      ? `ยืนยันอนุมัติสลิปของ ${a.id} (${a.fullName})?`
-                                      : `ยืนยันปฏิเสธสลิปของ ${a.id} (${a.fullName})?`}
+                                    {`ยืนยันปฏิเสธสลิปของ ${a.id} (${a.fullName})?`}
                                   </p>
                                   <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                                    {confirmVerifyAction === 'approve'
-                                      ? 'สถานะใบสมัครจะเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ทันที'
-                                      : 'สถานะใบสมัครจะกลับเป็น “ได้สิทธิ์แล้ว” เพื่อให้ผู้สมัครอัปโหลดสลิปใหม่'}
+                                    สถานะใบสมัครจะกลับเป็น “ได้สิทธิ์แล้ว” เพื่อให้ผู้สมัครอัปโหลดสลิปใหม่
                                     {stripZeroWidth(verificationNote).trim()
                                       ? ` · หมายเหตุ: “${stripZeroWidth(verificationNote).trim()}”`
                                       : ''}
@@ -2121,24 +2121,16 @@ export function AdminSection() {
                                     <button
                                       type="button"
                                       disabled={verifying}
-                                      onClick={() => void confirmSlipDecision(confirmVerifyAction === 'approve')}
+                                      onClick={() => void handleVerifySlip(false)}
                                       className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
-                                      style={
-                                        confirmVerifyAction === 'approve'
-                                          ? { backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }
-                                          : { border: `1px solid ${DANGER}`, color: DANGER, backgroundColor: 'transparent' }
-                                      }
+                                      style={{ border: `1px solid ${DANGER}`, color: DANGER, backgroundColor: 'transparent' }}
                                     >
-                                      {verifyingAction === confirmVerifyAction
-                                        ? 'กำลังบันทึก…'
-                                        : confirmVerifyAction === 'approve'
-                                          ? 'ยืนยันอนุมัติสลิป'
-                                          : 'ยืนยันปฏิเสธสลิป'}
+                                      {verifyingAction === 'reject' ? 'กำลังบันทึก…' : 'ยืนยันปฏิเสธสลิป'}
                                     </button>
                                     <button
                                       type="button"
                                       disabled={verifying}
-                                      onClick={() => setConfirmVerifyAction(null)}
+                                      onClick={() => setConfirmRejectSlip(false)}
                                       className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
                                       style={{ color: INK_2 }}
                                     >
@@ -2151,7 +2143,7 @@ export function AdminSection() {
                                   <button
                                     type="button"
                                     disabled={verifying}
-                                    onClick={() => initiateSlipDecision('approve')}
+                                    onClick={() => void handleVerifySlip(true)}
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                                   >
@@ -2160,7 +2152,7 @@ export function AdminSection() {
                                   <button
                                     type="button"
                                     disabled={verifying}
-                                    onClick={() => initiateSlipDecision('reject')}
+                                    onClick={initiateSlipReject}
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                                     style={{ borderColor: DANGER, color: DANGER }}
                                   >
