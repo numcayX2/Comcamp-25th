@@ -37,20 +37,31 @@ export function slipLabel(app: Application): string {
 }
 
 /**
- * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, school and
- * province. Zero-width characters and surrounding spaces are ignored. A query made only of digits,
- * spaces and hyphens also matches the phone written without them (081-234 finds 0812345678).
+ * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, email, school,
+ * province and (when unmasked) national ID. Zero-width characters, Thai numerals and surrounding
+ * spaces are normalised. A query made only of digits, spaces and hyphens also matches phone and
+ * unmasked national ID written without them (081-234 finds 0812345678).
  */
 export function matchesApplicantQuery(app: Application, rawQuery: string): boolean {
   const q = stripZeroWidth(rawQuery).trim().toLowerCase();
   if (!q) return true;
 
-  const fields = [app.id, app.fullName, app.nickname ?? '', app.phone, app.school, app.province ?? ''];
+  const fields = [
+    app.id,
+    app.fullName,
+    app.nickname ?? '',
+    app.phone,
+    app.email ?? '',
+    app.school,
+    app.province ?? '',
+  ];
   if (fields.some((f) => stripZeroWidth(f).toLowerCase().includes(q))) return true;
 
-  if (/^[\d\s-]+$/.test(q)) {
-    const digits = sanitizeDigits(q);
-    return digits.length > 0 && sanitizeDigits(app.phone).includes(digits);
+  const digits = sanitizeDigits(q);
+  if (digits.length > 0 && /^[\d๐-๙\s-]+$/.test(q)) {
+    const phoneMatch = sanitizeDigits(app.phone).includes(digits);
+    const nidMatch = !/x/i.test(app.nationalId) && sanitizeDigits(app.nationalId).includes(digits);
+    return phoneMatch || nidMatch;
   }
   return false;
 }

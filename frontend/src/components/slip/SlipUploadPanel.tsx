@@ -188,7 +188,8 @@ export function SlipUploadPanel({
   function onDrop(e: DragEvent<HTMLElement>) {
     e.preventDefault();
     setDragging(false);
-    void pick(firstImageFile(e.dataTransfer?.files));
+    const files = e.dataTransfer?.files;
+    void pick(firstImageFile(files) ?? files?.[0]);
   }
   const dropProps = {
     onDragOver: (e: DragEvent<HTMLElement>) => {
@@ -222,7 +223,11 @@ export function SlipUploadPanel({
     } catch (err) {
       const text = describeApiError(err, 'ส่งสลิปไม่สำเร็จ กรุณาลองอีกครั้ง');
       // The picked file and the typed digits are kept so a retry is one tap.
-      if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
+      const isCodeError =
+        err instanceof ApiHttpError &&
+        (err.code === 'INVALID_VERIFY_CODE' ||
+          (err.code === 'VALIDATION_ERROR' && /verifycode/i.test(err.message)));
+      if (isCodeError) {
         if (external) onCodeInvalid?.(text);
         else setCodeError(text);
         refocusCode.current = true;

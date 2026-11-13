@@ -180,7 +180,7 @@
 @media (min-width: 520px) { .su-btn--cancel { width: auto; } }
 
 .su-defer { margin-top: 12px; font-size: 0.9375rem; line-height: 1.7; }
-.su-defer a { color: var(--su-ink-2); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--su-line); }
+.su-defer a { display: inline-flex; align-items: center; min-height: 44px; color: var(--su-ink-2); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--su-line); }
 .su-defer a:hover { color: var(--su-ink); text-decoration-color: var(--su-ink); }
 
 /* ---------- Lightbox (native <dialog>, top layer) ----------

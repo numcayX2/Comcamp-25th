@@ -16,6 +16,7 @@ function applyRootPublicEnvFallback() {
     : process.env.NODE_ENV || 'development';
   const files = ['.env', '.env.local', `.env.${mode}`, `.env.${mode}.local`];
 
+  /** @param {string} dir */
   const readPublicKeys = (dir) => {
     /** @type {Record<string, string>} */
     const out = {};

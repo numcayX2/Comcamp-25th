@@ -10,7 +10,7 @@ export interface PublicSettings {
   isOpen: boolean;
   currentCount?: number;
   maxCapacity?: number;
-  campFee?: number | null;
+  campFee?: number | string | null;
   isCertificateReleased?: boolean;
 }
 
@@ -183,6 +183,14 @@ export interface HealthResponse {
 /** Admin roles (backend domain.AdminRole). */
 export type AdminRole = 'admin';
 
+export interface AdminInfo {
+  role: AdminRole;
+}
+
+export function isAdminRole(role: string | null | undefined): role is AdminRole {
+  return role === 'admin';
+}
+
 export interface LoginResponse {
   token: string;
   /**
@@ -252,23 +260,29 @@ export interface LoginResult {
    keeps the client-side validation and the payload in agreement. */
 
 const ZERO_WIDTH_RE = /[\u200B-\u200D\u2060\uFEFF]/g;
+const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
+
+/** Converts Thai numerals (๐-๙) to ASCII digits (0-9). */
+export function normalizeThaiDigits(value: string): string {
+  return value.replace(/[๐-๙]/g, (c) => String(THAI_DIGITS.indexOf(c)));
+}
 
 /** Removes zero-width characters only. */
 export function stripZeroWidth(value: string): string {
   return value.replace(ZERO_WIDTH_RE, '');
 }
 
-/** National ID / phone as the API expects them: digits only (drops zero-width chars, hyphens, spaces). */
+/** National ID / phone as the API expects them: digits only (normalises Thai digits, drops zero-width chars, hyphens, spaces). */
 export function sanitizeDigits(value: string): string {
-  return value.replace(/\D/g, '');
+  return normalizeThaiDigits(value).replace(/\D/g, '');
 }
 
 /**
- * Status lookup query: an ID or phone written with hyphens/spaces becomes digits only; anything
- * else is treated as an application ID (CC25-XXXXXX), whose own hyphen is kept.
+ * Status lookup query: an ID or phone written with Thai numerals or hyphens/spaces becomes ASCII
+ * digits only; anything else is treated as an application ID (CC25-XXXXXX), whose own hyphen is kept.
  */
 export function normalizeLookupQuery(raw: string): string {
-  const q = stripZeroWidth(raw).trim();
+  const q = normalizeThaiDigits(stripZeroWidth(raw)).trim();
   const digits = q.replace(/[\s\-\u2010-\u2015\u2212]/g, '');
   return /^\d+$/.test(digits) ? digits : q.toUpperCase();
 }
@@ -650,20 +664,28 @@ export interface AdminSettings {
   announcementAt?: string;
   paymentOpenAt?: string;
   paymentDeadline?: string;
+  certificateReleaseAt?: string;
   maxCapacity: number;
   campFee: string | number;
   isManualClosed: boolean;
+  updatedByAdminId?: number;
+  updatedAt?: string;
   isCertificateReleased?: boolean;
   currentCount?: number;
 }
 
 /** Partial update, mirroring the Go `UpdateSettingsRequest`. Omitted fields are left unchanged. */
 export interface UpdateAdminSettingsPayload {
+  campName?: string;
   maxCapacity?: number;
   campFee?: number;
   isManualClosed?: boolean;
   registrationOpenAt?: string;
   registrationCloseAt?: string;
+  announcementAt?: string;
+  paymentOpenAt?: string;
+  paymentDeadline?: string;
+  certificateReleaseAt?: string;
 }
 
 /** Offline-dev stand-in only, used when the server cannot be reached under `astro dev`. */
@@ -676,6 +698,7 @@ const MOCK_ADMIN_SETTINGS: AdminSettings = {
   maxCapacity: 30,
   campFee: 1000,
   isManualClosed: false,
+  updatedAt: new Date().toISOString(),
 };
 
 /** GET /admin/settings */
@@ -832,12 +855,18 @@ export async function verifyPaymentSlip(
   return { data, source: 'LIVE GO API' };
 }
 
+export interface AdminSlipInfo {
+  url: string;
+  /** Value of `X-Slip-Payment-Id` returned by the server, used to pin slip verification to this exact image. */
+  paymentId: string | null;
+}
+
 /**
- * GET /admin/applications/:id/slip — the slip image is only served to an authenticated admin
- * (AGENTS.md §13.3/§13.5), so it cannot be an <img src>. Returns an object URL for the image;
- * the caller must URL.revokeObjectURL it when done.
+ * GET /admin/applications/:id/slip — returns both the object URL and the `X-Slip-Payment-Id`
+ * response header so `verifyPaymentSlip` can guard against concurrent re-uploads (409 SLIP_CHANGED).
+ * The caller must URL.revokeObjectURL(info.url) when done.
  */
-export async function fetchAdminSlip(token: string, id: string): Promise<string> {
+export async function fetchAdminSlipInfo(token: string, id: string): Promise<AdminSlipInfo> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20000);
   try {
@@ -846,10 +875,22 @@ export async function fetchAdminSlip(token: string, id: string): Promise<string>
       signal: controller.signal,
     });
     if (!res.ok) throw await toApiError(res);
-    return URL.createObjectURL(await res.blob());
+    const rawPid = res.headers.get('X-Slip-Payment-Id')?.trim();
+    const url = URL.createObjectURL(await res.blob());
+    return { url, paymentId: rawPid || null };
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * GET /admin/applications/:id/slip — the slip image is only served to an authenticated admin
+ * (AGENTS.md §13.3/§13.5), so it cannot be an <img src>. Returns an object URL for the image;
+ * the caller must URL.revokeObjectURL it when done.
+ */
+export async function fetchAdminSlip(token: string, id: string): Promise<string> {
+  const { url } = await fetchAdminSlipInfo(token, id);
+  return url;
 }
 
 /** DELETE /admin/applications/:id — soft-deletes the applicant and writes an audit log */

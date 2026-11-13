@@ -9,7 +9,7 @@ export interface PublicSettingsPayload {
   isOpen: boolean;
   currentCount?: number;
   maxCapacity?: number;
-  campFee?: number | null;
+  campFee?: number | string | null;
   isCertificateReleased?: boolean;
 }
 

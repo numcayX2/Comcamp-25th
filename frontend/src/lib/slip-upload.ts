@@ -215,6 +215,36 @@ export function describeVerifyLock(err: unknown): string | null {
   return `กรอกเลขยืนยันตัวตนผิดหลายครั้ง เพื่อความปลอดภัยระบบจึงพักการยืนยันตัวตนของใบสมัครนี้ไว้ชั่วคราว กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`;
 }
 
+/** Thai copy for validation errors, differentiating query lookup, slip upload, profile edit, and withdraw. */
+function describeValidationError(message: string, fallback: string): string {
+  const msg = message.toLowerCase();
+  if (msg.includes('search query') || msg.includes("query parameter 'q'")) {
+    return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประชาชน 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
+  }
+  if (msg.includes('file type') || msg.includes('slip') || msg.includes('multipart')) {
+    return 'ไฟล์รูปภาพไม่ถูกต้อง รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP เท่านั้น';
+  }
+  if (msg.includes('verifycode')) {
+    return 'กรุณากรอกเลข 4 ตัวท้ายของบัตรประชาชนให้ครบ 4 หลัก';
+  }
+  if (msg.includes('national id')) {
+    return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+  }
+  if (msg.includes('grade')) {
+    return 'ระดับชั้นไม่ถูกต้อง กรุณาเลือกระดับชั้นหรือระบุความยาว 2–20 ตัวอักษร';
+  }
+  if (msg.includes('shirt size')) {
+    return 'ไซส์เสื้อไม่ถูกต้อง กรุณาเลือกไซส์ที่กำหนด';
+  }
+  if (msg.includes('too long')) {
+    return 'ข้อความที่กรอกยาวเกินกำหนด กรุณาย่อให้สั้นลง';
+  }
+  if (msg.includes('blank') || msg.includes('required')) {
+    return 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน';
+  }
+  return fallback;
+}
+
 /** Thai copy keyed by the backend error code; never exposes raw English developer errors to users. */
 export function describeApiError(err: unknown, fallback: string): string {
   const locked = describeVerifyLock(err);
@@ -231,6 +261,8 @@ export function describeApiError(err: unknown, fallback: string): string {
         return 'สลิปนี้เคยถูกอัปโหลดในระบบแล้ว กรุณาใช้สลิปการโอนของใบสมัครนี้';
       case 'ALREADY_VERIFIED':
         return 'สลิปนี้ได้รับการตรวจสอบยืนยันเรียบร้อยแล้ว ไม่จำเป็นต้องอัปโหลดซ้ำ';
+      case 'SLIP_CHANGED':
+        return 'ผู้สมัครได้อัปโหลดสลิปใหม่แทนใบเดิมแล้ว กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสลิปปัจจุบัน';
       case 'PAYLOAD_TOO_LARGE':
         return 'ขนาดไฟล์รูปภาพใหญ่เกิน 5 MB กรุณาเลือกรูปภาพที่มีขนาดเล็กลง';
       case 'RATE_LIMITED':
@@ -238,11 +270,21 @@ export function describeApiError(err: unknown, fallback: string): string {
           ? `ทำรายการถี่เกินไป กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`
           : 'ทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
       case 'VALIDATION_ERROR':
-        return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประชาชน 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
+        return describeValidationError(err.message, fallback);
       case 'SERVICE_UNAVAILABLE':
         return 'ระบบกำลังมีผู้ใช้งานจำนวนมาก กรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
       case 'REGISTRATION_CLOSED':
         return 'ระบบปิดรับสมัครตามกำหนดการแล้ว หากมีข้อสงสัยกรุณาติดต่อทีมงานพี่ค่าย';
+      case 'QUOTA_FULL':
+        return 'ขณะนี้มีผู้สมัครครบตามจำนวนที่รับแล้ว';
+      case 'DUPLICATE_APPLICATION':
+        return 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว';
+      case 'CAPTCHA_FAILED':
+        return 'การยืนยันตัวตนไม่ผ่านหรือหมดอายุ กรุณายืนยันใหม่อีกครั้ง';
+      case 'IDEMPOTENCY_KEY_REUSED':
+        return 'รหัสอ้างอิงการส่งถูกใช้กับใบสมัครอื่นแล้ว กรุณารีเฟรชหน้าแล้วลองใหม่';
+      case 'UNAUTHORIZED':
+        return 'เซสชันหมดอายุหรือไม่มีสิทธิ์เข้าถึง กรุณาเข้าสู่ระบบใหม่อีกครั้ง';
       case 'FORBIDDEN':
         return 'ใบสมัครนี้อยู่ในสถานะที่ดำเนินการขั้นตอนนี้ไม่ได้ หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ';
     }
