@@ -35,6 +35,9 @@
   --ed-cell-pad-y: clamp(22px, 2.6vw, 32px);
   --ed-cell-pad-x: clamp(20px, 3vw, 36px);
   --ed-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Text-safe amber: #B45309 only reaches 4.40:1 on --canvas-1 (#F2F0E8).
+     This shade holds ≥5.6:1 on both canvas-0 and canvas-1 (WCAG 2.2 AA). */
+  --amber-text: #9A4608;
 }
 
 .ed-sec {
@@ -928,7 +931,7 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
 }
 .tm-status-tag {
   font-weight: 600;
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 /* ==========================================================================
@@ -1279,6 +1282,7 @@ html[data-theme="dark"] .ed-cta-band,
 html[data-theme="dark"] .ed-footer {
   --canvas-1: #121724;
   --amber: #F5A524;
+  --amber-text: #F5A524;
   --blue-600: #7FA8FF;
   --fern-500: #03B800;
   --fern-600: #22D31E;

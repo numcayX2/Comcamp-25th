@@ -55,6 +55,7 @@
     var extraCtas = document.querySelectorAll('[data-register-cta]');
     // Nobody can have applied before opening, so the status check has nothing to look up.
     if (secondary) secondary.style.display = (s === 'LOADING' || s === 'PRE_OPEN') ? 'none' : '';
+    document.documentElement.setAttribute('data-reg-open', (s === 'OPEN' || s === 'ALMOST_FULL') ? 'true' : 'false');
 
     var maxCap = state.maxCapacity || MAX;
     var seatsLeft = Math.max(0, maxCap - state.currentCount);
@@ -896,7 +897,10 @@
       this.text.updateIntro(p, tl); this.text.updateOutro(p, tl);
       var t = progressBetween(p, tl.tunnelStart, tl.tunnelEnd);
       for (var i = 0; i < this.engine.count; i++) {
-        if (this.engine.isNear(i, t)) this.renderer.preload(i);
+        // Only pull images once the tunnel is actually near the viewport —
+        // preloading on init fetched ~7 full-size photos (≈1.2 MB) while the
+        // gallery was still thousands of pixels offscreen.
+        if (this.inView && this.engine.isNear(i, t)) this.renderer.preload(i);
         var state = this.engine.getState(i, t, this.reduced);
         if (!state) { this.renderer.setActive(i, false); continue; }
         this.renderer.setActive(i, true); this.renderer.apply(i, state);

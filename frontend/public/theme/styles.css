@@ -157,7 +157,7 @@ section{padding:clamp(64px,9vw,112px) 0}
   --hero-pad: clamp(1.25rem, 5vw, 5rem);
   --hero-font-sans: 'IBM Plex Sans Thai', system-ui, sans-serif;
   --hero-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --hero-font-pixel: 'Pixelify Sans', 'IBM Plex Mono', monospace;
+  --hero-font-pixel: 'Space Grotesk', 'IBM Plex Sans Thai', system-ui, sans-serif;
 }
 
 /* ---------- Tokens: Dark ---------- */
@@ -216,6 +216,10 @@ html[data-theme="dark"] {
   position: relative;
   z-index: 3; /* title may overlap the stage on desktop */
   min-height: 0;
+  /* Must not shrink-wrap: the title scramble swaps glyph widths, and a
+     shrink-to-fit column would resize (and re-centre) on every tick → CLS. */
+  width: 100%;
+  max-width: 100%;
 }
 
 .hero__logo {
@@ -223,25 +227,35 @@ html[data-theme="dark"] {
   height: auto;
 }
 
+/* <picture> wrappers must not create a layout box of their own */
+.hero__copy > picture,
+.brand > picture { display: contents; }
+
 .hero__eyebrow { display: none; }
 
 .hero__title {
   margin: 0;
   font-family: var(--hero-font-sans);
   font-weight: 700;
+  /* Full-width box so scramble glyph swaps re-centre the text, not the element. */
+  width: 100%;
+  text-align: inherit;
+  /* Never re-wrap mid-scramble: a proportional glyph swap can push the line
+     past the container width, which would add/remove a whole line (CLS). */
+  white-space: nowrap;
   font-size: clamp(2rem, min(8.5vw, 4.6vh), 3.25rem);
   line-height: 0.95;
   letter-spacing: -0.045em;
-  text-wrap: balance;
 }
 
 .hero__sub {
   margin: 0;
-  max-width: 32ch;
+  /* `em`, not `ch`: `ch` is derived from the *loaded* font's "0" width, so the
+     measure would jump once the web font swaps in and re-wrap the paragraph. */
+  max-width: 19em;
   font-size: clamp(0.8rem, 1.25vh, 0.92rem);
   line-height: 1.7;
   color: var(--hero-ink-soft);
-  text-wrap: balance;
 }
 
 .hero__actions {
@@ -319,7 +333,13 @@ html[data-theme="dark"] {
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.05;
-  font-size: clamp(2rem, 9vw, 3.25rem);
+  font-size: clamp(2.25rem, 10vw, 3.6rem);
+  color: #000000;
+}
+
+html.dark .hero[data-title-style="pixel"] .hero__title,
+html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
+  color: var(--hero-ink);
 }
 
 /* ---------- Stage ---------- */
@@ -330,7 +350,9 @@ html[data-theme="dark"] {
   height: 100%;
   max-height: clamp(140px, 28vh, 250px);
   aspect-ratio: 1.1; /* backdrop percentages below assume this ratio */
-  flex: 1;
+  /* NOT flex:1 — growing into leftover space makes the stage resize whenever
+     the copy column reflows (font swap), which registers as layout shift. */
+  flex: none;
   min-height: 0;
 }
 
@@ -420,11 +442,32 @@ html[data-theme="dark"] {
   display: none;
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  margin: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  font-family: var(--hero-font-mono);
+  color: var(--hero-ink-soft);
 }
-.hero-stage[data-state="fallback"] .hero-stage__fallback { display: block; }
+.hero-stage__fallback-tag {
+  font-size: 0.6875rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+.hero-stage__fallback-name {
+  font-family: var(--hero-font-sans);
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 600;
+  color: var(--hero-ink);
+}
+.hero-stage__fallback-plus {
+  font-size: 0.8rem;
+  opacity: 0.5;
+}
+.hero-stage[data-state="fallback"] .hero-stage__fallback { display: flex; }
+.hero-stage[data-state="fallback"] .hero-stage__loading { display: none; }
 .hero-stage[data-state="fallback"] canvas { display: none; }
 
 @keyframes hero-pulse { 50% { opacity: 0.35; } }
@@ -465,9 +508,9 @@ html[data-theme="dark"] {
 
 /* ---------- Tablet (768–1023): same stack, roomier ---------- */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .hero__sub { font-size: clamp(0.9rem, 1.6vh, 1.05rem); max-width: 44ch; }
+  .hero__sub { font-size: clamp(0.9rem, 1.6vh, 1.05rem); max-width: 26em; }
   .hero__title { font-size: clamp(3rem, min(8vw, 6vh), 5rem); }
-  .hero[data-title-style="pixel"] .hero__title { font-size: clamp(2.5rem, min(6.5vw, 5vh), 4rem); }
+  .hero[data-title-style="pixel"] .hero__title { font-size: clamp(2.85rem, min(7.2vw, 5.6vh), 4.5rem); }
   .hero__stage-wrap { max-height: clamp(200px, 34vh, 320px); }
 }
 
@@ -526,7 +569,7 @@ html[data-theme="dark"] {
   }
   .hero[data-title-style="sans"] .hero__title span { display: block; }
   .hero[data-title-style="pixel"] .hero__title {
-    font-size: clamp(2.75rem, min(5.2vw, 8.5vh), 5.5rem);
+    font-size: clamp(3.25rem, min(6vw, 9.5vh), 6.25rem);
     line-height: 1;
   }
 

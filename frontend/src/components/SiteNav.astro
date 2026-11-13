@@ -27,14 +27,17 @@ const navLinks = isAdmin ? [] : [
       href={isHome ? '#main' : '/'}
       aria-label="ComCamp #25 · กลับขึ้นด้านบน"
     >
-      <img
-        class="brand-logo"
-        src="/assets/logo/comcamp25-logo-sm.png"
-        alt=""
-        width="42"
-        height="30"
-        decoding="async"
-      />
+      <picture>
+        <source srcset="/assets/logo/comcamp25-logo-sm.webp" type="image/webp" />
+        <img
+          class="brand-logo"
+          src="/assets/logo/comcamp25-logo-sm.png"
+          alt=""
+          width="420"
+          height="297"
+          decoding="async"
+        />
+      </picture>
       <span class="brand-word">ComCamp <span class="font-mono tabular-nums">#25</span></span>
       {isAdmin && <span class="brand-tag">Staff</span>}
     </a>
@@ -54,6 +57,7 @@ const navLinks = isAdmin ? [] : [
           <a
             href="/register"
             data-nav-register
+            data-register-link={isHome ? '' : undefined}
             class:list={['nav-mobile-item', active === 'register' && 'is-active']}
             aria-current={active === 'register' ? 'page' : undefined}
           >
@@ -128,7 +132,7 @@ const navLinks = isAdmin ? [] : [
         type="button"
         aria-expanded="false"
         aria-controls="site-menu"
-        aria-label="เปิด/ปิดเมนูนำทาง"
+        aria-label="เมนูนำทาง"
       >
         <span class="nav-toggle-label">เมนู</span>
         <span class="nav-toggle-icon" aria-hidden="true"></span>
@@ -143,6 +147,7 @@ const navLinks = isAdmin ? [] : [
         <>
           <a
             data-nav-register
+            data-register-link={isHome ? '' : undefined}
             class:list={['btn btn-primary nav-cta', active === 'register' && 'is-active']}
             href="/register"
             aria-current={active === 'register' ? 'page' : undefined}

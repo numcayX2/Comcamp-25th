@@ -6,7 +6,7 @@
  *   <HeroSection />                      → Clean bold sans title (Swiss editorial)
  *   <HeroSection titleStyle="pixel" />   → Pixel / dot-matrix title (Figma draft)
  */
-import '@fontsource/pixelify-sans/700.css';
+import '@fontsource/space-grotesk/700.css';
 
 interface Props {
   titleStyle?: 'sans' | 'pixel';
@@ -24,18 +24,22 @@ const {
 <section class="hero" id="sec-hero" data-title-style={titleStyle} aria-labelledby="hero-title">
   <div class="hero__grid">
     <div class="hero__copy">
-      <img
-        class="hero__logo"
-        src="/assets/logo/comcamp25-logo-sm.png"
-        alt="ComCamp 25th"
-        width="160"
-        height="80"
-        decoding="async"
-      />
+      <picture>
+        <source srcset="/assets/logo/comcamp25-logo-sm.webp" type="image/webp" />
+        <img
+          class="hero__logo"
+          src="/assets/logo/comcamp25-logo-sm.png"
+          alt="ComCamp 25th"
+          width="420"
+          height="297"
+          fetchpriority="high"
+          decoding="async"
+        />
+      </picture>
 
       <p class="hero__eyebrow"><span>MAEJO UNIVERSITY</span><i aria-hidden="true"></i></p>
 
-      <h1 class="hero__title" id="hero-title">
+      <h1 class="hero__title" id="hero-title" aria-label="Comcamp 25th">
         <span>Comcamp</span> <span>25th</span>
       </h1>
 
@@ -48,7 +52,7 @@ const {
       </p>
 
       <div class="hero__actions">
-        <a class="hero__cta" id="cta-primary" href={registerHref}>
+        <a class="hero__cta" id="cta-primary" href={registerHref} data-register-link>
           <span>เปิดรับสมัคร 16 พ.ย.</span>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square">
             <path d="M4 12 12 4M5.5 4H12v6.5" />
@@ -86,16 +90,12 @@ const {
         <p class="hero-stage__loading" aria-live="polite">Loading 3D…</p>
 
         <!-- Fallback slot: shown only if WebGL is unavailable or both .glb files fail. -->
-        <img
-          class="hero-stage__fallback"
-          src="/assets/hero/boards-fallback.png"
-          alt="บอร์ด ESP8266 และ Arduino UNO R3"
-          width="1100"
-          height="1000"
-          loading="lazy"
-          decoding="async"
-          onerror="this.remove()"
-        />
+        <p class="hero-stage__fallback">
+          <span class="hero-stage__fallback-tag">HARDWARE</span>
+          <span class="hero-stage__fallback-name">Arduino UNO R3</span>
+          <span class="hero-stage__fallback-plus" aria-hidden="true">+</span>
+          <span class="hero-stage__fallback-name">ESP8266 NodeMCU</span>
+        </p>
       </div>
     </div>
   </div>
@@ -130,6 +130,158 @@ const {
 </section>
 
 <script>
-  // Astro bundles this (and `three`)
-  import '../scripts/hero-3d.js';
+  import gsap from 'gsap';
+  import { SplitText } from 'gsap/SplitText';
+
+  gsap.registerPlugin(SplitText);
+
+  (function loadHeroStage() {
+    // The 3D stage (three.js ≈ 600 KB + 933 KB of .glb) is decorative — it
+    // must never compete with the headline/CTA for bandwidth. Defer the whole
+    // module graph until the page has finished loading and the main thread is idle.
+    const start = () => {
+      import('../scripts/hero-3d.js').catch((err) => {
+        console.warn('[hero] 3D stage failed to load:', err);
+        const stage = document.getElementById('heroStage');
+        if (stage) stage.dataset.state = 'fallback';
+      });
+    };
+
+    if (document.readyState === 'complete') {
+      start();
+      return;
+    }
+    window.addEventListener('load', () => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(start, { timeout: 1200 });
+      } else {
+        setTimeout(start, 200);
+      }
+    }, { once: true });
+  })();
+
+  (function initHeroIntro() {
+    const title = document.getElementById('hero-title');
+    const sub = document.querySelector<HTMLElement>('.hero__sub');
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const spans = title ? Array.from(title.querySelectorAll('span')) : [];
+    const targets = spans.map((el) => el.textContent ?? '');
+    const GLYPHS = '01#@$%*+=<>[]/\\ABCDEFGHKMNPQRSTUVWXYZ25';
+    const DURATION_MS = 1450;
+    const STEP_MS = 38;
+
+    const randomGlyph = () => GLYPHS[(Math.random() * GLYPHS.length) | 0];
+
+    const startScramble = () => {
+      if (!title || title.dataset.scrambled === '1' || spans.length === 0) return;
+      title.dataset.scrambled = '1';
+
+      const totalChars = targets.reduce((acc, s) => acc + s.length, 0);
+      if (totalChars === 0) return;
+
+      const t0 = performance.now();
+      let lastTick = 0;
+
+      const frame = (now: number) => {
+        const elapsed = now - t0;
+        const progress = Math.min(1, elapsed / DURATION_MS);
+
+        if (progress >= 1) {
+          spans.forEach((el, i) => {
+            el.textContent = targets[i];
+          });
+          return;
+        }
+
+        if (now - lastTick >= STEP_MS) {
+          lastTick = now;
+          const eased = 1 - Math.pow(1 - progress, 2.2);
+          const lockedGlobal = Math.floor(eased * totalChars);
+
+          let offset = 0;
+          spans.forEach((el, sIdx) => {
+            const target = targets[sIdx];
+            let out = '';
+            for (let c = 0; c < target.length; c++) {
+              const ch = target[c];
+              if (ch === ' ') {
+                out += ' ';
+              } else if (offset + c < lockedGlobal) {
+                out += ch;
+              } else {
+                out += randomGlyph();
+              }
+            }
+            el.textContent = out;
+            offset += target.length;
+          });
+        }
+
+        requestAnimationFrame(frame);
+      };
+
+      requestAnimationFrame(frame);
+    };
+
+    const startSubtitleReveal = () => {
+      if (!sub || sub.dataset.revealed === '1') return;
+      sub.dataset.revealed = '1';
+      // Split after the web font has swapped, otherwise the measured line breaks
+      // would be computed against the fallback font and re-wrap once it loads.
+      const ready = document.fonts?.ready ?? Promise.resolve();
+      ready.then(() => {
+        SplitText.create(sub, {
+          type: 'lines',
+          mask: 'lines',
+          // `auto` would stamp aria-label onto the <p>, which is prohibited on a
+          // generic role and fails axe `aria-prohibited-attr`.
+          aria: 'none',
+          onSplit(self) {
+            return gsap.from(self.lines, {
+              x: 44,
+              opacity: 0,
+              duration: 0.72,
+              stagger: 0.09,
+              ease: 'power3.out',
+              clearProps: 'transform,opacity',
+            });
+          },
+        });
+      });
+    };
+
+    const startAll = (animateSub: boolean) => {
+      startScramble();
+      if (animateSub) startSubtitleReveal();
+    };
+
+    const veil = document.getElementById('veil');
+    const veilActive =
+      veil &&
+      !veil.hidden &&
+      !veil.classList.contains('is-done') &&
+      !document.documentElement.classList.contains('veil-skip');
+
+    if (!veilActive) {
+      // Repeat visit / reduced motion / anchor jump: the veil is already gone,
+      // so a subtitle entrance would flash the text from hidden → visible.
+      startAll(false);
+      return;
+    }
+
+    let started = false;
+    const trigger = () => {
+      if (started) return;
+      started = true;
+      mo.disconnect();
+      setTimeout(() => startAll(true), 120);
+    };
+
+    const mo = new MutationObserver(() => {
+      if (veil.classList.contains('is-done') || veil.hidden) trigger();
+    });
+    mo.observe(veil, { attributes: true, attributeFilter: ['class', 'hidden'] });
+    setTimeout(trigger, 1000);
+  })();
 </script>
