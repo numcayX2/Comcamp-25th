@@ -408,7 +408,8 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	})
 
 	t.Run("12. PATCH verify-slip -> CONFIRMED", func(t *testing.T) {
-		body := bytes.NewBufferString(`{"approved":true,"note":"ยอดเงินเข้าบัญชีถูกต้องครบถ้วน"}`)
+		pid := app.slipPaymentID(t, token, created.ID)
+		body := bytes.NewBufferString(fmt.Sprintf(`{"approved":true,"note":"ยอดเงินเข้าบัญชีถูกต้องครบถ้วน","paymentId":%q}`, pid))
 		rec := app.do(t, http.MethodPatch, "/api/admin/applications/"+created.ID+"/verify-slip", body, bearer(token))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d (body: %s)", rec.Code, rec.Body.String())

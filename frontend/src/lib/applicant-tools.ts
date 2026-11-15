@@ -88,13 +88,25 @@ export const CSV_HEADERS = [
   'เหตุผลการสมัคร',
 ] as const;
 
-/** A leading = + - @ or tab/CR makes Excel evaluate the cell as a formula (CSV injection). */
-const FORMULA_LEAD = /^[=+\-@\t\r]/;
+/**
+ * A leading formula trigger (= + - @ |) even after whitespace/control characters,
+ * or a leading tab/CR makes spreadsheet apps evaluate/split the cell unexpectedly (CSV injection).
+ */
+export const CSV_DANGEROUS_PREFIX = /^[\s\u0000-\u001F]*[=+\-@|]/;
+const CSV_LEADING_CONTROL_CHAR = /^[\t\r]/;
 
-/** One CSV text field, quoted when needed. Formula-like text gets a leading apostrophe. */
-function csvField(value: string): string {
-  let s = stripZeroWidth(value);
-  if (FORMULA_LEAD.test(s)) s = `'${s}`;
+/** Neutralize dangerous CSV formula prefixes without altering safe free-text cells. */
+export function sanitizeCsvCell(value: string): string {
+  const cleaned = stripZeroWidth(value);
+  if (CSV_DANGEROUS_PREFIX.test(cleaned) || CSV_LEADING_CONTROL_CHAR.test(cleaned)) {
+    return `'${cleaned}`;
+  }
+  return cleaned;
+}
+
+/** One CSV text field, quoted per RFC 4180 when needed. Formula-like text gets a leading apostrophe. */
+export function csvField(value: string): string {
+  const s = sanitizeCsvCell(value);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

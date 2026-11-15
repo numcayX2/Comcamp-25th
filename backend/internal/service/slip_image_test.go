@@ -71,19 +71,33 @@ func TestInputCleaning(t *testing.T) {
 		"081 234 5678":                  "0812345678",
 		"\u200C08\u200D12\u20603":       "08123",
 		"08a1":                          "08a1", // letters are left for validation to reject
+		"๑-๕๐๙๙-\u200B๐๐๑๑๒-๒๓-๓":       "1509900112233",
+		"๐๘๑ ฉบับ ๕๖๗๘":                 "081ฉบับ5678",
+		" ๐\u200B๘๑-๒๓๔-๕๖๗๘ ":          "0812345678",
 	} {
 		if got := cleanNumber(in); got != want {
 			t.Errorf("cleanNumber(%q) = %q, want %q", in, got, want)
 		}
 	}
 	for in, want := range map[string]string{
-		"1-5099-00112-23-3": "1509900112233",
-		" 081-234-5678 ":    "0812345678",
-		"cc25-e85b53":       "CC25-E85B53",
-		"CC25E85B53":        "CC25-E85B53",
-		"\u200BCC25-E85B53": "CC25-E85B53",
-		"CC25-E85B53\uFEFF": "CC25-E85B53",
-		"not-an-id":         "NOT-AN-ID",
+		" \u200B๑๒๓๔-๕๖\uFEFF ": "1234-56",
+		"cc๒๕-๘a4b2c":           "cc25-8a4b2c",
+	} {
+		if got := NormalizeDigitsAndIdentifier(in); got != want {
+			t.Errorf("NormalizeDigitsAndIdentifier(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{
+		"1-5099-00112-23-3":        "1509900112233",
+		" 081-234-5678 ":           "0812345678",
+		"cc25-e85b53":              "CC25-E85B53",
+		"CC25E85B53":               "CC25-E85B53",
+		"\u200BCC25-E85B53":        "CC25-E85B53",
+		"CC25-E85B53\uFEFF":        "CC25-E85B53",
+		"not-an-id":                "NOT-AN-ID",
+		"๑-๕๐๙๙-๐๐๑๑๒-๒๓-๓":        "1509900112233",
+		"\u200B๐๘๑-๒๓๔-๕๖๗๘\uFEFF": "0812345678",
+		"cc๒๕-๘a4b2c":              "CC25-8A4B2C",
 	} {
 		if got := normalizeLookupQuery(in); got != want {
 			t.Errorf("normalizeLookupQuery(%q) = %q, want %q", in, got, want)

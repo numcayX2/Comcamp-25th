@@ -317,8 +317,9 @@ func TestSecurity_AuditTrailAndSingleVerification(t *testing.T) {
 		t.Fatalf("upload failed: %d", rec.Code)
 	}
 
+	pid := app.slipPaymentID(t, token, created.ID)
 	verify := func() int {
-		body := bytes.NewBufferString(`{"approved":true,"note":"ok"}`)
+		body := bytes.NewBufferString(fmt.Sprintf(`{"approved":true,"note":"ok","paymentId":%q}`, pid))
 		return app.do(t, http.MethodPatch, "/api/admin/applications/"+created.ID+"/verify-slip", body, bearer(token)).Code
 	}
 	if c := verify(); c != http.StatusOK {

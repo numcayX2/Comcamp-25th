@@ -139,7 +139,7 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 			setup: func(t *testing.T) string { return strconv.Itoa(len(exportEntries(app))) },
 			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
 				return app.do(t, http.MethodPost, "/api/admin/applications/export-audit",
-					bytes.NewBufferString(`{"applicationIds":[]}`), bearer(token))
+					bytes.NewBufferString(`{"applicationIds":["CC25-AABBCC"]}`), bearer(token))
 			},
 			changed: func(t *testing.T, before string) bool {
 				n, _ := strconv.Atoi(before)
@@ -161,8 +161,11 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 		{
 			name: "PATCH /api/admin/applications/{id}/verify-slip", allowed: payments, setup: newApplicationWithSlip,
 			call: func(t *testing.T, token, id string) *httptest.ResponseRecorder {
+				pays := app.paymentsOf(t, id)
+				pid := pays[len(pays)-1].ID.String()
+				body := fmt.Sprintf(`{"approved":true,"note":"rbac","paymentId":%q}`, pid)
 				return app.do(t, http.MethodPatch, "/api/admin/applications/"+id+"/verify-slip",
-					bytes.NewBufferString(`{"approved":true,"note":"rbac"}`), bearer(token))
+					bytes.NewBufferString(body), bearer(token))
 			},
 			changed: func(t *testing.T, id string) bool { return status(t, id) == domain.StatusConfirmed },
 		},

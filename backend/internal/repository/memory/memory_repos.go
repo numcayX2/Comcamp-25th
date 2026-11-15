@@ -821,6 +821,13 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 		}
 	}
 
+	// Re-verify under lock that paymentID has not been superseded by a newer upload.
+	for _, other := range m.data {
+		if other.ApplicantID == p.ApplicantID && other.ID != paymentID && other.UploadedAt.After(p.UploadedAt) {
+			return domain.ErrNotFound
+		}
+	}
+
 	now := time.Now().UTC()
 	newStatus := domain.StatusPassed
 	if approved {

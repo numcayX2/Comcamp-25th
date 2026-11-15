@@ -828,28 +828,35 @@ export async function updateApplicationStatus(
   return { data, source: 'LIVE GO API' };
 }
 
+const SLIP_PAYMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * PATCH /admin/applications/:id/verify-slip
  * Verifies or rejects the payment slip of an applicant.
- * Body: { approved: boolean, note: string, paymentId?: string }
+ * Body: { approved: boolean, note: string, paymentId: string }
  *
- * paymentId is the `slipPaymentId` of the slip that was on screen. If the applicant has uploaded a
- * newer slip since, the server answers 409 SLIP_CHANGED and changes nothing.
+ * paymentId is required (UUID from `X-Slip-Payment-Id` or matching `slipPaymentId`) and pins the
+ * verdict to the slip on screen. If the applicant uploaded a newer slip meanwhile, the server
+ * answers 409 SLIP_CHANGED and changes nothing.
  */
 export async function verifyPaymentSlip(
   token: string,
   id: string,
   approved: boolean,
   note: string = '',
-  paymentId?: string | null,
+  paymentId: string,
 ): Promise<ApiResult<VerifySlipResponse>> {
+  const normalizedPaymentId = (paymentId ?? '').trim();
+  if (!SLIP_PAYMENT_UUID_RE.test(normalizedPaymentId)) {
+    throw new ApiHttpError(400, 'paymentId is required and must be a valid UUID', 'VALIDATION_ERROR');
+  }
   const data = await fetchJson<VerifySlipResponse>(`/admin/applications/${encodeURIComponent(id)}/verify-slip`, {
     method: 'PATCH',
     headers: authHeader(token),
     body: JSON.stringify({
       approved,
       note: note || (approved ? 'ยอดเงินถูกต้องครบถ้วน' : 'สลิปไม่ถูกต้อง'),
-      ...(paymentId ? { paymentId } : {}),
+      paymentId: normalizedPaymentId,
     }),
   });
   return { data, source: 'LIVE GO API' };

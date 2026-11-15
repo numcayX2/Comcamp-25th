@@ -1,0 +1,52 @@
+# Cloudflare Pages security headers and cache rules for ComCamp #25.
+# Note: Fonts are self-hosted via @fontsource/* (no Google Fonts origin needed).
+# Note: If deploying with a cross-origin PUBLIC_API_URL or custom PUBLIC_GALLERY_BASE_URL,
+# add those origins to connect-src / img-src below before publishing.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://comcamp25-gallery.sokulshop5.workers.dev; connect-src 'self' https://challenges.cloudflare.com; worker-src 'self' blob:; form-action 'self';
+
+/admin
+  ! Cache-Control
+  Cache-Control: no-store
+
+/admin/
+  ! Cache-Control
+  Cache-Control: no-store
+
+/admin/*
+  ! Cache-Control
+  Cache-Control: no-store
+
+/status
+  ! Cache-Control
+  Cache-Control: no-store
+
+/status/
+  ! Cache-Control
+  Cache-Control: no-store
+
+/status/*
+  ! Cache-Control
+  Cache-Control: no-store
+
+/register
+  ! Cache-Control
+  Cache-Control: no-store
+
+/register/
+  ! Cache-Control
+  Cache-Control: no-store
+
+/register/*
+  ! Cache-Control
+  Cache-Control: no-store
+
+/_astro/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff

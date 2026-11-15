@@ -45,8 +45,7 @@ func (a *testApp) patchStatus(t *testing.T, token, id string, status domain.Appl
 
 func (a *testApp) verifySlip(t *testing.T, token, id string, approved bool) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf(`{"approved":%t,"note":"test"}`, approved)
-	return a.do(t, http.MethodPatch, "/api/admin/applications/"+id+"/verify-slip", bytes.NewBufferString(body), bearer(token))
+	return a.verifyWithPaymentID(t, token, id, a.slipPaymentID(t, token, id), approved)
 }
 
 func (a *testApp) setCapacity(t *testing.T, n int) {

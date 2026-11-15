@@ -100,16 +100,30 @@ func TestAdminExportAudit(t *testing.T) {
 		t.Fatalf("unexpected audit entry %+v", e)
 	}
 
+	// Deduplicates identical application IDs (case/hyphen variations) before writing audit_logs.
+	dupBody := `{"applicationIds":["` + x.ID + `","` + strings.ToLower(x.ID) + `","` + y.ID + `"]}`
+	dupRec := app.do(t, http.MethodPost, "/api/admin/applications/export-audit", bytes.NewBufferString(dupBody), bearer(token))
+	wantCode(t, dupRec, http.StatusOK, "")
+	var dupRes struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal(dupRec.Body.Bytes(), &dupRes); err != nil || dupRes.Count != 2 {
+		t.Fatalf("dedup response %s (%v)", dupRec.Body.String(), err)
+	}
+
 	for name, bad := range map[string]string{
+		"empty list":          `{"applicationIds":[]}`,
+		"missing list":        `{}`,
+		"blank item":          `{"applicationIds":["` + x.ID + `",""]}`,
 		"phone instead of id": `{"applicationIds":["0819309311"]}`,
-		"unknown status":      `{"applicationIds":[],"statusFilter":"NOPE"}`,
+		"unknown status":      `{"applicationIds":["` + x.ID + `"],"statusFilter":"NOPE"}`,
 		"not json":            `applicationIds=1`,
 	} {
 		rec := app.do(t, http.MethodPost, "/api/admin/applications/export-audit", bytes.NewBufferString(bad), bearer(token))
 		wantCode(t, rec, http.StatusBadRequest, response.CodeValidation)
 		_ = name
 	}
-	if n := len(exportEntries(app)); n != 1 {
+	if n := len(exportEntries(app)); n != 2 {
 		t.Fatalf("refused requests were recorded (%d entries)", n)
 	}
 }

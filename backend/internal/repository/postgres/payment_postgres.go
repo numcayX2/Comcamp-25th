@@ -252,6 +252,16 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 		return domain.ErrStateConflict
 	}
 
+	// Re-verify inside the transaction that paymentID is still the applicant's latest slip.
+	var latestID uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM payments WHERE applicant_id = $1 ORDER BY uploaded_at DESC, id DESC LIMIT 1`, applicantID).Scan(&latestID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && latestID != paymentID) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check latest payment: %w", err)
+	}
+
 	now := time.Now().UTC()
 	newPaymentStatus, newStatus := domain.PaymentRejected, domain.StatusPassed
 	if approved {

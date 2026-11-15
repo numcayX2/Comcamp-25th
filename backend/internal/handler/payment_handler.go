@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"comcamp25-backend/internal/middleware"
 	"comcamp25-backend/internal/pkg/response"
@@ -131,11 +133,17 @@ func (h *PaymentHandler) VerifySlip(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Approved bool   `json:"approved"`
 		Note     string `json:"note"`
-		// PaymentID is the slip the admin inspected (slipPaymentId / X-Slip-Payment-Id). Optional;
-		// when set and no longer the latest slip the answer is 409 SLIP_CHANGED.
-		PaymentID string `json:"paymentId,omitempty"`
+		// PaymentID is the required slip ID the admin inspected (slipPaymentId / X-Slip-Payment-Id).
+		// When it no longer matches the applicant's latest slip, VerifySlip returns 409 SLIP_CHANGED.
+		PaymentID string `json:"paymentId"`
 	}
 	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	paymentID := strings.TrimSpace(body.PaymentID)
+	if _, err := uuid.Parse(paymentID); paymentID == "" || err != nil {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "paymentId is required and must be a valid UUID")
 		return
 	}
 
@@ -145,7 +153,7 @@ func (h *PaymentHandler) VerifySlip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.paymentService.VerifySlip(r.Context(), id, body.PaymentID, body.Approved, claims.AdminID, body.Note, middleware.RemoteIP(r)); err != nil {
+	if err := h.paymentService.VerifySlip(r.Context(), id, paymentID, body.Approved, claims.AdminID, body.Note, middleware.RemoteIP(r)); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}

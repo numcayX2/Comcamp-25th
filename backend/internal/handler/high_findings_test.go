@@ -430,8 +430,37 @@ func TestVerifySlip_PaymentIDValidation(t *testing.T) {
 	if a, _ := app.applicant(t, created.ID); a.Status != domain.StatusPassed {
 		t.Fatalf("nothing may have been approved, status = %s", a.Status)
 	}
-	// Omitting paymentId keeps the old behaviour.
-	if rec := app.verifySlip(t, token, created.ID, true); rec.Code != http.StatusOK {
-		t.Fatalf("no paymentId: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	// Missing, empty, whitespace-only, or malformed paymentId must be rejected with 400 VALIDATION_ERROR
+	// for both approve and reject decisions.
+	for _, approved := range []bool{true, false} {
+		for name, rawBody := range map[string]string{
+			"missing":    fmt.Sprintf(`{"approved":%t,"note":"ok"}`, approved),
+			"empty":      fmt.Sprintf(`{"approved":%t,"note":"ok","paymentId":""}`, approved),
+			"whitespace": fmt.Sprintf(`{"approved":%t,"note":"ok","paymentId":"   "}`, approved),
+			"non-uuid":   fmt.Sprintf(`{"approved":%t,"note":"ok","paymentId":"not-a-uuid"}`, approved),
+		} {
+			rec := app.do(t, http.MethodPatch, "/api/admin/applications/"+created.ID+"/verify-slip", bytes.NewBufferString(rawBody), bearer(token))
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"VALIDATION_ERROR"`) {
+				t.Fatalf("approved=%t %s paymentId: expected 400 VALIDATION_ERROR, got %d (%s)", approved, name, rec.Code, rec.Body.String())
+			}
+		}
+	}
+
+	// Historical REJECTED slip ID must be rejected as 409 SLIP_CHANGED after re-upload.
+	firstPID := app.slipPaymentID(t, token, created.ID)
+	if rec := app.verifyWithPaymentID(t, token, created.ID, firstPID, false); rec.Code != http.StatusOK {
+		t.Fatalf("reject current slip: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if r := app.uploadSlip(t, created.ID, "s.jpg", uniqueSlip(803)); r.Code != http.StatusOK {
+		t.Fatal(r.Body.String())
+	}
+	if rec := app.verifyWithPaymentID(t, token, created.ID, firstPID, true); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"SLIP_CHANGED"`) {
+		t.Fatalf("stale historical paymentId: expected 409 SLIP_CHANGED, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	// Approving with the latest paymentId succeeds.
+	latestPID := app.slipPaymentID(t, token, created.ID)
+	if rec := app.verifyWithPaymentID(t, token, created.ID, latestPID, true); rec.Code != http.StatusOK {
+		t.Fatalf("latest paymentId: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }

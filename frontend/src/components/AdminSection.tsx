@@ -580,7 +580,19 @@ export function AdminSection() {
     focusSlipPanelAfterAdvance.current = true;
   }
 
+  const resolvedSlipPaymentId = (slipImage.paymentId ?? inspectingApp?.slipPaymentId ?? '').trim();
+  const slipReadyToVerify =
+    Boolean(inspectingApp?.hasSlip) &&
+    !slipImage.loading &&
+    !slipImage.error &&
+    Boolean(slipImage.url) &&
+    Boolean(resolvedSlipPaymentId);
+
   function initiateSlipReject() {
+    if (!slipReadyToVerify) {
+      setError('ยังโหลดสลิปไม่สำเร็จหรือไม่มีรหัสสลิป (paymentId) กรุณาโหลดสลิปใหม่อีกครั้ง');
+      return;
+    }
     const trimmed = stripZeroWidth(verificationNote).trim();
     if (!trimmed) {
       setVerifyNoteError('กรุณาระบุเหตุผลการปฏิเสธสลิป หรือเลือกข้อความสำเร็จรูปด้านล่าง');
@@ -594,6 +606,10 @@ export function AdminSection() {
 
   async function handleVerifySlip(approved: boolean) {
     if (!token || !inspectingApp || verifying) return;
+    if (!slipReadyToVerify) {
+      setError('ยังโหลดสลิปไม่สำเร็จหรือไม่มีรหัสสลิป (paymentId) กรุณาโหลดสลิปใหม่อีกครั้ง');
+      return;
+    }
     const trimmed = stripZeroWidth(verificationNote).trim();
     if (!approved && !trimmed) {
       setVerifyNoteError('กรุณาระบุเหตุผลการปฏิเสธสลิป หรือเลือกข้อความสำเร็จรูปด้านล่าง');
@@ -618,7 +634,7 @@ export function AdminSection() {
         currentId,
         approved,
         trimmed,
-        slipImage.paymentId ?? inspectingApp.slipPaymentId,
+        resolvedSlipPaymentId,
       );
       setSource(res.source);
 
@@ -797,7 +813,7 @@ export function AdminSection() {
 
   /** Records the export in audit_logs first; the file is built only once that succeeded. */
   async function exportCsv() {
-    if (!token || exporting) return;
+    if (!token || exporting || visible.length === 0) return;
     const rows = visible;
     setExporting(true);
     setActionSuccess(null);
@@ -2120,7 +2136,7 @@ export function AdminSection() {
                                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                     <button
                                       type="button"
-                                      disabled={verifying}
+                                      disabled={verifying || !slipReadyToVerify}
                                       onClick={() => void handleVerifySlip(false)}
                                       className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                                       style={{ border: `1px solid ${DANGER}`, color: DANGER, backgroundColor: 'transparent' }}
@@ -2142,7 +2158,7 @@ export function AdminSection() {
                                 <div className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                                   <button
                                     type="button"
-                                    disabled={verifying}
+                                    disabled={verifying || !slipReadyToVerify}
                                     onClick={() => void handleVerifySlip(true)}
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
@@ -2151,7 +2167,7 @@ export function AdminSection() {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={verifying}
+                                    disabled={verifying || !slipReadyToVerify}
                                     onClick={initiateSlipReject}
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                                     style={{ borderColor: DANGER, color: DANGER }}

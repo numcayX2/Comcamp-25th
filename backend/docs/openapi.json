@@ -457,7 +457,7 @@
                 "type": "object",
                 "required": ["applicationIds"],
                 "properties": {
-                  "applicationIds": { "type": "array", "maxItems": 2000, "items": { "type": "string" }, "description": "รหัสใบสมัครของทุกแถวในไฟล์" },
+                  "applicationIds": { "type": "array", "minItems": 1, "maxItems": 2000, "items": { "type": "string" }, "description": "รหัสใบสมัครของทุกแถวในไฟล์ (อย่างน้อย 1 รายการ ระบบตัดรหัสซ้ำให้อัตโนมัติ)" },
                   "statusFilter": { "type": "string", "description": "แท็บสถานะที่เลือก (ว่าง = ทั้งหมด)" },
                   "searchFiltered": { "type": "boolean", "description": "true เมื่อรายการถูกกรองด้วยช่องค้นหา" }
                 }
@@ -472,7 +472,7 @@
             "content": { "application/json": { "schema": { "type": "object", "properties": { "count": { "type": "integer" } } } } }
           },
           "400": {
-            "description": "รายการรหัสใบสมัครหรือสถานะไม่ถูกต้อง หรือเกิน 2000 รายการ (code VALIDATION_ERROR)",
+            "description": "รายการรหัสใบสมัครว่างเปล่า, รูปแบบไม่ถูกต้อง, สถานะไม่ถูกต้อง หรือเกิน 2000 รายการ (code VALIDATION_ERROR)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "401": {
@@ -631,7 +631,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Manual Slip Verification",
-        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ส่ง paymentId (slipPaymentId ของสลิปที่เปิดดู) เพื่อกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างที่พี่ค่ายกำลังดูใบเดิม: ถ้าไม่ใช่สลิปล่าสุดแล้วตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร (ไม่ส่ง paymentId = ตัดสินสลิปล่าสุดเหมือนเดิม) สิทธิ์: admin",
+        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ต้องส่ง paymentId (UUID จาก slipPaymentId หรือ header X-Slip-Payment-Id ของสลิปที่เปิดดู) ทุกครั้งเพื่อป้องกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างตรวจ: หากไม่ใช่สลิปล่าสุดจะตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -665,7 +665,7 @@
               }
             }
           },
-          "400": { "description": "paymentId ไม่ใช่ UUID หรือ note ยาวเกินกำหนด (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "ไม่ส่ง paymentId, paymentId ไม่ใช่ UUID หรือ note ยาวเกินกำหนด (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ผู้สมัครยังไม่มีสลิป", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "code SLIP_CHANGED = ผู้สมัครอัปโหลดสลิปใหม่แทนใบที่เปิดดู หรือ paymentId ไม่ใช่สลิปล่าสุดของใบสมัครนี้ (ไม่มีการอนุมัติ/ปฏิเสธ ให้โหลดรายการใหม่แล้วดูสลิปล่าสุด), code ALREADY_VERIFIED = สลิปนี้ถูกตรวจไปแล้ว, code FORBIDDEN = ใบสมัครเป็น REJECTED / REFUND_PENDING / REFUNDED จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ (ยังดูรูปสลิปได้เพื่อทำบัญชี)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -887,11 +887,11 @@
       },
       "VerifySlipRequest": {
         "type": "object",
-        "required": ["approved"],
+        "required": ["approved", "paymentId"],
         "properties": {
           "approved": { "type": "boolean", "example": true },
           "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 1,000 บาท เรียบร้อยแล้ว" },
-          "paymentId": { "type": "string", "format": "uuid", "description": "สลิปที่พี่ค่ายเปิดดู (slipPaymentId หรือ header X-Slip-Payment-Id) ไม่ส่ง = ตัดสินสลิปล่าสุด ถ้าไม่ตรงกับสลิปล่าสุดตอบ 409 SLIP_CHANGED" }
+          "paymentId": { "type": "string", "format": "uuid", "description": "รหัสสลิป (UUID) ที่พี่ค่ายเปิดดู (บังคับส่งจาก slipPaymentId หรือ header X-Slip-Payment-Id) ถ้าไม่ตรงกับสลิปล่าสุดตอบ 409 SLIP_CHANGED" }
         }
       },
       "ErrorResponse": {

@@ -128,7 +128,7 @@ func TestRace_VerifySlipAfterApplicantDeleted(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		err := f.psvc.VerifySlip(ctx, appNo, "", approved, 1, "ok", "203.0.113.1")
+		err := f.psvc.VerifySlip(ctx, appNo, p.ID.String(), approved, 1, "ok", "203.0.113.1")
 		if !errors.Is(err, service.ErrSlipLocked) {
 			t.Fatalf("approved=%v: want ErrSlipLocked, got %v", approved, err)
 		}

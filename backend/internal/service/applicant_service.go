@@ -1068,9 +1068,9 @@ func notFoundOr(err error) error {
 }
 
 // normalizeAppNo accepts an application ID as a student might paste it: with zero-width
-// characters, lower case, or without the hyphen ("cc25e85b53" → "CC25-E85B53").
+// characters, Thai numerals, lower case, or without the hyphen ("cc๒๕e85b53" → "CC25-E85B53").
 func normalizeAppNo(s string) string {
-	s = strings.ToUpper(strings.TrimSpace(stripZeroWidth(s)))
+	s = strings.ToUpper(NormalizeDigitsAndIdentifier(s))
 	if m := looseAppNoRe.FindStringSubmatch(s); m != nil {
 		return "CC25-" + m[1]
 	}
@@ -1078,6 +1078,26 @@ func normalizeAppNo(s string) string {
 }
 
 var looseAppNoRe = regexp.MustCompile(`^CC25[-\s]?([0-9A-F]{6})$`)
+
+// normalizeThaiDigit maps Unicode Thai digits (U+0E50 '๐'–U+0E59 '๙') to ASCII '0'–'9'.
+func normalizeThaiDigit(r rune) rune {
+	if r >= '\u0E50' && r <= '\u0E59' {
+		return '0' + (r - '\u0E50')
+	}
+	return r
+}
+
+// NormalizeDigitsAndIdentifier strips zero-width characters, trims surrounding whitespace, and
+// normalizes Thai Unicode numerals ('๐'–'๙') to ASCII '0'–'9'.
+// Use only for identifiers/numeric fields — never for free-text fields (fullName, school, motivation).
+func NormalizeDigitsAndIdentifier(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if isZeroWidth(r) {
+			return -1
+		}
+		return normalizeThaiDigit(r)
+	}, s))
+}
 
 // isZeroWidth reports the invisible characters LINE and Facebook leave in copied text:
 // ZERO WIDTH SPACE / NON-JOINER / JOINER (U+200B–U+200D), WORD JOINER (U+2060) and the
@@ -1101,22 +1121,23 @@ func stripZeroWidth(s string) string {
 	}, s)
 }
 
-// cleanNumber removes zero-width characters, hyphens and spaces from a national ID or phone
-// number. Anything else (letters, other symbols) is kept so validation still rejects it.
+// cleanNumber removes zero-width characters, hyphens and spaces from a national ID, phone
+// number, or verification code and converts Thai numerals ('๐'–'๙') to ASCII '0'–'9'.
+// Anything else (letters, other symbols) is kept so validation still rejects it.
 func cleanNumber(s string) string {
 	return strings.Map(func(r rune) rune {
 		if isZeroWidth(r) || isNumberSeparator(r) {
 			return -1
 		}
-		return r
+		return normalizeThaiDigit(r)
 	}, s)
 }
 
 // normalizeLookupQuery prepares the public status query. A national ID or phone number written
-// with hyphens/spaces ("1-5099-00112-23-3", "081 234 5678") becomes digits only; anything else is
-// treated as an application ID, whose own hyphen is kept (see normalizeAppNo).
+// with Thai digits or hyphens/spaces ("๑-๕๐๙๙-๐๐๑๑๒-๒๓-๓", "๐๘๑ ๒๓๔ ๕๖๗๘") becomes ASCII
+// digits only; anything else is treated as an application ID (see normalizeAppNo).
 func normalizeLookupQuery(q string) string {
-	q = strings.TrimSpace(stripZeroWidth(q))
+	q = NormalizeDigitsAndIdentifier(q)
 	if digits := cleanNumber(q); digits != "" && isNumeric(digits) {
 		return digits
 	}
@@ -1148,6 +1169,7 @@ func generateAppNo() string {
 const MaxExportAuditIDs = 2000
 
 var (
+	ErrEmptyExport   = newValidationError("applicationIds must contain at least 1 item")
 	ErrInvalidExport = newValidationError("applicationIds must be a list of at most 2000 application IDs (CC25-XXXXXX)")
 	// ErrAuditUnavailable means the service was built without WithAudit; the export is refused.
 	ErrAuditUnavailable = errors.New("audit log is not configured")
@@ -1173,15 +1195,23 @@ func (s *ApplicantService) RecordExport(ctx context.Context, adminID int64, rec 
 	if s.audit == nil {
 		return 0, ErrAuditUnavailable
 	}
+	if len(rec.ApplicationIDs) == 0 {
+		return 0, ErrEmptyExport
+	}
 	if len(rec.ApplicationIDs) > MaxExportAuditIDs {
 		return 0, ErrInvalidExport
 	}
 	ids := make([]string, 0, len(rec.ApplicationIDs))
+	seen := make(map[string]struct{}, len(rec.ApplicationIDs))
 	for _, id := range rec.ApplicationIDs {
 		n := normalizeAppNo(id)
-		if !looseAppNoRe.MatchString(n) {
+		if n == "" || !looseAppNoRe.MatchString(n) {
 			return 0, ErrInvalidExport
 		}
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
 		ids = append(ids, n)
 	}
 	details := map[string]any{

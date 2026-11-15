@@ -362,23 +362,17 @@ func (s *PaymentService) OpenLatestSlip(ctx context.Context, applicationNo strin
 	return &SlipFile{Path: filepath.Join(s.slipDir, name), ContentType: contentType, Name: name, PaymentID: payment.ID.String()}, nil
 }
 
-// VerifySlip approves or rejects the latest PENDING slip. Payment, applicant status, status log
-// and audit row are written in one transaction.
+// VerifySlip approves or rejects the inspected PENDING slip. Payment, applicant status, status
+// log and audit row are written in one transaction.
 //
-// paymentID is the slip the admin actually looked at (SlipFile.PaymentID / slipPaymentId of the
-// list). When given, it must still be the applicant's latest slip, otherwise ErrSlipChanged: an
-// applicant who uploads a new slip while staff are viewing the old one cannot get the new,
-// unseen image approved. Empty keeps the old behaviour (settle whatever is latest). Either way a
-// slip replaced after the read below no longer exists when Verify runs, which also ends in
-// ErrSlipChanged rather than settling the wrong image.
+// paymentID is required and must identify the applicant's latest slip (SlipFile.PaymentID /
+// slipPaymentId of the admin list). If missing or not a valid UUID it returns a ValidationError; if
+// no longer the applicant's latest slip (including if replaced meanwhile) it returns ErrSlipChanged.
 func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentID string, approved bool, adminID int64, note, ip string) error {
-	var wantID uuid.UUID
-	if paymentID = strings.TrimSpace(paymentID); paymentID != "" {
-		id, err := uuid.Parse(paymentID)
-		if err != nil {
-			return newValidationError("paymentId must be a valid UUID")
-		}
-		wantID = id
+	paymentID = strings.TrimSpace(paymentID)
+	wantID, err := uuid.Parse(paymentID)
+	if paymentID == "" || err != nil {
+		return newValidationError("paymentId is required and must be a valid UUID")
 	}
 
 	note = strings.TrimSpace(note)
@@ -402,7 +396,7 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 	if err != nil {
 		return err
 	}
-	if wantID != uuid.Nil && wantID != latestPayment.ID {
+	if wantID != latestPayment.ID {
 		return ErrSlipChanged
 	}
 
@@ -412,15 +406,15 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 		TargetType: domain.AuditTargetApplicant,
 		TargetID:   applicant.ApplicationNo,
 		Details: map[string]any{
-			"paymentId": latestPayment.ID.String(),
+			"paymentId": wantID.String(),
 			"approved":  approved,
 			"note":      note,
 		},
 		IPAddress: ip,
 	}
-	// The repository re-checks the status under the row lock, so a refund recorded after the read
-	// above still wins.
-	if err := s.paymentRepo.Verify(ctx, latestPayment.ID, approved, adminID, note, audit); err != nil {
+	// The repository re-checks the applicant status and latest slip under the row lock, so a
+	// refund or slip replacement arriving after the read above still wins.
+	if err := s.paymentRepo.Verify(ctx, wantID, approved, adminID, note, audit); err != nil {
 		if errors.Is(err, domain.ErrStateConflict) {
 			return ErrSlipLocked
 		}
