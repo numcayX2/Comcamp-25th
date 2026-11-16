@@ -88,6 +88,8 @@ cd frontend && npm install && npm run dev   # http://localhost:4321
 
 ## ตอนขึ้น production
 
+หากต้องการนำระบบขึ้นเซิร์ฟเวอร์ภาควิชาด้วย Docker Compose (แยกออกจาก [`docker-compose.yml`](docker-compose.yml) สำหรับพัฒนาบนเครื่อง) ดูคู่มือและไฟล์ตั้งค่าได้ที่ [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md), [`docker-compose.prod.yml`](docker-compose.prod.yml) และ [`.env.prod.example`](.env.prod.example)
+
 ค่าเริ่มต้นของ `APP_ENV` คือ `production` และ backend จะ **ไม่ยอมสตาร์ต** ถ้าขาดอย่างใดอย่างหนึ่งต่อไปนี้ ซึ่งตั้งใจให้เป็นแบบนั้น เพื่อไม่ให้ระบบรับสมัครทำงานโดยไม่มีการป้องกัน:
 
 - `JWT_SECRET` (อย่างน้อย 32 ตัว)

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.astro/
+.git/
+.gitignore
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+public/probe.html
+
+!nginx/
+!nginx/**
