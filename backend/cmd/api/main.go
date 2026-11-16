@@ -100,13 +100,25 @@ func main() {
 	// answers count per application across confirm, slip, profile and withdraw (AGENTS.md §13.5).
 	verifyGuard := service.NewVerifyGuard(auditRepo)
 	settingSvc := service.NewSettingService(settingRepo, appRepo, auditRepo)
-	applicantSvc.WithVerifyGuard(verifyGuard).WithAudit(auditRepo).WithOnSeatChange(settingSvc.InvalidatePublicCache)
+	mailer := service.NewAsyncSMTPMailer(service.SMTPConfig{
+		Host:        cfg.SMTPHost,
+		Port:        cfg.SMTPPort,
+		Username:    cfg.SMTPUsername,
+		Password:    cfg.SMTPPassword,
+		From:        cfg.SMTPFrom,
+		FrontendURL: cfg.FrontendURL,
+	}, auditRepo)
+	applicantSvc.WithVerifyGuard(verifyGuard).
+		WithAudit(auditRepo).
+		WithOnSeatChange(settingSvc.InvalidatePublicCache).
+		WithMailer(mailer)
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
 		Payment: service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
-			WithVerifyGuard(verifyGuard),
+			WithVerifyGuard(verifyGuard).
+			WithMailer(mailer),
 	}
 
 	// 3. Router (all security middleware lives in internal/server)
@@ -134,6 +146,35 @@ func main() {
 		MaxHeaderBytes:    32 << 10,
 	}
 
+	expiryCtx, cancelExpiry := context.WithCancel(context.Background())
+	defer cancelExpiry()
+
+	runExpirySweep := func() {
+		sweepCtx, cancelSweep := context.WithTimeout(expiryCtx, 10*time.Second)
+		defer cancelSweep()
+		expired, err := applicantSvc.ExpireOverdueUnpaid(sweepCtx, time.Now().UTC())
+		if err != nil {
+			log.Printf("Unpaid expiry sweep error: %v", err)
+			return
+		}
+		if len(expired) > 0 {
+			log.Printf("Expired %d overdue unpaid application(s) (>%s): %v", len(expired), service.UnpaidExpiryWindow, expired)
+		}
+	}
+	runExpirySweep()
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-expiryCtx.Done():
+				return
+			case <-ticker.C:
+				runExpirySweep()
+			}
+		}
+	}()
+
 	serverErrors := make(chan error, 1)
 	go func() {
 		log.Printf("ComCamp 25 Backend API running on port :%s", cfg.Port)
@@ -148,17 +189,25 @@ func main() {
 
 	select {
 	case err := <-serverErrors:
+		cancelExpiry()
+		ctxShutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = mailer.Shutdown(ctxShutdown)
+		cancel()
 		if !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Fatal server error: %v", err)
 		}
 	case sig := <-shutdown:
 		log.Printf("Received signal %v, shutting down gracefully...", sig)
+		cancelExpiry()
 		ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := httpServer.Shutdown(ctxShutdown); err != nil {
 			log.Printf("Graceful shutdown failed: %v, forcing close", err)
 			_ = httpServer.Close()
+		}
+		if err := mailer.Shutdown(ctxShutdown); err != nil {
+			log.Printf("Mailer shutdown timed out: %v", err)
 		}
 		log.Println("Server exited cleanly.")
 	}

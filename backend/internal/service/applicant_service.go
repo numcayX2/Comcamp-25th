@@ -36,7 +36,7 @@ var (
 	ErrInvalidNationalID     = newValidationError("invalid national ID (must be 13 digits with a valid check digit)")
 	ErrInvalidPhone          = newValidationError("invalid phone number (must be 10 digits starting with 0)")
 	ErrInvalidParentPhone    = newValidationError("invalid parent phone number (must be 10 digits starting with 0)")
-	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose XS, S, M, L, XL, 2XL, 3XL)")
+	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose SSS, SS, S, M, L, XL, 2XL, 3XL, 4XL)")
 	ErrInvalidEmail          = newValidationError("invalid email address")
 	ErrInvalidGrade          = newValidationError("invalid grade (choose ม.4–ม.6 / ปวช.1–ปวช.3, or enter your own level, 2–20 characters)")
 	ErrRequiredFields        = newValidationError("required fields cannot be blank")
@@ -157,7 +157,19 @@ type ApplicantService struct {
 	verify *VerifyGuard
 	// onSeatChange notifies SettingService to drop its short public-settings cache when seats change.
 	onSeatChange func()
+	// mailer dispatches registration / confirmation emails asynchronously after commit.
+	mailer EmailNotifier
+	// now returns the current wall-clock time; defaults to time.Now and can be overridden in tests.
+	now func() time.Time
 }
+
+const (
+	// UnpaidExpiryWindow is the deadline (3 days) after registration by which an applicant
+	// must upload a payment slip before their seat is automatically released.
+	UnpaidExpiryWindow = 72 * time.Hour
+	// UnpaidExpiryReason is recorded in applicant_status_logs and audit_logs when auto-expired.
+	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน (72 ชั่วโมง) หลังสมัคร"
+)
 
 // WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
 // service.
@@ -166,6 +178,21 @@ func (s *ApplicantService) WithVerifyGuard(g *VerifyGuard) *ApplicantService {
 		s.verify = g
 	}
 	return s
+}
+
+// WithNow overrides the wall clock (for deterministic unit tests) and returns the service.
+func (s *ApplicantService) WithNow(fn func() time.Time) *ApplicantService {
+	if fn != nil {
+		s.now = fn
+	}
+	return s
+}
+
+func (s *ApplicantService) currentTime() time.Time {
+	if s.now != nil {
+		return s.now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // WithAudit sets the store for standalone audit events (the CSV export record) and returns the
@@ -187,6 +214,48 @@ func (s *ApplicantService) WithOnSeatChange(fn func()) *ApplicantService {
 	return s
 }
 
+// WithMailer configures the asynchronous transactional mailer and returns the service.
+func (s *ApplicantService) WithMailer(m EmailNotifier) *ApplicantService {
+	s.mailer = m
+	return s
+}
+
+func formatCampFeeTHB(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "1,200"
+	}
+	intPart, fracPart, hasDot := strings.Cut(raw, ".")
+	if hasDot {
+		fracPart = strings.TrimRight(fracPart, "0")
+	}
+	if len(intPart) <= 3 {
+		if fracPart != "" {
+			return intPart + "." + fracPart
+		}
+		return intPart
+	}
+	var b strings.Builder
+	rem := len(intPart) % 3
+	if rem > 0 {
+		b.WriteString(intPart[:rem])
+		if len(intPart) > rem {
+			b.WriteByte(',')
+		}
+	}
+	for i := rem; i < len(intPart); i += 3 {
+		if i > rem {
+			b.WriteByte(',')
+		}
+		b.WriteString(intPart[i : i+3])
+	}
+	if fracPart != "" {
+		b.WriteByte('.')
+		b.WriteString(fracPart)
+	}
+	return b.String()
+}
+
 func (s *ApplicantService) notifySeatChange() {
 	if s.onSeatChange != nil {
 		s.onSeatChange()
@@ -204,7 +273,19 @@ func NewApplicantService(
 		paymentRepo: paymentRepo,
 		// Never without a lockout: a service nobody wired still counts failures on its own.
 		verify: NewVerifyGuard(nil),
+		now:    time.Now,
 	}
+}
+
+// ExpireOverdueUnpaid transitions unpaid active applications older than UnpaidExpiryWindow (72h)
+// without a PENDING or APPROVED slip to REJECTED, invalidating the public settings cache whenever
+// at least one seat is released.
+func (s *ApplicantService) ExpireOverdueUnpaid(ctx context.Context, now time.Time) ([]string, error) {
+	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, now.UTC().Add(-UnpaidExpiryWindow), UnpaidExpiryReason)
+	if len(expired) > 0 {
+		s.notifySeatChange()
+	}
+	return expired, err
 }
 
 // Submit registers an application without an idempotency key.
@@ -248,7 +329,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	if err != nil || settings == nil {
 		return nil, false, fmt.Errorf("%w: %v", ErrSettingsUnavailable, err)
 	}
-	now := time.Now().UTC()
+	now := s.currentTime()
 	if settings.IsManualClosed || now.Before(settings.RegistrationOpenAt) || now.After(settings.RegistrationCloseAt) {
 		return nil, false, ErrRegistrationClosed
 	}
@@ -303,6 +384,10 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		IdempotencyKey:      key,
 	}
 
+	// Free any unpaid seats older than 72h right before checking capacity so overdue slots become
+	// available immediately to the incoming applicant.
+	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
+
 	// The count-and-insert is atomic in the repository, so a midnight rush cannot overfill the camp.
 	for attempt := 0; ; attempt++ {
 		applicant.ApplicationNo = generateAppNo()
@@ -315,6 +400,20 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	switch {
 	case err == nil:
 		s.notifySeatChange()
+		if s.mailer != nil && applicant.Email != "" {
+			createdAt := applicant.CreatedAt
+			if createdAt.IsZero() {
+				createdAt = s.currentTime()
+			}
+			s.mailer.EnqueueRegistration(RegistrationEmailData{
+				ApplicationNo: applicant.ApplicationNo,
+				FullName:      applicant.FullName(),
+				Nickname:      applicant.Nickname,
+				Email:         applicant.Email,
+				CampFee:       formatCampFeeTHB(settings.CampFee.String()),
+				CreatedAt:     createdAt,
+			})
+		}
 		return s.toPublic(ctx, applicant), false, nil
 	case errors.Is(err, domain.ErrCapacityReached):
 		return nil, false, ErrQuotaExceeded
@@ -494,15 +593,21 @@ func checkPhone(phone string) error {
 	return nil
 }
 
-// checkEmail: empty is allowed (the field is optional); otherwise a bare address within the limit.
+// checkEmail requires a non-empty bare address within the limit whose domain contains a dot.
 func checkEmail(email string) error {
-	if email == "" {
-		return nil
-	}
-	if utf8.RuneCountInString(email) > maxEmailRunes {
+	if email == "" || utf8.RuneCountInString(email) > maxEmailRunes {
 		return ErrInvalidEmail
 	}
-	if addr, err := mail.ParseAddress(email); err != nil || addr.Address != email {
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return ErrInvalidEmail
+	}
+	at := strings.LastIndexByte(email, '@')
+	if at <= 0 || at == len(email)-1 {
+		return ErrInvalidEmail
+	}
+	domainPart := email[at+1:]
+	if !strings.Contains(domainPart, ".") || strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") {
 		return ErrInvalidEmail
 	}
 	return nil
@@ -586,6 +691,8 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Appl
 		return nil, ErrInvalidQuery
 	}
 
+	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
+
 	applicant, err := s.appRepo.FindByQuery(ctx, query)
 	if err != nil {
 		return nil, notFoundOr(err)
@@ -645,6 +752,7 @@ func (s *ApplicantService) ListAll(ctx context.Context, status *domain.Applicati
 	if status != nil && !status.IsValid() {
 		return nil, ErrInvalidStatus
 	}
+	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
 	list, err := s.appRepo.ListAll(ctx, status)
 	if err != nil {
 		return nil, err
@@ -1272,7 +1380,7 @@ func isNumeric(s string) bool {
 
 func isValidShirtSize(size string) bool {
 	switch size {
-	case "XS", "S", "M", "L", "XL", "2XL", "3XL":
+	case "SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL":
 		return true
 	}
 	return false

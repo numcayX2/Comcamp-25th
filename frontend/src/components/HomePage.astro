@@ -218,7 +218,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <dl class="ed-metrics" aria-label="สรุปภาพรวมค่าย">
             <div class="ed-metric">
               <dt class="ed-metric__label">DURATION</dt>
-              <dd class="ed-metric__val"><span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน</dd>
+              <dd class="ed-metric__val"><span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน (<span class="font-mono tabular-nums">5–7</span> ก.พ. <span class="font-mono tabular-nums">70</span>)</dd>
             </div>
             <div class="ed-metric">
               <dt class="ed-metric__label">TARGET LEVEL</dt>
@@ -238,9 +238,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">02 · HARDWARE KIT</span></div>
-              <h3>อุปกรณ์การเรียน</h3>
-              <p>มอบชุดฮาร์ดแวร์บอร์ดทดลองจริงครบเซต (Arduino UNO R3 + ESP8266 NodeMCU + เซนเซอร์) ให้น้อง ๆ ใช้งานทุกคน</p>
+              <div class="card-top"><span class="bento-tag">02 · SIMULATION &amp; KIT</span></div>
+              <h3>อุปกรณ์การเรียนและฝึกปฏิบัติ</h3>
+              <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> และ <span class="font-mono tabular-nums">ESP8266</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
@@ -250,9 +250,13 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">04 · VENUE</span></div>
-              <h3>สถานที่จัดกิจกรรม</h3>
-              <p>อาคารเรียนสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ อ.สันทราย จ.เชียงใหม่</p>
+              <div class="card-top"><span class="bento-tag">04 · VENUE &amp; DORM</span></div>
+              <h3>สถานที่จัดกิจกรรมและที่พัก</h3>
+              <p>อบรม ณ อาคารเรียนสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ และพักค้างคืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกโซนชาย-หญิง)</p>
+              <a class="ed-inline-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
+                <span>ดูแผนที่เรือนพัก (Google Maps)</span>
+                <span aria-hidden="true">↗</span>
+              </a>
             </div>
 
             <div role="listitem" class="card bento-feature">
@@ -271,15 +275,42 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
                 <div class="card-top"><span class="bento-tag">06 · CAMP FEE</span></div>
-                <h3>ค่าใช้จ่ายในการเข้าร่วม (เบื้องต้น) <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,000</span> บาท</span></h3>
-                <!-- TODO(content): รอประกาศอย่างเป็นทางการ — 1) คอนเฟิร์มยอดค่าสมัครจริง (1,000 บาทเป็นราคาเบื้องต้น อาจเปลี่ยนแปลงได้) 2) รายการที่รวมในค่าสมัคร (มีเสื้อค่ายยืนยันแล้ว; ที่พัก/อาหาร/ชุดอุปกรณ์รอประกาศ) 3) คอนเฟิร์มรายการไซส์เสื้อที่มีจริง -->
-                <p class="todo">มีเสื้อค่าย (คอนเฟิร์มแล้ว · ไซส์ที่มีจริงรออัปเดต) · ราคา 1,000 บาท ยังไม่คอนเฟิร์ม (อาจเปลี่ยนแปลงได้) และรายการอื่นที่รวมในค่าสมัครรอประกาศ</p>
+                <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
+                <p class="todo">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนภายใน <span class="font-mono">3</span> วันหลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
                   <span>เช็กคุณสมบัติ &amp; สมัครค่าย</span>
                   <span aria-hidden="true">→</span>
                 </a>
+              </div>
+            </div>
+
+            <div role="listitem" class="card ed-cell--full">
+              <div class="card-top"><span class="bento-tag">07 · WHAT TO BRING</span></div>
+              <h3>สิ่งที่ต้องเตรียมมาค่าย (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)</h3>
+              <div class="ed-bring-grid">
+                <div class="ed-bring-col">
+                  <h4 class="ed-bring-col__title">1. เอกสารและยาประจำตัว</h4>
+                  <ul class="ed-bring-list">
+                    <li>บัตรประชาชน หรือบัตรประจำตัวนักเรียน</li>
+                    <li>ยาประจำตัว (ถ้ามี) และระบุข้อมูลแพ้อาหารหรือโรคประจำตัวในใบสมัคร</li>
+                  </ul>
+                </div>
+                <div class="ed-bring-col">
+                  <h4 class="ed-bring-col__title">2. เครื่องแต่งกายและของใช้ส่วนตัว</h4>
+                  <ul class="ed-bring-list">
+                    <li>ชุดลำลองสุภาพ 3 วัน 2 คืน (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ)</li>
+                    <li>ชุดนอน เสื้อกันหนาว ผ้าเช็ดตัว และของใช้ส่วนตัว (ค่ายมีเสื้อค่าย ComCamp #25 แจกให้)</li>
+                  </ul>
+                </div>
+                <div class="ed-bring-col">
+                  <h4 class="ed-bring-col__title">3. อุปกรณ์อิเล็กทรอนิกส์</h4>
+                  <ul class="ed-bring-list">
+                    <li>สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อม Wi-Fi บอร์ด ESP8266)</li>
+                    <li>โน้ตบุ๊กส่วนตัวไม่บังคับ (มีเครื่อง PC ห้องปฏิบัติการและบอร์ดฝึกปฏิบัติครบทุกคน)</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -441,8 +472,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
-              <h3>แนบสลิปโอนเงินยืนยันสิทธิ์</h3>
-              <p>ผู้สมัครที่ผ่านการคัดเลือกโอนเงินค่าธรรมเนียม (เบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท · อาจเปลี่ยนแปลงได้ รอประกาศยืนยัน) และอัปโหลดรูปสลิปในระบบ</p>
+              <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">3</span> วัน</h3>
+              <p>ผู้สมัครที่ผ่านการคัดเลือกโอนค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">3</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">3</span> วันระบบคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
@@ -455,10 +486,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--04 tm-tile--feature">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">04</span> · วันจัดค่าย</span>
-                <h3><span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</h3>
+                <h3>วันที่ <span class="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span class="font-mono tabular-nums">2570</span> (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน) ณ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</h3>
               </div>
               <div class="tm-tile__detail">
-                <p>เดินทางเข้าร่วมกิจกรรมและเข้าพักตามกำหนดการและคู่มือผู้มีสิทธิ์ที่ประกาศในระบบ</p>
+                <p>เดินทางเข้าร่วมกิจกรรมและเข้าพักตามกำหนดการและคู่มือผู้มีสิทธิ์ที่ประกาศในระบบ (ลิงก์และ QR เข้ากลุ่ม LINE OpenChat จะแสดงหลังแนบสลิปชำระเงินในระบบ)</p>
               </div>
             </div>
           </div>
@@ -492,8 +523,12 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   </svg>
                   <span class="ed-en">ACCOMMODATION</span>
                 </div>
-                <h3>การพักค้างคืนแยกตามสัดส่วน</h3>
-                <p>จัดการแยกหอพักชายและหญิงเป็นสัดส่วนชัดเจน พร้อมระบบดูแลการเข้า-ออก</p>
+                <h3>เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกชาย-หญิง)</h3>
+                <p>เข้าพัก ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ ภายในมหาวิทยาลัยแม่โจ้ แยกโซนหอพักชายและหญิงชัดเจน พร้อมระบบดูแลตลอดคืน</p>
+                <a class="ed-inline-link tm-tile-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
+                  <span>ดูพิกัดที่พัก (Google Maps)</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
               </div>
 
               <div role="listitem" class="tm-tile tm-tile--care-c">
@@ -519,10 +554,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               </div>
             </div>
 
-            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — วันจัดค่าย รายละเอียดหอพัก เบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ ยอดค่าสมัครสุทธิ รายการไซส์เสื้อค่ายที่มีจริง และลิงก์ LINE OpenChat โครงการ -->
+            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — เบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ/พี่ค่าย -->
             <p class="tm-status-note">
               <span class="tm-status-dot" aria-hidden="true"></span>
-              <span><strong class="tm-status-tag">รอประกาศเพิ่มเติม:</strong> วันจัดค่าย รายละเอียดหอพัก เบอร์ติดต่ออาจารย์ผู้รับผิดชอบ ยอดค่าสมัครสุทธิ รายการไซส์เสื้อค่ายที่มีจริง และลิงก์ LINE OpenChat จะแจ้งยืนยันในระบบพร้อมคู่มือผู้มีสิทธิ์</span>
+              <span><strong class="tm-status-tag">รอประกาศเพิ่มเติม:</strong> เบอร์ติดต่ออาจารย์ผู้รับผิดชอบและพี่ค่ายจะแจ้งยืนยันในระบบพร้อมคู่มือผู้มีสิทธิ์</span>
             </p>
           </div>
         </div>
@@ -575,7 +610,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         <div class="ed-cta-band__body">
           <p class="ed-cta-band__eyebrow">COMCAMP #25 · REGISTRATION</p>
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
-          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · ค่าสมัครเบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท (อาจเปลี่ยนแปลงได้) · ไม่มีพื้นฐานก็เริ่มได้</p>
+          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
             <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta data-register-link>
               <span data-register-cta-label>เปิดรับ 18 พ.ย. 69</span>
@@ -663,10 +698,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้
                 </a>
               </li>
-              <!-- TODO(content): เพิ่มลิงก์ LINE OpenChat ของโครงการเข้าบนเว็บ (Footer / ใบตอบรับ / /status) เมื่อสร้างกลุ่มแล้ว -->
-              <li class="footer-col__note" style="color:var(--amber-text);font-weight:600;margin-top:4px">
-                LINE OpenChat: รอเพิ่มลิงก์เข้ากลุ่มโครงการ
-              </li>
+              <!-- TODO(content): เพิ่มข้อมูลติดต่อพี่ค่าย (Staff Contact) ใน Footer เมื่อได้รับข้อมูลยืนยัน (LINE OpenChat แสดงหลังชำระเงินเท่านั้น) -->
             </ul>
             <p class="footer-col__note">เปิดรับสมัคร <span class="tabular-nums" data-open-date-full>18 พ.ย. 2569</span> · <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง</p>
           </div>

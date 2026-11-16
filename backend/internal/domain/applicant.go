@@ -151,5 +151,9 @@ type ApplicantRepository interface {
 	// one transaction. It is refused with ErrStateConflict unless the application is still PASSED
 	// or CONFIRMED at the moment of the write, and ErrNotFound when it is missing or deleted.
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *AuditEntry) error
+	// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE)
+	// created at or before cutoff that have no PENDING/APPROVED slip to REJECTED, writing
+	// status and audit logs atomically and returning the expired application_no list.
+	ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error)
 	CountActive(ctx context.Context) (int, error)
 }

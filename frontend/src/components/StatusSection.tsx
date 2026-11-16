@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import '../styles/status.css';
 import {
+  ArrowRight,
   Check,
   CircleCheck,
   CircleX,
@@ -36,12 +39,16 @@ import {
   GRADES,
   GRADE_OTHER,
   GRADE_OTHER_MAX,
+  LINE_OPENCHAT_QR_SRC,
+  LINE_OPENCHAT_URL,
   NICKNAME_MAX,
   PROVINCE_MAX,
   SCHOOL_MAX,
   SEATS,
   SHIRT_SIZES,
   SIZE_CHEST,
+  SIZE_LENGTH,
+  describePaymentDeadline,
   formatCampFee,
   gradeValue,
   isValidThaiNationalID,
@@ -134,7 +141,7 @@ interface Highlight {
 }
 
 /** One place that decides the headline for every status / slip combination. */
-function describeHighlight(app: Application, seats: number, feeText: string): Highlight {
+function describeHighlight(app: Application, seats: number, feeText: string, nowMs: number): Highlight {
   const slip = hasSlip(app) ? (app.slipStatus ?? 'PENDING') : null;
 
   switch (app.status) {
@@ -165,7 +172,7 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
         icon: CircleCheck,
         badge: 'ยืนยันสิทธิ์แล้ว · ยังไม่พบสลิปในระบบ',
         title: 'สถานะยืนยันสิทธิ์แล้ว (ยังไม่ได้อัปโหลดสลิปมัดจำ)',
-        body: `ระบบยังไม่มีสลิปค่ามัดจำสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป โปรดตรวจสอบประกาศยอดล่าสุด (เบื้องต้น ${feeText} บาท · อาจเปลี่ยนแปลงได้) และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว รอรับข่าวสารจากทีมงานได้เลย)`,
+        body: `ระบบยังไม่มีสลิปค่ามัดจำสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว รอรับข่าวสารจากทีมงานได้เลย)`,
         toSlip: true,
       };
     case 'REFUND_PENDING':
@@ -190,9 +197,9 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       return {
         tone: 'danger',
         icon: CircleX,
-        badge: 'ไม่ผ่าน',
-        title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือก',
-        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน',
+        badge: 'ไม่ผ่าน / ตัดสิทธิ์อัตโนมัติ',
+        title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือกหรือพ้นกำหนดชำระเงิน',
+        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน',
         contact: true,
       };
     case 'RESERVE':
@@ -229,23 +236,24 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
       body: 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ เมื่อสลิปผ่านการตรวจสอบ สถานะจะอัปเดตเป็น “ยืนยันสิทธิ์สมบูรณ์” โดยอัตโนมัติ',
     };
   }
+  const dl = describePaymentDeadline(app.createdAt, nowMs);
   if (slip === 'REJECTED') {
     return {
       tone: 'danger',
       icon: TriangleAlert,
-      badge: 'สลิปไม่ผ่าน',
+      badge: `สลิปไม่ผ่าน · ${dl.remainingText}`,
       title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
+      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด 3 วัน)`,
       toSlip: true,
       contact: true,
     };
   }
   return {
-    tone: 'tech',
+    tone: dl.isUrgent ? 'warning' : 'tech',
     icon: Ticket,
-    badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
+    badge: `สมัครทันแล้ว · ${dl.remainingText}`,
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) ค่าสมัครเบื้องต้น ${feeText} บาท (ยังไม่คอนเฟิร์มราคาสุทธิ อาจเปลี่ยนแปลงได้) กรุณาตรวจสอบประกาศยืนยันยอดล่าสุดก่อนโอน แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)`,
     toSlip: true,
   };
 }
@@ -269,8 +277,8 @@ const FOCUS_RING =
  * in ink (AA in both themes), and colour is never the only cue: icon, badge, state token and
  * headline all say the same thing. No side stripe, no icon bubble (AGENTS.md section 6.1).
  */
-function StatusHighlight({ app, seats, feeText }: { app: Application; seats: number; feeText: string }) {
-  const h = describeHighlight(app, seats, feeText);
+function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; seats: number; feeText: string; nowMs: number }) {
+  const h = describeHighlight(app, seats, feeText, nowMs);
   const color = TONE_COLOR[h.tone];
   const Icon = h.icon;
   return (
@@ -279,13 +287,8 @@ function StatusHighlight({ app, seats, feeText }: { app: Application; seats: num
       aria-labelledby="status-highlight-title"
       data-status={app.status}
       data-tone={h.tone}
-      className="rounded-none border-x border-b border-t-4 p-5 sm:p-6"
-      style={{
-        backgroundColor: `color-mix(in srgb, ${color} 14%, ${SURFACE})`,
-        borderTopColor: color,
-        borderColor: `color-mix(in srgb, ${color} 45%, ${RULE})`,
-        borderTopWidth: 4,
-      }}
+      className="st-highlight"
+      style={{ '--st-tone': color } as CSSProperties}
     >
       <div
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-3"
@@ -319,7 +322,7 @@ function StatusHighlight({ app, seats, feeText }: { app: Application; seats: num
               {h.toSlip && (
                 <a
                   href="#slip-section"
-                  className={`inline-flex min-h-11 items-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 ${FOCUS_RING}`}
+                  className={`inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
                   style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                 >
                   ไปส่งหลักฐานการชำระเงิน
@@ -330,7 +333,7 @@ function StatusHighlight({ app, seats, feeText }: { app: Application; seats: num
                   href={FB_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`inline-flex min-h-11 items-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
+                  className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
                   style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                 >
                   ติดต่อทีมงานทาง Facebook
@@ -435,6 +438,7 @@ export function StatusSection() {
   const [source, setSource] = useState<ApiSource | null>(null);
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
   /** A wrong verify code reported by the slip upload or profile edit, shown beneath #verify-code. */
@@ -780,6 +784,13 @@ export function StatusSection() {
   // staff ledger so a refund can be recorded, so only staff can cancel from then on. A slip staff
   // rejected is not money held. A missing slipStatus on an uploaded slip counts as waiting.
   const moneyHeld = slipState === 'PENDING' || slipState === 'APPROVED';
+  const paymentDeadline = app ? describePaymentDeadline(app.createdAt, nowMs) : null;
+
+  useEffect(() => {
+    if (!app || app.status !== 'PASSED' || slipApproved || moneyHeld) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [app, slipApproved, moneyHeld]);
   const canWithdraw = Boolean(app && seatHeld && app.status !== 'CONFIRMED' && !moneyHeld);
   // Cancelling is staff-only: say so, with the way to reach them.
   const mustAskStaffToCancel = seatHeld && !canWithdraw;
@@ -789,13 +800,11 @@ export function StatusSection() {
   const needsVerifyCode = Boolean(isEligibleForPayment && !slipApproved) || canEditProfile;
   const verifyHint = !app
     ? ''
-    : app.status === 'PENDING' || app.status === 'RESERVE'
-      ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป (ในสถานะนี้ยังไม่ต้องส่งสลิป)'
-      : slipApproved && app.status === 'CONFIRMED'
-        ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป'
-        : isEligibleForPayment && !slipApproved
-          ? 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนส่งสลิปโอนเงิน หรือแก้ไขข้อมูลทั่วไป'
-          : 'ใช้ยืนยันตัวตนเจ้าของใบสมัครก่อนแก้ไขข้อมูลทั่วไป';
+    : slipApproved
+      ? 'ใช้ยืนยันตัวตนก่อนแก้ไขข้อมูล'
+      : isEligibleForPayment
+        ? 'ใช้ยืนยันตัวตนก่อนส่งสลิปหรือแก้ไขข้อมูล'
+        : 'ใช้ยืนยันตัวตนก่อนแก้ไขข้อมูล';
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
@@ -830,7 +839,7 @@ export function StatusSection() {
           </p>
         </div>
 
-        <form onSubmit={onSearch} className="border bg-[var(--bg-card)] p-6 sm:p-8 md:col-span-7" style={{ borderColor: INK, backgroundColor: SURFACE }}>
+        <form onSubmit={onSearch} className="st-card md:col-span-7">
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
             เลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร
           </label>
@@ -874,8 +883,7 @@ export function StatusSection() {
       {storedNotice && (
         <div
           role="status"
-          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
-          style={{ backgroundColor: SURFACE, borderColor: RULE, color: INK }}
+          className="st-notice mt-6 flex items-start justify-between gap-4"
         >
           <p className="flex items-start gap-2.5 text-sm leading-7" style={{ color: INK_MUTED }}>
             <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
@@ -896,8 +904,7 @@ export function StatusSection() {
       {error && (
         <div
           role="alert"
-          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5"
-          style={{ backgroundColor: 'var(--color-danger)', borderColor: 'var(--color-danger)', color: 'var(--bg-canvas)' }}
+          className="st-alert st-alert--error mt-6 flex items-start justify-between gap-4"
         >
           <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
             <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
@@ -918,8 +925,7 @@ export function StatusSection() {
           ref={withdrawnRef}
           tabIndex={-1}
           role="status"
-          className="mt-6 flex items-start justify-between gap-4 rounded-xl border px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]"
-          style={{ backgroundColor: 'var(--color-success)', borderColor: 'var(--color-success)', color: '#121316' }}
+          className="st-alert st-alert--success mt-6 flex items-start justify-between gap-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]"
         >
           <p className="flex items-start gap-2.5 text-sm font-semibold leading-7">
             <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" />
@@ -947,10 +953,10 @@ export function StatusSection() {
 
       {app && (
         <div className="mt-8 space-y-8">
-          <StatusHighlight app={app} seats={seats} feeText={feeText} />
+          <StatusHighlight app={app} seats={seats} feeText={feeText} nowMs={nowMs} />
 
           {/* ── 03 · Application record ─────────────────────── */}
-          <section className="border bg-[var(--bg-card)] p-6 sm:p-8" style={{ borderColor: INK, backgroundColor: SURFACE }}>
+          <section className="st-card">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold leading-6" style={{ color: INK_SUBTLE }}>
@@ -1000,11 +1006,18 @@ export function StatusSection() {
                 { k: 'เลขบัตรประชาชน', v: app.nationalId, mono: true },
                 { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
                 { k: 'โรงเรียน', v: app.school, mono: false },
-                { k: 'ระดับชั้น / ไซส์เสื้อค่าย (รอคอนเฟิร์มไซส์ที่มีจริง)', v: `${app.grade} / ${app.shirtSize}`, mono: false },
+                {
+                  k: 'ระดับชั้น / ไซส์เสื้อค่าย',
+                  v:
+                    SIZE_CHEST[app.shirtSize] && SIZE_LENGTH[app.shirtSize]
+                      ? `${app.grade} / ${app.shirtSize} (อก ${SIZE_CHEST[app.shirtSize]}" · ยาว ${SIZE_LENGTH[app.shirtSize]}")`
+                      : `${app.grade} / ${app.shirtSize}`,
+                  mono: false,
+                },
                 ...(app.email ? [{ k: 'อีเมล', v: app.email, mono: false }] : []),
                 ...(app.province ? [{ k: 'จังหวัด', v: app.province, mono: false }] : []),
               ].map((row) => (
-                <div key={row.k} className="min-w-0 border-b py-3" style={{ borderColor: RULE }}>
+                <div key={row.k} className="min-w-0 border-b py-2.5 sm:py-3" style={{ borderColor: RULE }}>
                   <dt className="font-mono text-[11px] font-medium uppercase" style={{ color: INK_SUBTLE }}>{row.k}</dt>
                   <dd className={`mt-0.5 select-text break-words [overflow-wrap:anywhere] text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
                     {row.v}
@@ -1140,7 +1153,7 @@ export function StatusSection() {
                           <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
                         </select>
                       </EditField>
-                      <EditField id="edit-shirtSize" label="ไซส์เสื้อค่าย (มีเสื้อแน่นอน · ไซส์จริงรอยืนยัน)" error={editErrors.shirtSize}>
+                      <EditField id="edit-shirtSize" label="ไซส์เสื้อค่าย" error={editErrors.shirtSize}>
                         <select
                           id="edit-shirtSize"
                           value={edit.shirtSize}
@@ -1155,8 +1168,7 @@ export function StatusSection() {
                           </option>
                           {SHIRT_SIZES.map((size) => (
                             <option key={size} value={size}>
-                              {size}
-                              {SIZE_CHEST[size] !== null ? ` · รอบอก ${SIZE_CHEST[size]} นิ้ว` : ''}
+                              {size} · รอบอก {SIZE_CHEST[size]}&quot; · ยาว {SIZE_LENGTH[size]}&quot;
                             </option>
                           ))}
                         </select>
@@ -1359,10 +1371,9 @@ export function StatusSection() {
                   {app.status === 'CONFIRMED' || slipState === 'APPROVED'
                     ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'
                     : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'}{' '}
-                  หากต้องการสละสิทธิ์และขอคืนเงิน กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ พร้อมแจ้งรหัสใบสมัคร{' '}
-                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
+                  หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ พร้อมแจ้งรหัสใบสมัคร{' '}
+                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
                 </p>
-                {/* TODO(content): เพิ่มลิงก์ LINE OpenChat โครงการคู่กับ Facebook เมื่อสร้างกลุ่มแล้ว */}
                 <a
                   href={FB_URL}
                   target="_blank"
@@ -1381,15 +1392,15 @@ export function StatusSection() {
             <section
               id="slip-section"
               tabIndex={-1}
-              className="scroll-mt-24 border bg-[var(--bg-card)] p-6 outline-none sm:p-8"
-              style={{ borderColor: INK, backgroundColor: SURFACE }}
+              className="st-card scroll-mt-24 outline-none"
             >
               {/* One container. Its zones are told apart by whitespace and 1px rules, never by inner boxes. */}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ค่าธรรมเนียมยืนยันสิทธิ์เบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท (ยังไม่คอนเฟิร์มราคาสุทธิ อาจเปลี่ยนแปลงได้)
+                    ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · กรุณาโอนและแนบสลิปภายใน{' '}
+                    <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
                   </p>
                 </div>
                 {slipUploaded ? (
@@ -1404,6 +1415,26 @@ export function StatusSection() {
                   <DotPill color="var(--color-ink-subtle)">ยังไม่ได้ส่งสลิป</DotPill>
                 )}
               </div>
+
+              {!slipApproved && !moneyHeld && paymentDeadline && (
+                <div
+                  role="note"
+                  aria-label="แจ้งเตือนกำหนดเวลาชำระเงิน 3 วัน"
+                  className="st-warning mt-5"
+                >
+                  <p className="flex items-start gap-2 text-sm font-bold leading-6" style={{ color: INK }}>
+                    <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" style={{ color: 'var(--color-warning)' }} />
+                    <span>
+                      ยังไม่ได้ส่งสลิปยืนยันสิทธิ์ · <span className="tabular-nums">{paymentDeadline.remainingText}</span>
+                    </span>
+                  </p>
+                  <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
+                    กรุณาโอนเงินและอัปโหลดสลิปภายในวันที่ <strong className="tabular-nums" style={{ color: INK }}>{paymentDeadline.deadlineText}</strong> (ภายใน{' '}
+                    <span className="font-mono tabular-nums">3</span> วัน / <span className="font-mono tabular-nums">72</span> ชั่วโมงหลังสมัคร)
+                    หากพ้นกำหนดระบบจะตัดสิทธิ์และคืนที่นั่งว่างให้ผู้สมัครคนอื่นโดยอัตโนมัติ
+                  </p>
+                </div>
+              )}
 
               {!slipApproved && (
                 <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }} aria-label="ข้อมูลการโอนเงิน" role="group">
@@ -1486,6 +1517,41 @@ export function StatusSection() {
                   }}
                 />
               </div>
+
+              {(moneyHeld || app.status === 'CONFIRMED') && (
+                <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }}>
+                  <h3 className="text-base font-bold leading-7" style={{ color: INK }}>
+                    เข้ากลุ่ม LINE OpenChat
+                  </h3>
+                  <p className="mt-1 text-sm" style={{ color: INK_MUTED }}>สำหรับผู้ที่ส่งสลิปแล้ว</p>
+                  <div className="mt-4 grid gap-5 sm:grid-cols-[176px_minmax(0,1fr)] sm:items-center">
+                    <img
+                      src={LINE_OPENCHAT_QR_SRC}
+                      alt="QR Code สำหรับเข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25"
+                      width={176}
+                      height={176}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-44 w-44 rounded-xl bg-white object-contain p-1.5"
+                    />
+                    <div className="min-w-0 space-y-4">
+                      <p className="max-w-[54ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+                        สแกน QR หรือกดปุ่มด้านล่างเพื่อเข้ากลุ่ม รับข่าวสารและติดต่อสื่อสารกับพี่ค่ายก่อนวันจัดค่าย
+                      </p>
+                      <a
+                        href={LINE_OPENCHAT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
+                        style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
+                      >
+                        <span>เข้ากลุ่ม LINE OpenChat ทันที</span>
+                        <ArrowRight aria-hidden="true" size={16} strokeWidth={1.75} />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </div>

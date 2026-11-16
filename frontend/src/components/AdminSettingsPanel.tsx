@@ -628,7 +628,7 @@ export function AdminSettingsPanel({
                     style={{ borderColor: fieldErrors.fee ? DANGER : INPUT_BORDER, color: INK }}
                   />
                   <p id="fee-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
-                    ค่าเริ่มต้นเบื้องต้นคือ 1,000 บาท (ยังไม่คอนเฟิร์มราคาจริง อาจเปลี่ยนแปลงได้ — ปรับแก้แล้วจะมีผลทั้งระบบ)
+                    ค่าเริ่มต้นคือ 1,200 บาท (ปรับแก้แล้วจะมีผลทั้งระบบทันที)
                   </p>
                   {fieldErrors.fee && (
                     <p id="fee-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>

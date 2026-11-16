@@ -6,12 +6,81 @@ import type { ApplicationPayload, ShirtSize } from '../../lib/api';
 
 export const SEATS = 30;
 /**
- * TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการและอาจเปลี่ยนแปลงได้
- * หน้า /register และ /status ใช้ค่าจาก settings.campFee เป็นหลัก ค่านี้ใช้เฉพาะกรณี fallback
+ * Official confirmed camp fee in THB.
+ * /register and /status read settings.campFee dynamically; FEE_TEXT is the offline fallback.
  */
-export const FEE_TEXT = '1,000';
+export const FEE_TEXT = '1,200';
 export const FB_URL = 'https://www.facebook.com/CCCSMJU';
-// TODO(content): เพิ่มลิงก์ LINE OpenChat (เช่น LINE_OPENCHAT_URL) เข้าบนเว็บ (Footer / ใบตอบรับ / หน้า /status) เมื่อทีมงานสร้างกลุ่มแล้ว
+export const LINE_OPENCHAT_URL =
+  'https://line.me/ti/g2/SqThbtY8Q_FiT7AA61RNn5LrFsjz9bHjYvmcIQ?utm_source=invitation&utm_medium=QR_code&utm_campaign=default';
+export const LINE_OPENCHAT_QR_SRC = '/assets/line-openchat-qr.jpg';
+export const DORM_NAME = 'เรือนพักสมาคมศิษย์เก่าแม่โจ้';
+export const DORM_MAPS_URL = 'https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7';
+
+export const PAYMENT_WINDOW_HOURS = 72;
+export const PAYMENT_WINDOW_MS = PAYMENT_WINDOW_HOURS * 60 * 60 * 1000;
+
+export interface PaymentDeadlineInfo {
+  deadlineText: string;
+  remainingText: string;
+  isOverdue: boolean;
+  isUrgent: boolean;
+}
+
+/**
+ * Formats the 72-hour (3-day) transfer/slip deadline after registration in Asia/Bangkok time
+ * and computes remaining time so unpaid applicants get a clear warning before auto-expiry.
+ */
+export function describePaymentDeadline(createdAtIso?: string | null, nowMs: number = Date.now()): PaymentDeadlineInfo {
+  const parsed = createdAtIso ? Date.parse(createdAtIso) : Number.NaN;
+  const baseMs = Number.isFinite(parsed) ? parsed : nowMs;
+  const deadlineMs = baseMs + PAYMENT_WINDOW_MS;
+  const d = new Date(deadlineMs);
+  const datePart = d.toLocaleDateString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Bangkok',
+  });
+  const timePart = d.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+  const deadlineText = `${datePart} เวลา ${timePart} น.`;
+  const diffMs = deadlineMs - nowMs;
+
+  if (diffMs <= 0) {
+    return {
+      deadlineText,
+      remainingText: 'ครบกำหนด 3 วัน (72 ชั่วโมง) แล้ว',
+      isOverdue: true,
+      isUrgent: true,
+    };
+  }
+
+  const totalMinutes = Math.max(1, Math.ceil(diffMs / 60_000));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const mins = totalMinutes % 60;
+
+  let remainingText: string;
+  if (days > 0) {
+    remainingText = hours > 0 ? `เหลือเวลาโอนอีก ${days} วัน ${hours} ชั่วโมง` : `เหลือเวลาโอนอีก ${days} วัน`;
+  } else if (hours > 0) {
+    remainingText = mins > 0 ? `เหลือเวลาโอนอีก ${hours} ชั่วโมง ${mins} นาที` : `เหลือเวลาโอนอีก ${hours} ชั่วโมง`;
+  } else {
+    remainingText = `เหลือเวลาโอนอีก ${mins} นาที`;
+  }
+
+  return {
+    deadlineText,
+    remainingText,
+    isOverdue: false,
+    isUrgent: diffMs <= 24 * 60 * 60 * 1000,
+  };
+}
 
 /** Format campFee from PublicSettings into Thai locale text, falling back to FEE_TEXT. */
 export function formatCampFee(fee: number | string | null | undefined): string {
@@ -36,23 +105,41 @@ export const GRADES = ['ม.4', 'ม.5', 'ม.6', 'ปวช.1', 'ปวช.2', 
 /** Select value for "other"; the applicant then types their own level, which is what gets submitted. */
 export const GRADE_OTHER = 'อื่นๆ';
 export const GRADE_OTHER_MAX = 20; // grade column is VARCHAR(20)
-export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
+export const SHIRT_SIZES: ShirtSize[] = ['SSS', 'SS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
 
-/**
- * TODO(content): รอประกาศอย่างเป็นทางการ —
- *   มีเสื้อค่าย ComCamp #25 แน่นอนแล้ว (คอนเฟิร์มแล้ว)
- *   รอคอนเฟิร์มเฉพาะรายการไซส์ที่จะเปิดให้เลือกจริง และตัวเลขรอบอก XS–3XL จากร้าน
- * null = not announced yet.
- */
-export const SIZE_CHEST: Record<ShirtSize, number | null> = {
-  XS: null,
+/** Official IDO IDEA T-shirt chest circumference (A, inches). */
+export const SIZE_CHEST: Record<ShirtSize, number> = {
+  SSS: 30,
+  SS: 32,
   S: 36,
-  M: 38,
-  L: 40,
-  XL: 42,
-  '2XL': null,
-  '3XL': null,
+  M: 40,
+  L: 44,
+  XL: 48,
+  '2XL': 52,
+  '3XL': 56,
+  '4XL': 60,
 };
+
+/** Official IDO IDEA T-shirt length (B, inches). */
+export const SIZE_LENGTH: Record<ShirtSize, number> = {
+  SSS: 25,
+  SS: 26,
+  S: 27,
+  M: 28,
+  L: 29,
+  XL: 30,
+  '2XL': 32,
+  '3XL': 33,
+  '4XL': 34,
+};
+
+export const DIETARY_QUICK_OPTIONS = [
+  'ไม่ทานหมู',
+  'อาหารฮาลาล (อิสลาม)',
+  'มังสวิรัติ',
+  'แพ้อาหารทะเล',
+  'แพ้ถั่ว / นมวัว',
+] as const;
 
 /** Wizard form state. Selects start empty so nothing is submitted by accident. */
 export interface FormState
@@ -158,9 +245,9 @@ export const STEPS: StepMeta[] = [
     fields: ['school', 'province', 'grade', 'gradeOther'],
   },
   {
-    label: 'เสื้อค่าย (ไซส์รอยืนยัน)',
-    title: 'เสื้อค่าย (มีเสื้อแน่นอน · ไซส์รอยืนยัน)',
-    lead: 'มีเสื้อค่าย ComCamp #25 แน่นอน แต่รายการไซส์ที่มีจริงอยู่ระหว่างรอคอนเฟิร์ม กรุณาเลือกไซส์เบื้องต้นไว้ก่อน',
+    label: 'ไซส์เสื้อค่าย',
+    title: 'เลือกไซส์เสื้อค่าย',
+    lead: 'ผู้เข้าร่วมค่ายทุกคนจะได้รับเสื้อค่าย ComCamp #25 คนละ 1 ตัว กรุณาเทียบขนาดรอบอกและความยาวเสื้อก่อนเลือก',
     fields: ['shirtSize'],
   },
   {
@@ -246,10 +333,15 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       return /^0\d{9}$/.test(p) ? undefined : 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
     }
     case 'email': {
-      const e = form.email.trim();
-      if (!e) return undefined;
+      const e = form.email.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\s+/g, '');
+      if (!e) return 'กรุณากรอกอีเมลสำหรับรับหลักฐานการสมัครและแจ้งผลยืนยันสิทธิ์';
       if (e.length > EMAIL_MAX) return `อีเมลต้องยาวไม่เกิน ${EMAIL_MAX} ตัวอักษร`;
-      return /^\S+@\S+\.\S+$/.test(e) ? undefined : 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
+      const atIdx = e.indexOf('@');
+      const domain = atIdx >= 0 ? e.slice(atIdx + 1) : '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || domain.startsWith('.') || domain.endsWith('.')) {
+        return 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
+      }
+      return undefined;
     }
     case 'parentName': {
       const pn = cleanSingleLine(form.parentName);

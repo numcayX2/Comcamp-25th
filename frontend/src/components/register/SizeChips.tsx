@@ -57,7 +57,7 @@ export function SizeChips({
     }
   }, [value]);
 
-  // Keep the pill glued to its chip when the grid reflows (4 columns <-> 7, font load, rotation).
+  // Keep the pill glued to its chip when the grid reflows (3 columns <-> 5, font load, rotation).
   useEffect(() => {
     const root = box.current;
     const el = thumb.current;
@@ -108,13 +108,9 @@ export function SizeChips({
             />
             <span className="rw-chip__face">
               <span className="font-mono">{s}</span>
-              {chest !== null ? (
-                <small className="rw-chip__chest font-mono">
-                  {chest}&quot;
-                </small>
-              ) : (
-                <small className="rw-chip__chest">รออัปเดต</small>
-              )}
+              <small className="rw-chip__chest font-mono">
+                {chest}&quot;
+              </small>
             </span>
           </label>
         );

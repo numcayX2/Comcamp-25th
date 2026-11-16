@@ -161,6 +161,7 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	nid60 := validTestNationalID(60)
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
 		FullName: "ทดสอบ คัดลอก", Nickname: "ก็อป", School: "โรงเรียนทดสอบ", Grade: "ม.4", ShirtSize: "M",
+		Email:      "\u200Bcopy60@example.com\uFEFF",
 		NationalID: "\uFEFF" + nid60[:1] + "-" + nid60[1:5] + "-" + nid60[5:10] + "-" + nid60[10:12] + "-" + nid60[12:] + "\u200B",
 		Phone:      "081\u200C-000\u200D-0060",
 	})
@@ -175,8 +176,8 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.NationalID != nid60 || stored.Phone != "0810000060" {
-		t.Fatalf("stored identifiers not cleaned: %q / %q", stored.NationalID, stored.Phone)
+	if stored.NationalID != nid60 || stored.Phone != "0810000060" || stored.Email != "copy60@example.com" {
+		t.Fatalf("stored identifiers not cleaned: %q / %q / %q", stored.NationalID, stored.Phone, stored.Email)
 	}
 
 	noHyphen := strings.ToLower(strings.Replace(created.ID, "-", "", 1))
@@ -227,8 +228,8 @@ func TestSecurity_AdminSettingsQuota(t *testing.T) {
 		t.Error("expected a settings.update audit entry")
 	}
 
-	app.submit(t, validTestNationalID(70), "0810000070", "")
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(71), "0810000071", ""), nil)
+	app.submit(t, validTestNationalID(70), "0810000070", "q70@example.com")
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(71), "0810000071", "q71@example.com"), nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("capacity 1 full: expected 409, got %d", rec.Code)
 	}

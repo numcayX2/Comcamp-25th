@@ -7,8 +7,9 @@
  * Steps 01–05 are form steps; 06 is the receipt/payment state after submit.
  * All form state lives here, so going back and forth never loses input.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from 'react';
+import { gsap } from 'gsap';
 import { ArrowLeft, ArrowRight, Check, Clock, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
@@ -23,6 +24,7 @@ import {
 } from '../lib/api';
 import {
   ALLERGIES_MAX,
+  DIETARY_QUICK_OPTIONS,
   EMPTY_FORM,
   FEE_TEXT,
   GRADES,
@@ -38,6 +40,7 @@ import {
   SEATS,
   SHIRT_SIZES,
   SIZE_CHEST,
+  SIZE_LENGTH,
   STEPS,
   TOTAL_STEPS,
   cleanSingleLine,
@@ -369,6 +372,7 @@ export function RegisterSection() {
   /** Success notice after a self-service withdrawal. */
   const [notice, setNotice] = useState<string | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
+  const rulesRef = useRef<HTMLElement>(null);
   const noticeFocus = useRef(false);
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
@@ -660,7 +664,7 @@ export function RegisterSection() {
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
         nationalId: sanitizeDigits(form.nationalId),
         phone: sanitizeDigits(form.phone),
-        email: form.email.trim(),
+        email: stripZeroWidth(form.email).replace(/\s+/g, ''),
         parentName: cleanSingleLine(form.parentName),
         parentRelation: cleanSingleLine(form.parentRelation),
         parentPhone: sanitizeDigits(form.parentPhone),
@@ -790,6 +794,26 @@ export function RegisterSection() {
   /* ── derived view state ── */
 
   const wizard = gate === 'open' && appId === null;
+
+  /* Step 1 intro: stagger the callout in, then clear every inline style so hover/sticky states
+     stay untouched. The card is plain HTML in the first paint; GSAP only enhances it. */
+  useLayoutEffect(() => {
+    const root = rulesRef.current;
+    if (!root || step !== 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const ctx = gsap.context(() => {
+      const rows = gsap.utils.toArray<HTMLElement>('.rw-rules__list > li');
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      tl.from(root, { autoAlpha: 0, y: 18, duration: 0.5 })
+        .from('.rw-rules__mark', { scale: 0.5, autoAlpha: 0, duration: 0.5, ease: 'back.out(2)' }, 0.12)
+        .from(['.rw-rules__kicker', '.rw-rules__title'], { y: 10, autoAlpha: 0, duration: 0.45, stagger: 0.08 }, 0.18)
+        .from(rows, { x: -14, autoAlpha: 0, duration: 0.42, stagger: 0.07 }, 0.3)
+        .set([root, '.rw-rules__mark', '.rw-rules__kicker', '.rw-rules__title', ...rows], { clearProps: 'all' });
+    }, root);
+
+    return () => ctx.revert();
+  }, [step, wizard]);
+
   const receiptDigits = sanitizeDigits(form.nationalId);
   const receiptVerifyCode = receiptDigits.length === 13 ? receiptDigits.slice(-4) : undefined;
   const stepNo = Math.min(step, LAST_FORM_STEP);
@@ -820,11 +844,84 @@ export function RegisterSection() {
 
   const formIsEmpty = JSON.stringify(form) === JSON.stringify(EMPTY_FORM);
 
+  function toggleDietaryOption(option: string) {
+    const parts = form.allergies
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const idx = parts.indexOf(option);
+    const nextParts = idx >= 0 ? parts.filter((_, i) => i !== idx) : [...parts, option];
+    const next = nextParts.join(', ');
+    if (next.length <= ALLERGIES_MAX) {
+      set('allergies', next);
+    }
+  }
+
   function renderStep(): ReactNode {
     switch (step) {
       case 0:
         return (
           <>
+          <aside ref={rulesRef} className="rw-rules" aria-labelledby="rw-rules-title">
+            <div className="rw-rules__head">
+              <span className="rw-rules__mark" aria-hidden="true">
+                <TriangleAlert size={20} strokeWidth={1.75} />
+              </span>
+              <div>
+                <p className="rw-rules__kicker">อ่านให้ครบทั้ง 4 ข้อก่อนเริ่มกรอก</p>
+                <h3 id="rw-rules-title" className="rw-rules__title">
+                  ข้อกำหนดสำคัญก่อนสมัคร ComCamp #25
+                </h3>
+              </div>
+            </div>
+            <ol className="rw-rules__list">
+              <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">01</span>
+                <div>
+                  <strong className="rw-rules__label">วันจัดค่ายจริง</strong>
+                  <p>
+                    วันที่ <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์{' '}
+                    <span className="font-mono tabular-nums">2570</span> (<span className="font-mono tabular-nums">3</span> วัน{' '}
+                    <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้)
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">02</span>
+                <div>
+                  <strong className="rw-rules__label">เกณฑ์รับสมัคร</strong>
+                  <p>
+                    เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. –{' '}
+                    <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
+                    <span className="font-mono tabular-nums">2569</span> จำกัด{' '}
+                    <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง{' '}
+                    <strong className="rw-rules__flag">· เต็มก่อนปิดก่อนทันที</strong>
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">03</span>
+                <div>
+                  <strong className="rw-rules__label">กำหนดชำระเงิน</strong>
+                  <p>
+                    โอนและแนบสลิปภายใน <strong className="font-mono tabular-nums">3</strong> วัน{' '}
+                    (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร{' '}
+                    <strong className="rw-rules__flag">· เกินกำหนดตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ</strong>
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">04</span>
+                <div>
+                  <strong className="rw-rules__label">เงื่อนไขการสละสิทธิ์</strong>
+                  <p>
+                    ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
+                    <strong className="rw-rules__flag">หากโอนเงินค่าสมัครแล้ว สละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </aside>
           <div className="rw-draft">
             {confirmClear ? (
               <>
@@ -920,7 +1017,7 @@ export function RegisterSection() {
             <TextField
               id="email"
               label="อีเมล"
-              hint="ไม่บังคับ"
+              hint="ใช้รับอีเมลแจ้งรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -930,6 +1027,13 @@ export function RegisterSection() {
               onBlur={() => blur('email')}
               placeholder="name@example.com"
             />
+          </div>
+          <div className="rw-subsection" role="group" aria-labelledby="rw-parent-title">
+            <div className="rw-subsection__head">
+              <h4 id="rw-parent-title" className="rw-subsection__title">ข้อมูลติดต่อผู้ปกครอง</h4>
+              <p className="rw-subsection__note">ผู้ปกครอง <span className="font-mono tabular-nums">1</span> คน · กรอกให้ตรงกับข้อมูลจริง</p>
+            </div>
+            <div className="rw-fields">
             <TextField
               id="parentName"
               label="ชื่อ-นามสกุลผู้ปกครอง"
@@ -967,6 +1071,7 @@ export function RegisterSection() {
               onBlur={() => blur('parentPhone')}
               placeholder="08X-XXX-XXXX"
             />
+            </div>
           </div>
           </>
         );
@@ -1039,7 +1144,7 @@ export function RegisterSection() {
             <div className="rw-field rw-span-6">
               <fieldset className="rw-fieldset">
                 <legend className="rw-label">
-                  <span>ไซส์เสื้อค่าย (เลือกเบื้องต้น · ไซส์จริงรอยืนยัน)</span>
+                  <span>ไซส์เสื้อค่าย</span>
                 </legend>
                 <SizeChips value={form.shirtSize} invalid={Boolean(errors.shirtSize)} onChange={(v) => set('shirtSize', v)} />
                 {errors.shirtSize && (
@@ -1048,23 +1153,16 @@ export function RegisterSection() {
                   </p>
                 )}
               </fieldset>
-              <p className="rw-warn-note" role="note">
-                <span className="rw-warn-note__dot" aria-hidden="true" />
-                <span>
-                  <strong className="rw-warn-note__tag">มีเสื้อค่าย (คอนเฟิร์มแล้ว):</strong> ยังไม่แน่ใจว่าจะมีไซส์ใดบ้างและรอบอกเท่าใด
-                  กรุณาเลือกไซส์เบื้องต้นไว้ก่อน และกลับมาเปลี่ยนภายหลังได้ที่หน้า <span className="font-mono">/status</span>
-                </span>
-              </p>
             </div>
 
             <div className="rw-field rw-span-6">
-              {/* TODO(content): รอประกาศอย่างเป็นทางการ — มีเสื้อค่ายแล้ว รอยืนยันรายการไซส์ที่มีจริงและตารางรอบอก (ดู SIZE_CHEST ใน register/model.ts) */}
               <table className="rw-table">
-                <caption>ตารางขนาดเสื้อโดยประมาณ (รอคอนเฟิร์มไซส์ที่มีจริง)</caption>
+                <caption>ตารางขนาดเสื้อค่าย (หน่วย: นิ้ว)</caption>
                 <thead>
                   <tr>
                     <th scope="col">ไซส์</th>
                     <th scope="col">รอบอก (นิ้ว)</th>
+                    <th scope="col">ความยาว (นิ้ว)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1074,19 +1172,17 @@ export function RegisterSection() {
                         <span className="font-mono">{s}</span>
                       </th>
                       <td>
-                        {SIZE_CHEST[s] !== null ? (
-                          <span className="font-mono">{SIZE_CHEST[s]}</span>
-                        ) : (
-                          <span className="rw-muted">อยู่ระหว่างอัปเดต</span>
-                        )}
+                        <span className="font-mono tabular-nums">{SIZE_CHEST[s]}</span>
+                      </td>
+                      <td>
+                        <span className="font-mono tabular-nums">{SIZE_LENGTH[s]}</span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="rw-slip__note">
-                ตารางรอบอกของ <span className="font-mono">XS / 2XL / 3XL</span> อยู่ระหว่างอัปเดต สามารถเลือกเบื้องต้นแล้วกลับมาเปลี่ยนไซส์ภายหลังได้ที่หน้า{' '}
-                <span className="font-mono">/status</span>
+                สามารถกลับมาแก้ไขไซส์เสื้อภายหลังได้ที่หน้า <span className="font-mono">/status</span> จนกว่าจะปิดแก้ไขข้อมูล
               </p>
             </div>
           </div>
@@ -1123,7 +1219,7 @@ export function RegisterSection() {
 
             <FieldShell
               id="allergies"
-              label="หมายเหตุการแพ้อาหาร"
+              label="ข้อจำกัดด้านอาหาร / การแพ้อาหาร (เช่น ไม่ทานหมู, ฮาลาล, แพ้อาหารทะเล)"
               hint={
                 <>
                   ไม่บังคับ · <span className="font-mono tabular-nums">{form.allergies.trim().length}/{ALLERGIES_MAX}</span>
@@ -1131,9 +1227,29 @@ export function RegisterSection() {
               }
               error={errors.allergies}
             >
-              <p id="allergies-hint" className="rw-withdraw__hint" style={{ marginTop: 0, marginBottom: '6px' }}>
-                ระบุอาหารหรือวัตถุดิบที่แพ้ รวมถึงข้อจำกัดด้านอาหาร (เช่น มังสวิรัติ ฮาลาล) หากไม่มีให้เว้นว่างไว้ (ไม่บันทึกลงเครื่องตาม PDPA)
+              <p id="allergies-hint" className="rw-withdraw__hint" style={{ marginTop: 0, marginBottom: '8px' }}>
+                กดเลือกตัวเลือกด่วนด้านล่างหรือพิมพ์รายละเอียดเพิ่มเติม (เช่น ไม่ทานหมู อิสลาม/ฮาลาล แพ้กุ้ง-ถั่ว) หากไม่มีให้เว้นว่างไว้ (ไม่บันทึกลงเครื่องตาม PDPA)
               </p>
+              <div className="rw-diet-chips" role="group" aria-label="ตัวเลือกด่วนสำหรับข้อจำกัดด้านอาหาร">
+                {DIETARY_QUICK_OPTIONS.map((opt) => {
+                  const selected = form.allergies
+                    .split(',')
+                    .map((s) => s.trim())
+                    .includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      className="rw-diet-chip"
+                      aria-pressed={selected}
+                      onClick={() => toggleDietaryOption(opt)}
+                    >
+                      {selected && <Check size={14} strokeWidth={2} aria-hidden="true" />}
+                      <span>{opt}</span>
+                    </button>
+                  );
+                })}
+              </div>
               <textarea
                 id="allergies"
                 name="allergies"
@@ -1146,7 +1262,7 @@ export function RegisterSection() {
                 onKeyDown={onTextareaKey}
                 aria-invalid={errors.allergies ? true : undefined}
                 aria-describedby={['allergies-hint', errors.allergies ? 'allergies-err' : ''].filter(Boolean).join(' ')}
-                placeholder="เช่น แพ้กุ้งและอาหารทะเล / ทานมังสวิรัติ"
+                placeholder="เช่น ไม่ทานหมู (อิสลาม) / แพ้กุ้งและอาหารทะเล / ทานมังสวิรัติ"
               />
             </FieldShell>
 
@@ -1193,7 +1309,7 @@ export function RegisterSection() {
                   ['ชื่อเล่น', form.nickname.trim()],
                   ['เลขบัตรประชาชน', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
-                  ['อีเมล', form.email.trim() || <Empty key="em" />],
+                  ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],
                   ['ชื่อผู้ปกครอง', `${form.parentName.trim()} (${form.parentRelation.trim()})`],
                   ['เบอร์โทรผู้ปกครอง', <span className="font-mono" key="pph">{formatPhone(form.parentPhone)}</span>],
                 ]}
@@ -1208,9 +1324,22 @@ export function RegisterSection() {
                 ]}
               />
               <ReviewGroup
-                title="เสื้อค่าย (ไซส์เบื้องต้น · รอยืนยันไซส์จริง)"
+                title="เสื้อค่าย"
                 onEdit={() => editFromReview(2)}
-                rows={[['ไซส์', <span className="font-mono" key="sz">{form.shirtSize}</span>]]}
+                rows={[
+                  [
+                    'ไซส์',
+                    form.shirtSize ? (
+                      <span key="sz">
+                        <span className="font-mono">{form.shirtSize}</span> (รอบอก{' '}
+                        <span className="font-mono tabular-nums">{SIZE_CHEST[form.shirtSize]}</span>&quot; · ยาว{' '}
+                        <span className="font-mono tabular-nums">{SIZE_LENGTH[form.shirtSize]}</span>&quot;)
+                      </span>
+                    ) : (
+                      <Empty key="sz" />
+                    ),
+                  ],
+                ]}
               />
               <ReviewGroup
                 title="แรงบันดาลใจและหมายเหตุสุขภาพ"
@@ -1226,34 +1355,34 @@ export function RegisterSection() {
             <section className="rw-fee" aria-labelledby="rw-fee-title">
               <div className="rw-fee__head">
                 <h3 id="rw-fee-title" className="rw-fee__title">
-                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย (เบื้องต้น)
+                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย
                 </h3>
                 <p className="rw-fee__amount">
                   <span className="font-mono tabular-nums">{feeText}</span> บาท
                 </p>
               </div>
-              <p className="rw-warn-note rw-warn-note--tight" role="note">
-                <span className="rw-warn-note__dot" aria-hidden="true" />
-                <span>
-                  <strong className="rw-warn-note__tag">ราคาเบื้องต้น · อาจเปลี่ยนแปลงได้:</strong> ยอดค่าสมัคร{' '}
-                  <span className="font-mono tabular-nums">{feeText}</span> บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ กรุณาตรวจสอบยอดยืนยันล่าสุดก่อนโอนเงิน
-                </span>
+              <p className="rw-slip__lead">
+                <strong>รวม <span className="font-mono tabular-nums">7</span> รายการตลอดค่าย:</strong>{' '}
+                ที่พัก <span className="font-mono tabular-nums">2</span> คืน (เรือนพักสมาคมศิษย์เก่าแม่โจ้) · อาหารหลัก{' '}
+                <span className="font-mono tabular-nums">6</span> มื้อ · อาหารว่าง <span className="font-mono tabular-nums">5</span> มื้อ ·
+                เสื้อค่าย ComCamp #25 · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร (ส่วนชุดบอร์ด Arduino/ESP8266 ใช้ฝึกปฏิบัติในห้องแล็บ)
               </p>
               <ol className="rw-fee__steps">
                 <li>
-                  <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที</strong>
+                  <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที และรับอีเมลแจ้งรหัส</strong>
                   มาก่อนได้ก่อน จำกัด <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง เมื่อส่งสำเร็จจะได้รหัส{' '}
-                  <span className="font-mono">CC25-XXXXXX</span>
+                  <span className="font-mono">CC25-XXXXXX</span> พร้อมอีเมลสรุปขั้นตอนโอนเงิน
                 </li>
                 <li>
                   <strong>
-                    โอนค่าสมัคร (เบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท) หลังส่งใบสมัคร
+                    โอนค่าสมัคร (<span className="font-mono tabular-nums">{feeText}</span> บาท) ภายใน{' '}
+                    <span className="font-mono tabular-nums">3</span> วันหลังสมัคร
                   </strong>
-                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) ยังไม่ต้องโอนก่อนกดส่ง
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี
                 </li>
                 <li>
-                  <strong>แนบสลิปเพื่อยืนยันสิทธิ์สมบูรณ์</strong>
-                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับหลังกดส่ง หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>)
+                  <strong>แนบสลิปเพื่อรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
+                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับ หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>) เมื่อทีมงานอนุมัติสลิป ระบบจะส่งอีเมลยืนยันสิทธิ์พร้อมพิกัดที่พักและลิงก์เข้ากลุ่ม LINE OpenChat ให้ทันที
                 </li>
               </ol>
             </section>
@@ -1273,7 +1402,7 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
-                และรับทราบรายละเอียดค่าสมัครเบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท (อาจเปลี่ยนแปลงได้ · รอยืนยันก่อนชำระหลังส่งใบสมัคร)
+                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ) และเงื่อนไข<strong>โอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
@@ -1416,7 +1545,7 @@ export function RegisterSection() {
           </span>{' '}
           ·{' '}
           <span className="nowrap">
-            ค่าสมัครเบื้องต้น <span className="font-mono">{feeText}</span> บาท
+            ค่าสมัคร <span className="font-mono">{feeText}</span> บาท
           </span>
         </p>
       </aside>

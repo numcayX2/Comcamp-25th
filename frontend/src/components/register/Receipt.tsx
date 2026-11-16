@@ -1,7 +1,7 @@
 /** Step 06 — receipt + payment instructions, shown after a successful submit. */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, Ref } from 'react';
-import { ArrowRight, Check, Copy } from 'lucide-react';
+import { ArrowRight, Check, Copy, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   getApplicationStatus,
@@ -13,7 +13,16 @@ import {
 } from '../../lib/api';
 import { cleanNationalIdInput, describeVerifyLock } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
-import { FB_URL, FEE_TEXT, RECEIPT_META, RECEIPT_STEP, isValidThaiNationalID } from './model';
+import {
+  FB_URL,
+  FEE_TEXT,
+  LINE_OPENCHAT_QR_SRC,
+  LINE_OPENCHAT_URL,
+  RECEIPT_META,
+  RECEIPT_STEP,
+  describePaymentDeadline,
+  isValidThaiNationalID,
+} from './model';
 import { clearReceipt } from './storage';
 import { SlipBlock } from './SlipBlock';
 import { StepHeader } from './parts';
@@ -27,7 +36,7 @@ function describeWithdrawError(err: unknown): string {
   if (err instanceof ApiHttpError) {
     if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
     if (err.code === 'RATE_LIMITED') return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
-    if (err.status === 409) return 'ใบสมัครนี้ยกเลิกเองไม่ได้แล้ว (ยืนยันสิทธิ์ ส่งสลิป หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน';
+    if (err.status === 409) return 'ใบสมัครนี้ยกเลิกเองไม่ได้แล้ว (ยืนยันสิทธิ์ ส่งสลิป หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งสละสิทธิ์ (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)';
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
     if (err.status === 400) return 'กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง';
   }
@@ -206,6 +215,8 @@ export function Receipt({
   // Slip + application status synced from the server, so a receipt restored after a refresh is accurate.
   const [slip, setSlip] = useState<SlipStatus | null>(null);
   const [appStatus, setAppStatus] = useState<ApplicationStatus | null>(null);
+  const [createdAt, setCreatedAt] = useState<string>(() => new Date().toISOString());
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [synced, setSynced] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
@@ -218,6 +229,7 @@ export function Receipt({
         if (!alive) return;
         setAppStatus(res.data.status);
         setSlip(hasSlip(res.data) ? (res.data.slipStatus ?? 'PENDING') : null);
+        if (res.data.createdAt) setCreatedAt(res.data.createdAt);
       })
       .catch((err) => {
         if (!alive) return;
@@ -237,6 +249,13 @@ export function Receipt({
 
   // A slip waiting for review or approved (or a confirmed seat) blocks self-withdrawal: the server answers 409.
   const slipLocksWithdraw = slip === 'PENDING' || slip === 'APPROVED' || appStatus === 'CONFIRMED';
+  const deadline = describePaymentDeadline(createdAt, nowMs);
+
+  useEffect(() => {
+    if (slipLocksWithdraw) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [slipLocksWithdraw]);
 
   useEffect(
     () => () => {
@@ -316,19 +335,36 @@ export function Receipt({
 
       <section className="rw-block" aria-labelledby="rw-pay-title">
         <h3 id="rw-pay-title" className="rw-block__title">
-          ชำระค่าสมัคร (ราคาเบื้องต้น · อาจเปลี่ยนแปลงได้)
+          ชำระค่าสมัคร
         </h3>
+        {!slipLocksWithdraw && (
+          <aside className="rw-rules" role="note" aria-label="แจ้งเตือนกำหนดเวลาชำระเงิน 3 วัน">
+            <p className="rw-rules__title">
+              <TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" />
+              <span>
+                แจ้งเตือน: คุณยังไม่ได้แนบสลิปชำระเงิน — <span className="tabular-nums">{deadline.remainingText}</span>
+              </span>
+            </p>
+            <p className="rw-slip__lead" style={{ marginTop: '6px' }}>
+              ครบกำหนด <strong className="tabular-nums">{deadline.deadlineText}</strong> · หากไม่โอนและแนบสลิปภายใน{' '}
+              <strong className="font-mono tabular-nums">3</strong> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร
+              ระบบจะ<strong>ตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ</strong> (และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
+            </p>
+          </aside>
+        )}
         <p className="rw-warn-note rw-warn-note--tight" role="note">
           <span className="rw-warn-note__dot" aria-hidden="true" />
           <span>
-            <strong className="rw-warn-note__tag">ยังไม่คอนเฟิร์มราคาสุทธิ:</strong> ยอด <span className="font-mono tabular-nums">{feeText}</span> บาท
-            เป็นค่าสมัครเบื้องต้นที่อาจเปลี่ยนแปลงได้ กรุณาตรวจสอบประกาศยืนยันล่าสุดบนหน้าเว็บหรือเพจโครงการก่อนโอนเงิน
+            <strong className="rw-warn-note__tag">ข้อกำหนดการโอนเงิน:</strong> กรุณาโอนเงินค่าสมัคร{' '}
+            <span className="font-mono tabular-nums">{feeText}</span> บาท และแนบสลิปภายใน{' '}
+            <strong className="font-mono tabular-nums">3</strong> <strong>วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)</strong> หลังสมัคร
+            เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ · <strong>หากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
           </span>
         </p>
 
         <article className="rw-ticket" aria-label="รายละเอียดการโอนเงิน">
           <header className="rw-ticket__head">
-            <p className="rw-ticket__label">ยอดเบื้องต้น (รอประกาศยืนยัน)</p>
+            <p className="rw-ticket__label">ยอดโอนชำระค่าสมัคร</p>
             <p className="rw-ticket__amount">
               <span className="font-mono tabular-nums">{feeText}</span>
               <span className="rw-ticket__unit">บาท</span>
@@ -383,23 +419,58 @@ export function Receipt({
 
       <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} defaultVerifyCode={defaultVerifyCode} onUploaded={setSlip} />
 
+      {slipLocksWithdraw && (
+        <section className="rw-block" aria-labelledby="rw-line-title">
+          <h3 id="rw-line-title" className="rw-block__title">เข้ากลุ่ม LINE OpenChat</h3>
+          <p className="rw-block__label">สำหรับผู้ที่ส่งสลิปแล้ว</p>
+          <div className="rw-line-card">
+            <img
+              className="rw-line-card__qr"
+              src={LINE_OPENCHAT_QR_SRC}
+              alt="QR Code สำหรับเข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25"
+              width="176"
+              height="176"
+              loading="lazy"
+              decoding="async"
+            />
+            <div className="rw-line-card__body">
+              <p>สแกน QR หรือกดปุ่มด้านล่างเพื่อเข้ากลุ่ม รับข่าวสารและติดต่อสื่อสารกับพี่ค่ายก่อนวันจัดค่าย</p>
+              <a href={LINE_OPENCHAT_URL} target="_blank" rel="noopener noreferrer" className="rw-btn rw-btn--primary">
+                เข้ากลุ่ม LINE OpenChat ทันที
+                <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="rw-block" aria-labelledby="rw-next-title">
         <h3 id="rw-next-title" className="rw-block__title">ขั้นตอนถัดไป</h3>
         <ol className="rw-steps">
-          <li>โอนเงินตามรายละเอียดด้านบน แล้วบันทึกหรือแคปหน้าจอสลิป</li>
+          <li>
+            โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)
+            หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ (<strong>โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>)
+          </li>
           <li>
             แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประชาชน หรือเบอร์โทรศัพท์
             (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป แต่สามารถใช้เบอร์โทรหรือเลขบัตรประชาชนค้นหาใบสมัครที่ส่งแล้วได้ที่หน้า{' '}
             <span className="font-mono">/status</span>)
           </li>
-          <li>รอทีมงานตรวจสอบสลิปและยืนยันสิทธิ์ ติดตามประกาศได้ที่หน้าตรวจสอบสถานะและเพจ Facebook ของโครงการ</li>
+          <li>
+            <strong>ระบบส่งอีเมลแจ้งยืนยันให้อัตโนมัติ <span className="font-mono tabular-nums">2</span> ช่วง</strong>{' '}
+            (1. อีเมลแจ้งรับใบสมัครและรายละเอียดโอนเงิน และ 2. อีเมลยืนยันสิทธิ์สมบูรณ์พร้อมพิกัดเรือนพักและลิงก์เข้ากลุ่มหลังทีมงานอนุมัติสลิป)
+            — ทั้งนี้น้องสามารถอัปโหลดสลิปและเช็กสถานะบนหน้าเว็บได้ทันทีโดยไม่ต้องรออีเมล
+          </li>
+          <li>
+            หลังส่งสลิปแล้ว <strong>สามารถเข้ากลุ่ม LINE OpenChat ของค่ายได้ทันที</strong> (แสดงขึ้นเหนือส่วนนี้หลังอัปโหลดสลิป และเปิดดูซ้ำได้ที่หน้า{' '}
+            <span className="font-mono">/status</span>) จากนั้นรอทีมงานตรวจสลิปและยืนยันสิทธิ์
+          </li>
         </ol>
         <div className="rw-actions">
           <a href={`/status?id=${encodeURIComponent(appId)}`} className="rw-btn rw-btn--ghost">
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
-          {/* TODO(content): เพิ่มลิงก์ LINE OpenChat โครงการคู่กับ Facebook เมื่อสร้างกลุ่มแล้ว */}
           <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
             เพจ Facebook โครงการ
           </a>
@@ -409,10 +480,11 @@ export function Receipt({
       <section className="rw-block" aria-label="ยกเลิกใบสมัคร">
         {slipLocksWithdraw ? (
           <p className="rw-slip__note">
-            ส่งสลิปหรือยืนยันสิทธิ์แล้ว จึงยกเลิกใบสมัครเองไม่ได้ หากต้องการยกเลิกหรือขอคืนเงิน กรุณาติดต่อทีมงานผ่าน{' '}
+            ส่งสลิปหรือยืนยันสิทธิ์แล้ว จึงยกเลิกใบสมัครเองไม่ได้ หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่าน{' '}
             <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
               เพจ Facebook ของโครงการ
-            </a>
+            </a>{' '}
+            (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
           </p>
         ) : (
           <WithdrawBlock appId={appId} onWithdrawn={onWithdrawn} />

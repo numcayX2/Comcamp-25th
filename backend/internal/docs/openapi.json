@@ -76,7 +76,7 @@
                   "isOpen": false,
                   "currentCount": 0,
                   "maxCapacity": 30,
-                  "campFee": 1000.00,
+                  "campFee": 1200.00,
                   "isCertificateReleased": false
                 }
               }
@@ -560,7 +560,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Edit Application Profile",
-        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ XS–3XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: admin",
+        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ SSS–4XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -649,7 +649,7 @@
               "schema": { "$ref": "#/components/schemas/VerifySlipRequest" },
               "example": {
                 "approved": true,
-                "note": "ยอดเงินเข้าบัญชี 1,000 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน",
+                "note": "ยอดเงินเข้าบัญชี 1,200 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน",
                 "paymentId": "0b6c8a52-3f0e-4d8e-9a51-7c1d2e3f4a50"
               }
             }
@@ -753,7 +753,7 @@
           "isOpen": { "type": "boolean" },
           "currentCount": { "type": "integer", "example": 15 },
           "maxCapacity": { "type": "integer", "example": 30 },
-          "campFee": { "type": "number", "example": 1000.00 },
+          "campFee": { "type": "number", "example": 1200.00 },
           "isCertificateReleased": { "type": "boolean", "example": false }
         }
       },
@@ -771,7 +771,7 @@
           "parentPhone": { "type": "string", "example": "0898765432", "description": "เบอร์โทรศัพท์ผู้ปกครอง 10 หลักขึ้นต้นด้วย 0" },
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "grade": { "type": "string", "enum": ["ม.4", "ม.5", "ม.6", "ปวช.1", "ปวช.2", "ปวช.3"], "example": "ม.5" },
-          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "L" },
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "L" },
           "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
           "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
           "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
@@ -839,7 +839,7 @@
           "school": { "type": "string", "maxLength": 150, "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "province": { "type": "string", "maxLength": 100, "example": "เชียงใหม่" },
           "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.6" },
-          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "XL" }
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "XL" }
         }
       },
       "AdminProfileRequest": {
@@ -850,14 +850,14 @@
           "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
           "nationalId": { "type": "string", "example": "1509900000000", "description": "13 หลัก ผ่าน Mod-11" },
           "phone": { "type": "string", "example": "0812345678" },
-          "email": { "type": "string", "format": "email", "description": "ส่งสตริงว่างเพื่อลบอีเมล" },
+          "email": { "type": "string", "format": "email", "description": "อีเมลผู้สมัคร (ห้ามเว้นว่างและห้ามซ้ำกับผู้สมัครอื่นที่ยังอยู่ในระบบ)" },
           "parentName": { "type": "string", "maxLength": 150, "example": "สมศรี ใจดี" },
           "parentRelation": { "type": "string", "maxLength": 50, "example": "มารดา" },
           "parentPhone": { "type": "string", "example": "0898765432" },
           "school": { "type": "string", "maxLength": 150 },
           "province": { "type": "string", "maxLength": 100 },
           "grade": { "type": "string", "example": "ม.6" },
-          "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"] },
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"] },
           "motivation": { "type": "string", "maxLength": 2000 },
           "allergies": { "type": "string", "maxLength": 500 },
           "medicalConditions": { "type": "string", "maxLength": 500 },
@@ -906,7 +906,7 @@
         "required": ["approved", "paymentId"],
         "properties": {
           "approved": { "type": "boolean", "example": true },
-          "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 1,000 บาท เรียบร้อยแล้ว" },
+          "note": { "type": "string", "example": "ตรวจสอบยอดเงิน 1,200 บาท เรียบร้อยแล้ว" },
           "paymentId": { "type": "string", "format": "uuid", "description": "รหัสสลิป (UUID) ที่พี่ค่ายเปิดดู (บังคับส่งจาก slipPaymentId หรือ header X-Slip-Payment-Id) ถ้าไม่ตรงกับสลิปล่าสุดตอบ 409 SLIP_CHANGED" }
         }
       },

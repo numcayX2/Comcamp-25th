@@ -436,6 +436,133 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 	return tx.Commit(ctx)
 }
 
+// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
+// at or before cutoff without a PENDING or APPROVED slip to REJECTED, returning their
+// application numbers. Each candidate runs in its own transaction acquiring lockApplicantSlips
+// before the applicant row lock (matching SoftDelete / CreateReplacingPending lock order) and
+// re-checks both deadline and payment presence so concurrent slip uploads or parallel sweeps
+// never clash or double-expire.
+func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id
+		FROM applicants
+		WHERE deleted_at IS NULL
+		  AND status IN ('PENDING', 'PASSED', 'RESERVE')
+		  AND created_at <= $1
+		  AND NOT EXISTS (
+			  SELECT 1 FROM payments p
+			  WHERE p.applicant_id = applicants.id
+			    AND NOT p.applicant_deleted
+			    AND p.status IN ('PENDING', 'APPROVED')
+		  )
+		ORDER BY created_at ASC
+	`, cutoff.UTC())
+	if err != nil {
+		return nil, fmt.Errorf("list overdue unpaid applicants: %w", err)
+	}
+	var candidateIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan overdue candidate: %w", err)
+		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var expired []string
+	for _, id := range candidateIDs {
+		appNo, ok, err := r.expireSingleUnpaid(ctx, id, cutoff.UTC(), reason)
+		if err != nil {
+			return expired, err
+		}
+		if ok {
+			expired = append(expired, appNo)
+		}
+	}
+	return expired, nil
+}
+
+func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.UUID, cutoff time.Time, reason string) (string, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := lockApplicantSlips(ctx, tx, id); err != nil {
+		return "", false, err
+	}
+
+	var (
+		appNo     string
+		oldStatus domain.ApplicationStatus
+		createdAt time.Time
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT application_no, status, created_at
+		FROM applicants
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR UPDATE
+	`, id).Scan(&appNo, &oldStatus, &createdAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("lock overdue applicant: %w", err)
+	}
+	if oldStatus != domain.StatusPending && oldStatus != domain.StatusPassed && oldStatus != domain.StatusReserve {
+		return "", false, nil
+	}
+	if createdAt.UTC().After(cutoff) {
+		return "", false, nil
+	}
+
+	var hasProtectedSlip bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM payments
+			WHERE applicant_id = $1
+			  AND NOT applicant_deleted
+			  AND status IN ('PENDING', 'APPROVED')
+		)
+	`, id).Scan(&hasProtectedSlip)
+	if err != nil {
+		return "", false, fmt.Errorf("check overdue applicant slips: %w", err)
+	}
+	if hasProtectedSlip {
+		return "", false, nil
+	}
+
+	if err := setStatusTx(ctx, tx, id, oldStatus, domain.StatusRejected, nil, reason); err != nil {
+		return "", false, err
+	}
+
+	audit := &domain.AuditEntry{
+		Action:     domain.AuditPaymentExpired,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   appNo,
+		Details: map[string]any{
+			"oldStatus": oldStatus,
+			"newStatus": domain.StatusRejected,
+			"reason":    reason,
+			"cutoff":    cutoff.Format(time.RFC3339),
+		},
+	}
+	if err := insertAudit(ctx, tx, audit); err != nil {
+		return "", false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", false, err
+	}
+	return appNo, true, nil
+}
+
 // countActiveSQL is the quota count: every live row that holds a seat. REJECTED, REFUND_PENDING
 // and REFUNDED release theirs immediately but stay in the table for the ledger. Keep in step
 // with domain.ApplicationStatus.IsActive.

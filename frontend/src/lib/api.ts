@@ -25,8 +25,7 @@ export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   isOpen: false,
   currentCount: 0,
   maxCapacity: 30,
-  // TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ (อาจเปลี่ยนแปลงได้)
-  campFee: 1000,
+  campFee: 1200,
   isCertificateReleased: false,
 };
 
@@ -111,7 +110,7 @@ export function holdsSeat(status: ApplicationStatus): boolean {
   return status === 'PENDING' || status === 'PASSED' || status === 'RESERVE' || status === 'CONFIRMED';
 }
 
-export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL';
+export type ShirtSize = 'SSS' | 'SS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL' | '4XL';
 
 export interface ApplicationPayload {
   fullName: string;
@@ -714,8 +713,7 @@ const MOCK_ADMIN_SETTINGS: AdminSettings = {
   registrationOpenAt: DEFAULT_TARGET_DATE,
   registrationCloseAt: DEFAULT_CLOSE_DATE,
   maxCapacity: 30,
-  // TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ (อาจเปลี่ยนแปลงได้)
-  campFee: 1000,
+  campFee: 1200,
   isManualClosed: false,
   updatedAt: new Date().toISOString(),
 };

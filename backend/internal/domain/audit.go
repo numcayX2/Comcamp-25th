@@ -12,7 +12,13 @@ const (
 	AuditLoginSuccess    AuditAction = "admin.login.success"
 	AuditLoginFailure    AuditAction = "admin.login.failure"
 	AuditStatusUpdate    AuditAction = "application.status.update"
+	AuditPaymentExpired  AuditAction = "application.expire.unpaid"
 	AuditApplicantDelete AuditAction = "application.delete"
+	// Confirmation email lifecycle events (no admin; Details use maskedEmail only).
+	AuditEmailRegistrationSent   AuditAction = "application.email.registration.sent"
+	AuditEmailRegistrationFailed AuditAction = "application.email.registration.failed"
+	AuditEmailConfirmedSent      AuditAction = "application.email.confirmed.sent"
+	AuditEmailConfirmedFailed    AuditAction = "application.email.confirmed.failed"
 	// AuditApplicantWithdrawSelf is the applicant withdrawing their own application (no admin).
 	AuditApplicantWithdrawSelf AuditAction = "application.withdraw.self"
 	// AuditProfileUpdate is a staff edit of an application; AuditProfileUpdateSelf is the

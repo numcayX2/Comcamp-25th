@@ -1,0 +1,85 @@
+/* ==========================================================================
+   /status — mobile is flat: hairlines and whitespace instead of card shells.
+   At >=640px the editorial card treatment is restored.
+   ========================================================================== */
+
+.st-card {
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+  background: transparent;
+}
+@media (min-width: 640px) {
+  .st-card {
+    border: 1px solid var(--color-ink);
+    padding: 32px;
+    background: var(--bg-card);
+  }
+}
+
+.st-highlight {
+  border-top: 3px solid var(--st-tone);
+  padding: 16px 0 0;
+  background: transparent;
+}
+@media (min-width: 640px) {
+  .st-highlight {
+    border: 1px solid color-mix(in srgb, var(--st-tone) 45%, var(--color-border));
+    border-top: 4px solid var(--st-tone);
+    padding: 24px;
+    background: color-mix(in srgb, var(--st-tone) 14%, var(--bg-card));
+  }
+}
+
+.st-notice {
+  border-left: 3px solid var(--color-border);
+  padding: 4px 0 4px 14px;
+  background: transparent;
+}
+@media (min-width: 640px) {
+  .st-notice {
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+  }
+}
+
+.st-alert {
+  --st-alert-ink: var(--color-ink);
+  border-left: 3px solid var(--st-tone);
+  padding: 4px 0 4px 14px;
+  background: transparent;
+  color: var(--st-alert-ink);
+}
+.st-alert svg { color: var(--st-tone); }
+.st-alert--error { --st-tone: var(--color-danger); }
+.st-alert--success { --st-tone: var(--color-success); }
+@media (min-width: 640px) {
+  .st-alert {
+    border: 1px solid var(--st-tone);
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: var(--st-tone);
+    color: var(--bg-canvas);
+  }
+  .st-alert--success { color: #121316; }
+}
+
+.st-warning {
+  border-left: 3px solid var(--color-warning);
+  padding: 4px 0 4px 14px;
+  background: transparent;
+}
+@media (min-width: 640px) {
+  .st-warning {
+    border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+    border-top: 4px solid var(--color-warning);
+    border-radius: 0;
+    padding: 16px;
+    background: color-mix(in srgb, var(--color-warning) 14%, var(--bg-card));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-card, .st-highlight, .st-notice, .st-alert, .st-warning { transition: none !important; }
+}

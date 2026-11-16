@@ -568,3 +568,194 @@ func TestApplicantService_ParentContactFields(t *testing.T) {
 		t.Fatalf("expected emergency fallback after clear, got %q / %q", afterClear.EmergencyContact, afterClear.EmergencyPhone)
 	}
 }
+
+func TestApplicantService_OfficialShirtSizes(t *testing.T) {
+	svc, _, _ := setupTestServices()
+	sizes := []string{"SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"}
+	for i, sz := range sizes {
+		res, err := svc.Submit(context.Background(), service.ApplicationCreateRequest{
+			FullName:   "สมชาย ทดสอบ",
+			Nickname:   "ชาย",
+			NationalID: validTestNationalID(50 + i),
+			Phone:      "08200000" + string(rune('1'+i)) + "0",
+			Email:      "size" + sz + "@test.com",
+			School:     "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:      "ม.5",
+			ShirtSize:  sz,
+		})
+		if err != nil {
+			t.Fatalf("expected shirt size %q to succeed, got %v", sz, err)
+		}
+		if res.ShirtSize != sz {
+			t.Fatalf("expected shirt size %q, got %q", sz, res.ShirtSize)
+		}
+	}
+}
+
+func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
+	ctx := context.Background()
+	appRepo := memory.NewMemoryApplicantRepo()
+	setRepo := memory.NewMemorySettingRepo()
+	payRepo := memory.NewMemoryPaymentRepo(appRepo)
+
+	var seatChanges atomic.Int64
+	now := time.Now().UTC()
+	svc := service.NewApplicantService(appRepo, setRepo, payRepo).
+		WithAudit(appRepo.Audit()).
+		WithOnSeatChange(func() { seatChanges.Add(1) }).
+		WithNow(func() time.Time { return now })
+
+	submitSample := func(idx int, phone, email string) *service.ApplicationResponse {
+		res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+			FullName:   "สมชาย ทดสอบ",
+			Nickname:   "ชาย",
+			NationalID: validTestNationalID(70 + idx),
+			Phone:      phone,
+			Email:      email,
+			School:     "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:      "ม.5",
+			ShirtSize:  "L",
+		})
+		if err != nil {
+			t.Fatalf("submit %d failed: %v", idx, err)
+		}
+		return res
+	}
+
+	// 1. Create 3 applicants: unpaid, pending-slip, approved-slip.
+	unpaid := submitSample(1, "0830000001", "u1@test.com")
+	pendingRes := submitSample(2, "0830000002", "u2@test.com")
+	approvedRes := submitSample(3, "0830000003", "u3@test.com")
+
+	pendingApp, _ := appRepo.GetByApplicationNo(ctx, pendingRes.ID)
+	approvedApp, _ := appRepo.GetByApplicationNo(ctx, approvedRes.ID)
+
+	if err := payRepo.Create(ctx, &domain.Payment{
+		ApplicantID: pendingApp.ID,
+		SlipURL:     "slips/pending.jpg",
+		Amount:      decimal.NewFromInt(1000),
+		Status:      domain.PaymentPending,
+	}); err != nil {
+		t.Fatalf("create pending payment: %v", err)
+	}
+	if err := payRepo.Create(ctx, &domain.Payment{
+		ApplicantID: approvedApp.ID,
+		SlipURL:     "slips/approved.jpg",
+		Amount:      decimal.NewFromInt(1000),
+		Status:      domain.PaymentApproved,
+	}); err != nil {
+		t.Fatalf("create approved payment: %v", err)
+	}
+
+	// 2. At +48h (< 72h), nobody expires.
+	expired48, err := svc.ExpireOverdueUnpaid(ctx, now.Add(48*time.Hour))
+	if err != nil {
+		t.Fatalf("ExpireOverdueUnpaid at +48h failed: %v", err)
+	}
+	if len(expired48) != 0 {
+		t.Fatalf("expected 0 expired at +48h, got %v", expired48)
+	}
+
+	// 3. At +73h (> 72h), only the unpaid applicant expires to REJECTED; slip holders stay active.
+	seatChanges.Store(0)
+	expired73, err := svc.ExpireOverdueUnpaid(ctx, now.Add(73*time.Hour))
+	if err != nil {
+		t.Fatalf("ExpireOverdueUnpaid at +73h failed: %v", err)
+	}
+	if len(expired73) != 1 || expired73[0] != unpaid.ID {
+		t.Fatalf("expected only %s to expire at +73h, got %v", unpaid.ID, expired73)
+	}
+	if seatChanges.Load() != 1 {
+		t.Fatalf("expected seat change callback once, got %d", seatChanges.Load())
+	}
+
+	gotUnpaid, _ := appRepo.GetByApplicationNo(ctx, unpaid.ID)
+	if gotUnpaid.Status != domain.StatusRejected {
+		t.Fatalf("expected expired unpaid status REJECTED, got %s", gotUnpaid.Status)
+	}
+	gotPending, _ := appRepo.GetByApplicationNo(ctx, pendingRes.ID)
+	if gotPending.Status != domain.StatusPassed {
+		t.Fatalf("expected pending-slip applicant to remain PASSED, got %s", gotPending.Status)
+	}
+	gotApproved, _ := appRepo.GetByApplicationNo(ctx, approvedRes.ID)
+	if gotApproved.Status != domain.StatusPassed {
+		t.Fatalf("expected approved-slip applicant to stay protected, got %s", gotApproved.Status)
+	}
+	if active, _ := appRepo.CountActive(ctx); active != 2 {
+		t.Fatalf("expected 2 active seats remaining, got %d", active)
+	}
+
+	var foundLog bool
+	for _, sl := range appRepo.StatusLogs() {
+		if sl.ApplicantID != gotUnpaid.ID {
+			continue
+		}
+		if sl.OldStatus == domain.StatusPassed && sl.NewStatus == domain.StatusRejected &&
+			sl.Reason != nil && *sl.Reason == service.UnpaidExpiryReason {
+			foundLog = true
+		}
+	}
+	if !foundLog {
+		t.Fatalf("expected applicant_status_logs row for unpaid auto-expiry")
+	}
+
+	var foundAudit bool
+	for _, ae := range appRepo.Audit().Entries() {
+		if ae.Action == domain.AuditPaymentExpired && ae.TargetID == unpaid.ID {
+			foundAudit = true
+		}
+	}
+	if !foundAudit {
+		t.Fatalf("expected audit log %s for %s", domain.AuditPaymentExpired, unpaid.ID)
+	}
+
+	// 4. Full camp (maxCapacity = 1) with an unpaid 73h-old applicant automatically frees their
+	// seat on the next Submit so the newcomer succeeds.
+	capAppRepo := memory.NewMemoryApplicantRepo()
+	capSetRepo := memory.NewMemorySettingRepo()
+	capPayRepo := memory.NewMemoryPaymentRepo(capAppRepo)
+	st, _ := capSetRepo.Get(ctx)
+	st.MaxCapacity = 1
+	_ = capSetRepo.Update(ctx, st)
+
+	curNow := time.Now().UTC()
+	capSvc := service.NewApplicantService(capAppRepo, capSetRepo, capPayRepo).
+		WithAudit(capAppRepo.Audit()).
+		WithNow(func() time.Time { return curNow })
+
+	first, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName: "คนที่ หนึ่ง", Nickname: "หนึ่ง", NationalID: validTestNationalID(81),
+		Phone: "0840000001", Email: "c1@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
+	})
+	if err != nil {
+		t.Fatalf("first submit failed: %v", err)
+	}
+
+	// Same time -> quota full.
+	if _, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
+		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
+	}); !errors.Is(err, service.ErrQuotaExceeded) {
+		t.Fatalf("expected ErrQuotaExceeded before 72h, got %v", err)
+	}
+
+	// Advance clock by 73h -> Submit auto-expires the first unpaid applicant and takes the seat.
+	curNow = curNow.Add(73 * time.Hour)
+	second, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
+		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
+	})
+	if err != nil {
+		t.Fatalf("expected second submit after 73h expiry to succeed, got %v", err)
+	}
+	if second.Status != domain.StatusPassed {
+		t.Fatalf("expected second applicant PASSED, got %s", second.Status)
+	}
+	firstAfter, _ := capAppRepo.GetByApplicationNo(ctx, first.ID)
+	if firstAfter.Status != domain.StatusRejected {
+		t.Fatalf("expected first applicant auto-rejected after 73h, got %s", firstAfter.Status)
+	}
+	if n, _ := capAppRepo.CountActive(ctx); n != 1 {
+		t.Fatalf("expected 1 active seat after swap, got %d", n)
+	}
+}

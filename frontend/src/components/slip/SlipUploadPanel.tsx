@@ -20,7 +20,6 @@ import {
   describeApiError,
   firstImageFile,
   formatBytes,
-  middleTruncate,
   prepareSlipFile,
 } from '../../lib/slip-upload';
 import { SlipLightbox } from './SlipLightbox';
@@ -318,7 +317,7 @@ export function SlipUploadPanel({
             <p className="su-strip__title">ส่งสลิปแล้ว</p>
             {sent && (
               <p className="su-strip__size">
-                {middleTruncate(sent.name)} · {formatBytes(sent.size)}
+                {formatBytes(sent.size)}
               </p>
             )}
             <p className="su-note">
@@ -373,7 +372,7 @@ export function SlipUploadPanel({
                   {preparing ? 'กำลังย่อขนาดรูปสลิป…' : 'เลือกรูปสลิป'}
                 </span>
                 <span className="su-zone__hint">
-                  แตะเพื่อเลือกภาพแคปหน้าจอสลิปจากอัลบั้มหรือแกลเลอรี (JPG, PNG หรือ WebP)
+                  แตะเพื่อเลือกภาพแคปหน้าจอสลิปจากอัลบั้มหรือแกลเลอรี · JPG, PNG หรือ WebP · รูปใหญ่เกินย่อให้อัตโนมัติ
                 </span>
                 <span className="su-zone__hint su-zone__hint--desk">หรือลากรูปมาวาง / กด Ctrl+V เพื่อวางรูปที่คัดลอกไว้</span>
               </label>
@@ -384,7 +383,7 @@ export function SlipUploadPanel({
                   <span className="su-strip__zoom">แตะดูรูปเต็ม</span>
                 </button>
                 <div className="su-strip__meta">
-                  <p className="su-strip__title">{middleTruncate(file.name)}</p>
+                  <p className="su-strip__title">สลิปที่เลือก</p>
                   <p className="su-strip__size">
                     {formatBytes(file.size)}
                     {resized && ' · ย่อรูปให้พอดีอัตโนมัติแล้ว'}
@@ -394,21 +393,26 @@ export function SlipUploadPanel({
                       กำลังย่อขนาดรูปสลิป…
                     </p>
                   )}
-                  <div className="su-strip__actions">
-                    <button type="button" className="su-btn su-btn--ghost" onClick={() => inputRef.current?.click()} disabled={busy || preparing}>
-                      เปลี่ยนรูป
-                    </button>
-                    <button type="button" className="su-btn su-btn--ghost" onClick={clearPicked} disabled={busy || preparing}>
-                      ลบ
-                    </button>
-                  </div>
                 </div>
               </div>
             )}
 
-            <p id={ids.hint} className="su-hint">
-              รองรับ JPG, PNG หรือ WebP ถ้ารูปใหญ่เกินไประบบจะย่อให้อัตโนมัติ
-            </p>
+            <p id={ids.hint} className="su-sr">รองรับ JPG, PNG หรือ WebP ถ้ารูปใหญ่เกินไประบบจะย่อให้อัตโนมัติ</p>
+            {file && (
+              <>
+                <p className="su-hint su-hint--check">
+                  แตะดูรูปเต็ม แล้วเช็กยอดเงิน วันที่ และชื่อบัญชีให้ชัดก่อนส่ง
+                </p>
+                <div className="su-strip__actions">
+                  <button type="button" className="su-btn su-btn--ghost" onClick={() => inputRef.current?.click()} disabled={busy || preparing}>
+                    เปลี่ยนรูป
+                  </button>
+                  <button type="button" className="su-btn su-btn--ghost" onClick={clearPicked} disabled={busy || preparing}>
+                    ลบ
+                  </button>
+                </div>
+              </>
+            )}
             {fileError && (
               <p id={ids.fileErr} className="su-msg su-msg--err" role="alert">
                 {fileError}
@@ -419,7 +423,7 @@ export function SlipUploadPanel({
           {!external &&
             (validDefaultCode && !editingCode ? (
               <div className="su-code-prompt">
-                <p className="su-note">ใช้รหัสยืนยันจากบัตรประชาชนที่คุณกรอกสมัครอัตโนมัติ</p>
+                <p className="su-note">เลข <span className="su-num">4</span> ตัวท้ายบัตรประชาชนที่น้องกรอกตอนสมัคร ใส่ให้แล้ว</p>
                 <button
                   type="button"
                   className="su-link-btn"
@@ -475,10 +479,17 @@ export function SlipUploadPanel({
                 </button>
               )}
             </div>
-            {!ready && !busy && !preparing && (!external || (codeReady && !file)) && (
-              <p className="su-hint" aria-live="polite">
-                {external || codeReady ? 'เลือกรูปสลิปก่อนจึงจะส่งได้' : 'เลือกรูปสลิปและกรอกเลข 4 ตัวท้ายให้ครบก่อนจึงจะส่งได้'}
-              </p>
+            {!ready && !busy && !preparing && (
+              <ul className="su-checklist" aria-live="polite">
+                <li data-done={Boolean(file)}>
+                  <span aria-hidden="true">{file ? '✓' : '○'}</span>
+                  {external && file ? 'แนบสลิปแล้ว' : 'เลือกภาพสลิป'}
+                </li>
+                <li data-done={codeReady}>
+                  <span aria-hidden="true">{codeReady ? '✓' : '○'}</span>
+                  {external ? 'กรอกเลข 4 ตัวด้านบน' : 'กรอกเลข 4 ตัวท้ายบัตร'}
+                </li>
+              </ul>
             )}
             {submitError && (
               <p id={ids.subErr} className="su-msg su-msg--err" role="alert">

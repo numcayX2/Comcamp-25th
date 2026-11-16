@@ -143,8 +143,16 @@ function validate(f: Form): Errors {
 
   if (!/^0\d{9}$/.test(sanitizeDigits(f.phone))) e.phone = 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
   const email = stripZeroWidth(f.email).replace(/\s+/g, '');
-  if (email && (email.length > 150 || !/^\S+@\S+\.\S+$/.test(email))) {
-    e.email = email.length > 150 ? 'อีเมลยาวได้ไม่เกิน 150 ตัวอักษร' : 'รูปแบบอีเมลไม่ถูกต้อง (เว้นว่างได้)';
+  if (!email) {
+    e.email = 'กรุณากรอกอีเมล (ห้ามเว้นว่าง)';
+  } else if (email.length > 150) {
+    e.email = 'อีเมลยาวได้ไม่เกิน 150 ตัวอักษร';
+  } else {
+    const atIdx = email.indexOf('@');
+    const domain = atIdx >= 0 ? email.slice(atIdx + 1) : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || domain.startsWith('.') || domain.endsWith('.')) {
+      e.email = 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
+    }
   }
 
   const parentName = cleanSingleLine(f.parentName);
@@ -434,7 +442,7 @@ export function AdminProfileEditor({
           />
         </Field>
         <div className="md:col-span-2">
-          <Field id={`${pid}-email`} label="อีเมล" hint="เว้นว่างเพื่อลบ" error={errors.email}>
+          <Field id={`${pid}-email`} label="อีเมล" hint="ห้ามเว้นว่าง" error={errors.email}>
             <input {...input('email', { type: 'email', inputMode: 'email', autoComplete: 'off' })} />
           </Field>
         </div>

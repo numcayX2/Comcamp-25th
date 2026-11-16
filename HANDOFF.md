@@ -3,12 +3,14 @@
 
 > **Repository:** [https://github.com/numcayX2/Comcamp-25th.git](https://github.com/numcayX2/Comcamp-25th.git)  
 > **Host Organization:** สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (Computer Science Department, Faculty of Science, Maejo University)  
-> **Last Updated (อัปเดตล่าสุด):** 16 พฤศจิกายน 2569 (2026-11-16 · หลังจบประชุมทีมงานและอัปเดตสถานะโค้ดถึง commit `f0f25d5`)  
+> **Last Updated (อัปเดตล่าสุด):** 17 พฤศจิกายน 2569 (2026-11-17 · แก้ไขสถานะให้ตรงโค้ดจริง commit `5eb8b14` — เดิมระบุ `f0f25d5`)  
 > **Target Audience:** Frontend Engineers, Go Backend Engineers, Design/Marketing Teams, Camp Organizers (พี่ค่าย)
 
 ---
 
 ## 0. Executive Summary: What We Have Done & What Is Left (สรุปความคืบหน้าและงานที่เหลือ)
+
+> **อัปเดตสถานะ 2026-11-17 (commit `5eb8b14`):** รายการ PENDING ด้านล่างยังสะท้อนโค้ด ณ `f0f25d5` อยู่ — ข้อ **1** (กำหนดการ `18 พ.ย.–18 ธ.ค. 2569` + `registrationCloseAt` + migration `000008`) และข้อ **6** (ฟิลด์ผู้ปกครอง `parentName`/`parentRelation`/`parentPhone` ครบ `/register` → Go/PostgreSQL → `/admin` → CSV) **เสร็จแล้ว** พร้อมระบบ reverify สลิปและตาราง Admin 6 คอลัมน์ ข้อที่เหลือยังค้างตามเดิม (รายการด้านล่างยังไม่ได้กรีดกลับเพื่อรักษาบริบทการประชุม — ให้ใช้บล็อกนี้เป็นแหล่งความจริงล่าสุด) เป้าหมาย deploy จริงคือ **rootless Docker ที่พอร์ต 6000** บน `202.28.37.1` โดเมนทดสอบ `https://comcampdev.csmju.com` — รายละเอียดอยู่ใน [`deploy/FACULTY-ROOTLESS.md`](deploy/FACULTY-ROOTLESS.md)
 
 ### ✅ สิ่งที่ดำเนินการเสร็จสิ้นแล้ว (COMPLETED — ตรงตามโค้ดจริงถึง `f0f25d5`)
 

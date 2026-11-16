@@ -52,6 +52,14 @@ type Config struct {
 	// DevAdminUsername / DevAdminPassword seed an admin for the in-memory development store only.
 	DevAdminUsername string
 	DevAdminPassword string
+
+	// Optional SMTP relay settings (Gmail App Password or campus SMTP). Leaving SMTPHost empty
+	// disables outbound confirmation email sending cleanly without failing startup.
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
 }
 
 func (c *Config) IsProduction() bool { return c.Env == EnvProduction }
@@ -101,6 +109,11 @@ func Load() (*Config, error) {
 		TurnstileSecretKey: strings.TrimSpace(os.Getenv("TURNSTILE_SECRET_KEY")),
 		DevAdminUsername:   getEnv("DEV_ADMIN_USERNAME", "admin"),
 		DevAdminPassword:   os.Getenv("DEV_ADMIN_PASSWORD"),
+		SMTPHost:           strings.TrimSpace(os.Getenv("SMTP_HOST")),
+		SMTPPort:           getEnv("SMTP_PORT", "587"),
+		SMTPUsername:       strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+		SMTPPassword:       os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:           strings.TrimSpace(os.Getenv("SMTP_FROM")),
 	}
 
 	var problems []string
@@ -159,6 +172,17 @@ func Load() (*Config, error) {
 	}
 
 	cfg.EnableSwagger = !cfg.IsProduction() || strings.EqualFold(os.Getenv("ENABLE_SWAGGER"), "true")
+
+	if cfg.SMTPHost != "" {
+		if cfg.SMTPFrom == "" {
+			problems = append(problems, "SMTP_FROM is required when SMTP_HOST is set")
+		}
+		if cfg.IsProduction() && cfg.SMTPPassword != "" && isPlaceholder(cfg.SMTPPassword) {
+			problems = append(problems, "SMTP_PASSWORD still has a placeholder value")
+		}
+	} else {
+		log.Println("INFO: SMTP_HOST not set; confirmation email sending is disabled (no-op logger)")
+	}
 
 	if len(problems) > 0 {
 		return nil, errors.New("invalid configuration (APP_ENV=" + cfg.Env + "):\n  - " + strings.Join(problems, "\n  - "))

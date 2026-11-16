@@ -38,9 +38,9 @@ export function VerifyCodeField({
   inputRef?: Ref<HTMLInputElement>;
 }) {
   const uid = useId();
-  const ids = { hint: hintId ?? `${uid}-hint`, kb: `${uid}-kb`, err: `${uid}-err` };
+  const ids = { hint: hintId ?? `${uid}-hint`, why: `${uid}-why`, kb: `${uid}-kb`, err: `${uid}-err` };
   const [thaiKb, setThaiKb] = useState(false);
-  const described = [ids.hint, thaiKb ? ids.kb : null, error ? ids.err : null].filter(Boolean).join(' ');
+  const described = [ids.hint, ids.why, thaiKb ? ids.kb : null, error ? ids.err : null].filter(Boolean).join(' ');
 
   return (
     <div className="su-field">
@@ -48,9 +48,11 @@ export function VerifyCodeField({
         {label ?? 'เลข 4 ตัวท้ายของบัตรประชาชน'}
       </label>
       <p id={ids.hint} className="su-hint">
-        เช่น <span className="su-num">1-2345-67890-12-3</span> → กรอก <strong className="su-num">0123</strong> · ใช้สำหรับตรวจสอบเท่านั้น
-        {notPhone && ' (ไม่ใช่เบอร์โทรศัพท์)'}
-        {hint && <> {hint}</>}
+        เลข 4 ตัวสุดท้ายบนบัตรประชาชน <span className="su-num">…–12-3</span> → <strong className="su-num">0123</strong>
+        {notPhone && ' · ไม่ใช่เบอร์โทรศัพท์'}
+      </p>
+      <p id={ids.why} className="su-hint su-hint--why">
+        {hint ?? 'ใช้ยืนยันตัวตนก่อนส่งสลิป'}
       </p>
       <input
         ref={inputRef}

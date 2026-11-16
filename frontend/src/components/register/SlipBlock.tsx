@@ -48,9 +48,12 @@ export function SlipBlock({
           {synced ? badge.label : 'กำลังตรวจสถานะสลิป…'}
         </p>
       </div>
-      <p className="rw-slip__lead">
-        ที่นั่งของคุณถูกจองไว้แล้วตั้งแต่ส่งใบสมัคร โอนเงินแล้วแนบสลิปที่นี่ได้เลย หรือจะส่งทีหลังที่หน้าตรวจสอบสถานะก็ได้
+      <p className="rw-slip__steps" aria-label="ขั้นตอนยืนยันสิทธิ์">
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">72</span> ชม.</span>
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> แนบสลิป</span>
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">3</b> กรอกเลข <span className="font-mono tabular-nums">4</span> ตัว</span>
       </p>
+      <p className="rw-slip__privacy">รูปสลิปเปิดดูได้เฉพาะทีมงานในระบบของโครงการ</p>
 
       {closed && (
         <p className="rw-slip__note">

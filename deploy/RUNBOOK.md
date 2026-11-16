@@ -2,6 +2,8 @@
 
 คู่มือนี้ใช้สำหรับนำระบบรับสมัครค่าย **ComCamp #25** ขึ้นใช้งานจริงบนเซิร์ฟเวอร์ของสาขาวิชาวิทยาการคอมพิวเตอร์ (Linux + Docker Compose v2) โดยแยกคอนเทนเนอร์ เครือข่าย และ Volume ออกจากไฟล์พัฒนาบนเครื่อง ([`docker-compose.yml`](../docker-compose.yml)) อย่างสมบูรณ์
 
+> **[อ่านก่อน deploy ที่ภาควิชา]** คู่มือฉบับนี้เขียนแบบสมมติ Docker rootful (`sudo`, `127.0.0.1:8080`, `/opt`) แต่เซิร์ฟเวอร์จริงต้องการ **rootless + พอร์ต 6000** — ดู [`FACULTY-ROOTLESS.md`](FACULTY-ROOTLESS.md) ซึ่งเป็นความจริงที่ทับค่าตัวอย่างในฉบับนี้
+
 ---
 
 ## ภาพรวมสถาปัตยกรรม Production
@@ -89,7 +91,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000007_single_admin_role.up.sql` และผล Query `settings` (`id = 1`) แสดงเวลาเปิดรับ `2026-11-16 00:00:00`
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000008_update_registration_schedule.up.sql` และผล Query `settings` (`id = 1`) แสดงเวลาเปิดรับ `2026-11-18 00:00:00` (จาก commit `5eb8b14`)
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 

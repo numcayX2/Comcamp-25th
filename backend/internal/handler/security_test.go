@@ -263,9 +263,23 @@ func TestSecurity_DuplicateApplicantIsCleanConflict(t *testing.T) {
 		t.Fatalf("expected code %s, got %+v", response.CodeDuplicateApp, e)
 	}
 
-	// Email is optional: two applicants without one must both be accepted.
-	app.submit(t, validTestNationalID(22), "0810000022", "")
-	app.submit(t, validTestNationalID(23), "0810000023", "")
+	// Email is mandatory: blank email returns 400 validation error.
+	blankEmail := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(22), "0810000022", ""), nil)
+	if blankEmail.Code != http.StatusBadRequest {
+		t.Fatalf("blank email: expected 400, got %d (%s)", blankEmail.Code, blankEmail.Body.String())
+	}
+	if e := decodeErr(t, blankEmail.Body.Bytes()); e.Code != response.CodeValidation {
+		t.Fatalf("blank email: expected %s, got %+v", response.CodeValidation, e)
+	}
+
+	// Duplicate email on another live applicant returns 409 conflict.
+	dupEmail := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(23), "0810000023", "d1@example.com"), nil)
+	if dupEmail.Code != http.StatusConflict {
+		t.Fatalf("duplicate email: expected 409, got %d (%s)", dupEmail.Code, dupEmail.Body.String())
+	}
+	if e := decodeErr(t, dupEmail.Body.Bytes()); e.Code != response.CodeDuplicateApp {
+		t.Fatalf("duplicate email: expected %s, got %+v", response.CodeDuplicateApp, e)
+	}
 }
 
 // §13.4 quota lock — concurrent submits cannot exceed capacity.

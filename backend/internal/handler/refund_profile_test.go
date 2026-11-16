@@ -402,7 +402,7 @@ func TestSelfProfileEdit(t *testing.T) {
 		for _, body := range []string{
 			fmt.Sprintf(`{"verifyCode":%q,"nickname":"","school":"ร","province":"ล","grade":"ม.6","shirtSize":"M"}`, code),
 			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"","grade":"ม.6","shirtSize":"M"}`, code),
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"ล","grade":"ม.6","shirtSize":"4XL"}`, code),
+			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"ล","grade":"ม.6","shirtSize":"5XL"}`, code),
 			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"ล","grade":"อื่นๆ","shirtSize":"M"}`, code),
 			fmt.Sprintf(`{"verifyCode":%q,"nickname":%q,"school":"ร","province":"ล","grade":"ม.6","shirtSize":"M"}`, code, strings.Repeat("ก", 51)),
 		} {
@@ -453,6 +453,7 @@ func TestAdminProfileEdit(t *testing.T) {
 			"bad phone":         `{"phone":"0912"}`,
 			"phone not zero":    `{"phone":"1234567890"}`,
 			"bad email":         `{"email":"not-an-email"}`,
+			"blank email":       `{"email":"   "}`,
 			"bad shirt size":    `{"shirtSize":"5XL"}`,
 			"bad grade":         `{"grade":"อื่นๆ"}`,
 			"blank full name":   `{"fullName":"   "}`,
@@ -625,7 +626,7 @@ func TestHealthNotesRegistrationAndPrivacy(t *testing.T) {
 
 	// Oversized allergies (>500 runes) must fail cleanly with 400.
 	tooLong := fmt.Sprintf(
-		`{"fullName":"สมชาย ยาว","nickname":"ยาว","nationalId":%q,"phone":"0810000222","email":"","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"","allergies":%q}`,
+		`{"fullName":"สมชาย ยาว","nickname":"ยาว","nationalId":%q,"phone":"0810000222","email":"long222@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"","allergies":%q}`,
 		validTestNationalID(222),
 		strings.Repeat("ก", 501),
 	)

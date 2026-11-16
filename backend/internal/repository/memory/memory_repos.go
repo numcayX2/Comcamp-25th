@@ -390,6 +390,56 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 	return nil
 }
 
+// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
+// at or before cutoff without a PENDING or APPROVED slip to REJECTED under payments -> applicants
+// lock ordering, writing both status logs and audit entries.
+func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
+	if p := m.payments; p != nil {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	utcCutoff := cutoff.UTC()
+	var expired []string
+	for id, a := range m.data {
+		if a.DeletedAt != nil {
+			continue
+		}
+		if a.Status != domain.StatusPending && a.Status != domain.StatusPassed && a.Status != domain.StatusReserve {
+			continue
+		}
+		if a.CreatedAt.UTC().After(utcCutoff) {
+			continue
+		}
+		if m.payments != nil && m.payments.holdsSlipLocked(id) {
+			continue
+		}
+
+		oldStatus, err := m.setStatusLocked(id, domain.StatusRejected, nil, reason)
+		if err != nil {
+			return expired, err
+		}
+		entry := &domain.AuditEntry{
+			Action:     domain.AuditPaymentExpired,
+			TargetType: domain.AuditTargetApplicant,
+			TargetID:   a.ApplicationNo,
+			Details: map[string]any{
+				"oldStatus": oldStatus,
+				"newStatus": domain.StatusRejected,
+				"reason":    reason,
+				"cutoff":    utcCutoff.Format(time.RFC3339),
+			},
+		}
+		if err := m.audit.Log(ctx, entry); err != nil {
+			return expired, err
+		}
+		expired = append(expired, a.ApplicationNo)
+	}
+	return expired, nil
+}
+
 func (m *MemoryApplicantRepo) CountActive(ctx context.Context) (int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -434,7 +484,7 @@ func NewMemorySettingRepo() *MemorySettingRepo {
 			RegistrationOpenAt:  openAt,
 			RegistrationCloseAt: closeAt,
 			MaxCapacity:         30,
-			CampFee:             decimal.NewFromFloat(1000.00),
+			CampFee:             decimal.NewFromFloat(1200.00),
 			IsManualClosed:      false,
 			UpdatedAt:           now,
 		},

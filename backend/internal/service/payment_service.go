@@ -65,6 +65,8 @@ type PaymentService struct {
 	slipDir     string
 	// verify is the per-application lockout for wrong verifyCodes, shared with ApplicantService.
 	verify *VerifyGuard
+	// mailer sends Stage 2 (CONFIRMED) emails asynchronously after slip approval commits.
+	mailer EmailNotifier
 }
 
 // WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
@@ -73,6 +75,12 @@ func (s *PaymentService) WithVerifyGuard(g *VerifyGuard) *PaymentService {
 	if g != nil {
 		s.verify = g
 	}
+	return s
+}
+
+// WithMailer configures the asynchronous transactional mailer and returns the service.
+func (s *PaymentService) WithMailer(m EmailNotifier) *PaymentService {
+	s.mailer = m
 	return s
 }
 
@@ -449,6 +457,15 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 			return ErrDuplicateSlip
 		}
 		return err
+	}
+	if approved && latestPayment.Status != domain.PaymentApproved && s.mailer != nil && applicant.Email != "" {
+		s.mailer.EnqueueConfirmed(ConfirmedEmailData{
+			ApplicationNo: applicant.ApplicationNo,
+			FullName:      applicant.FullName(),
+			Nickname:      applicant.Nickname,
+			Email:         applicant.Email,
+			ShirtSize:     applicant.ShirtSize,
+		})
 	}
 	return nil
 }

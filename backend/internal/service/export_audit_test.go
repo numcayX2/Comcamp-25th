@@ -44,13 +44,13 @@ func TestRecordExport(t *testing.T) {
 		tooMany[i] = "CC25-000000"
 	}
 	for name, rec := range map[string]service.ExportRecord{
-		"nil slice":      {ApplicationIDs: nil},
-		"empty slice":    {ApplicationIDs: []string{}},
-		"empty item":     {ApplicationIDs: []string{"CC25-8A4B2C", ""}},
-		"blank item":     {ApplicationIDs: []string{"CC25-8A4B2C", "   \u200B"}},
-		"bad id":         {ApplicationIDs: []string{"CC25-8A4B2C", "0812345678"}},
-		"bad status":     {ApplicationIDs: []string{"CC25-8A4B2C"}, StatusFilter: "WHATEVER"},
-		"too many":       {ApplicationIDs: tooMany},
+		"nil slice":   {ApplicationIDs: nil},
+		"empty slice": {ApplicationIDs: []string{}},
+		"empty item":  {ApplicationIDs: []string{"CC25-8A4B2C", ""}},
+		"blank item":  {ApplicationIDs: []string{"CC25-8A4B2C", "   \u200B"}},
+		"bad id":      {ApplicationIDs: []string{"CC25-8A4B2C", "0812345678"}},
+		"bad status":  {ApplicationIDs: []string{"CC25-8A4B2C"}, StatusFilter: "WHATEVER"},
+		"too many":    {ApplicationIDs: tooMany},
 	} {
 		var verr *service.ValidationError
 		if _, err := svc.RecordExport(ctx, 7, rec, ""); err == nil || !errors.As(err, &verr) {
