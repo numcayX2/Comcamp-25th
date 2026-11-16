@@ -35,6 +35,7 @@ var (
 	ErrIdempotencyKeyReused  = errors.New("this idempotency key was already used for a different application")
 	ErrInvalidNationalID     = newValidationError("invalid national ID (must be 13 digits with a valid check digit)")
 	ErrInvalidPhone          = newValidationError("invalid phone number (must be 10 digits starting with 0)")
+	ErrInvalidParentPhone    = newValidationError("invalid parent phone number (must be 10 digits starting with 0)")
 	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose XS, S, M, L, XL, 2XL, 3XL)")
 	ErrInvalidEmail          = newValidationError("invalid email address")
 	ErrInvalidGrade          = newValidationError("invalid grade (choose ม.4–ม.6 / ปวช.1–ปวช.3, or enter your own level, 2–20 characters)")
@@ -54,6 +55,8 @@ var (
 const (
 	maxNameRunes              = 100
 	maxNicknameRunes          = 50
+	maxParentNameRunes        = 150
+	maxParentRelationRunes    = 50
 	maxSchoolRunes            = 150
 	maxProvinceRunes          = 100
 	maxEmailRunes             = 150
@@ -87,12 +90,14 @@ func isValidGrade(g string) bool {
 }
 
 type ApplicationCreateRequest struct {
-	FullName   string `json:"fullName"`
-	Nickname   string `json:"nickname"`
-	NationalID string `json:"nationalId"`
-	Phone      string `json:"phone"`
-	Email      string `json:"email"`
-	// TODO(feature): เพิ่มฟิลด์รับช่องทางติดต่อผู้ปกครอง 1 คน + เบอร์โทรศัพท์ผู้ปกครองจากฟอร์ม /register
+	FullName          string `json:"fullName"`
+	Nickname          string `json:"nickname"`
+	NationalID        string `json:"nationalId"`
+	Phone             string `json:"phone"`
+	Email             string `json:"email"`
+	ParentName        string `json:"parentName,omitempty"`
+	ParentRelation    string `json:"parentRelation,omitempty"`
+	ParentPhone       string `json:"parentPhone,omitempty"`
 	School            string `json:"school"`
 	Grade             string `json:"grade"`
 	ShirtSize         string `json:"shirtSize"`
@@ -106,8 +111,8 @@ type ApplicationCreateRequest struct {
 }
 
 // ApplicationResponse is the applicant DTO. Public endpoints return the masked view (see
-// toPublic); only /api/admin/* returns full values, free-text notes (motivation, allergies,
-// medicalConditions) and the slip URL.
+// toPublic); only /api/admin/* returns full values, parent contact details, free-text notes
+// (motivation, allergies, medicalConditions) and the slip URL.
 type ApplicationResponse struct {
 	ID                  string                   `json:"id"`
 	FullName            string                   `json:"fullName"`
@@ -115,6 +120,9 @@ type ApplicationResponse struct {
 	NationalID          string                   `json:"nationalId"`
 	Phone               string                   `json:"phone"`
 	Email               string                   `json:"email"`
+	ParentName          string                   `json:"parentName,omitempty"`
+	ParentRelation      string                   `json:"parentRelation,omitempty"`
+	ParentPhone         string                   `json:"parentPhone,omitempty"`
 	School              string                   `json:"school"`
 	Grade               string                   `json:"grade"`
 	ShirtSize           string                   `json:"shirtSize"`
@@ -262,23 +270,27 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		province = "เชียงใหม่" // Default fallback
 	}
 
+	emergencyContact, emergencyPhone := emergencyContactFallback(req.ParentName, req.ParentPhone, req.Phone)
+
 	applicant := &domain.Applicant{
-		ID:         uuid.New(),
-		NationalID: req.NationalID,
-		Prefix:     "",
-		FirstName:  firstName,
-		LastName:   lastName,
-		Nickname:   req.Nickname,
-		BirthDate:  time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
-		Gender:     "unspecified",
-		School:     req.School,
-		Grade:      req.Grade,
-		Phone:      req.Phone,
-		Email:      req.Email,
-		Province:   province,
-		// TODO(feature): เปลี่ยนมาใช้ชื่อ-เบอร์โทรผู้ปกครอง (ผปค. 1 คน) ที่กรอกจากฟอร์ม /register แทนค่า fallback จากเบอร์ผู้สมัคร
-		EmergencyContact:  "ผู้ปกครอง",
-		EmergencyPhone:    req.Phone,
+		ID:                uuid.New(),
+		NationalID:        req.NationalID,
+		Prefix:            "",
+		FirstName:         firstName,
+		LastName:          lastName,
+		Nickname:          req.Nickname,
+		BirthDate:         time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
+		Gender:            "unspecified",
+		School:            req.School,
+		Grade:             req.Grade,
+		Phone:             req.Phone,
+		Email:             req.Email,
+		Province:          province,
+		ParentName:        nonEmptyPtr(req.ParentName),
+		ParentRelation:    nonEmptyPtr(req.ParentRelation),
+		ParentPhone:       nonEmptyPtr(req.ParentPhone),
+		EmergencyContact:  emergencyContact,
+		EmergencyPhone:    emergencyPhone,
 		ShirtSize:         req.ShirtSize,
 		HasLaptop:         true,
 		Motivation:        &req.Motivation,
@@ -359,8 +371,39 @@ func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID
 // profile edit and the staff profile edit, so all three normalise and validate the same way.
 type profileInput struct {
 	FullName, Nickname, NationalID, Phone, Email string
+	ParentName, ParentRelation, ParentPhone      string
 	School, Province, Grade, ShirtSize           string
 	Motivation, Allergies, MedicalConditions     string
+}
+
+func nonEmptyPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	v := s
+	return &v
+}
+
+func emergencyContactFallback(parentName, parentPhone, applicantPhone string) (string, string) {
+	contact := "ผู้ปกครอง"
+	if parentName != "" {
+		contact = parentName
+	}
+	phone := applicantPhone
+	if parentPhone != "" {
+		phone = parentPhone
+	}
+	return contact, phone
+}
+
+func profileInputOfRequest(req ApplicationCreateRequest) profileInput {
+	return profileInput{
+		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
+		Email: req.Email, ParentName: req.ParentName, ParentRelation: req.ParentRelation, ParentPhone: req.ParentPhone,
+		School: req.School, Province: req.Province, Grade: req.Grade,
+		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
+		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
+	}
 }
 
 // cleanText normalises a single-line field: invisible characters pasted from LINE / Facebook are
@@ -386,6 +429,9 @@ func normalizeProfile(p profileInput) profileInput {
 	p.Email = cleanEmail(p.Email)
 	p.FullName = cleanText(p.FullName)
 	p.Nickname = cleanText(p.Nickname)
+	p.ParentName = cleanText(p.ParentName)
+	p.ParentRelation = cleanText(p.ParentRelation)
+	p.ParentPhone = cleanNumber(p.ParentPhone)
 	p.School = cleanText(p.School)
 	p.Grade = cleanText(p.Grade)
 	p.Province = cleanText(p.Province)
@@ -397,15 +443,11 @@ func normalizeProfile(p profileInput) profileInput {
 }
 
 func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
-	p := normalizeProfile(profileInput{
-		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
-		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
-		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
-		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
-	})
+	p := normalizeProfile(profileInputOfRequest(req))
 	return ApplicationCreateRequest{
 		FullName: p.FullName, Nickname: p.Nickname, NationalID: p.NationalID, Phone: p.Phone,
-		Email: p.Email, School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
+		Email: p.Email, ParentName: p.ParentName, ParentRelation: p.ParentRelation, ParentPhone: p.ParentPhone,
+		School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
 		Motivation: p.Motivation, Allergies: p.Allergies, MedicalConditions: p.MedicalConditions,
 		Province:       p.Province,
 		TurnstileToken: strings.TrimSpace(req.TurnstileToken),
@@ -473,6 +515,8 @@ func checkLengths(p profileInput) error {
 		name  string
 	}{
 		{p.Nickname, maxNicknameRunes, "nickname"},
+		{p.ParentName, maxParentNameRunes, "parentName"},
+		{p.ParentRelation, maxParentRelationRunes, "parentRelation"},
 		{p.School, maxSchoolRunes, "school"},
 		{p.Province, maxProvinceRunes, "province"},
 		{p.Motivation, maxMotivationRunes, "motivation"},
@@ -494,6 +538,11 @@ func validateProfile(p profileInput) error {
 	}
 	if err := checkPhone(p.Phone); err != nil {
 		return err
+	}
+	if p.ParentPhone != "" {
+		if err := checkPhone(p.ParentPhone); err != nil {
+			return ErrInvalidParentPhone
+		}
 	}
 	if p.FullName == "" || p.Nickname == "" || p.School == "" || p.Grade == "" {
 		return ErrRequiredFields
@@ -526,12 +575,7 @@ func validateSecondary(p profileInput) error {
 }
 
 func validateRequest(req ApplicationCreateRequest) error {
-	return validateProfile(profileInput{
-		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
-		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
-		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
-		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
-	})
+	return validateProfile(profileInputOfRequest(req))
 }
 
 // QueryStatus is the public lookup by national ID, phone or application ID. It returns the
@@ -801,6 +845,9 @@ type SelfProfileRequest struct {
 	NationalID        *string `json:"nationalId,omitempty"`
 	Phone             *string `json:"phone,omitempty"`
 	Email             *string `json:"email,omitempty"`
+	ParentName        *string `json:"parentName,omitempty"`
+	ParentRelation    *string `json:"parentRelation,omitempty"`
+	ParentPhone       *string `json:"parentPhone,omitempty"`
 	Motivation        *string `json:"motivation,omitempty"`
 	Allergies         *string `json:"allergies,omitempty"`
 	MedicalConditions *string `json:"medicalConditions,omitempty"`
@@ -814,6 +861,9 @@ type AdminProfileRequest struct {
 	NationalID        *string `json:"nationalId,omitempty"`
 	Phone             *string `json:"phone,omitempty"`
 	Email             *string `json:"email,omitempty"`
+	ParentName        *string `json:"parentName,omitempty"`
+	ParentRelation    *string `json:"parentRelation,omitempty"`
+	ParentPhone       *string `json:"parentPhone,omitempty"`
 	School            *string `json:"school,omitempty"`
 	Province          *string `json:"province,omitempty"`
 	Grade             *string `json:"grade,omitempty"`
@@ -833,6 +883,15 @@ func profileOf(a *domain.Applicant) profileInput {
 	p := profileInput{
 		FullName: full, Nickname: a.Nickname, NationalID: a.NationalID, Phone: a.Phone, Email: a.Email,
 		School: a.School, Province: a.Province, Grade: a.Grade, ShirtSize: a.ShirtSize,
+	}
+	if a.ParentName != nil {
+		p.ParentName = *a.ParentName
+	}
+	if a.ParentRelation != nil {
+		p.ParentRelation = *a.ParentRelation
+	}
+	if a.ParentPhone != nil {
+		p.ParentPhone = *a.ParentPhone
 	}
 	if a.Motivation != nil {
 		p.Motivation = *a.Motivation
@@ -856,6 +915,9 @@ func profileChanges(before, after profileInput) map[string]map[string]string {
 		{"nationalId", before.NationalID, after.NationalID},
 		{"phone", before.Phone, after.Phone},
 		{"email", before.Email, after.Email},
+		{"parentName", before.ParentName, after.ParentName},
+		{"parentRelation", before.ParentRelation, after.ParentRelation},
+		{"parentPhone", before.ParentPhone, after.ParentPhone},
 		{"school", before.School, after.School},
 		{"province", before.Province, after.Province},
 		{"grade", before.Grade, after.Grade},
@@ -880,11 +942,17 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 	motivation := p.Motivation
 	allergies := p.Allergies
 	medicalConditions := p.MedicalConditions
+	emergencyContact, emergencyPhone := emergencyContactFallback(p.ParentName, p.ParentPhone, p.Phone)
 	return domain.ProfileFields{
 		FirstName: first, LastName: last, Nickname: p.Nickname, NationalID: p.NationalID,
 		Phone: p.Phone, Email: p.Email, School: p.School, Province: p.Province, Grade: p.Grade,
 		ShirtSize: p.ShirtSize, Motivation: &motivation, Allergies: &allergies,
 		MedicalConditions: &medicalConditions,
+		ParentName:        nonEmptyPtr(p.ParentName),
+		ParentRelation:    nonEmptyPtr(p.ParentRelation),
+		ParentPhone:       nonEmptyPtr(p.ParentPhone),
+		EmergencyContact:  emergencyContact,
+		EmergencyPhone:    emergencyPhone,
 	}, nil
 }
 
@@ -906,13 +974,16 @@ func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo s
 	if !applicant.Status.IsActive() {
 		return nil, ErrProfileLocked
 	}
-	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil || req.Motivation != nil || req.Allergies != nil || req.MedicalConditions != nil {
+	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil ||
+		req.ParentName != nil || req.ParentRelation != nil || req.ParentPhone != nil ||
+		req.Motivation != nil || req.Allergies != nil || req.MedicalConditions != nil {
 		return nil, ErrIdentityLocked
 	}
 
 	before := profileOf(applicant)
 	after := normalizeProfile(profileInput{
 		FullName: before.FullName, NationalID: before.NationalID, Phone: before.Phone, Email: before.Email,
+		ParentName: before.ParentName, ParentRelation: before.ParentRelation, ParentPhone: before.ParentPhone,
 		Motivation: before.Motivation, Allergies: before.Allergies, MedicalConditions: before.MedicalConditions,
 		Nickname: req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
 	})
@@ -971,8 +1042,9 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 		src *string
 	}{
 		{&merged.FullName, req.FullName}, {&merged.Nickname, req.Nickname}, {&merged.NationalID, req.NationalID},
-		{&merged.Phone, req.Phone}, {&merged.Email, req.Email}, {&merged.School, req.School},
-		{&merged.Province, req.Province}, {&merged.Grade, req.Grade}, {&merged.ShirtSize, req.ShirtSize},
+		{&merged.Phone, req.Phone}, {&merged.Email, req.Email},
+		{&merged.ParentName, req.ParentName}, {&merged.ParentRelation, req.ParentRelation}, {&merged.ParentPhone, req.ParentPhone},
+		{&merged.School, req.School}, {&merged.Province, req.Province}, {&merged.Grade, req.Grade}, {&merged.ShirtSize, req.ShirtSize},
 		{&merged.Motivation, req.Motivation}, {&merged.Allergies, req.Allergies}, {&merged.MedicalConditions, req.MedicalConditions},
 	} {
 		if f.src != nil {
@@ -1073,6 +1145,15 @@ func (s *ApplicantService) toAdmin(ctx context.Context, a *domain.Applicant) (*A
 
 func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Payment) *ApplicationResponse {
 	res := s.baseResponse(a)
+	if a.ParentName != nil {
+		res.ParentName = *a.ParentName
+	}
+	if a.ParentRelation != nil {
+		res.ParentRelation = *a.ParentRelation
+	}
+	if a.ParentPhone != nil {
+		res.ParentPhone = *a.ParentPhone
+	}
 	if a.Motivation != nil {
 		res.Motivation = *a.Motivation
 	}

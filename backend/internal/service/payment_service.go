@@ -362,8 +362,10 @@ func (s *PaymentService) OpenLatestSlip(ctx context.Context, applicationNo strin
 	return &SlipFile{Path: filepath.Join(s.slipDir, name), ContentType: contentType, Name: name, PaymentID: payment.ID.String()}, nil
 }
 
-// VerifySlip approves or rejects the inspected PENDING slip. Payment, applicant status, status
-// log and audit row are written in one transaction.
+// VerifySlip settles a PENDING slip or updates the verdict/note of an already-reviewed
+// (APPROVED / REJECTED) latest slip. Payment, applicant status, status log and audit row are
+// written in one transaction. Re-submitting the identical verdict and note is refused with
+// ErrSlipAlreadyVerified so accidental double-clicks cannot overwrite an existing review.
 //
 // paymentID is required and must identify the applicant's latest slip (SlipFile.PaymentID /
 // slipPaymentId of the admin list). If missing or not a valid UUID it returns a ValidationError; if
@@ -400,6 +402,11 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 		return ErrSlipChanged
 	}
 
+	targetStatus := domain.PaymentRejected
+	if approved {
+		targetStatus = domain.PaymentApproved
+	}
+
 	audit := &domain.AuditEntry{
 		AdminID:    &adminID,
 		Action:     domain.AuditSlipVerify,
@@ -414,13 +421,32 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 	}
 	// The repository re-checks the applicant status and latest slip under the row lock, so a
 	// refund or slip replacement arriving after the read above still wins.
-	if err := s.paymentRepo.Verify(ctx, wantID, approved, adminID, note, audit); err != nil {
-		if errors.Is(err, domain.ErrStateConflict) {
-			return ErrSlipLocked
+	switch latestPayment.Status {
+	case domain.PaymentPending:
+		err = s.paymentRepo.Verify(ctx, wantID, approved, adminID, note, audit)
+	case domain.PaymentApproved, domain.PaymentRejected:
+		existingNote := ""
+		if latestPayment.AdminNote != nil {
+			existingNote = *latestPayment.AdminNote
+		} else if latestPayment.Status == domain.PaymentRejected && latestPayment.RejectionReason != nil {
+			existingNote = *latestPayment.RejectionReason
 		}
-		if errors.Is(err, domain.ErrNotFound) {
+		if latestPayment.Status == targetStatus && existingNote == note {
+			return ErrSlipAlreadyVerified
+		}
+		err = s.paymentRepo.Reverify(ctx, wantID, latestPayment.Status, approved, adminID, note, audit)
+	default:
+		return ErrSlipAlreadyVerified
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrStateConflict):
+			return ErrSlipLocked
+		case errors.Is(err, domain.ErrNotFound):
 			// The slip was superseded by a newer upload between the read and the write.
 			return ErrSlipChanged
+		case errors.Is(err, domain.ErrDuplicateSlipHash):
+			return ErrDuplicateSlip
 		}
 		return err
 	}

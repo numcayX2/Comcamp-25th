@@ -24,6 +24,8 @@ export function formatCampFee(fee: number | string | null | undefined): string {
 export const NAME_PART_MAX = 100;
 export const NICKNAME_MAX = 50;
 export const EMAIL_MAX = 150;
+export const PARENT_NAME_MAX = 150;
+export const PARENT_RELATION_MAX = 50;
 export const SCHOOL_MAX = 150;
 export const PROVINCE_MAX = 100;
 export const MOTIVATION_MAX = 2000;
@@ -53,11 +55,18 @@ export const SIZE_CHEST: Record<ShirtSize, number | null> = {
 };
 
 /** Wizard form state. Selects start empty so nothing is submitted by accident. */
-export interface FormState extends Omit<ApplicationPayload, 'shirtSize' | 'province' | 'allergies' | 'medicalConditions'> {
+export interface FormState
+  extends Omit<
+    ApplicationPayload,
+    'shirtSize' | 'province' | 'allergies' | 'medicalConditions' | 'parentName' | 'parentRelation' | 'parentPhone'
+  > {
   shirtSize: ShirtSize | '';
   province: string;
   allergies: string;
   medicalConditions: string;
+  parentName: string;
+  parentRelation: string;
+  parentPhone: string;
   /** Free-text level, used only while `grade` is GRADE_OTHER. */
   gradeOther: string;
 }
@@ -91,6 +100,9 @@ export const EMPTY_FORM: FormState = {
   nationalId: '',
   phone: '',
   email: '',
+  parentName: '',
+  parentRelation: '',
+  parentPhone: '',
   school: '',
   province: '',
   grade: '',
@@ -107,6 +119,9 @@ export const MOCK_FORM: FormState = {
   nationalId: '1103701234512',
   phone: '0812345678',
   email: 'somchai.test@example.com',
+  parentName: 'สมศรี ทดสอบระบบ',
+  parentRelation: 'มารดา',
+  parentPhone: '0898765432',
   school: 'โรงเรียนเชียงใหม่วิทยาคม',
   province: 'เชียงใหม่',
   grade: 'ม.5',
@@ -129,15 +144,12 @@ export interface StepMeta {
   fields: FieldKey[];
 }
 
-// TODO(feature): ต้องทำฟอร์มกรอกช่องทางติดต่อผู้ปกครองเพิ่ม (ผู้ปกครอง 1 คน + เบอร์โทรศัพท์ติดต่อ 10 หลัก)
-// ปัจจุบัน STEPS ยังเก็บเฉพาะเบอร์ผู้สมัคร; DB มีคอลัมน์ parent_name / parent_relation / parent_phone /
-// emergency_contact / emergency_phone รองรับแล้ว แต่ต้องเพิ่มฟิลด์ใน FormState, ApplicationPayload และ Backend DTO
 export const STEPS: StepMeta[] = [
   {
     label: 'ข้อมูลผู้สมัคร',
     title: 'ข้อมูลผู้สมัคร',
-    lead: 'ข้อมูลนี้ใช้ออกรหัสใบสมัครและติดต่อประสานงานกับผู้สมัคร',
-    fields: ['fullName', 'nickname', 'nationalId', 'phone', 'email'],
+    lead: 'ข้อมูลนี้ใช้ออกรหัสใบสมัครและติดต่อประสานงานกับผู้สมัครและผู้ปกครอง',
+    fields: ['fullName', 'nickname', 'nationalId', 'phone', 'email', 'parentName', 'parentRelation', 'parentPhone'],
   },
   {
     label: 'ข้อมูลการศึกษา',
@@ -238,6 +250,21 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       if (!e) return undefined;
       if (e.length > EMAIL_MAX) return `อีเมลต้องยาวไม่เกิน ${EMAIL_MAX} ตัวอักษร`;
       return /^\S+@\S+\.\S+$/.test(e) ? undefined : 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
+    }
+    case 'parentName': {
+      const pn = cleanSingleLine(form.parentName);
+      if (!pn) return 'กรุณากรอกชื่อ-นามสกุลผู้ปกครอง';
+      return pn.length > PARENT_NAME_MAX ? `ชื่อผู้ปกครองต้องยาวไม่เกิน ${PARENT_NAME_MAX} ตัวอักษร` : undefined;
+    }
+    case 'parentRelation': {
+      const pr = cleanSingleLine(form.parentRelation);
+      if (!pr) return 'กรุณาระบุความสัมพันธ์ของผู้ปกครอง (เช่น บิดา, มารดา)';
+      return pr.length > PARENT_RELATION_MAX ? `ความสัมพันธ์ต้องยาวไม่เกิน ${PARENT_RELATION_MAX} ตัวอักษร` : undefined;
+    }
+    case 'parentPhone': {
+      const pp = onlyDigits(form.parentPhone);
+      if (!pp) return 'กรุณากรอกเบอร์โทรศัพท์ผู้ปกครอง 10 หลัก';
+      return /^0\d{9}$/.test(pp) ? undefined : 'เบอร์โทรผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
     }
     case 'school': {
       const s = form.school.trim();

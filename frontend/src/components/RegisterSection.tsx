@@ -73,7 +73,7 @@ type GateState = 'checking' | 'open' | 'pre_open' | 'full' | 'closed' | 'error';
 
 const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string; body: string }> = {
   pre_open: {
-    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 16 พ.ย. 2569 เวลา 00:00 น.',
+    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 18 พ.ย. 2569 เวลา 00:00 น.',
     body: 'แบบฟอร์มจะเปิดให้กรอกทันทีเมื่อถึงกำหนด ระหว่างนี้สามารถอ่านรายละเอียดค่ายและเตรียมข้อมูลส่วนตัวไว้ล่วงหน้าได้',
   },
   full: {
@@ -174,6 +174,9 @@ function describeSubmitError(err: unknown): string {
         const msg = err.message.toLowerCase();
         if (msg.includes('national id') || msg.includes('check digit')) {
           return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
+        }
+        if (msg.includes('parent phone')) {
+          return 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
         }
         if (msg.includes('phone')) {
           return 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
@@ -658,6 +661,9 @@ export function RegisterSection() {
         nationalId: sanitizeDigits(form.nationalId),
         phone: sanitizeDigits(form.phone),
         email: form.email.trim(),
+        parentName: cleanSingleLine(form.parentName),
+        parentRelation: cleanSingleLine(form.parentRelation),
+        parentPhone: sanitizeDigits(form.parentPhone),
         school: form.school.trim(),
         province: form.province.trim(),
         grade: gradeValue(form),
@@ -855,7 +861,6 @@ export function RegisterSection() {
               </>
             )}
           </div>
-          {/* TODO(feature): ต้องทำฟอร์มกรอกช่องทางติดต่อผู้ปกครองเพิ่ม (ผู้ปกครอง 1 คน + เบอร์โทรศัพท์ติดต่อผู้ปกครอง) ใน wizard นี้และเชื่อมต่อ Backend API */}
           <div className="rw-fields">
             <TextField
               id="fullName"
@@ -924,6 +929,43 @@ export function RegisterSection() {
               onChange={(v) => set('email', v)}
               onBlur={() => blur('email')}
               placeholder="name@example.com"
+            />
+            <TextField
+              id="parentName"
+              label="ชื่อ-นามสกุลผู้ปกครอง"
+              span={4}
+              value={form.parentName}
+              error={errors.parentName}
+              onChange={(v) => set('parentName', v)}
+              onBlur={() => blur('parentName')}
+              placeholder="เช่น สมศรี ใจดี"
+            />
+            <TextField
+              id="parentRelation"
+              label="ความสัมพันธ์ผู้ปกครอง"
+              span={2}
+              value={form.parentRelation}
+              error={errors.parentRelation}
+              onChange={(v) => set('parentRelation', v)}
+              onBlur={() => blur('parentRelation')}
+              placeholder="เช่น บิดา, มารดา"
+            />
+            <TextField
+              id="parentPhone"
+              label="เบอร์โทรศัพท์ผู้ปกครอง"
+              hint={<span className={form.parentPhone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.parentPhone.length}/10</span> หลัก</span>}
+              groups={[3, 3, 4]}
+              span={3}
+              mono
+              digits={10}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={form.parentPhone}
+              error={errors.parentPhone}
+              onChange={(v) => set('parentPhone', v)}
+              onBlur={() => blur('parentPhone')}
+              placeholder="08X-XXX-XXXX"
             />
           </div>
           </>
@@ -1152,6 +1194,8 @@ export function RegisterSection() {
                   ['เลขบัตรประชาชน', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', form.email.trim() || <Empty key="em" />],
+                  ['ชื่อผู้ปกครอง', `${form.parentName.trim()} (${form.parentRelation.trim()})`],
+                  ['เบอร์โทรผู้ปกครอง', <span className="font-mono" key="pph">{formatPhone(form.parentPhone)}</span>],
                 ]}
               />
               <ReviewGroup

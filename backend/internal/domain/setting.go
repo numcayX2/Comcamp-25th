@@ -26,6 +26,7 @@ type Settings struct {
 type PublicSettingsResponse struct {
 	ServerTime            string           `json:"serverTime"`
 	RegistrationOpenAt    string           `json:"registrationOpenAt"`
+	RegistrationCloseAt   string           `json:"registrationCloseAt"`
 	IsOpen                bool             `json:"isOpen"`
 	CurrentCount          int              `json:"currentCount"`
 	MaxCapacity           int              `json:"maxCapacity"`

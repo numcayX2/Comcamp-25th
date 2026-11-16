@@ -79,7 +79,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
       <p class="veil-kicker veil-mono">COMPUTER SCIENCE · MAEJO UNIVERSITY</p>
       <p class="veil-display"><span class="vl"><i>Comcamp</i></span><span class="vl"><i class="ol">25th</i></span></p>
       <p class="veil-thai">ค่ายยุวชนคอมพิวเตอร์ <span class="nowrap">ครั้งที่ <span class="veil-mono">25</span></span></p>
-      <p class="veil-sub"><span class="nowrap">เปิดรับ <span class="veil-mono">16.11.69</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
+      <p class="veil-sub"><span class="nowrap">เปิดรับ <span class="veil-mono" data-open-date-dot>18.11.69</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
     </div>
     <span class="veil-ghost veil-mono">25</span>
     <div class="veil-foot">
@@ -226,7 +226,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
             <div class="ed-metric">
               <dt class="ed-metric__label">OPENING DATE</dt>
-              <dd class="ed-metric__val"><span class="font-mono tabular-nums">16</span> พ.ย. <span class="font-mono tabular-nums">69</span> · <span class="font-mono tabular-nums">00:00</span> น.</dd>
+              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> · <span class="font-mono tabular-nums">00:00</span> น.</dd>
             </div>
           </dl>
 
@@ -431,7 +431,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--01">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">01</span> · เปิดรับสมัคร</span>
-                <p class="tm-figure"><span class="font-mono tabular-nums">16</span> พ.ย. <span class="font-mono tabular-nums">69</span> <small><span class="font-mono tabular-nums">30</span> ที่นั่ง</small></p>
+                <p class="tm-figure"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> <small><span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง</small></p>
               </div>
               <div class="tm-tile__detail">
                 <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ตั้งแต่เวลา <span class="font-mono tabular-nums">00:00:00</span> น. <span style="white-space:nowrap">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์</p>
@@ -548,7 +548,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">03</span><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>
-            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums">30</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</div>
+            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</div>
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">04</span><span class="faq-q">ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span></span></summary>
@@ -575,10 +575,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         <div class="ed-cta-band__body">
           <p class="ed-cta-band__eyebrow">COMCAMP #25 · REGISTRATION</p>
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
-          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums">30</span> ที่นั่ง · ค่าสมัครเบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท (อาจเปลี่ยนแปลงได้) · ไม่มีพื้นฐานก็เริ่มได้</p>
+          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · ค่าสมัครเบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท (อาจเปลี่ยนแปลงได้) · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
             <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta data-register-link>
-              <span data-register-cta-label>เปิดรับ 16 พ.ย. 69</span>
+              <span data-register-cta-label>เปิดรับ 18 พ.ย. 69</span>
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square">
                 <path d="M4 12 12 4M5.5 4H12v6.5" />
               </svg>
@@ -668,7 +668,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                 LINE OpenChat: รอเพิ่มลิงก์เข้ากลุ่มโครงการ
               </li>
             </ul>
-            <p class="footer-col__note">เปิดรับสมัคร <span class="font-mono tabular-nums">16</span> พ.ย. <span class="font-mono tabular-nums">2569</span> · <span class="font-mono tabular-nums">30</span> ที่นั่ง</p>
+            <p class="footer-col__note">เปิดรับสมัคร <span class="tabular-nums" data-open-date-full>18 พ.ย. 2569</span> · <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง</p>
           </div>
         </nav>
         <p class="footer-meta footer-legal">© <span class="font-mono tabular-nums">2569</span> สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ · สอบถามผ่าน Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้</p>

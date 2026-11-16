@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -412,5 +413,158 @@ func TestApplicantService_ListAll_UsesBatchPaymentLookup(t *testing.T) {
 	got2 := byID[a2.ID]
 	if got2 == nil || got2.HasSlip || got2.SlipStatus != nil || got2.SlipPaymentID != nil {
 		t.Fatalf("expected no slip fields for a2, got: %+v", got2)
+	}
+}
+
+func TestApplicantService_ParentContactFields(t *testing.T) {
+	svc, appRepo, _ := setupTestServices()
+	ctx := context.Background()
+	nid := validTestNationalID(777)
+
+	// 1. Invalid parentPhone and oversized parentName / parentRelation are rejected.
+	baseReq := service.ApplicationCreateRequest{
+		FullName:       "น้องทิวา ทดสอบ",
+		Nickname:       "ทิวา",
+		NationalID:     nid,
+		Phone:          "0812345678",
+		Email:          "tiwa@example.com",
+		ParentName:     "สมศรี\u200B   ทดสอบ",
+		ParentRelation: "  มารดา  ",
+		ParentPhone:    "089-876-5432",
+		School:         "โรงเรียนแม่โจ้",
+		Grade:          "ม.5",
+		ShirtSize:      "M",
+	}
+	badPhone := baseReq
+	badPhone.ParentPhone = "12345"
+	if _, err := svc.Submit(ctx, badPhone); !errors.Is(err, service.ErrInvalidParentPhone) {
+		t.Fatalf("invalid parentPhone: expected ErrInvalidParentPhone, got %v", err)
+	}
+	longName := baseReq
+	longName.ParentName = strings.Repeat("ก", 151)
+	var verr *service.ValidationError
+	if _, err := svc.Submit(ctx, longName); !errors.As(err, &verr) {
+		t.Fatalf("oversized parentName: expected ValidationError, got %v", err)
+	}
+	longRel := baseReq
+	longRel.ParentRelation = strings.Repeat("ข", 51)
+	if _, err := svc.Submit(ctx, longRel); !errors.As(err, &verr) {
+		t.Fatalf("oversized parentRelation: expected ValidationError, got %v", err)
+	}
+
+	// 2. Valid submit normalizes parent fields and omits them from public Submit / QueryStatus responses.
+	submitted, err := svc.Submit(ctx, baseReq)
+	if err != nil {
+		t.Fatalf("submit with parent fields failed: %v", err)
+	}
+	if submitted.ParentName != "" || submitted.ParentRelation != "" || submitted.ParentPhone != "" {
+		t.Fatalf("submit response must not expose parent PII, got %+v", submitted)
+	}
+	queried, err := svc.QueryStatus(ctx, submitted.ID)
+	if err != nil {
+		t.Fatalf("QueryStatus failed: %v", err)
+	}
+	if queried.ParentName != "" || queried.ParentRelation != "" || queried.ParentPhone != "" {
+		t.Fatalf("public QueryStatus must omit parent PII, got %+v", queried)
+	}
+
+	// 3. Stored applicant and admin ListAll include normalized parent fields and emergency fallback.
+	stored, err := appRepo.GetByApplicationNo(ctx, submitted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.ParentName == nil || *stored.ParentName != "สมศรี ทดสอบ" ||
+		stored.ParentRelation == nil || *stored.ParentRelation != "มารดา" ||
+		stored.ParentPhone == nil || *stored.ParentPhone != "0898765432" {
+		t.Fatalf("unexpected stored parent fields: name=%v rel=%v phone=%v", stored.ParentName, stored.ParentRelation, stored.ParentPhone)
+	}
+	if stored.EmergencyContact != "สมศรี ทดสอบ" || stored.EmergencyPhone != "0898765432" {
+		t.Fatalf("expected emergency contact/phone to mirror parent fields, got %q / %q", stored.EmergencyContact, stored.EmergencyPhone)
+	}
+
+	list, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("ListAll failed: len=%d err=%v", len(list), err)
+	}
+	if list[0].ParentName != "สมศรี ทดสอบ" || list[0].ParentRelation != "มารดา" || list[0].ParentPhone != "0898765432" {
+		t.Fatalf("ListAll missing parent fields: %+v", list[0])
+	}
+
+	// 4. Self-service profile edit refuses modifying parent fields and preserves them on other edits.
+	verifyCode := nid[9:]
+	newParent := "คนอื่น"
+	if _, err := svc.UpdateOwnProfile(ctx, submitted.ID, service.SelfProfileRequest{
+		VerifyCode: verifyCode,
+		Nickname:   "ทิวา",
+		School:     "โรงเรียนแม่โจ้",
+		Province:   "เชียงใหม่",
+		Grade:      "ม.5",
+		ShirtSize:  "L",
+		ParentName: &newParent,
+	}, "127.0.0.1"); !errors.Is(err, service.ErrIdentityLocked) {
+		t.Fatalf("self edit of parentName: expected ErrIdentityLocked, got %v", err)
+	}
+	if _, err := svc.UpdateOwnProfile(ctx, submitted.ID, service.SelfProfileRequest{
+		VerifyCode: verifyCode,
+		Nickname:   "ทิวา",
+		School:     "โรงเรียนแม่โจ้",
+		Province:   "เชียงใหม่",
+		Grade:      "ม.5",
+		ShirtSize:  "L",
+	}, "127.0.0.1"); err != nil {
+		t.Fatalf("self edit of allowed fields failed: %v", err)
+	}
+	afterSelf, _ := appRepo.GetByApplicationNo(ctx, submitted.ID)
+	if afterSelf.ParentName == nil || *afterSelf.ParentName != "สมศรี ทดสอบ" ||
+		afterSelf.ParentPhone == nil || *afterSelf.ParentPhone != "0898765432" {
+		t.Fatalf("self edit wiped parent fields: %+v", afterSelf)
+	}
+
+	// 5. AdminUpdateProfile validates and updates parent fields and emergency contact fallback.
+	badAdminPhone := "999"
+	if _, err := svc.AdminUpdateProfile(ctx, submitted.ID, service.AdminProfileRequest{
+		ParentPhone: &badAdminPhone,
+	}, nil, "127.0.0.1"); !errors.Is(err, service.ErrInvalidParentPhone) {
+		t.Fatalf("admin edit invalid parentPhone: expected ErrInvalidParentPhone, got %v", err)
+	}
+	updName, updRel, updPhone := "สมชาย  ทดสอบ", "บิดา", "087-777-8888"
+	adminID := int64(1)
+	updated, err := svc.AdminUpdateProfile(ctx, submitted.ID, service.AdminProfileRequest{
+		ParentName:     &updName,
+		ParentRelation: &updRel,
+		ParentPhone:    &updPhone,
+		Reason:         "แก้ข้อมูลผู้ปกครอง",
+	}, &adminID, "127.0.0.1")
+	if err != nil {
+		t.Fatalf("AdminUpdateProfile failed: %v", err)
+	}
+	if updated.ParentName != "สมชาย ทดสอบ" || updated.ParentRelation != "บิดา" || updated.ParentPhone != "0877778888" {
+		t.Fatalf("unexpected updated admin parent fields: %+v", updated)
+	}
+	afterAdmin, _ := appRepo.GetByApplicationNo(ctx, submitted.ID)
+	if afterAdmin.EmergencyContact != "สมชาย ทดสอบ" || afterAdmin.EmergencyPhone != "0877778888" {
+		t.Fatalf("expected emergency fields to update via admin edit, got %q / %q", afterAdmin.EmergencyContact, afterAdmin.EmergencyPhone)
+	}
+
+	// Clearing parent contact fields stores nil pointers and falls back emergency fields cleanly.
+	empty := ""
+	cleared, err := svc.AdminUpdateProfile(ctx, submitted.ID, service.AdminProfileRequest{
+		ParentName:     &empty,
+		ParentRelation: &empty,
+		ParentPhone:    &empty,
+		Reason:         "ล้างข้อมูลผู้ปกครอง",
+	}, &adminID, "127.0.0.1")
+	if err != nil {
+		t.Fatalf("clearing parent fields failed: %v", err)
+	}
+	if cleared.ParentName != "" || cleared.ParentRelation != "" || cleared.ParentPhone != "" {
+		t.Fatalf("expected cleared parent fields, got %+v", cleared)
+	}
+	afterClear, _ := appRepo.GetByApplicationNo(ctx, submitted.ID)
+	if afterClear.ParentName != nil || afterClear.ParentRelation != nil || afterClear.ParentPhone != nil {
+		t.Fatalf("expected nil parent pointers after clear, got %+v", afterClear)
+	}
+	if afterClear.EmergencyContact != "ผู้ปกครอง" || afterClear.EmergencyPhone != "0812345678" {
+		t.Fatalf("expected emergency fallback after clear, got %q / %q", afterClear.EmergencyContact, afterClear.EmergencyPhone)
 	}
 }

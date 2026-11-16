@@ -1,14 +1,83 @@
 (function(){
   'use strict';
   var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var OPEN_AT = '2026-11-16T00:00:00+07:00';
+  var OPEN_AT = '2026-11-18T00:00:00+07:00';
+  var CLOSE_AT = '2026-12-18T23:59:59+07:00';
   var MAX = 30;
   var API_BASE = (typeof window !== 'undefined' && window.__CC25_API_BASE_URL__) || 'http://localhost:8000/api';
   var GALLERY_BASE = (typeof window !== 'undefined' && window.__CC25_GALLERY_BASE_URL__) || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
   if (GALLERY_BASE && GALLERY_BASE.slice(-1) !== '/') GALLERY_BASE += '/';
   var LOCAL_GALLERY_BASE = '/assets/gallery/';
+  var THAI_MONTHS_SHORT = [
+    'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+  ];
 
   function $(id){ return document.getElementById(id); }
+
+  function getBangkokDateParts(isoStr){
+    var d = new Date(isoStr || OPEN_AT);
+    if (!isFinite(d.getTime())) d = new Date(OPEN_AT);
+    try {
+      if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        var fmt = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Bangkok',
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric'
+        });
+        if (fmt.formatToParts) {
+          var parts = fmt.formatToParts(d);
+          var map = {};
+          for (var i = 0; i < parts.length; i++) {
+            map[parts[i].type] = Number(parts[i].value);
+          }
+          if (map.year && map.month && map.day) {
+            var beYear = map.year + 543;
+            return {
+              day: map.day,
+              month: map.month,
+              year: map.year,
+              beYear: beYear,
+              beYear2: ('0' + (beYear % 100)).slice(-2)
+            };
+          }
+        }
+      }
+    } catch (e) {}
+    var bkk = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+    var year = bkk.getUTCFullYear();
+    var month = bkk.getUTCMonth() + 1;
+    var day = bkk.getUTCDate();
+    var beYearFallback = year + 543;
+    return {
+      day: day,
+      month: month,
+      year: year,
+      beYear: beYearFallback,
+      beYear2: ('0' + (beYearFallback % 100)).slice(-2)
+    };
+  }
+
+  function formatOpenDateNoYear(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return p.day + ' ' + THAI_MONTHS_SHORT[p.month - 1];
+  }
+
+  function formatOpenDateShort(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return p.day + ' ' + THAI_MONTHS_SHORT[p.month - 1] + ' ' + p.beYear2;
+  }
+
+  function formatOpenDateFull(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return p.day + ' ' + THAI_MONTHS_SHORT[p.month - 1] + ' ' + p.beYear;
+  }
+
+  function formatOpenDateDot(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return ('0' + p.day).slice(-2) + '.' + ('0' + p.month).slice(-2) + '.' + p.beYear2;
+  }
 
   // Server-authoritative state (driven by GET /api/settings/public with graceful offline fallback)
   var state = {
@@ -19,6 +88,7 @@
     maxCapacity: MAX,
     campFee: null,
     registrationOpenAt: OPEN_AT,
+    registrationCloseAt: CLOSE_AT,
     failed: false,
     loading: true,
     explicitClosed: false,
@@ -71,8 +141,13 @@
 
     var maxCap = state.maxCapacity || MAX;
     var seatsLeft = Math.max(0, maxCap - state.currentCount);
-    var ctaText = 'เปิดรับสมัคร 16 พ.ย.', ctaHref = '#experience', miniLabel = 'เปิดรับ 16 พ.ย. 69', stickyDisabled = true;
-    var regCtaText = 'เปิดรับ 16 พ.ย. 69', regCtaHref = '/register', regCtaMuted = true;
+    var openAtStr = state.registrationOpenAt || OPEN_AT;
+    var openDateNoYear = formatOpenDateNoYear(openAtStr);
+    var openDateShort = formatOpenDateShort(openAtStr);
+    var openDateFull = formatOpenDateFull(openAtStr);
+    var openDateDot = formatOpenDateDot(openAtStr);
+    var ctaText = 'เปิดรับสมัคร ' + openDateNoYear, ctaHref = '#experience', miniLabel = 'เปิดรับ ' + openDateShort, stickyDisabled = true;
+    var regCtaText = 'เปิดรับ ' + openDateShort, regCtaHref = '/register', regCtaMuted = true;
 
     if (seatsBig) {
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
@@ -87,15 +162,29 @@
       });
     }
 
+    document.querySelectorAll('[data-open-date-short]').forEach(function(el){
+      if (el.textContent !== openDateShort) el.textContent = openDateShort;
+    });
+    document.querySelectorAll('[data-open-date-full]').forEach(function(el){
+      if (el.textContent !== openDateFull) el.textContent = openDateFull;
+    });
+    document.querySelectorAll('[data-open-date-dot]').forEach(function(el){
+      if (el.textContent !== openDateDot) el.textContent = openDateDot;
+    });
+    var maxCapStr = String(maxCap);
+    document.querySelectorAll('[data-max-capacity]').forEach(function(el){
+      if (el.textContent !== maxCapStr) el.textContent = maxCapStr;
+    });
+
     if (s === 'LOADING' || s === 'PRE_OPEN') {
-      ctaText = 'เปิดรับสมัคร 16 พ.ย.';
+      ctaText = 'เปิดรับสมัคร ' + openDateNoYear;
       ctaHref = '#experience';
-      regCtaText = 'เปิดรับ 16 พ.ย. 69';
+      regCtaText = 'เปิดรับ ' + openDateShort;
       regCtaHref = '/register';
       regCtaMuted = true;
-      miniLabel = 'เปิดรับ 16 พ.ย. 69';
+      miniLabel = 'เปิดรับ ' + openDateShort;
       stickyDisabled = true;
-      if (sticky) sticky.textContent = '16 พ.ย. 69';
+      if (sticky) sticky.textContent = openDateShort;
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
@@ -298,6 +387,7 @@
         var serverEpoch = new Date(state.serverTime).getTime();
         state.serverOffsetMs = isFinite(serverEpoch) ? (serverEpoch - Date.now()) : 0;
         state.registrationOpenAt = data.registrationOpenAt || OPEN_AT;
+        state.registrationCloseAt = data.registrationCloseAt || CLOSE_AT;
         state.isOpen = Boolean(data.isOpen);
         state.explicitClosed = data.isOpen === false;
         state.currentCount = typeof data.currentCount === 'number' ? data.currentCount : 0;
@@ -322,6 +412,7 @@
         state.serverTime = new Date().toISOString();
         state.serverOffsetMs = 0;
         state.registrationOpenAt = OPEN_AT;
+        state.registrationCloseAt = CLOSE_AT;
         state.currentCount = 0;
         state.maxCapacity = MAX;
         // Offline before opening: still try the server once (jittered) when the countdown ends.

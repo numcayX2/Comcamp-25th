@@ -279,13 +279,19 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 		}
 	}
 
-	if a.EmergencyPhone == a.Phone {
+	if p.EmergencyContact != "" {
+		a.EmergencyContact = p.EmergencyContact
+	}
+	if p.EmergencyPhone != "" {
+		a.EmergencyPhone = p.EmergencyPhone
+	} else if a.EmergencyPhone == a.Phone {
 		a.EmergencyPhone = p.Phone
 	}
 	a.FirstName, a.LastName, a.Nickname = p.FirstName, p.LastName, p.Nickname
 	a.NationalID, a.Phone, a.Email = p.NationalID, p.Phone, p.Email
 	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
 	a.Motivation, a.Allergies, a.MedicalConditions = p.Motivation, p.Allergies, p.MedicalConditions
+	a.ParentName, a.ParentRelation, a.ParentPhone = p.ParentName, p.ParentRelation, p.ParentPhone
 	a.UpdatedAt = time.Now().UTC()
 
 	if audit != nil {
@@ -799,6 +805,25 @@ func (m *MemoryPaymentRepo) CheckDuplicateSlipHash(ctx context.Context, slipHash
 }
 
 func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
+	return m.settle(ctx, paymentID, domain.PaymentPending, false, approved, adminID, note, audit)
+}
+
+// Reverify updates an already-reviewed (APPROVED or REJECTED) latest slip whose status still
+// matches expectedStatus, updating applicant status and slip hash ownership atomically under the locks.
+func (m *MemoryPaymentRepo) Reverify(ctx context.Context, paymentID uuid.UUID, expectedStatus domain.PaymentStatus, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
+	if expectedStatus != domain.PaymentApproved && expectedStatus != domain.PaymentRejected {
+		return domain.ErrPaymentAlreadyVerified
+	}
+	return m.settle(ctx, paymentID, expectedStatus, true, approved, adminID, note, audit)
+}
+
+func (m *MemoryPaymentRepo) settle(ctx context.Context, paymentID uuid.UUID, expectedStatus domain.PaymentStatus, isReverify bool, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
+	if isReverify {
+		if err := checkAuditDetails(audit); err != nil {
+			return err
+		}
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -806,12 +831,13 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 	if !ok {
 		return domain.ErrNotFound
 	}
-	if p.Status != domain.PaymentPending {
+	if p.Status != expectedStatus {
 		return domain.ErrPaymentAlreadyVerified
 	}
 	// A refunded, rejected, withdrawn or deleted application has left the camp: its slip can no
 	// longer be settled. The applicant store stays locked from this check to the status change
 	// (like the Postgres row lock), and a refusal leaves payment and applicant untouched.
+	var oldStatus domain.ApplicationStatus
 	if m.appRepo != nil {
 		m.appRepo.mu.Lock()
 		defer m.appRepo.mu.Unlock()
@@ -819,6 +845,7 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 		if !found || a.DeletedAt != nil || !a.Status.IsActive() {
 			return domain.ErrStateConflict
 		}
+		oldStatus = a.Status
 	}
 
 	// Re-verify under lock that paymentID has not been superseded by a newer upload.
@@ -828,32 +855,47 @@ func (m *MemoryPaymentRepo) Verify(ctx context.Context, paymentID uuid.UUID, app
 		}
 	}
 
+	// Maintain slipHashes invariant matching partial unique index uq_payments_slip_hash:
+	// REJECTED slips do not hold their hash; PENDING and APPROVED slips do.
+	if expectedStatus == domain.PaymentRejected && approved && p.SlipHash != nil && *p.SlipHash != "" {
+		if m.slipHashes[*p.SlipHash] {
+			return domain.ErrDuplicateSlipHash
+		}
+		m.slipHashes[*p.SlipHash] = true
+	} else if expectedStatus != domain.PaymentRejected && !approved && p.SlipHash != nil {
+		delete(m.slipHashes, *p.SlipHash)
+	}
+
 	now := time.Now().UTC()
+	adminNote := note
 	newStatus := domain.StatusPassed
 	if approved {
 		p.Status = domain.PaymentApproved
+		p.RejectionReason = nil
 		newStatus = domain.StatusConfirmed
 	} else {
 		p.Status = domain.PaymentRejected
-		p.RejectionReason = &note
-		// Like the partial unique index of migration 000005: a rejected slip no longer holds its
-		// hash, so the same image can be sent again.
-		if p.SlipHash != nil {
-			delete(m.slipHashes, *p.SlipHash)
-		}
+		rejection := note
+		p.RejectionReason = &rejection
 	}
 	p.VerifiedByAdminID = &adminID
-	p.AdminNote = &note
+	p.AdminNote = &adminNote
 	p.VerifiedAt = &now
 
 	if m.appRepo != nil {
-		oldStatus, err := m.appRepo.setStatusLocked(p.ApplicantID, newStatus, &adminID, note)
-		if err != nil {
-			return err
+		if !isReverify || oldStatus != newStatus {
+			var err error
+			oldStatus, err = m.appRepo.setStatusLocked(p.ApplicantID, newStatus, &adminID, note)
+			if err != nil {
+				return err
+			}
 		}
 		if audit != nil {
 			entry := withDetail(audit, "oldStatus", oldStatus)
 			entry.Details["newStatus"] = newStatus
+			if isReverify {
+				entry.Details["previousSlipStatus"] = expectedStatus
+			}
 			if err := m.appRepo.audit.Log(ctx, entry); err != nil {
 				return err
 			}

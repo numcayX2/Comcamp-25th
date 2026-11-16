@@ -68,22 +68,27 @@ import {
   WARNING,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'RESERVE', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED'];
+const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE', 'REFUND_PENDING', 'REFUNDED'];
 
 type FilterKey = 'ALL' | 'SLIP_PENDING' | ApplicationStatus;
 type SortKey = 'newest' | 'slip_queue' | 'updated_desc';
 
-/** Optional slip verification metadata when provided by an extended API payload or session cache. */
+/** Optional slip verification & parent contact metadata when provided by an extended API payload or session cache. */
 type ApplicantSlipMeta = Application & {
   adminNote?: string | null;
   rejectionReason?: string | null;
   verifiedAt?: string | null;
+  parentName?: string;
+  parentRelation?: string;
+  parentPhone?: string;
 };
 
 type LocalSlipVerdict = {
   approved: boolean;
   note: string;
   verifiedAt: string;
+  paymentId?: string | null;
 };
 
 const BANGKOK_DATETIME = new Intl.DateTimeFormat('th-TH', {
@@ -225,17 +230,21 @@ function StatusSelect({
   onChange: (status: ApplicationStatus) => void;
 }) {
   return (
-    <label className="relative inline-flex items-center gap-2">
+    <label className="relative inline-flex w-full items-center sm:max-w-xs lg:max-w-none">
       <span className="sr-only">เปลี่ยนสถานะของ {app.id}</span>
-      <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[app.status] }}>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] leading-none"
+        style={{ color: STATUS_DOT[app.status] }}
+      >
         ●
       </span>
       <select
         value={app.status}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as ApplicationStatus)}
-        className={`min-h-11 cursor-pointer appearance-none rounded-sm border-b bg-transparent py-2 pr-7 text-sm leading-6 disabled:opacity-50 ${FOCUS}`}
-        style={{ borderColor: RULE, color: INK, colorScheme: 'inherit' }}
+        className={`min-h-10 w-full cursor-pointer appearance-none rounded-lg border bg-[var(--bg-card)] py-1.5 pl-7 pr-8 text-sm font-medium leading-6 disabled:opacity-50 lg:min-h-9 ${FOCUS}`}
+        style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
       >
         {!STATUSES.includes(app.status) && (
           <option key={app.status} value={app.status} disabled>
@@ -251,8 +260,8 @@ function StatusSelect({
       <ChevronDown
         aria-hidden="true"
         strokeWidth={1.5}
-        size={16}
-        className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2"
+        size={15}
+        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
         style={{ color: INK_3 }}
       />
     </label>
@@ -309,6 +318,9 @@ function describeAdminError(err: unknown, fallback: string): string {
     }
     if (err.code === 'ALREADY_VERIFIED') {
       return 'สลิปนี้ถูกตรวจสอบไปแล้ว รายการถูกโหลดใหม่ให้แล้ว';
+    }
+    if (err.code === 'DUPLICATE_SLIP') {
+      return 'ไม่สามารถอนุมัติสลิปนี้ได้ เนื่องจากรูปสลิปซ้ำกับใบสมัครอื่นที่ยังใช้งานอยู่ในระบบ (สามารถระบุหมายเหตุแล้วปฏิเสธสลิปแทนได้)';
     }
     if (err.status === 409) {
       return 'สถานะของใบสมัครนี้ไม่อนุญาตให้ทำรายการนี้ (ใบสมัครที่รอคืนเงิน คืนเงินแล้ว หรือไม่ผ่านจะอนุมัติหรือปฏิเสธสลิปไม่ได้)';
@@ -375,6 +387,7 @@ export function AdminSection() {
   const [verificationNote, setVerificationNote] = useState('');
   const [verifyNoteError, setVerifyNoteError] = useState<string | null>(null);
   const [confirmRejectSlip, setConfirmRejectSlip] = useState(false);
+  const [editingSlipVerdict, setEditingSlipVerdict] = useState(false);
   const [verifyingAction, setVerifyingAction] = useState<'approve' | 'reject' | null>(null);
   const [slipImage, setSlipImage] = useState<{
     url: string | null;
@@ -431,6 +444,7 @@ export function AdminSection() {
     setVerificationNote('');
     setVerifyNoteError(null);
     setConfirmRejectSlip(false);
+    setEditingSlipVerdict(false);
     setVerifyingAction(null);
     setLocalSlipVerdicts({});
     setSlipImage({ url: null, paymentId: null, error: null, loading: false });
@@ -592,6 +606,7 @@ export function AdminSection() {
     setVerificationNote('');
     setVerifyNoteError(null);
     setConfirmRejectSlip(false);
+    setEditingSlipVerdict(false);
     focusSlipPanelAfterAdvance.current = true;
   }
 
@@ -661,7 +676,7 @@ export function AdminSection() {
 
       setLocalSlipVerdicts((prev) => ({
         ...prev,
-        [currentId]: { approved, note: recordedNote, verifiedAt },
+        [currentId]: { approved, note: recordedNote, verifiedAt, paymentId: resolvedSlipPaymentId },
       }));
       setApps((prev) =>
         prev.map((a) =>
@@ -677,6 +692,7 @@ export function AdminSection() {
       setLightboxOpen(false);
       setConfirmRejectSlip(false);
       setVerificationNote('');
+      setEditingSlipVerdict(false);
 
       if (nextPendingInView) {
         setInspectingId(nextPendingInView.id);
@@ -689,6 +705,12 @@ export function AdminSection() {
       setConfirmRejectSlip(false);
       if (err instanceof ApiHttpError && err.code === 'SLIP_CHANGED') {
         // Keep the panel open, reload list & fetch the newly uploaded slip image without losing staff context.
+        setEditingSlipVerdict(false);
+        setLocalSlipVerdicts((prev) => {
+          const next = { ...prev };
+          delete next[currentId];
+          return next;
+        });
         setSlipRetryNonce((n) => n + 1);
         listApplications(token)
           .then((listRes) => {
@@ -705,6 +727,7 @@ export function AdminSection() {
           });
       } else if (
         err instanceof ApiHttpError &&
+        err.code !== 'DUPLICATE_SLIP' &&
         (err.code === 'ALREADY_VERIFIED' || err.status === 409 || err.status === 404)
       ) {
         setLightboxOpen(false);
@@ -768,6 +791,7 @@ export function AdminSection() {
       setConfirmRejectSlip(false);
       setVerifyNoteError(null);
       setVerificationNote('');
+      setEditingSlipVerdict(false);
       setInspectingId((cur) => (cur === a.id ? null : a.id));
     };
     guardProfileEditSwitch(`เปิดตรวจสลิปของ ${a.id}`, run);
@@ -908,6 +932,11 @@ export function AdminSection() {
     return () => window.clearTimeout(timer);
   }, [actionSuccess]);
 
+  /* Reset slip re-verification edit mode whenever the inspected applicant changes or closes. */
+  useEffect(() => {
+    setEditingSlipVerdict(false);
+  }, [inspectingId]);
+
   /* Slips are served only to an authenticated admin, so fetch the image with the token and show
      it from an object URL (revoked when the panel closes or retries). */
   useEffect(() => {
@@ -1020,12 +1049,9 @@ export function AdminSection() {
   }, [apps, visible.length]);
 
   const count = (s: ApplicationStatus) => apps.filter((a) => a.status === s).length;
-  const withSlip = apps.filter((a) => hasSlip(a)).length;
   const pendingSlipCount = apps.filter((a) => isSlipPending(a)).length;
   /** Same rule the server uses for the seat quota: REJECTED, REFUND_PENDING and REFUNDED released theirs. */
   const currentCount = apps.filter((a) => holdsSeat(a.status)).length;
-  /** First come, first served: a new application is PASSED and then waits for a slip or its review. */
-  const awaitingPayment = count('PASSED') + count('PENDING');
   const countLabel = searching
     ? `พบ ${visible.length} จาก ${byTab.length} รายการ`
     : `${byTab.length} รายการ`;
@@ -1033,21 +1059,22 @@ export function AdminSection() {
   const inputCls = `${INPUT_BASE} rounded-xl`;
   const pillGhost = PILL_GHOST;
 
-  const extraPendingTab: { key: FilterKey; label: string; n: number }[] =
-    count('PENDING') > 0 ? [{ key: 'PENDING', label: STATUS_LABELS.PENDING, n: count('PENDING') }] : [];
+  const legacyTabs: { key: FilterKey; label: string; n: number }[] = LEGACY_STATUSES
+    .filter((s) => count(s) > 0)
+    .map((s) => ({ key: s as FilterKey, label: STATUS_LABELS[s], n: count(s) }));
 
   const tabs: { key: FilterKey; label: string; n: number }[] = [
     { key: 'ALL', label: 'ทั้งหมด', n: apps.length },
     { key: 'SLIP_PENDING', label: 'สลิปรอตรวจ', n: pendingSlipCount },
-    ...extraPendingTab,
     ...STATUSES.map((s) => ({ key: s as FilterKey, label: STATUS_LABELS[s], n: count(s) })),
+    ...legacyTabs,
   ];
 
   const visibleWithSlip = visible.filter((x) => hasSlip(x) && can.viewSlip);
   const approvePresets = approveNoteTemplates(feeBaht);
 
   return (
-    <div className="mx-auto w-full max-w-5xl select-text px-4 pb-28 pt-12 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 sm:pt-20">
+    <div className="mx-auto w-full max-w-7xl select-text px-4 pb-28 pt-12 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 sm:pt-20">
       {/* ── Masthead ─────────────────────────────────────────── */}
       <header>
         <h1
@@ -1058,14 +1085,15 @@ export function AdminSection() {
         </h1>
         {token ? (
           <>
-            <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:flex lg:flex-wrap lg:gap-3">
-              <div className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: RULE }}>
-                <p className="text-xs leading-5" style={{ color: INK_3 }}>ผู้สมัครทั้งหมด</p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>{apps.length} คน</p>
-              </div>
-              <div className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: RULE }}>
+            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
                 <p className="text-xs leading-5" style={{ color: INK_3 }}>ถือที่นั่งอยู่</p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>{currentCount}</p>
+                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
+                  {currentCount} คน
+                </p>
+                <p className="mt-0.5 text-xs leading-5" style={{ color: INK_3 }}>
+                  จากทั้งหมด {apps.length} รายการ
+                </p>
               </div>
               <button
                 type="button"
@@ -1074,32 +1102,39 @@ export function AdminSection() {
                   setFilter('SLIP_PENDING');
                   ledgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
-                className={`min-h-11 rounded-xl border px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                className={`min-h-11 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
                 style={{
                   borderColor: filter === 'SLIP_PENDING' ? TECH : pendingSlipCount > 0 ? WARNING : RULE,
-                  backgroundColor: filter === 'SLIP_PENDING' ? SURFACE_SUBTLE : undefined,
+                  backgroundColor: filter === 'SLIP_PENDING' ? SURFACE_SUBTLE : BG_CARD,
                 }}
               >
                 <p className="flex items-center gap-1.5 text-xs font-semibold leading-5" style={{ color: pendingSlipCount > 0 ? WARNING : INK_3 }}>
                   <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: pendingSlipCount > 0 ? WARNING : INK_3 }} />
                   สลิปรอตรวจ
                 </p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
+                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
                   {pendingSlipCount} รายการ
                 </p>
+                <p className="mt-0.5 text-xs leading-5" style={{ color: INK_3 }}>
+                  {pendingSlipCount > 0 ? 'กดเพื่อกรองคิวรอตรวจ' : 'ไม่มีสลิปค้างตรวจ'}
+                </p>
               </button>
-              <div className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: RULE }}>
-                <p className="text-xs leading-5" style={{ color: INK_3 }}>ยืนยันสิทธิ์แล้ว</p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>{count('CONFIRMED')}</p>
+              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
+                <p className="flex items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: SUCCESS }} />
+                  ยืนยันสิทธิ์สมบูรณ์
+                </p>
+                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
+                  {count('CONFIRMED')} คน
+                </p>
               </div>
-              <div className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: RULE }}>
-                <p className="text-xs leading-5" style={{ color: INK_3 }}>รอชำระ / รอตรวจ</p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>{awaitingPayment}</p>
-              </div>
-              <div className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: RULE }}>
-                <p className="text-xs leading-5" style={{ color: INK_3 }}>รอคืนเงิน / แนบสลิป</p>
-                <p className="font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {count('REFUND_PENDING')} / {withSlip}
+              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
+                <p className="flex items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: TECH }} />
+                  ได้สิทธิ์แล้ว (รอตรวจสลิป)
+                </p>
+                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
+                  {count('PASSED')} คน
                 </p>
               </div>
             </div>
@@ -1480,124 +1515,225 @@ export function AdminSection() {
               </div>
             </div>
 
-            {/* Rows */}
-            <ul ref={listRef} tabIndex={-1} className={`rounded-sm ${FOCUS}`}>
-              {visible.map((a) => {
-                const slip = hasSlip(a);
-                const open = inspectingId === a.id;
-                const detailOpen = detailId === a.id;
-                const editing = editingId === a.id;
-                const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
-                // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
-                const slipLocked = !holdsSeat(a.status);
-                const slipPending = (a.slipStatus ?? 'PENDING') === 'PENDING';
-                const slipIdx = visibleWithSlip.findIndex((x) => x.id === a.id);
-                const prevSlipApp = slipIdx > 0 ? visibleWithSlip[slipIdx - 1] : null;
-                const nextSlipApp =
-                  slipIdx >= 0 && slipIdx < visibleWithSlip.length - 1 ? visibleWithSlip[slipIdx + 1] : null;
-                const nextPendingInView = findNextPendingSlip(a.id, visible);
-                const nextPendingGlobal = nextPendingInView ? null : findNextPendingSlip(a.id, sorted);
-                const slipMeta = a as ApplicantSlipMeta;
-                const localVerdict = localSlipVerdicts[a.id];
-                const savedNote =
-                  a.slipStatus === 'REJECTED'
-                    ? (slipMeta.rejectionReason ?? slipMeta.adminNote ?? localVerdict?.note ?? null)
-                    : (slipMeta.adminNote ?? localVerdict?.note ?? null);
-                const savedVerifiedAt = slipMeta.verifiedAt ?? localVerdict?.verifiedAt ?? null;
+            {/* Structured Data Table */}
+            {visible.length > 0 && (
+              <div
+                className="mt-4 overflow-hidden rounded-2xl border"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
+                <div
+                  className="hidden lg:grid lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_12.5rem] lg:items-center lg:gap-4 border-b px-5 py-3 text-xs font-semibold"
+                  style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
+                >
+                  <span>รหัส / วันที่สมัคร</span>
+                  <span>ผู้สมัคร / ติดต่อ</span>
+                  <span>โรงเรียน / ชั้น / เสื้อ</span>
+                  <span>หลักฐานการโอน</span>
+                  <span>สถานะใบสมัคร</span>
+                  <span>การจัดการ</span>
+                </div>
+                <ul ref={listRef} tabIndex={-1} className={`rounded-sm ${FOCUS}`}>
+                  {visible.map((a) => {
+                    const slip = hasSlip(a);
+                    const open = inspectingId === a.id;
+                    const detailOpen = detailId === a.id;
+                    const editing = editingId === a.id;
+                    const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
+                    // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
+                    const slipLocked = !holdsSeat(a.status);
+                    const slipPending = (a.slipStatus ?? 'PENDING') === 'PENDING';
+                    const slipIdx = visibleWithSlip.findIndex((x) => x.id === a.id);
+                    const prevSlipApp = slipIdx > 0 ? visibleWithSlip[slipIdx - 1] : null;
+                    const nextSlipApp =
+                      slipIdx >= 0 && slipIdx < visibleWithSlip.length - 1 ? visibleWithSlip[slipIdx + 1] : null;
+                    const nextPendingInView = findNextPendingSlip(a.id, visible);
+                    const nextPendingGlobal = nextPendingInView ? null : findNextPendingSlip(a.id, sorted);
+                    const slipMeta = a as ApplicantSlipMeta;
+                    const rawLocalVerdict = localSlipVerdicts[a.id];
+                    const localVerdict =
+                      rawLocalVerdict &&
+                      (!rawLocalVerdict.paymentId || !a.slipPaymentId || rawLocalVerdict.paymentId === a.slipPaymentId)
+                        ? rawLocalVerdict
+                        : undefined;
+                    const savedNote =
+                      localVerdict?.note ??
+                      (a.slipStatus === 'REJECTED'
+                        ? (slipMeta.rejectionReason ?? slipMeta.adminNote ?? null)
+                        : (slipMeta.adminNote ?? null));
+                    const savedVerifiedAt = localVerdict?.verifiedAt ?? slipMeta.verifiedAt ?? null;
+                    const allergyText = a.allergies?.trim();
+                    const medicalText = a.medicalConditions?.trim();
 
-                return (
-                  <li key={a.id} className="border-b" style={{ borderColor: RULE }}>
-                    <div className="grid gap-x-8 gap-y-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.2fr)_15.5rem] md:items-start">
-                      {/* Who */}
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
-                          {a.id}
-                        </p>
-                        <p className="mt-1 break-words text-base font-semibold leading-7" style={{ color: INK }}>
-                          {a.fullName}
-                          {a.nickname ? (
-                            <span className="font-normal" style={{ color: INK_3 }}>
-                              {' '}
-                              ({a.nickname})
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="text-sm leading-7" style={{ color: INK_2 }}>
-                          <span className="font-mono tabular-nums">{a.phone}</span>
-                          {a.email ? (
-                            <span className="break-all" style={{ color: INK_3 }}>
-                              {' '}
-                              · {a.email}
-                            </span>
-                          ) : null}
-                        </p>
-                      </div>
-
-                      {/* Where */}
-                      <div className="min-w-0 text-sm leading-7" style={{ color: INK_2 }}>
-                        <p className="break-words">{a.school}</p>
-                        <p style={{ color: INK_3 }}>
-                          {a.grade}
-                          {a.province ? ` · ${a.province}` : ''} · ไซส์ {a.shirtSize}
-                        </p>
-                      </div>
-
-                      {/* State + actions */}
-                      <div className="flex min-w-0 flex-col items-start gap-1.5">
-                        {can.changeStatus ? (
-                          <StatusSelect
-                            app={a}
-                            disabled={patching === a.id || deletingId === a.id}
-                            onChange={(status) => requestStatusChange(a, status)}
-                          />
-                        ) : (
-                          <p className="inline-flex min-h-11 items-center gap-2 py-2 text-sm leading-6" style={{ color: INK }}>
-                            <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
-                              ●
-                            </span>
-                            {STATUS_LABELS[a.status]}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-                          <SlipBadge app={a} />
-                          <button
-                            id={`detail-btn-${a.id}`}
-                            type="button"
-                            aria-expanded={detailOpen}
-                            onClick={() => toggleDetail(a)}
-                            className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
-                            style={{ color: INK_2 }}
-                          >
-                            <Eye size={14} strokeWidth={1.5} aria-hidden="true" />
-                            {detailOpen ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}
-                          </button>
-                          {slip && can.viewSlip && (
-                            <button
-                              id={`slip-btn-${a.id}`}
-                              type="button"
-                              aria-expanded={open}
-                              onClick={() => openSlip(a)}
-                              className={`inline-flex min-h-11 items-center rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
-                              style={{ color: TECH }}
+                    return (
+                      <li key={a.id} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
+                        <div className="flex flex-col gap-3 px-5 py-4 lg:grid lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_12.5rem] lg:items-center lg:gap-4">
+                          {/* Col 1: ID + createdAt */}
+                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
+                            <span
+                              className="inline-block rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
+                              style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
                             >
-                              {open ? 'ซ่อนสลิป' : 'ตรวจสอบสลิป'}
-                            </button>
-                          )}
-                          {can.editProfile && (
+                              {a.id}
+                            </span>
+                            <p className="text-xs leading-5 lg:mt-1.5" style={{ color: INK_3 }}>
+                              {formatBangkokDateTime(a.createdAt)}
+                            </p>
+                          </div>
+
+                          {/* Col 2: Name, contact, medical/allergy pills */}
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-semibold leading-6" style={{ color: INK }}>
+                              {a.fullName}
+                              {a.nickname ? (
+                                <span className="font-normal" style={{ color: INK_3 }}>
+                                  {' '}
+                                  ({a.nickname})
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="mt-0.5 text-xs leading-5" style={{ color: INK_2 }}>
+                              <span className="font-mono tabular-nums">{a.phone}</span>
+                              {a.email ? (
+                                <span className="break-all" style={{ color: INK_3 }}>
+                                  {' '}
+                                  · {a.email}
+                                </span>
+                              ) : null}
+                            </p>
+                            {(slipMeta.parentName || slipMeta.parentPhone) && (
+                              <p className="mt-0.5 break-words text-xs leading-5" style={{ color: INK_3 }}>
+                                ผู้ปกครอง: {slipMeta.parentName || '—'}
+                                {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
+                                {slipMeta.parentPhone ? (
+                                  <>
+                                    {' · '}
+                                    <span className="font-mono tabular-nums" style={{ color: INK_2 }}>
+                                      {slipMeta.parentPhone}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </p>
+                            )}
+                            {(allergyText || medicalText) && (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                {allergyText && (
+                                  <span
+                                    className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
+                                    style={{ borderColor: WARNING, color: WARNING, backgroundColor: SURFACE_SUBTLE }}
+                                    title={`แพ้อาหาร: ${allergyText}`}
+                                  >
+                                    <span className="truncate">แพ้อาหาร: {allergyText}</span>
+                                  </span>
+                                )}
+                                {medicalText && (
+                                  <span
+                                    className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
+                                    style={{ borderColor: TECH, color: TECH, backgroundColor: SURFACE_SUBTLE }}
+                                    title={`โรคประจำตัว: ${medicalText}`}
+                                  >
+                                    <span className="truncate">โรคประจำตัว: {medicalText}</span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Col 3: School, grade, province, shirt size */}
+                          <div className="min-w-0 text-sm leading-6" style={{ color: INK_2 }}>
+                            <p className="break-words font-medium" style={{ color: INK }}>
+                              {a.school}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
+                              <span>
+                                {a.grade}
+                                {a.province ? ` · ${a.province}` : ''}
+                              </span>
+                              <span
+                                className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold leading-4"
+                                style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
+                              >
+                                เสื้อ {a.shirtSize}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Col 4: Slip badge + verify/inspect button */}
+                          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-col lg:items-start lg:gap-1.5">
+                            <SlipBadge app={a} />
+                            {slip && can.viewSlip && (
+                              <button
+                                id={`slip-btn-${a.id}`}
+                                type="button"
+                                aria-expanded={open}
+                                onClick={() => openSlip(a)}
+                                className={`inline-flex min-h-10 items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
+                                style={{
+                                  borderColor: open ? TECH : slipPending ? WARNING : RULE,
+                                  backgroundColor: open ? SURFACE_SUBTLE : BG_CARD,
+                                  color: slipPending && !open ? WARNING : TECH,
+                                }}
+                              >
+                                {open ? 'ซ่อนสลิป' : slipPending ? 'ตรวจสลิป' : 'ดู/แก้ผลสลิป'}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Col 5: Application status select */}
+                          <div className="min-w-0">
+                            {can.changeStatus ? (
+                              <StatusSelect
+                                app={a}
+                                disabled={patching === a.id || deletingId === a.id}
+                                onChange={(status) => requestStatusChange(a, status)}
+                              />
+                            ) : (
+                              <p
+                                className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium leading-6 lg:min-h-9"
+                                style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
+                              >
+                                <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
+                                  ●
+                                </span>
+                                {STATUS_LABELS[a.status]}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Col 6: Row actions */}
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <button
-                              id={`edit-btn-${a.id}`}
+                              id={`detail-btn-${a.id}`}
                               type="button"
-                              aria-expanded={editing}
-                              onClick={() => toggleEdit(a)}
-                              className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
-                              style={{ color: TECH }}
+                              aria-expanded={detailOpen}
+                              onClick={() => toggleDetail(a)}
+                              className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
+                              style={{
+                                borderColor: detailOpen ? INK : RULE,
+                                backgroundColor: detailOpen ? SURFACE_SUBTLE : BG_CARD,
+                                color: detailOpen ? INK : INK_2,
+                              }}
                             >
-                              <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
-                              {editing ? 'ซ่อนการแก้ไข' : 'แก้ไขข้อมูล'}
+                              <Eye size={13} strokeWidth={1.5} aria-hidden="true" />
+                              {detailOpen ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}
                             </button>
-                          )}
-                          {can.deleteApplication &&
-                            confirmDeleteId !== a.id && (
+                            {can.editProfile && (
+                              <button
+                                id={`edit-btn-${a.id}`}
+                                type="button"
+                                aria-expanded={editing}
+                                onClick={() => toggleEdit(a)}
+                                className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
+                                style={{
+                                  borderColor: editing ? TECH : RULE,
+                                  backgroundColor: editing ? SURFACE_SUBTLE : BG_CARD,
+                                  color: TECH,
+                                }}
+                              >
+                                <Pencil size={12} strokeWidth={1.5} aria-hidden="true" />
+                                {editing ? 'ซ่อนการแก้ไข' : 'แก้ไข'}
+                              </button>
+                            )}
+                            {can.deleteApplication && confirmDeleteId !== a.id && (
                               <button
                                 id={`delete-btn-${a.id}`}
                                 type="button"
@@ -1609,25 +1745,24 @@ export function AdminSection() {
                                     setConfirmDeleteId(a.id);
                                   });
                                 }}
-                                className={`inline-flex min-h-11 items-center gap-1 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 transition-colors hover:opacity-80 disabled:opacity-50 ${FOCUS}`}
-                                style={{ color: DANGER }}
+                                className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 lg:min-h-8 ${FOCUS}`}
+                                style={{ borderColor: RULE, backgroundColor: BG_CARD, color: DANGER }}
                                 title={`ลบใบสมัคร ${a.id}`}
                               >
-                                <Trash2 size={13} strokeWidth={1.5} aria-hidden="true" />
+                                <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
                                 ลบ
                               </button>
                             )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
 
                     {/* Confirmation for risky / seat-releasing / slip-bypassing status transition */}
                     {pendingChange && (
                       <div
                         role="region"
                         aria-label={`ยืนยันการเปลี่ยนสถานะ ${a.id}`}
-                        className="border-t py-4"
-                        style={{ borderColor: RULE }}
+                        className="border-t px-5 py-4"
+                        style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
                       >
                         <p className="text-sm font-semibold leading-7" style={{ color: INK }}>
                           ยืนยันเปลี่ยนสถานะ {a.id} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
@@ -1691,8 +1826,8 @@ export function AdminSection() {
                       <div
                         role="region"
                         aria-label={`ยืนยันการลบ ${a.id}`}
-                        className="border-t py-4"
-                        style={{ borderColor: RULE }}
+                        className="border-t px-5 py-4"
+                        style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
                       >
                         <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
                           ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
@@ -1747,7 +1882,7 @@ export function AdminSection() {
                     {/* Applicant details: expands under its own row */}
                     {detailOpen && (
                       <div
-                        className="border-t py-6"
+                        className="border-t px-5 py-6"
                         style={{ borderColor: RULE }}
                         role="region"
                         aria-label={`รายละเอียดใบสมัคร ${a.id}`}
@@ -1769,6 +1904,16 @@ export function AdminSection() {
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>สถานะหลักฐานการโอนเงิน</p>
                             <p className="mt-1 text-sm" style={{ color: INK }}>
                               {slipLabel(a)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้ปกครอง / เบอร์ติดต่อ</p>
+                            <p className="mt-1 break-words text-sm" style={{ color: INK }}>
+                              {slipMeta.parentName || '—'}
+                              {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
+                            </p>
+                            <p className="mt-0.5 font-mono text-sm tabular-nums" style={{ color: INK_2 }}>
+                              {slipMeta.parentPhone || '—'}
                             </p>
                           </div>
                           <div>
@@ -1819,18 +1964,20 @@ export function AdminSection() {
 
                     {/* Profile editor: expands under its own row */}
                     {editing && token && can.editProfile && (
-                      <AdminProfileEditor
-                        key={a.id}
-                        app={a}
-                        token={token}
-                        onSaved={onProfileSaved}
-                        onClose={() => {
-                          setEditingDirty(false);
-                          setEditingId(null);
-                        }}
-                        onAuthError={handleAuthError}
-                        onDirtyChange={setEditingDirty}
-                      />
+                      <div className="px-5">
+                        <AdminProfileEditor
+                          key={a.id}
+                          app={a}
+                          token={token}
+                          onSaved={onProfileSaved}
+                          onClose={() => {
+                            setEditingDirty(false);
+                            setEditingId(null);
+                          }}
+                          onAuthError={handleAuthError}
+                          onDirtyChange={setEditingDirty}
+                        />
+                      </div>
                     )}
 
                     {/* Slip review: expands under its own row */}
@@ -1838,7 +1985,7 @@ export function AdminSection() {
                       <div
                         ref={slipPanelRef}
                         tabIndex={-1}
-                        className={`grid gap-8 border-t py-6 md:grid-cols-[minmax(0,22rem)_1fr] ${FOCUS}`}
+                        className={`grid gap-8 border-t px-5 py-6 md:grid-cols-[minmax(0,22rem)_1fr] ${FOCUS}`}
                         style={{ borderColor: RULE }}
                         role="region"
                         aria-label={`ตรวจสอบหลักฐานการชำระเงิน ${a.id}`}
@@ -1995,6 +2142,17 @@ export function AdminSection() {
                                 </span>
                               </dd>
                             </div>
+                            <div className="min-w-0 sm:col-span-2">
+                              <dt className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้ปกครอง / เบอร์ติดต่อ</dt>
+                              <dd className="mt-0.5 break-words" style={{ color: INK }}>
+                                {slipMeta.parentName || '—'}
+                                {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
+                                {' · '}
+                                <span className="font-mono tabular-nums" style={{ color: INK_2 }}>
+                                  {slipMeta.parentPhone || '—'}
+                                </span>
+                              </dd>
+                            </div>
                             <div className="sm:col-span-2">
                               <dt className="text-xs font-semibold" style={{ color: INK_3 }}>วันที่สมัคร</dt>
                               <dd className="mt-0.5" style={{ color: INK_2 }}>
@@ -2008,9 +2166,9 @@ export function AdminSection() {
                             {slipLocked
                               ? `ใบสมัครนี้อยู่ในสถานะ “${STATUS_LABELS[a.status]}” จึงอนุมัติหรือปฏิเสธสลิปไม่ได้ ยังดูรูปสลิปเพื่อทำบัญชีได้ตามปกติ`
                               : a.slipStatus === 'APPROVED'
-                                ? 'สลิปนี้ได้รับการอนุมัติเรียบร้อยแล้ว'
+                                ? 'สลิปนี้ได้รับการอนุมัติเรียบร้อยแล้ว (สามารถแก้ไขผลการตรวจหรือเปลี่ยนสถานะได้)'
                                 : a.slipStatus === 'REJECTED'
-                                  ? 'สลิปนี้ถูกปฏิเสธแล้ว รอผู้สมัครอัปโหลดสลิปใหม่'
+                                  ? 'สลิปนี้ถูกปฏิเสธแล้ว รอผู้สมัครอัปโหลดสลิปใหม่ (หรือแก้ไขผลการตรวจได้)'
                                   : 'อนุมัติแล้วสถานะจะเป็นยืนยันสิทธิ์สมบูรณ์ ปฏิเสธแล้วจะกลับเป็นได้รับสิทธิ์เพื่อให้ส่งสลิปใหม่'}
                           </p>
 
@@ -2032,11 +2190,42 @@ export function AdminSection() {
                               <p className="mt-1 text-xs leading-5" style={{ color: INK_3 }}>
                                 เวลาที่บันทึกผล: {formatBangkokDateTime(savedVerifiedAt ?? a.updatedAt)}
                               </p>
+                              {!slipLocked && can.verifySlip && !editingSlipVerdict && (
+                                <div className="mt-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVerificationNote(savedNote ?? '');
+                                      setConfirmRejectSlip(false);
+                                      setVerifyNoteError(null);
+                                      setEditingSlipVerdict(true);
+                                    }}
+                                    className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                                    style={{ borderColor: RULE, color: INK, backgroundColor: BG_CARD }}
+                                  >
+                                    <Pencil aria-hidden="true" size={14} strokeWidth={1.75} />
+                                    แก้ไขผลการตรวจ / เปลี่ยนสถานะสลิป
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
 
-                          {!slipLocked && slipPending && can.verifySlip && (
+                          {!slipLocked && (slipPending || editingSlipVerdict) && can.verifySlip && (
                             <>
+                              {editingSlipVerdict && (
+                                <div
+                                  className="mt-5 rounded-xl border px-3.5 py-2.5 text-sm"
+                                  style={{ borderColor: TECH, backgroundColor: SURFACE_SUBTLE }}
+                                >
+                                  <p className="font-semibold" style={{ color: INK }}>
+                                    แก้ไขผลการตรวจสลิป
+                                  </p>
+                                  <p className="mt-0.5 text-xs leading-5" style={{ color: INK_2 }}>
+                                    สามารถปรับแก้หมายเหตุหรือเปลี่ยนเป็นอนุมัติ / ปฏิเสธใหม่ได้ทันที ระบบจะอัปเดตสถานะใบสมัครให้อัตโนมัติ
+                                  </p>
+                                </div>
+                              )}
                               <div className="mb-1.5 mt-5 flex items-baseline justify-between gap-2">
                                 <label className="text-sm font-semibold" style={{ color: INK }} htmlFor="verify-note">
                                   หมายเหตุเจ้าหน้าที่ (บังคับระบุหากปฏิเสธสลิป)
@@ -2208,23 +2397,40 @@ export function AdminSection() {
                                   >
                                     {verifyingAction === 'reject' ? 'กำลังปฏิเสธ…' : 'ปฏิเสธสลิป'}
                                   </button>
-                                  <button
-                                    type="button"
-                                    disabled={verifying}
-                                    onClick={() => {
-                                      setLightboxOpen(false);
-                                      setInspectingId(null);
-                                    }}
-                                    className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                                    style={{ color: INK_2 }}
-                                  >
-                                    ปิด
-                                  </button>
+                                  {editingSlipVerdict ? (
+                                    <button
+                                      type="button"
+                                      disabled={verifying}
+                                      onClick={() => {
+                                        setEditingSlipVerdict(false);
+                                        setConfirmRejectSlip(false);
+                                        setVerifyNoteError(null);
+                                        setVerificationNote('');
+                                      }}
+                                      className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                                      style={{ borderColor: RULE, color: INK }}
+                                    >
+                                      ยกเลิกการแก้ไขผล
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={verifying}
+                                      onClick={() => {
+                                        setLightboxOpen(false);
+                                        setInspectingId(null);
+                                      }}
+                                      className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2.5 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                                      style={{ color: INK_2 }}
+                                    >
+                                      ปิด
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </>
                           )}
-                          {(slipLocked || !slipPending || !can.verifySlip) && (
+                          {(slipLocked || (!slipPending && !editingSlipVerdict) || !can.verifySlip) && (
                             <div className="mt-6">
                               <button
                                 type="button"
@@ -2245,16 +2451,22 @@ export function AdminSection() {
                         </div>
                       </div>
                     )}
-                  </li>
-                );
-              })}
-            </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
             {/* Loading skeleton (first load only) */}
             {busy && apps.length === 0 && (
-              <div aria-hidden="true">
+              <div
+                aria-hidden="true"
+                className="mt-4 overflow-hidden rounded-2xl border"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="border-b py-5" style={{ borderColor: RULE }}>
+                  <div key={i} className="border-b px-5 py-5 last:border-b-0" style={{ borderColor: RULE }}>
                     <div
                       className="h-3 w-24 animate-pulse rounded-sm motion-reduce:animate-none"
                       style={{ backgroundColor: SURFACE_SUBTLE }}
@@ -2269,7 +2481,12 @@ export function AdminSection() {
             )}
 
             {!busy && visible.length === 0 && (
-              <div ref={emptyStateRef} tabIndex={-1} className={`rounded-sm py-16 ${FOCUS}`}>
+              <div
+                ref={emptyStateRef}
+                tabIndex={-1}
+                className={`mt-4 rounded-2xl border px-6 py-16 text-center ${FOCUS}`}
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
                 {searching ? (
                   <>
                     <p className="text-base leading-[1.75]" style={{ color: INK_2 }}>

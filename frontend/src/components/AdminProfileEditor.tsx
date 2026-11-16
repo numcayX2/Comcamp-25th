@@ -37,12 +37,24 @@ import {
   WARNING,
 } from './admin-ui';
 
+const PARENT_NAME_MAX = 150;
+const PARENT_RELATION_MAX = 50;
+
+type ApplicantWithParent = Application & {
+  parentName?: string;
+  parentRelation?: string;
+  parentPhone?: string;
+};
+
 interface Form {
   fullName: string;
   nickname: string;
   nationalId: string;
   phone: string;
   email: string;
+  parentName: string;
+  parentRelation: string;
+  parentPhone: string;
   school: string;
   province: string;
   grade: string;
@@ -62,6 +74,9 @@ const ORDER: (keyof Form)[] = [
   'nationalId',
   'phone',
   'email',
+  'parentName',
+  'parentRelation',
+  'parentPhone',
   'school',
   'province',
   'grade',
@@ -74,12 +89,16 @@ const ORDER: (keyof Form)[] = [
 ];
 
 function initialForm(a: Application): Form {
+  const withParent = a as ApplicantWithParent;
   return {
     fullName: a.fullName,
     nickname: a.nickname ?? '',
     nationalId: a.nationalId,
     phone: a.phone,
     email: a.email ?? '',
+    parentName: withParent.parentName ?? '',
+    parentRelation: withParent.parentRelation ?? '',
+    parentPhone: withParent.parentPhone ?? '',
     school: a.school,
     province: a.province ?? '',
     ...splitGrade(a.grade),
@@ -128,6 +147,22 @@ function validate(f: Form): Errors {
     e.email = email.length > 150 ? 'อีเมลยาวได้ไม่เกิน 150 ตัวอักษร' : 'รูปแบบอีเมลไม่ถูกต้อง (เว้นว่างได้)';
   }
 
+  const parentName = cleanSingleLine(f.parentName);
+  if (parentName.length > PARENT_NAME_MAX) {
+    e.parentName = `ชื่อ-นามสกุลผู้ปกครองยาวได้ไม่เกิน ${PARENT_NAME_MAX} ตัวอักษร`;
+  }
+
+  const parentRelation = cleanSingleLine(f.parentRelation);
+  if (parentRelation.length > PARENT_RELATION_MAX) {
+    e.parentRelation = `ความสัมพันธ์ผู้ปกครองยาวได้ไม่เกิน ${PARENT_RELATION_MAX} ตัวอักษร`;
+  }
+
+  const parentPhoneRaw = stripZeroWidth(f.parentPhone).trim();
+  const parentPhone = sanitizeDigits(f.parentPhone);
+  if (parentPhoneRaw && !/^0\d{9}$/.test(parentPhone)) {
+    e.parentPhone = 'เบอร์โทรผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
+  }
+
   const school = cleanSingleLine(f.school);
   if (!school) e.school = 'กรุณากรอกโรงเรียนหรือสถานศึกษา';
   else if (school.length > 150) e.school = 'ชื่อโรงเรียนยาวได้ไม่เกิน 150 ตัวอักษร';
@@ -164,6 +199,7 @@ function describeSaveError(err: unknown): string {
     if (err.status === 400) {
       const m = err.message.toLowerCase();
       if (m.includes('national id')) return 'เลขบัตรประชาชนไม่ถูกต้อง ต้องมี 13 หลักและผ่านการตรวจเลขตรวจสอบ';
+      if (m.includes('parent phone')) return 'เบอร์โทรผู้ปกครองไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('phone')) return 'เบอร์โทรไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('email')) return 'รูปแบบอีเมลไม่ถูกต้อง';
       if (m.includes('shirt')) return 'ไซส์เสื้อไม่ถูกต้อง';
@@ -282,12 +318,15 @@ export function AdminProfileEditor({
       return;
     }
 
-    const payload: AdminProfilePayload = {
+    const payload = {
       fullName: cleanSingleLine(form.fullName),
       nickname: cleanSingleLine(form.nickname),
       nationalId: sanitizeDigits(form.nationalId),
       phone: sanitizeDigits(form.phone),
       email: stripZeroWidth(form.email).replace(/\s+/g, ''),
+      parentName: cleanSingleLine(form.parentName),
+      parentRelation: cleanSingleLine(form.parentRelation),
+      parentPhone: sanitizeDigits(form.parentPhone),
       school: cleanSingleLine(form.school),
       province: cleanSingleLine(form.province),
       grade: gradeValue({ grade: form.grade, gradeOther: cleanSingleLine(form.gradeOther) }),
@@ -296,7 +335,7 @@ export function AdminProfileEditor({
       allergies: stripZeroWidth(form.allergies).trim(),
       medicalConditions: stripZeroWidth(form.medicalConditions).trim(),
       reason: stripZeroWidth(form.reason).trim() || undefined,
-    };
+    } as AdminProfilePayload;
     savingRef.current = true;
     setSaving(true);
     try {
@@ -399,6 +438,26 @@ export function AdminProfileEditor({
             <input {...input('email', { type: 'email', inputMode: 'email', autoComplete: 'off' })} />
           </Field>
         </div>
+        <div className="md:col-span-2">
+          <Field id={`${pid}-parentName`} label="ชื่อ-นามสกุลผู้ปกครอง" hint="ไม่บังคับ" error={errors.parentName}>
+            <input {...input('parentName', { autoComplete: 'off', maxLength: PARENT_NAME_MAX })} />
+          </Field>
+        </div>
+        <Field id={`${pid}-parentRelation`} label="ความสัมพันธ์ผู้ปกครอง" hint="เช่น บิดา, มารดา" error={errors.parentRelation}>
+          <input {...input('parentRelation', { autoComplete: 'off', maxLength: PARENT_RELATION_MAX, placeholder: 'เช่น บิดา, มารดา' })} />
+        </Field>
+        <Field id={`${pid}-parentPhone`} label="เบอร์โทรศัพท์ผู้ปกครอง" hint="10 หลัก (ไม่บังคับ)" error={errors.parentPhone}>
+          <input
+            {...input('parentPhone', {
+              type: 'tel',
+              inputMode: 'tel',
+              autoComplete: 'off',
+              maxLength: 14,
+              placeholder: '08X-XXX-XXXX',
+              className: `${INPUT_BASE} rounded-xl font-mono tabular-nums`,
+            })}
+          />
+        </Field>
         <Field id={`${pid}-school`} label="โรงเรียน / สถานศึกษา" error={errors.school}>
           <input {...input('school')} />
         </Field>

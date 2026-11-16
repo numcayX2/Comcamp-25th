@@ -257,8 +257,8 @@ func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, 
 
 // UpdateProfile rewrites the editable profile columns and the audit row in one transaction. The
 // row is locked first, so requireActive is checked against the status that is actually stored.
-// emergency_phone mirrors the applicant's phone at registration (the form has no separate
-// contact), so it follows a phone change only while it still equals the old phone.
+// When EmergencyContact / EmergencyPhone are supplied, they update the emergency columns directly;
+// otherwise emergency_phone follows phone only while it still equals the old phone.
 func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p domain.ProfileFields, requireActive bool, audit *domain.AuditEntry) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -281,12 +281,17 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 	_, err = tx.Exec(ctx, `
 		UPDATE applicants SET
 			first_name = $1, last_name = $2, nickname = $3,
-			emergency_phone = CASE WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
 			national_id = $4, phone = $5, email = $6, school = $7, province = $8, grade = $9,
-			shirt_size = $10, motivation = $11, allergies = $12, medical_conditions = $13, updated_at = $14
-		WHERE id = $15
+			shirt_size = $10, motivation = $11, allergies = $12, medical_conditions = $13,
+			parent_name = $14, parent_relation = $15, parent_phone = $16,
+			emergency_contact = CASE WHEN $17 <> '' THEN $17 ELSE emergency_contact END,
+			emergency_phone = CASE WHEN $18 <> '' THEN $18 WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
+			updated_at = $19
+		WHERE id = $20
 	`, p.FirstName, p.LastName, p.Nickname, p.NationalID, p.Phone, p.Email, p.School, p.Province,
-		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions, time.Now().UTC(), id)
+		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions,
+		p.ParentName, p.ParentRelation, p.ParentPhone, p.EmergencyContact, p.EmergencyPhone,
+		time.Now().UTC(), id)
 	if err != nil {
 		if mapped := mapPgError(err); mapped != err {
 			return mapped

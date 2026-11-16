@@ -9,7 +9,7 @@ import {
   type Application,
   type ApplicationStatus,
   type SlipStatus,
-} from './api';
+} from './api.ts';
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   PENDING: 'รอพิจารณา',
@@ -37,10 +37,11 @@ export function slipLabel(app: Application): string {
 }
 
 /**
- * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, email, school,
- * province, grade, shirt size and (when unmasked) national ID. Zero-width characters, Thai numerals
- * and surrounding spaces are normalised. A query made only of digits, spaces and hyphens also
- * matches phone and unmasked national ID written without them (081-234 finds 0812345678).
+ * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, email, parent
+ * contact, school, province, grade, shirt size and (when unmasked) national ID. Zero-width
+ * characters, Thai numerals and surrounding spaces are normalised. A query made only of digits,
+ * spaces and hyphens also matches phone, parentPhone and unmasked national ID written without them
+ * (081-234 finds 0812345678).
  */
 export function matchesApplicantQuery(app: Application, rawQuery: string): boolean {
   const q = stripZeroWidth(rawQuery).trim().toLowerCase();
@@ -52,6 +53,9 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
     app.nickname ?? '',
     app.phone,
     app.email ?? '',
+    app.parentName ?? '',
+    app.parentRelation ?? '',
+    app.parentPhone ?? '',
     app.school,
     app.province ?? '',
     app.grade ?? '',
@@ -64,8 +68,9 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
   const digits = sanitizeDigits(q);
   if (digits.length > 0 && /^[\d๐-๙\s-]+$/.test(q)) {
     const phoneMatch = sanitizeDigits(app.phone).includes(digits);
+    const parentPhoneMatch = app.parentPhone ? sanitizeDigits(app.parentPhone).includes(digits) : false;
     const nidMatch = !/x/i.test(app.nationalId) && sanitizeDigits(app.nationalId).includes(digits);
-    return phoneMatch || nidMatch;
+    return phoneMatch || parentPhoneMatch || nidMatch;
   }
   return false;
 }
@@ -79,6 +84,9 @@ export const CSV_HEADERS = [
   'เลขประจำตัวประชาชน',
   'เบอร์โทรศัพท์',
   'อีเมล',
+  'ชื่อผู้ปกครอง',
+  'ความสัมพันธ์ผู้ปกครอง',
+  'เบอร์โทรผู้ปกครอง',
   'โรงเรียน',
   'ระดับชั้น',
   'จังหวัด',
@@ -162,6 +170,9 @@ export function buildApplicantsCsv(rows: Application[]): string {
         csvNationalId(a.nationalId),
         csvDigits(a.phone),
         csvField(a.email ?? ''),
+        csvField(a.parentName ?? ''),
+        csvField(a.parentRelation ?? ''),
+        csvDigits(a.parentPhone ?? ''),
         csvField(a.school),
         csvField(a.grade),
         csvField(a.province ?? ''),

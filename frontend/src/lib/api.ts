@@ -2,11 +2,12 @@
  * ComCamp #25 - API Client & Server Time Synchronization
  * Aligns client countdown with authentic server time to prevent clock tampering.
  */
-import { fetchSharedPublicSettings } from './public-settings-cache';
+import { fetchSharedPublicSettings } from './public-settings-cache.ts';
 
 export interface PublicSettings {
   serverTime: string;
   registrationOpenAt: string;
+  registrationCloseAt?: string;
   isOpen: boolean;
   currentCount?: number;
   maxCapacity?: number;
@@ -14,11 +15,13 @@ export interface PublicSettings {
   isCertificateReleased?: boolean;
 }
 
-export const DEFAULT_TARGET_DATE = "2026-11-16T00:00:00+07:00";
+export const DEFAULT_TARGET_DATE = "2026-11-18T00:00:00+07:00";
+export const DEFAULT_CLOSE_DATE = "2026-12-18T23:59:59+07:00";
 
 export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   serverTime: new Date().toISOString(),
   registrationOpenAt: DEFAULT_TARGET_DATE,
+  registrationCloseAt: DEFAULT_CLOSE_DATE,
   isOpen: false,
   currentCount: 0,
   maxCapacity: 30,
@@ -116,7 +119,9 @@ export interface ApplicationPayload {
   nationalId: string;
   phone: string;
   email: string;
-  // TODO(feature): ต้องเพิ่มช่องทางติดต่อผู้ปกครอง 1 คน + เบอร์โทรศัพท์ผู้ปกครอง (เชื่อมกับ parent_name / parent_phone / emergency_*)
+  parentName?: string;
+  parentRelation?: string;
+  parentPhone?: string;
   school: string;
   grade: string;
   shirtSize: ShirtSize;
@@ -145,6 +150,9 @@ export interface ApplicantRecord {
   nationalId: string;
   phone: string;
   email?: string;
+  parentName?: string;
+  parentRelation?: string;
+  parentPhone?: string;
   school: string;
   grade: string;
   shirtSize: ShirtSize;
@@ -621,6 +629,9 @@ export interface AdminProfilePayload {
   nationalId?: string;
   phone?: string;
   email?: string;
+  parentName?: string;
+  parentRelation?: string;
+  parentPhone?: string;
   school?: string;
   province?: string;
   grade?: string;
@@ -701,8 +712,7 @@ const MOCK_ADMIN_SETTINGS: AdminSettings = {
   id: 1,
   campName: 'ComCamp #25 (Mock)',
   registrationOpenAt: DEFAULT_TARGET_DATE,
-  // TODO(content): วันปิดรับสมัครยังไม่ประกาศ ใช้วันเปิดเป็นค่าชั่วคราวใน mock เท่านั้น
-  registrationCloseAt: DEFAULT_TARGET_DATE,
+  registrationCloseAt: DEFAULT_CLOSE_DATE,
   maxCapacity: 30,
   // TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ (อาจเปลี่ยนแปลงได้)
   campFee: 1000,

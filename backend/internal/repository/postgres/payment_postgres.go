@@ -216,6 +216,21 @@ func (r *PaymentPostgresRepo) CheckDuplicateSlipHash(ctx context.Context, slipHa
 // on rejection so they can re-upload), writing the status log and audit row — all in one
 // transaction, with the payment row locked so two staff cannot verify the same slip twice.
 func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
+	return r.settlePayment(ctx, paymentID, domain.PaymentPending, false, approved, adminID, note, audit)
+}
+
+// Reverify updates an already-reviewed (APPROVED or REJECTED) latest payment slip when its status
+// still matches expectedStatus, syncing the applicant status, status log, and audit log in one
+// transaction. Re-approving a REJECTED slip relies on uq_payments_slip_hash to reject duplicate
+// live slip hashes cleanly via mapPgError.
+func (r *PaymentPostgresRepo) Reverify(ctx context.Context, paymentID uuid.UUID, expectedStatus domain.PaymentStatus, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
+	if expectedStatus != domain.PaymentApproved && expectedStatus != domain.PaymentRejected {
+		return domain.ErrPaymentAlreadyVerified
+	}
+	return r.settlePayment(ctx, paymentID, expectedStatus, true, approved, adminID, note, audit)
+}
+
+func (r *PaymentPostgresRepo) settlePayment(ctx context.Context, paymentID uuid.UUID, expectedStatus domain.PaymentStatus, isReverify bool, approved bool, adminID int64, note string, audit *domain.AuditEntry) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -223,6 +238,21 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 	defer tx.Rollback(ctx)
 
 	var applicantID uuid.UUID
+	if isReverify {
+		err = tx.QueryRow(ctx, `SELECT applicant_id FROM payments WHERE id = $1`, paymentID).Scan(&applicantID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lookup payment applicant: %w", err)
+		}
+		// Acquire the per-applicant slip advisory lock before any row lock so REJECTED -> APPROVED
+		// serialises with concurrent uploads (CreateReplacingPending) without violating lock order.
+		if err := lockApplicantSlips(ctx, tx, applicantID); err != nil {
+			return err
+		}
+	}
+
 	var paymentStatus domain.PaymentStatus
 	err = tx.QueryRow(ctx, `SELECT applicant_id, status FROM payments WHERE id = $1 FOR UPDATE`, paymentID).
 		Scan(&applicantID, &paymentStatus)
@@ -232,7 +262,7 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 	if err != nil {
 		return fmt.Errorf("lock payment: %w", err)
 	}
-	if paymentStatus != domain.PaymentPending {
+	if paymentStatus != expectedStatus {
 		return domain.ErrPaymentAlreadyVerified
 	}
 
@@ -273,13 +303,16 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 		rejection = &note
 	}
 	// Optimistic status check on top of the row lock (AGENTS.md §13.7): the update only applies
-	// while the slip is still PENDING, so two staff settling the same slip cannot both succeed.
+	// while the slip still matches expectedStatus, so concurrent settling cannot both succeed.
 	tag, err := tx.Exec(ctx, `
 		UPDATE payments
 		SET status = $1, verified_by_admin_id = $2, admin_note = $3, rejection_reason = $4, verified_at = $5
 		WHERE id = $6 AND status = $7
-	`, newPaymentStatus, adminID, note, rejection, now, paymentID, domain.PaymentPending)
+	`, newPaymentStatus, adminID, note, rejection, now, paymentID, expectedStatus)
 	if err != nil {
+		if mapped := mapPgError(err); mapped != err {
+			return mapped
+		}
 		return fmt.Errorf("failed to update payment: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
@@ -295,6 +328,9 @@ func (r *PaymentPostgresRepo) Verify(ctx context.Context, paymentID uuid.UUID, a
 	if audit != nil {
 		entry := withAuditDetail(audit, "oldStatus", oldStatus)
 		entry.Details["newStatus"] = newStatus
+		if isReverify {
+			entry.Details["previousSlipStatus"] = expectedStatus
+		}
 		if err := insertAudit(ctx, tx, entry); err != nil {
 			return err
 		}

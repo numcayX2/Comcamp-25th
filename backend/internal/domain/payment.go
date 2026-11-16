@@ -52,4 +52,8 @@ type PaymentRepository interface {
 	// CONFIRMED (approved) or back to PASSED (rejected, so they can re-upload), writing the
 	// status log and the audit entry. Returns ErrPaymentAlreadyVerified if it is not PENDING.
 	Verify(ctx context.Context, paymentID uuid.UUID, approved bool, adminID int64, note string, audit *AuditEntry) error
+	// Reverify updates an already-reviewed (APPROVED or REJECTED) latest slip whose status still
+	// matches expectedStatus, moving the applicant to CONFIRMED (approved) or PASSED (!approved),
+	// writing any applicant status change log and the audit entry in one transaction.
+	Reverify(ctx context.Context, paymentID uuid.UUID, expectedStatus PaymentStatus, approved bool, adminID int64, note string, audit *AuditEntry) error
 }

@@ -113,6 +113,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*domain.PublicS
 		resp := domain.PublicSettingsResponse{
 			ServerTime:            now.Format(time.RFC3339),
 			RegistrationOpenAt:    settings.RegistrationOpenAt.Format(time.RFC3339),
+			RegistrationCloseAt:   settings.RegistrationCloseAt.Format(time.RFC3339),
 			IsOpen:                isOpen,
 			CurrentCount:          activeCount,
 			MaxCapacity:           settings.MaxCapacity,

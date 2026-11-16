@@ -104,6 +104,11 @@ type ProfileFields struct {
 	Motivation        *string
 	Allergies         *string
 	MedicalConditions *string
+	ParentName        *string
+	ParentRelation    *string
+	ParentPhone       *string
+	EmergencyContact  string
+	EmergencyPhone    string
 }
 
 type ApplicantStatusLog struct {

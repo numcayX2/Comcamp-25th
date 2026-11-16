@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ApiHttpError, verifyPaymentSlip, type ApplicantRecord } from './api';
-import { buildApplicantsCsv, csvField, sanitizeCsvCell } from './applicant-tools';
+import { ApiHttpError, verifyPaymentSlip, type ApplicantRecord } from './api.ts';
+import {
+  CSV_HEADERS,
+  buildApplicantsCsv,
+  csvField,
+  matchesApplicantQuery,
+  sanitizeCsvCell,
+} from './applicant-tools.ts';
 
 function sampleApplication(overrides: Partial<ApplicantRecord> = {}): ApplicantRecord {
   return {
@@ -103,4 +109,38 @@ test('F-01 verifyPaymentSlip rejects missing or malformed paymentId before issui
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test('parent contact fields work in matchesApplicantQuery and buildApplicantsCsv', () => {
+  const app = sampleApplication({
+    parentName: 'สมศรี ใจดี',
+    parentRelation: 'มารดา',
+    parentPhone: '0898765432',
+  });
+
+  assert.equal(matchesApplicantQuery(app, 'สมศรี'), true);
+  assert.equal(matchesApplicantQuery(app, '\u200Bมารดา'), true);
+  assert.equal(matchesApplicantQuery(app, '089-876-5432'), true);
+  assert.equal(matchesApplicantQuery(app, '๐๘๙๘๗๖'), true);
+  assert.equal(matchesApplicantQuery(app, '0999999999'), false);
+
+  const emailHeaderIdx = CSV_HEADERS.indexOf('อีเมล');
+  assert.equal(CSV_HEADERS[emailHeaderIdx + 1], 'ชื่อผู้ปกครอง');
+  assert.equal(CSV_HEADERS[emailHeaderIdx + 2], 'ความสัมพันธ์ผู้ปกครอง');
+  assert.equal(CSV_HEADERS[emailHeaderIdx + 3], 'เบอร์โทรผู้ปกครอง');
+  assert.equal(CSV_HEADERS[emailHeaderIdx + 4], 'โรงเรียน');
+
+  const csv = buildApplicantsCsv([
+    app,
+    sampleApplication({
+      id: 'CC25-TEST02',
+      parentName: '=SUM(1,1)',
+      parentRelation: 'บิดา',
+      parentPhone: '',
+    }),
+  ]);
+
+  assert.ok(csv.includes('อีเมล,ชื่อผู้ปกครอง,ความสัมพันธ์ผู้ปกครอง,เบอร์โทรผู้ปกครอง,โรงเรียน'));
+  assert.ok(csv.includes(',test@example.com,สมศรี ใจดี,มารดา,"=""0898765432""",โรงเรียนแม่โจ้,'));
+  assert.ok(csv.includes(',test@example.com,"\'=SUM(1,1)",บิดา,,โรงเรียนแม่โจ้,'));
 });
