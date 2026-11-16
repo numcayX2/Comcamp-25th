@@ -165,7 +165,7 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
         icon: CircleCheck,
         badge: 'ยืนยันสิทธิ์แล้ว · ยังไม่พบสลิปในระบบ',
         title: 'สถานะยืนยันสิทธิ์แล้ว (ยังไม่ได้อัปโหลดสลิปมัดจำ)',
-        body: `ระบบยังไม่มีสลิปค่ามัดจำสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป โปรดโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว รอรับข่าวสารจากทีมงานได้เลย)`,
+        body: `ระบบยังไม่มีสลิปค่ามัดจำสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป โปรดตรวจสอบประกาศยอดล่าสุด (เบื้องต้น ${feeText} บาท · อาจเปลี่ยนแปลงได้) และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว รอรับข่าวสารจากทีมงานได้เลย)`,
         toSlip: true,
       };
     case 'REFUND_PENDING':
@@ -245,7 +245,7 @@ function describeHighlight(app: Application, seats: number, feeText: string): Hi
     icon: Ticket,
     badge: 'สมัครทันแล้ว · ได้สิทธิ์เข้าร่วม',
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง เพื่อยืนยันสิทธิ์เข้าร่วมค่ายให้สมบูรณ์`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) ค่าสมัครเบื้องต้น ${feeText} บาท (ยังไม่คอนเฟิร์มราคาสุทธิ อาจเปลี่ยนแปลงได้) กรุณาตรวจสอบประกาศยืนยันยอดล่าสุดก่อนโอน แล้วอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
     toSlip: true,
   };
 }
@@ -480,6 +480,9 @@ export function StatusSection() {
   /** Focus goes back to the toggle only when the panel was closed by the user. */
   const withdrawRestore = useRef(false);
   const searchRun = useRef(0);
+  const searchBusyRef = useRef(false);
+  const editBusyRef = useRef(false);
+  const withdrawBusyRef = useRef(false);
 
   const runSearch = useCallback(async (rawQuery: string, opts?: { fromStoredReceipt?: boolean }) => {
     // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
@@ -488,6 +491,7 @@ export function StatusSection() {
     const digitsOnly = /^\d+$/.test(query) ? query : '';
     const isNationalIdLookup = !opts?.fromStoredReceipt && digitsOnly.length === 13;
     const run = ++searchRun.current;
+    searchBusyRef.current = true;
     setBusy(true);
     setError(null);
     setStoredNotice(null);
@@ -524,7 +528,10 @@ export function StatusSection() {
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
       setApp(null);
     } finally {
-      if (run === searchRun.current) setBusy(false);
+      if (run === searchRun.current) {
+        searchBusyRef.current = false;
+        setBusy(false);
+      }
     }
   }, []);
 
@@ -591,6 +598,7 @@ export function StatusSection() {
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
+    if (busy || searchBusyRef.current || !q.trim()) return;
     void runSearch(q);
   }
 
@@ -624,7 +632,7 @@ export function StatusSection() {
 
   async function onSaveProfile(e: React.FormEvent) {
     e.preventDefault();
-    if (!app || editBusy) return;
+    if (!app || editBusy || editBusyRef.current) return;
     const errors = validateEdit(edit);
     setEditErrors(errors);
     setEditError(null);
@@ -638,6 +646,7 @@ export function StatusSection() {
     }
     setEditLiveSummary('');
     if (!codeReady) return;
+    editBusyRef.current = true;
     setEditBusy(true);
     try {
       const res = await updateOwnProfile(app.id, verifyCode, {
@@ -672,12 +681,13 @@ export function StatusSection() {
         setEditError(describeError(err, 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง'));
       }
     } finally {
+      editBusyRef.current = false;
       setEditBusy(false);
     }
   }
 
   function closeWithdraw() {
-    if (withdrawBusy) return;
+    if (withdrawBusy || withdrawBusyRef.current) return;
     withdrawRestore.current = true;
     setWithdrawOpen(false);
     setWithdrawNid('');
@@ -685,7 +695,8 @@ export function StatusSection() {
   }
 
   async function onWithdraw() {
-    if (!app || !withdrawNidValid || withdrawBusy) return;
+    if (!app || !withdrawNidValid || withdrawBusy || withdrawBusyRef.current) return;
+    withdrawBusyRef.current = true;
     setWithdrawBusy(true);
     setError(null);
     setWithdrawErr(null);
@@ -730,6 +741,7 @@ export function StatusSection() {
         setError(describeError(err, 'ยกเลิกใบสมัครไม่สำเร็จ'));
       }
     } finally {
+      withdrawBusyRef.current = false;
       setWithdrawBusy(false);
     }
   }
@@ -850,6 +862,7 @@ export function StatusSection() {
           <button
             type="submit"
             disabled={busy || !q.trim()}
+            aria-busy={busy || undefined}
             className={`mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 py-3 text-base font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
             style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
           >
@@ -987,7 +1000,7 @@ export function StatusSection() {
                 { k: 'เลขบัตรประชาชน', v: app.nationalId, mono: true },
                 { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
                 { k: 'โรงเรียน', v: app.school, mono: false },
-                { k: 'ระดับชั้น / ไซส์เสื้อ', v: `${app.grade} / ${app.shirtSize}`, mono: false },
+                { k: 'ระดับชั้น / ไซส์เสื้อค่าย (รอคอนเฟิร์มไซส์ที่มีจริง)', v: `${app.grade} / ${app.shirtSize}`, mono: false },
                 ...(app.email ? [{ k: 'อีเมล', v: app.email, mono: false }] : []),
                 ...(app.province ? [{ k: 'จังหวัด', v: app.province, mono: false }] : []),
               ].map((row) => (
@@ -1127,7 +1140,7 @@ export function StatusSection() {
                           <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
                         </select>
                       </EditField>
-                      <EditField id="edit-shirtSize" label="ไซส์เสื้อ" error={editErrors.shirtSize}>
+                      <EditField id="edit-shirtSize" label="ไซส์เสื้อค่าย (มีเสื้อแน่นอน · ไซส์จริงรอยืนยัน)" error={editErrors.shirtSize}>
                         <select
                           id="edit-shirtSize"
                           value={edit.shirtSize}
@@ -1349,6 +1362,7 @@ export function StatusSection() {
                   หากต้องการสละสิทธิ์และขอคืนเงิน กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ พร้อมแจ้งรหัสใบสมัคร{' '}
                   <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
                 </p>
+                {/* TODO(content): เพิ่มลิงก์ LINE OpenChat โครงการคู่กับ Facebook เมื่อสร้างกลุ่มแล้ว */}
                 <a
                   href={FB_URL}
                   target="_blank"
@@ -1375,7 +1389,7 @@ export function StatusSection() {
                 <div>
                   <h2 className="text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ค่าธรรมเนียมยืนยันสิทธิ์ <span className="font-mono tabular-nums">{feeText}</span> บาท
+                    ค่าธรรมเนียมยืนยันสิทธิ์เบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท (ยังไม่คอนเฟิร์มราคาสุทธิ อาจเปลี่ยนแปลงได้)
                   </p>
                 </div>
                 {slipUploaded ? (

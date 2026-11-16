@@ -17,6 +17,8 @@ function sampleApplication(overrides: Partial<ApplicantRecord> = {}): ApplicantR
     province: 'เชียงใหม่',
     shirtSize: 'L',
     motivation: 'อยากเข้าค่าย\nเพราะสนใจ IoT',
+    allergies: '',
+    medicalConditions: '',
     status: 'PENDING',
     attendanceConfirmed: false,
     hasSlip: false,
@@ -69,6 +71,8 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
       school: '\t+1+1',
       province: '\u200B@SUM(A1)',
       motivation: 'อยากเข้าค่าย\nเพราะสนใจ IoT',
+      allergies: '=cmd|calc',
+      medicalConditions: 'หอบหืด\nพกยาพ่น',
     }),
   ]);
 
@@ -77,7 +81,7 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
   assert.ok(csv.includes(",' =1+1,"));
   assert.ok(csv.includes(",'\t+1+1,"));
   assert.ok(csv.includes(",'@SUM(A1),"));
-  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจ IoT"\r\n'));
+  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจ IoT",\'=cmd|calc,"หอบหืด\nพกยาพ่น"\r\n'));
 });
 
 test('F-01 verifyPaymentSlip rejects missing or malformed paymentId before issuing a request', async () => {

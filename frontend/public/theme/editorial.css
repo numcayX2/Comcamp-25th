@@ -520,7 +520,7 @@
   color: var(--ink);
 }
 
-/* Official "รอประกาศ" notice in --amber per AGENTS.md §12.2 */
+/* Official "รอประกาศ" notice in text-safe --amber-text per AGENTS.md §12.2 */
 .ed-sec .bento .todo,
 .ed-sec .tm-tile .todo {
   display: block;
@@ -531,7 +531,7 @@
   font-weight: 600;
   line-height: 1.55;
   letter-spacing: 0;
-  color: var(--amber) !important;
+  color: var(--amber-text) !important;
 }
 .ed-sec .tm-tile .todo::before,
 .ed-sec .bento .todo::before {

@@ -10,9 +10,11 @@ import {
   type ShirtSize,
 } from '../lib/api';
 import {
+  ALLERGIES_MAX,
   GRADES,
   GRADE_OTHER,
   GRADE_OTHER_MAX,
+  MEDICAL_CONDITIONS_MAX,
   SHIRT_SIZES,
   gradeValue,
   isValidThaiNationalID,
@@ -47,6 +49,8 @@ interface Form {
   gradeOther: string;
   shirtSize: ShirtSize | '';
   motivation: string;
+  allergies: string;
+  medicalConditions: string;
   reason: string;
 }
 
@@ -64,6 +68,8 @@ const ORDER: (keyof Form)[] = [
   'gradeOther',
   'shirtSize',
   'motivation',
+  'allergies',
+  'medicalConditions',
   'reason',
 ];
 
@@ -79,6 +85,8 @@ function initialForm(a: Application): Form {
     ...splitGrade(a.grade),
     shirtSize: a.shirtSize,
     motivation: a.motivation ?? '',
+    allergies: a.allergies ?? '',
+    medicalConditions: a.medicalConditions ?? '',
     reason: '',
   };
 }
@@ -132,6 +140,10 @@ function validate(f: Form): Errors {
   if (g) e[f.grade === GRADE_OTHER ? 'gradeOther' : 'grade'] = g;
   if (!f.shirtSize) e.shirtSize = 'กรุณาเลือกไซส์เสื้อ';
   if (stripZeroWidth(f.motivation).trim().length > 2000) e.motivation = 'เหตุผลการสมัครยาวได้ไม่เกิน 2,000 ตัวอักษร';
+  if (stripZeroWidth(f.allergies).trim().length > ALLERGIES_MAX) e.allergies = `หมายเหตุการแพ้อาหารยาวได้ไม่เกิน ${ALLERGIES_MAX} ตัวอักษร`;
+  if (stripZeroWidth(f.medicalConditions).trim().length > MEDICAL_CONDITIONS_MAX) {
+    e.medicalConditions = `หมายเหตุโรคประจำตัวยาวได้ไม่เกิน ${MEDICAL_CONDITIONS_MAX} ตัวอักษร`;
+  }
   if (stripZeroWidth(f.reason).trim().length > 500) e.reason = 'เหตุผลการแก้ไขยาวได้ไม่เกิน 500 ตัวอักษร';
   return e;
 }
@@ -215,6 +227,7 @@ export function AdminProfileEditor({
   const [errors, setErrors] = useState<Errors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -249,7 +262,7 @@ export function AdminProfileEditor({
   }
 
   function requestClose() {
-    if (saving) return;
+    if (saving || savingRef.current) return;
     if (dirty) {
       setConfirmDiscard(true);
       return;
@@ -259,7 +272,7 @@ export function AdminProfileEditor({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (saving || savingRef.current) return;
     const found = validate(form);
     setErrors(found);
     setServerError(null);
@@ -280,8 +293,11 @@ export function AdminProfileEditor({
       grade: gradeValue({ grade: form.grade, gradeOther: cleanSingleLine(form.gradeOther) }),
       shirtSize: form.shirtSize as ShirtSize,
       motivation: stripZeroWidth(form.motivation).trim(),
+      allergies: stripZeroWidth(form.allergies).trim(),
+      medicalConditions: stripZeroWidth(form.medicalConditions).trim(),
       reason: stripZeroWidth(form.reason).trim() || undefined,
     };
+    savingRef.current = true;
     setSaving(true);
     try {
       const res = await updateApplicantProfile(token, app.id, payload);
@@ -291,6 +307,7 @@ export function AdminProfileEditor({
       if (onAuthError(err)) return;
       setServerError(describeSaveError(err));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -425,6 +442,12 @@ export function AdminProfileEditor({
             <textarea {...input('motivation', { rows: 3, maxLength: 2000 })} />
           </Field>
         </div>
+        <Field id={`${pid}-allergies`} label="การแพ้อาหาร" hint="ไม่บังคับ" error={errors.allergies}>
+          <textarea {...input('allergies', { rows: 2, maxLength: ALLERGIES_MAX })} />
+        </Field>
+        <Field id={`${pid}-medicalConditions`} label="โรคประจำตัว" hint="ไม่บังคับ" error={errors.medicalConditions}>
+          <textarea {...input('medicalConditions', { rows: 2, maxLength: MEDICAL_CONDITIONS_MAX })} />
+        </Field>
         <div className="md:col-span-2">
           <Field id={`${pid}-reason`} label="เหตุผลการแก้ไข" hint="บันทึกในประวัติ แนะนำให้ระบุ" error={errors.reason}>
             <input {...input('reason', { placeholder: 'เช่น ผู้ปกครองแจ้งแก้ไขเลขบัตร', maxLength: 500 })} />

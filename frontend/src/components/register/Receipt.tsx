@@ -50,6 +50,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
   const toggleRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
+  const busyRef = useRef(false);
   const uid = useId();
   const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, input: `${uid}-code`, hint: `${uid}-hint`, err: `${uid}-err` };
 
@@ -71,7 +72,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
   }, [open]);
 
   function close() {
-    if (busy) return;
+    if (busy || busyRef.current) return;
     restoreFocus.current = true;
     setOpen(false);
     setCode('');
@@ -80,16 +81,19 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
-    if (busy || !valid) return;
+    if (busyRef.current || busy || !valid) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
       await withdrawApplication(appId, code);
+      busyRef.current = false;
       setCode('');
       onWithdrawn(appId);
     } catch (err) {
       setError(describeWithdrawError(err));
       refocusInput.current = true;
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -312,12 +316,19 @@ export function Receipt({
 
       <section className="rw-block" aria-labelledby="rw-pay-title">
         <h3 id="rw-pay-title" className="rw-block__title">
-          ชำระค่าสมัคร
+          ชำระค่าสมัคร (ราคาเบื้องต้น · อาจเปลี่ยนแปลงได้)
         </h3>
+        <p className="rw-warn-note rw-warn-note--tight" role="note">
+          <span className="rw-warn-note__dot" aria-hidden="true" />
+          <span>
+            <strong className="rw-warn-note__tag">ยังไม่คอนเฟิร์มราคาสุทธิ:</strong> ยอด <span className="font-mono tabular-nums">{feeText}</span> บาท
+            เป็นค่าสมัครเบื้องต้นที่อาจเปลี่ยนแปลงได้ กรุณาตรวจสอบประกาศยืนยันล่าสุดบนหน้าเว็บหรือเพจโครงการก่อนโอนเงิน
+          </span>
+        </p>
 
         <article className="rw-ticket" aria-label="รายละเอียดการโอนเงิน">
           <header className="rw-ticket__head">
-            <p className="rw-ticket__label">ยอดที่ต้องโอน</p>
+            <p className="rw-ticket__label">ยอดเบื้องต้น (รอประกาศยืนยัน)</p>
             <p className="rw-ticket__amount">
               <span className="font-mono tabular-nums">{feeText}</span>
               <span className="rw-ticket__unit">บาท</span>
@@ -388,6 +399,7 @@ export function Receipt({
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
+          {/* TODO(content): เพิ่มลิงก์ LINE OpenChat โครงการคู่กับ Facebook เมื่อสร้างกลุ่มแล้ว */}
           <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
             เพจ Facebook โครงการ
           </a>

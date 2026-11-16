@@ -180,6 +180,8 @@ export function AdminSettingsPanel({
   const [notice, setNotice] = useState<Notice>(null);
 
   const settingsRef = useRef<AdminSettings | null>(null);
+  const savingRef = useRef(false);
+  const togglingRef = useRef(false);
   const inputsRef = useRef({ quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput });
   inputsRef.current = { quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput };
 
@@ -348,9 +350,10 @@ export function AdminSettingsPanel({
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
-    if (!canEdit) return;
+    if (!canEdit || savingRef.current || saving) return;
     const payload = checkInputs();
     if (!payload) return;
+    savingRef.current = true;
     setSaving(true);
     setNotice(null);
     try {
@@ -367,14 +370,16 @@ export function AdminSettingsPanel({
       if (onAuthError(err)) return;
       setNotice({ kind: 'error', text: `บันทึกไม่สำเร็จ: ${errorText(err, 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')}` });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   /** Confirmed emergency switch mutation; runs independently of the schedule/quota form. */
   async function confirmEmergencyToggle() {
-    if (!settings || !canEdit || toggling) return;
+    if (!settings || !canEdit || togglingRef.current || toggling) return;
     const next = !settings.isManualClosed;
+    togglingRef.current = true;
     setToggling(true);
     setNotice(null);
     try {
@@ -392,6 +397,7 @@ export function AdminSettingsPanel({
       if (onAuthError(err)) return;
       setNotice({ kind: 'error', text: `เปลี่ยนสถานะไม่สำเร็จ: ${errorText(err, 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')}` });
     } finally {
+      togglingRef.current = false;
       setToggling(false);
     }
   }
@@ -622,7 +628,7 @@ export function AdminSettingsPanel({
                     style={{ borderColor: fieldErrors.fee ? DANGER : INPUT_BORDER, color: INK }}
                   />
                   <p id="fee-help" className="mt-2 text-sm leading-7" style={{ color: INK_3 }}>
-                    ค่าเริ่มต้นของค่ายคือ 1,000 บาท
+                    ค่าเริ่มต้นเบื้องต้นคือ 1,000 บาท (ยังไม่คอนเฟิร์มราคาจริง อาจเปลี่ยนแปลงได้ — ปรับแก้แล้วจะมีผลทั้งระบบ)
                   </p>
                   {fieldErrors.fee && (
                     <p id="fee-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
@@ -635,6 +641,7 @@ export function AdminSettingsPanel({
                   <button
                     type="submit"
                     disabled={saving || !canEdit}
+                    aria-busy={saving || undefined}
                     className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                   >
@@ -751,6 +758,7 @@ export function AdminSettingsPanel({
                         <button
                           type="button"
                           disabled={toggling}
+                          aria-busy={toggling || undefined}
                           onClick={confirmEmergencyToggle}
                           className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                           style={{

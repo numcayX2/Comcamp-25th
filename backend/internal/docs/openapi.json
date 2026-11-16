@@ -769,6 +769,8 @@
           "grade": { "type": "string", "enum": ["ม.4", "ม.5", "ม.6", "ปวช.1", "ปวช.2", "ปวช.3"], "example": "ม.5" },
           "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"], "example": "L" },
           "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
+          "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
+          "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
           "province": { "type": "string", "example": "เชียงใหม่" },
           "turnstileToken": { "type": "string", "maxLength": 2048, "description": "Cloudflare Turnstile response token (single-use, ได้จาก widget ในหน้า /register). จำเป็นเมื่อเซิร์ฟเวอร์ตั้ง TURNSTILE_SECRET_KEY (production บังคับเสมอ) ไม่ถูกบันทึกลงฐานข้อมูลหรือ log. ถ้าส่งซ้ำด้วย X-Idempotency-Key เดิมที่บันทึกไว้แล้ว ระบบคืนใบสมัครเดิมโดยไม่ตรวจ token อีก" }
         }
@@ -787,6 +789,8 @@
           "shirtSize": { "type": "string", "example": "L" },
           "province": { "type": "string", "example": "เชียงใหม่" },
           "motivation": { "type": "string", "description": "เฉพาะ /api/admin/*" },
+          "allergies": { "type": "string", "description": "เฉพาะ /api/admin/*" },
+          "medicalConditions": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "status": {
             "type": "string",
             "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"],
@@ -821,7 +825,7 @@
       "SelfProfileRequest": {
         "type": "object",
         "required": ["verifyCode", "nickname", "school", "province", "grade", "shirtSize"],
-        "description": "ฟิลด์ fullName, nationalId, phone, email, motivation ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
+        "description": "ฟิลด์ fullName, nationalId, phone, email, motivation, allergies, medicalConditions ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
         "properties": {
           "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร" },
           "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
@@ -845,6 +849,8 @@
           "grade": { "type": "string", "example": "ม.6" },
           "shirtSize": { "type": "string", "enum": ["XS", "S", "M", "L", "XL", "2XL", "3XL"] },
           "motivation": { "type": "string", "maxLength": 2000 },
+          "allergies": { "type": "string", "maxLength": 500 },
+          "medicalConditions": { "type": "string", "maxLength": 500 },
           "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเลขบัตรผิด" }
         }
       },

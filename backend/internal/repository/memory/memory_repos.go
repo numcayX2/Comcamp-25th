@@ -285,7 +285,7 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 	a.FirstName, a.LastName, a.Nickname = p.FirstName, p.LastName, p.Nickname
 	a.NationalID, a.Phone, a.Email = p.NationalID, p.Phone, p.Email
 	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
-	a.Motivation = p.Motivation
+	a.Motivation, a.Allergies, a.MedicalConditions = p.Motivation, p.Allergies, p.MedicalConditions
 	a.UpdatedAt = time.Now().UTC()
 
 	if audit != nil {

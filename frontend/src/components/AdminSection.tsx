@@ -395,6 +395,13 @@ export function AdminSection() {
   const filterGroupRef = useRef<HTMLDivElement>(null);
   const emptyStateRef = useRef<HTMLDivElement>(null);
   const slipPanelRef = useRef<HTMLDivElement>(null);
+  // Synchronous in-flight locks prevent rapid double-clicks / Enter spam from firing duplicate requests before React re-renders.
+  const loginBusyRef = useRef(false);
+  const refreshBusyRef = useRef(false);
+  const patchingRef = useRef<string | null>(null);
+  const verifyingBusyRef = useRef(false);
+  const deletingRef = useRef<string | null>(null);
+  const exportBusyRef = useRef(false);
 
   const inspectingApp = inspectingId ? apps.find((a) => a.id === inspectingId) ?? null : null;
   const verifying = verifyingAction !== null;
@@ -449,6 +456,8 @@ export function AdminSection() {
   );
 
   async function refresh(t: string, alsoSettings = false) {
+    if (refreshBusyRef.current) return;
+    refreshBusyRef.current = true;
     setBusy(true);
     if (alsoSettings) {
       setSettingsRefreshKey((k) => k + 1);
@@ -462,12 +471,15 @@ export function AdminSection() {
       if (handleAuthError(err)) return;
       setError(describeAdminError(err, 'โหลดรายการใบสมัครไม่สำเร็จ'));
     } finally {
+      refreshBusyRef.current = false;
       setBusy(false);
     }
   }
 
   async function onLogin(e: FormEvent) {
     e.preventDefault();
+    if (loginBusyRef.current || busy) return;
+    loginBusyRef.current = true;
     setBusy(true);
     setError(null);
     setActionSuccess(null);
@@ -499,6 +511,7 @@ export function AdminSection() {
         setError(describeAdminError(err, 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองใหม่อีกครั้ง'));
       }
     } finally {
+      loginBusyRef.current = false;
       setBusy(false);
     }
   }
@@ -528,7 +541,8 @@ export function AdminSection() {
   }
 
   async function onStatus(id: string, status: ApplicationStatus, reason?: string) {
-    if (!token) return;
+    if (!token || patchingRef.current === id) return;
+    patchingRef.current = id;
     setPatching(id);
     setError(null);
     setActionSuccess(null);
@@ -543,6 +557,7 @@ export function AdminSection() {
       if (handleAuthError(err)) return;
       setError(describeAdminError(err, 'เปลี่ยนสถานะไม่สำเร็จ'));
     } finally {
+      patchingRef.current = null;
       setPatching(null);
     }
   }
@@ -605,7 +620,7 @@ export function AdminSection() {
   }
 
   async function handleVerifySlip(approved: boolean) {
-    if (!token || !inspectingApp || verifying) return;
+    if (!token || !inspectingApp || verifying || verifyingBusyRef.current) return;
     if (!slipReadyToVerify) {
       setError('ยังโหลดสลิปไม่สำเร็จหรือไม่มีรหัสสลิป (paymentId) กรุณาโหลดสลิปใหม่อีกครั้ง');
       return;
@@ -621,6 +636,7 @@ export function AdminSection() {
     const currentId = inspectingApp.id;
     const nextPendingInView = autoAdvanceSlip ? findNextPendingSlip(currentId, visible) : null;
 
+    verifyingBusyRef.current = true;
     setVerifyingAction(approved ? 'approve' : 'reject');
     setError(null);
     setActionSuccess(null);
@@ -705,12 +721,14 @@ export function AdminSection() {
       }
       setError(describeAdminError(err, 'การตรวจสอบสลิปล้มเหลว'));
     } finally {
+      verifyingBusyRef.current = false;
       setVerifyingAction(null);
     }
   }
 
   async function handleDeleteApp(id: string, name: string) {
-    if (!token) return;
+    if (!token || deletingRef.current === id) return;
+    deletingRef.current = id;
     setDeletingId(id);
     setError(null);
     setActionSuccess(null);
@@ -736,6 +754,7 @@ export function AdminSection() {
       if (handleAuthError(err)) return;
       setError(describeAdminError(err, 'ลบใบสมัครไม่สำเร็จ'));
     } finally {
+      deletingRef.current = null;
       setDeletingId(null);
     }
   }
@@ -813,8 +832,9 @@ export function AdminSection() {
 
   /** Records the export in audit_logs first; the file is built only once that succeeded. */
   async function exportCsv() {
-    if (!token || exporting || visible.length === 0) return;
+    if (!token || exporting || exportBusyRef.current || visible.length === 0) return;
     const rows = visible;
+    exportBusyRef.current = true;
     setExporting(true);
     setActionSuccess(null);
     setError(null);
@@ -832,6 +852,7 @@ export function AdminSection() {
       if (handleAuthError(err)) return;
       setError(describeAdminError(err, 'บันทึกประวัติการส่งออกไม่สำเร็จ จึงยังไม่ได้สร้างไฟล์ CSV กรุณาลองใหม่อีกครั้ง'));
     } finally {
+      exportBusyRef.current = false;
       setExporting(false);
     }
   }
@@ -1279,6 +1300,7 @@ export function AdminSection() {
             <button
               type="submit"
               disabled={busy}
+              aria-busy={busy || undefined}
               className={`mt-10 min-h-11 w-full rounded-full px-5 py-3.5 text-base font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
               style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
             >
@@ -1352,11 +1374,6 @@ export function AdminSection() {
               </div>
 
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {busy && (
-                  <span className="mr-1 text-xs" style={{ color: INK_3 }}>
-                    กำลังโหลด…
-                  </span>
-                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1364,10 +1381,11 @@ export function AdminSection() {
                     guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true));
                   }}
                   disabled={busy}
+                  aria-busy={busy || undefined}
                   className={pillGhost}
                   style={{ borderColor: RULE, color: INK }}
                 >
-                  รีเฟรช
+                  {busy ? 'กำลังโหลด…' : 'รีเฟรช'}
                 </button>
                 <button type="button" onClick={logout} className={pillGhost} style={{ borderColor: RULE, color: INK_2 }}>
                   ออกจากระบบ
@@ -1451,12 +1469,12 @@ export function AdminSection() {
                     type="button"
                     onClick={exportCsv}
                     disabled={visible.length === 0 || exporting}
-                    aria-busy={exporting}
+                    aria-busy={exporting || undefined}
                     className={`inline-flex items-center gap-2 ${pillGhost}`}
                     style={{ borderColor: RULE, color: INK }}
                   >
                     <Download aria-hidden="true" strokeWidth={1.5} size={16} />
-                    ส่งออก CSV
+                    {exporting ? 'กำลังส่งออก…' : 'ส่งออก CSV'}
                   </button>
                 )}
               </div>
@@ -1644,6 +1662,7 @@ export function AdminSection() {
                             <button
                               type="button"
                               disabled={patching === a.id}
+                              aria-busy={patching === a.id || undefined}
                               onClick={() => onStatus(a.id, pendingChange.to, statusReason.trim() || undefined)}
                               className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                               style={{ borderColor: DANGER, color: DANGER }}
@@ -1701,6 +1720,7 @@ export function AdminSection() {
                             <button
                               type="button"
                               disabled={deletingId === a.id}
+                              aria-busy={deletingId === a.id || undefined}
                               onClick={() => handleDeleteApp(a.id, a.fullName)}
                               className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                               style={{ borderColor: DANGER, color: DANGER }}
@@ -1765,6 +1785,18 @@ export function AdminSection() {
                               </p>
                             </div>
                           )}
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>การแพ้อาหาร</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-7" style={{ color: INK }}>
+                              {a.allergies?.trim() ? a.allergies : '— ไม่มี / ไม่ได้ระบุ —'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>โรคประจำตัว</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-7" style={{ color: INK }}>
+                              {a.medicalConditions?.trim() ? a.medicalConditions : '— ไม่มี / ไม่ได้ระบุ —'}
+                            </p>
+                          </div>
                           <div className="sm:col-span-2 lg:col-span-3">
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>เหตุผลการสมัคร / แรงบันดาลใจ</p>
                             <p className="mt-1 whitespace-pre-wrap text-sm leading-7" style={{ color: INK_2 }}>
@@ -2137,11 +2169,12 @@ export function AdminSection() {
                                     <button
                                       type="button"
                                       disabled={verifying || !slipReadyToVerify}
+                                      aria-busy={verifying || undefined}
                                       onClick={() => void handleVerifySlip(false)}
                                       className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                                       style={{ border: `1px solid ${DANGER}`, color: DANGER, backgroundColor: 'transparent' }}
                                     >
-                                      {verifyingAction === 'reject' ? 'กำลังบันทึก…' : 'ยืนยันปฏิเสธสลิป'}
+                                      {verifyingAction === 'reject' ? 'กำลังปฏิเสธ…' : 'ยืนยันปฏิเสธสลิป'}
                                     </button>
                                     <button
                                       type="button"
@@ -2159,11 +2192,12 @@ export function AdminSection() {
                                   <button
                                     type="button"
                                     disabled={verifying || !slipReadyToVerify}
+                                    aria-busy={verifying || undefined}
                                     onClick={() => void handleVerifySlip(true)}
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                                   >
-                                    {verifyingAction === 'approve' ? 'กำลังบันทึก…' : 'อนุมัติสลิป'}
+                                    {verifyingAction === 'approve' ? 'กำลังอนุมัติ…' : 'อนุมัติสลิป'}
                                   </button>
                                   <button
                                     type="button"
@@ -2172,7 +2206,7 @@ export function AdminSection() {
                                     className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
                                     style={{ borderColor: DANGER, color: DANGER }}
                                   >
-                                    {verifyingAction === 'reject' ? 'กำลังบันทึก…' : 'ปฏิเสธสลิป'}
+                                    {verifyingAction === 'reject' ? 'กำลังปฏิเสธ…' : 'ปฏิเสธสลิป'}
                                   </button>
                                   <button
                                     type="button"

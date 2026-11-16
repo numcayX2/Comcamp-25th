@@ -312,7 +312,7 @@ html[data-theme="dark"] {
 }
 .hero__proof-sep { flex: none; width: 1px; align-self: stretch; min-height: 1em; background: var(--hero-line-strong); }
 /* Fee figure: the one number a visitor must see on entry. */
-.hero__fee{display:flex;align-items:baseline;justify-content:center;gap:.65rem;margin:1rem 0 0;text-wrap:balance}
+.hero__fee{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:.15rem .65rem;margin:1rem 0 0;text-wrap:balance}
 .hero__fee-amount{font-size:clamp(2rem,2.5vw + 1.25rem,3rem);font-weight:700;line-height:1.22;letter-spacing:0;color:var(--hero-fee)}
 .hero__fee-amount .font-mono{font-variant-numeric:tabular-nums}
 .hero__fee-label{font-size:clamp(.85rem,.5rem + 1vh,.95rem);line-height:1.7;color:var(--hero-ink-soft)}

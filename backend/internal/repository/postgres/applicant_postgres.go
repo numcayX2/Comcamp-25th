@@ -283,10 +283,10 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 			first_name = $1, last_name = $2, nickname = $3,
 			emergency_phone = CASE WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
 			national_id = $4, phone = $5, email = $6, school = $7, province = $8, grade = $9,
-			shirt_size = $10, motivation = $11, updated_at = $12
-		WHERE id = $13
+			shirt_size = $10, motivation = $11, allergies = $12, medical_conditions = $13, updated_at = $14
+		WHERE id = $15
 	`, p.FirstName, p.LastName, p.Nickname, p.NationalID, p.Phone, p.Email, p.School, p.Province,
-		p.Grade, p.ShirtSize, p.Motivation, time.Now().UTC(), id)
+		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions, time.Now().UTC(), id)
 	if err != nil {
 		if mapped := mapPgError(err); mapped != err {
 			return mapped

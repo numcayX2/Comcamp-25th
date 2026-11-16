@@ -17,12 +17,24 @@
     isOpen: false,
     currentCount: 0,
     maxCapacity: MAX,
+    campFee: null,
     registrationOpenAt: OPEN_AT,
     failed: false,
     loading: true,
     explicitClosed: false,
     syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at 00:00:00
   };
+
+  function formatCampFeeText(raw){
+    if (raw === null || raw === undefined || raw === '') return null;
+    var n = typeof raw === 'number' ? raw : Number(raw);
+    if (!isFinite(n) || n < 0) return null;
+    try {
+      return n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    } catch (e) {
+      return String(n);
+    }
+  }
 
   function getServerNow(){
     return new Date(Date.now() + (state.serverOffsetMs || 0));
@@ -66,6 +78,13 @@
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
       var seatsCard = seatsBig.closest ? seatsBig.closest('.bento-feature') : null;
       if (seatsCard) seatsCard.setAttribute('data-reg-state', s);
+    }
+
+    var feeText = formatCampFeeText(state.campFee);
+    if (feeText !== null) {
+      document.querySelectorAll('[data-camp-fee-num]').forEach(function(el){
+        el.textContent = feeText;
+      });
     }
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
@@ -283,6 +302,7 @@
         state.explicitClosed = data.isOpen === false;
         state.currentCount = typeof data.currentCount === 'number' ? data.currentCount : 0;
         state.maxCapacity = typeof data.maxCapacity === 'number' && data.maxCapacity > 0 ? data.maxCapacity : MAX;
+        state.campFee = (data.campFee !== undefined && data.campFee !== null) ? data.campFee : null;
         // Still before opening by the server's clock: arm the midnight re-fetch for when the
         // (offset-corrected) countdown reaches zero. Re-armed by each sync that says "not yet".
         state.syncedPreOpen = !state.isOpen && isFinite(serverEpoch) && serverEpoch < new Date(state.registrationOpenAt).getTime();

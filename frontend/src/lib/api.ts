@@ -22,6 +22,7 @@ export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   isOpen: false,
   currentCount: 0,
   maxCapacity: 30,
+  // TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ (อาจเปลี่ยนแปลงได้)
   campFee: 1000,
   isCertificateReleased: false,
 };
@@ -115,10 +116,13 @@ export interface ApplicationPayload {
   nationalId: string;
   phone: string;
   email: string;
+  // TODO(feature): ต้องเพิ่มช่องทางติดต่อผู้ปกครอง 1 คน + เบอร์โทรศัพท์ผู้ปกครอง (เชื่อมกับ parent_name / parent_phone / emergency_*)
   school: string;
   grade: string;
   shirtSize: ShirtSize;
   motivation: string;
+  allergies?: string;
+  medicalConditions?: string;
   province?: string;
   /** Cloudflare Turnstile response token (single-use). Verified by the server, never stored. */
   turnstileToken?: string;
@@ -145,6 +149,8 @@ export interface ApplicantRecord {
   grade: string;
   shirtSize: ShirtSize;
   motivation?: string;
+  allergies?: string;
+  medicalConditions?: string;
   province?: string;
   status: ApplicationStatus;
   attendanceConfirmed: boolean;
@@ -620,6 +626,8 @@ export interface AdminProfilePayload {
   grade?: string;
   shirtSize?: ShirtSize;
   motivation?: string;
+  allergies?: string;
+  medicalConditions?: string;
   reason?: string;
 }
 
@@ -696,6 +704,7 @@ const MOCK_ADMIN_SETTINGS: AdminSettings = {
   // TODO(content): วันปิดรับสมัครยังไม่ประกาศ ใช้วันเปิดเป็นค่าชั่วคราวใน mock เท่านั้น
   registrationCloseAt: DEFAULT_TARGET_DATE,
   maxCapacity: 30,
+  // TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ (อาจเปลี่ยนแปลงได้)
   campFee: 1000,
   isManualClosed: false,
   updatedAt: new Date().toISOString(),
@@ -745,6 +754,8 @@ export function listApplications(
         grade: 'ม.5',
         shirtSize: 'XL',
         motivation: 'อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard',
+        allergies: 'แพ้กุ้ง',
+        medicalConditions: '',
         province: 'เชียงใหม่',
         status: 'PASSED' as ApplicationStatus,
         attendanceConfirmed: true,

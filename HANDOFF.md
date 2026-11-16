@@ -3,7 +3,7 @@
 
 > **Repository:** [https://github.com/numcayX2/Comcamp-25th.git](https://github.com/numcayX2/Comcamp-25th.git)  
 > **Host Organization:** สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (Computer Science Department, Faculty of Science, Maejo University)  
-> **Last Updated (อัปเดตล่าสุด):** 9 พฤศจิกายน 2569 (2026-11-09)  
+> **Last Updated (อัปเดตล่าสุด):** 16 พฤศจิกายน 2569 (2026-11-16 · หลังจบประชุมทีมงาน)
 > **Target Audience:** Frontend Engineers, Go Backend Engineers, Design/Marketing Teams, Camp Organizers (พี่ค่าย)
 
 ---
@@ -41,17 +41,32 @@
 
 ### 📋 สิ่งที่ต้องดำเนินการต่อ (What We Have Left To Do)
 
-1. **ปรับปรุง UI/UX ของหน้า `/register`, `/status`, และ `/admin` ให้เข้าธีมเดียวกับหน้าโฮมเพจใหม่ (UI Polish)**
-   - ปัจจุบันหน้า `/register`, `/status` และ `/admin` ทำงานเชื่อมต่อ API ได้ครบแล้ว แต่ยังใช้ UI โครงร่าง (Skeleton Tailwind UI) สามารถปรับโฉมให้ใช้ระบบสี **Warm Paper (`#F6F4EF`) + Forest (`#027F00`)** และแบ่งฟอร์มสมัครเป็น Step ให้สอดคล้องกับหน้าโฮมเพจใหม่
-2. **กำหนดพฤติกรรมเส้นทาง `/` (Root) และ `/home` ช่วงก่อนเปิดรับสมัคร**
-   - ปัจจุบันทั้ง `/` ([`index.astro`](frontend/src/pages/index.astro)) และ `/home` ([`home.astro`](frontend/src/pages/home.astro)) แสดงผล `HomePage.astro` (ซึ่งมีแถบนับถอยหลังในตัวอยู่แล้ว) หากทีมงานต้องการให้ `/` แสดงหน้า `CountdownHero.tsx` (นาฬิกา Split-Flap เต็มจอ) เฉพาะช่วงก่อนวันที่ 16 พ.ย. 2569 และกดปุ่มเข้าสู่ `/home` สามารถสลับใน `index.astro` ได้ทันที
-3. **เติมข้อมูลทางการของค่ายเมื่อประกาศอย่างเป็นทางการ (Official Content Fill-in)**
-   - **วันที่จัดค่ายจริง (3 วัน 2 คืน)** และ **ชื่ออาคาร/ห้องปฏิบัติการ/หอพักแยกชาย-หญิง** ใน [`HomePage.astro`](frontend/src/components/HomePage.astro)
-   - **เลขบัญชีธนาคารของสาขาวิชา** สำหรับขั้นตอนการโอนเงินยืนยันสิทธิ์ (ยืนยันยอดเงินแล้ว: 1,000 บาท)
-   - **เบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบโครงการและลิงก์เพจ Facebook ทางการ** ในส่วน Timeline และ Footer
+1. **อัปเดตระบบตามมติหลังประชุม (2026-11-16 — ยังไม่ได้ลงมือแก้โค้ด):**
+   - **กำหนดการรับสมัครใหม่ (`18 พ.ย. 2569` – `18 ธ.ค. 2569`, เต็มก่อนปิดก่อน):**
+     - เพิ่ม DB migration อัปเดต `registration_open_at = '2026-11-18 00:00:00+07'` และ `registration_close_at = '2026-12-18 23:59:59+07'` + ส่ง `registrationCloseAt` ใน `GET /api/settings/public`
+     - อัปเดตวันที่/Countdown ใน [`HeroSection.astro`](frontend/src/components/HeroSection.astro), [`HomePage.astro`](frontend/src/components/HomePage.astro), [`SiteNav.astro`](frontend/src/components/SiteNav.astro), [`BaseLayout.astro`](frontend/src/layouts/BaseLayout.astro), [`RegisterSection.tsx`](frontend/src/components/RegisterSection.tsx), [`api.ts`](frontend/src/lib/api.ts), [`main.js`](frontend/public/theme/main.js), และ [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) จาก `16 พ.ย. 69` เป็น **เปิดรับ `18 พ.ย. 2569` – ปิดรับ `18 ธ.ค. 2569` (เต็ม 30 ที่นั่งก่อน ปิดก่อนทันที)**
+   - **วันจัดค่ายจริง (`5–7 กุมภาพันธ์ 2570`, 3 วัน 2 คืน):** ใส่วันจัดค่ายลงใน [`HomePage.astro`](frontend/src/components/HomePage.astro) (Hero, Section 03, Section 05) และนำออกจากป้าย *"รอประกาศเพิ่มเติม"*
+   - **กติกาโอนเงินภายใน `3 วัน` หลังสมัคร (เกิน 3 วันคืนที่นั่งว่างอัตโนมัติ):**
+     - พัฒนาตัวตรวจหมดเวลาชำระเงินฝั่ง Go Backend (`created_at + 72h`) เปลี่ยนสถานะใบสมัครที่ **ยังไม่ส่งสลิป** เป็น `REJECTED` พร้อมบันทึก `applicant_status_logs` + `audit_logs` (`"พ้นกำหนดชำระเงิน 3 วัน"`) และล้าง cache โควตาเพื่อคืนที่นั่งให้สมัครใหม่ได้ทันที (*ห้ามตัดสิทธิ์ผู้ที่ส่งสลิปแล้ว `PENDING` / `APPROVED`*)
+     - แสดงกำหนดเวลาโอน (`3 วันหลังสมัคร` / วันครบกำหนด) บนหน้าแรก, [`RegisterSection.tsx`](frontend/src/components/RegisterSection.tsx), [`Receipt.tsx`](frontend/src/components/register/Receipt.tsx) และ [`StatusSection.tsx`](frontend/src/components/StatusSection.tsx)
+   - **นโยบาย "โอนแล้วสละสิทธิ์ไม่คืนเงิน" & กล่องเตือนข้อกำหนดหน้าแรกของ `/register`:**
+     - เพิ่มกล่องสรุปข้อกำหนดสำคัญ 4 ข้อบนสุดของ `/register` (Step 01 เหนือช่องกรอกชื่อ: วันจัดค่าย `5–7 ก.พ. 2570`, เกณฑ์ `30 ที่นั่ง` เต็มก่อนปิดก่อน `18 ธ.ค. 69`, โอนภายใน `3 วัน` เกินคืนที่นั่ง, และโอนแล้วไม่คืนเงิน) เพื่อให้น้องที่กดลิงก์ตรงมาจากแชตเห็นกติกาก่อนเริ่มกรอก
+     - ย้ำข้อความยินยอมใน Step 05 Consent, จุดชำระเงินเหนือเลขบัญชีบนใบตอบรับ ([`Receipt.tsx`](frontend/src/components/register/Receipt.tsx)) และหน้า [`StatusSection.tsx`](frontend/src/components/StatusSection.tsx) ว่า **โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี** (แก้ข้อความเดิมที่เขียนว่า *"เพื่อขอยกเลิกและคืนเงิน"* ออกทั้งหมด) และประกาศตรงกันบนหน้าแรก [`HomePage.astro`](frontend/src/components/HomePage.astro)
+   - **เน้นรายละเอียดอาหารในช่อง `allergies`:** เพิ่มตัวเลือกด่วน/คำแนะนำชัดเจนใน [`RegisterSection.tsx`](frontend/src/components/RegisterSection.tsx) ให้ครอบคลุม **แพ้อาหาร** และ **ไม่ทานหมู / ฮาลาล / มังสวิรัติ**
+   - **เพิ่มข้อมูลติดต่อ Staff บนหน้าเว็บ + ลิงก์ LINE OpenChat:** เพิ่มส่วนติดต่อพี่ค่าย (Staff) สำหรับสอบถามรายละเอียดบนหน้าแรก, ใบตอบรับ และ `/status` พร้อมจุดวางลิงก์ **LINE OpenChat** (*รอรับรายละเอียด Staff จริงและลิงก์ OpenChat*)
+2. **เพิ่มฟอร์มกรอกช่องทางติดต่อผู้ปกครองใน `/register` (ต้องทำเพิ่มก่อนเปิดรับจริง)**
+   - ต้องเพิ่มฟิลด์ให้กรอก **ผู้ปกครอง 1 คน (ชื่อ/ความสัมพันธ์) + เบอร์โทรศัพท์ติดต่อผู้ปกครอง (10 หลัก)** ใน [`RegisterSection.tsx`](frontend/src/components/RegisterSection.tsx) / [`model.ts`](frontend/src/components/register/model.ts), [`ApplicationPayload`](frontend/src/lib/api.ts) และ [`ApplicationCreateRequest`](backend/internal/service/applicant_service.go)
+   - ปัจจุบันตาราง `applicants` ในฐานข้อมูลมีคอลัมน์ `parent_name`, `parent_relation`, `parent_phone`, `emergency_contact`, `emergency_phone` รองรับอยู่แล้ว แต่หน้า `/register` และ Backend API ยังไม่ได้รับค่าจากผู้ใช้จริง (ตอนนี้ [`applicant_service.go`](backend/internal/service/applicant_service.go) ตั้ง `EmergencyContact: "ผู้ปกครอง"` และคัดลอก `EmergencyPhone: req.Phone` ของผู้สมัครเป็นค่าชั่วคราว) รวมถึงควรเพิ่มการแสดงผล/แก้ไขใน `/admin` ด้วย
+3. **ข้อมูลทางการที่ยังรอรับจากทีมงานเพื่อเติมลงเว็บ (Official Content Fill-in):**
+   - **รายละเอียดติดต่อ Staff** (ชื่อ/เบอร์/ช่องทางสอบถาม) และ **ลิงก์ LINE OpenChat** ของโครงการ
+   - **ชื่ออาคาร/ห้องปฏิบัติการ/ห้องลงทะเบียน, หอพักแยกชาย-หญิง, และเบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ** ใน [`HomePage.astro`](frontend/src/components/HomePage.astro)
+   - **ค่าสมัครสุทธิและรายการสิทธิประโยชน์** — ปัจจุบันตั้งค่าเบื้องต้นไว้ที่ `1,000 บาท` (ยังไม่คอนเฟิร์มอย่างเป็นทางการและอาจเปลี่ยนแปลงได้) และตรวจสอบเลขบัญชีธนาคารใน [`frontend/src/lib/payment.ts`](frontend/src/lib/payment.ts) ให้ถูกต้องก่อนวันเปิดรับสมัครจริง
+   - **เสื้อค่าย (มีแน่นอน · คอนเฟิร์มแล้ว)** — รอทีมงานยืนยันเฉพาะรายการไซส์ที่จะมีจริงและตารางรอบอก (`XS / 2XL / 3XL` และตรวจทาน `S–XL`)
 4. **การนำขึ้นระบบจริง (Production Deployment & End-to-End QA)**
-   - Commit & Push โค้ดล่าสุดขึ้น GitHub (`Comcamp-25th`)
-   - Deploy ส่วน Frontend ขึ้น Cloudflare Pages (หรือ Hosting ปลายทาง) และรัน Go Backend + PostgreSQL บนเซิร์ฟเวอร์จริง พร้อมตั้งค่า `PUBLIC_API_URL`, `PUBLIC_GALLERY_BASE_URL`, `JWT_SECRET` และทดสอบการรับสมัครครบวงจร (E2E) ก่อนวันเปิดรับสมัคร **16 พฤศจิกายน 2569 เวลา 00:00:00 น.**
+   - ทดสอบ Build/Boot ชุด Production Docker จริง (`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`) ตาม [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)
+   - Commit & Push โค้ดล่าสุดขึ้น GitHub (`Comcamp-25th`) และทดสอบการรับสมัครครบวงจร (E2E) ก่อนวันเปิดรับสมัคร **18 พฤศจิกายน 2569 เวลา 00:00:00 น.**
+
+*(หมายเหตุ: การสลับเส้นทาง `/` ระหว่าง `HomePage.astro` กับ `CountdownHero.tsx` หรือ UI Polish เพิ่มเติมให้คงเป็นทางเลือกเสริมตามความต้องการของทีมงาน)*
 
 ---
 
@@ -63,18 +78,21 @@
 
 ## 2. Confirmed Camp Specifications & Tentative Items (ข้อกำหนดค่ายที่ยืนยันแล้ว และข้อมูลที่รอการยืนยัน)
 
-*สถานะข้อมูลอ้างอิง ณ วันที่ 8 พฤศจิกายน 2569 (Status as of 2026-11-08)*
+*สถานะข้อมูลอ้างอิง ณ วันที่ 16 พฤศจิกายน 2569 (Status as of 2026-11-16 — มติหลังประชุมทีมงาน)*
 
 | Parameter (หัวข้อ) | Confirmed Value (ข้อมูลที่ยืนยันแล้ว) | Status / Notes (สถานะ / หมายเหตุ) |
 |---|---|---|
-| **Application Open Date (วันเปิดรับสมัคร)** | **16 พฤศจิกายน 2569 เวลา 00:00:00 น.** (`2026-11-16T00:00:00+07:00`) | ✅ **Confirmed** (ซิงค์ตรงกับระบบ Countdown และ API) |
+| **Application Open Date (วันเปิดรับสมัคร)** | **18 พฤศจิกายน 2569 เวลา 00:00:00 น.** (`2026-11-18T00:00:00+07:00`) | ✅ **Confirmed in Meeting** · ⏳ **Pending Code/DB Update** *(โค้ดปัจจุบันยังตั้ง 16 พ.ย. 2569)* |
+| **Application Close Date (วันปิดรับสมัคร)** | **18 ธันวาคม 2569** (`2026-12-18T23:59:59+07:00`, **เต็มก่อนปิดก่อน**) | ✅ **Confirmed in Meeting** · ⏳ **Pending Code/DB Update** |
 | **Seat Quota (จำนวนที่เปิดรับ)** | **30 คน** (30 seats — First-Come, First-Served) | ✅ **Confirmed** |
 | **Eligibility (คุณสมบัติผู้สมัคร)** | **ม.4 – ม.6** และ **ปวช.1 – ปวช.3** | ✅ **Confirmed** (ไม่จำกัดสายการเรียน ไม่จำเป็นต้องมีพื้นฐานมาก่อน) |
-| **Camp Duration (ระยะเวลา)** | **3 วัน 2 คืน** (3 Days 2 Nights) | ✅ **Confirmed** |
-| **Camp Event Dates (วันจัดค่ายจริง)** | `TBD` (รอประกาศวันที่จัดกิจกรรม 3 วัน 2 คืน) | ⏳ **Pending Official Confirmation** |
-| **Registration Fee (ค่าใช้จ่าย)** | **1,000 บาท** (3 วัน 2 คืน รวมที่พัก อาหารทุกมื้อ และชุดอุปกรณ์บอร์ดทดลอง) | ✅ **Confirmed** |
+| **Camp Duration & Dates (ระยะเวลา / วันจัดค่ายจริง)** | **3 วัน 2 คืน — วันที่ 5, 6, 7 กุมภาพันธ์ 2570** (`5–7 Feb 2027`) | ✅ **Confirmed in Meeting** · ⏳ **Pending Web Copy Update** |
+| **Payment & Refund Policy (กำหนดโอน / คืนเงิน)** | **โอนภายใน 3 วันหลังสมัคร** (เกิน 3 วันคืนที่นั่งว่างอัตโนมัติ) · **โอนแล้วสละสิทธิ์ไม่คืนเงิน** | ✅ **Confirmed in Meeting** · ⏳ **Pending Code & Payment Notice Update** |
+| **Registration Fee (ค่าใช้จ่าย)** | เบื้องต้น **1,000 บาท** (อาจเปลี่ยนแปลงได้; รายการที่รวมในค่าสมัคร เช่น ที่พัก/อาหาร/ชุดอุปกรณ์ รอประกาศยืนยัน) | ⏳ **Pending Official Confirmation** (ยังไม่คอนเฟิร์มราคา 1,000 บาท สามารถปรับแก้ได้ใน `/admin`) |
+| **Camp Shirt (เสื้อค่าย)** | **มีเสื้อค่ายแน่นอน (Confirmed)** · หน้า `/register` เก็บไซส์เบื้องต้น (`XS–3XL`) | ⏳ **Sizes TBD** (มีเสื้อแล้ว แต่ยังไม่แน่ใจรายการไซส์ที่มีจริงและตารางรอบอก) |
+| **Food / Dietary Notes (ข้อมูลอาหาร)** | ช่อง `allergies` มีแล้ว — ต้องเน้นตัวเลือก **แพ้อาหาร / ไม่ทานหมู (อิสลาม)** ให้ชัดเจน | ⏳ **Pending UI Refinement** (`allergies` & `medicalConditions` เก็บเข้า DB แล้ว) |
 | **Venue & Dormitory Details (อาคารเรียน/หอพัก)** | สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ | ⏳ **Pending Specific Room & Dormitory Names** |
-| **Contact Channels (ช่องทางติดต่อ)** | เพจ Facebook โครงการค่ายยุวชนคอมพิวเตอร์ / เบอร์อาจารย์ผู้รับผิดชอบ | ⏳ **Pending Phone Number & Direct Page URL** |
+| **Contact Channels (ช่องทางติดต่อ)** | เพจ Facebook (`CCCSMJU`) / **ข้อมูลติดต่อ Staff (รอรายละเอียด)** / **LINE OpenChat (รอเพิ่มลิงก์)** / เบอร์อาจารย์ผู้รับผิดชอบ | ⏳ **Pending Staff Details, Advisor Phone & LINE OpenChat Link** |
 
 ### 2.1 Curriculum & Schedule (หลักสูตรและการเรียนรู้ 3 วัน 2 คืน)
 
@@ -152,7 +170,7 @@ Comcamp-site/
 | Route | Main Files | Description | Current Status |
 |---|---|---|---|
 | **`/`** และ **`/home`** | `src/pages/index.astro`<br/>`src/pages/home.astro`<br/>`src/components/HomePage.astro`<br/>`public/theme/*` | **Flagship Homepage & 3D Memory Tunnel Gallery**<br/>หน้าประชาสัมพันธ์ค่ายหลักโฉมใหม่ พร้อมแถบ Countdown & สถานะที่นั่งจากเซิร์ฟเวอร์, การ์ดกิจกรรม 4 ด้าน, Bento ข้อมูลสำคัญ, เส้นทางการเรียนรู้ 3 วัน 2 คืน, FAQ และแกลเลอรี 3D Memory Tunnel 43 รูปจาก Cloudflare CDN | 🟢 **Production-Ready** (ผ่านการคัดกรองเนื้อหาจริง และผูก Cloudflare CDN + Local Fallback แล้ว) |
-| **`/register`** | `src/pages/register.astro`<br/>`RegisterSection.tsx` | **Registration Flow**<br/>แบบฟอร์มกรอกข้อมูลผู้สมัคร เชื่อมโยงกับ `POST /api/applications` | 🟡 **Functionally Complete / UI Polish Optional** (ทำงานร่วมกับ Backend ได้ครบ รอปรับธีมสีให้เข้ากับโฮมเพจใหม่หากต้องการ) |
+| **`/register`** | `src/pages/register.astro`<br/>`RegisterSection.tsx` | **Registration Flow**<br/>แบบฟอร์มกรอกข้อมูลผู้สมัคร 5 ขั้นตอน (รวมหมายเหตุการแพ้อาหารและโรคประจำตัว โดยไม่บันทึกลง storage ตาม PDPA) เชื่อมโยงกับ `POST /api/applications` | 🟢 **Core Ready** *(ยังต้องเพิ่มช่องติดต่อผู้ปกครอง 1 คน + เบอร์โทร)* |
 | **`/status`** | `src/pages/status.astro`<br/>`StatusSection.tsx` | **Application Status & Slip Upload**<br/>ค้นหาใบสมัครด้วยเลขบัตรประชาชน/เบอร์โทร/รหัสใบสมัคร (`CC25-XXXXXX`), กดยืนยันสิทธิ์ และอัปโหลดสลิปโอนเงิน | 🟡 **Functionally Complete / UI Polish Optional** (ทำงานร่วมกับ Backend ได้ครบ รอปรับธีมสีให้เข้ากับโฮมเพจใหม่หากต้องการ) |
 | **`/admin`** | `src/pages/admin.astro`<br/>`AdminSection.tsx` | **Admin Dashboard**<br/>หน้าสำหรับพี่ค่าย เข้าสู่ระบบด้วย JWT, ดูตารางผู้สมัคร, ตรวจรูปสลิปโอนเงิน และอนุมัติสถานะใบสมัคร | 🟡 **Functionally Complete / UI Polish Optional** |
 

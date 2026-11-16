@@ -337,7 +337,7 @@ func TestSelfProfileEdit(t *testing.T) {
 		if !strings.Contains(res.NationalID, "X") || !strings.Contains(res.Phone, "X") {
 			t.Fatalf("the response must stay masked, got %q / %q", res.NationalID, res.Phone)
 		}
-		for _, leaked := range []string{"adminNote", "admin_note", "motivation", "slipUrl"} {
+		for _, leaked := range []string{"adminNote", "admin_note", "motivation", "allergies", "medicalConditions", "slipUrl"} {
 			if strings.Contains(rec.Body.String(), leaked) {
 				t.Fatalf("public response must not contain %q: %s", leaked, rec.Body.String())
 			}
@@ -387,6 +387,8 @@ func TestSelfProfileEdit(t *testing.T) {
 			`,"phone":"0899999999"`,
 			`,"email":"other@example.com"`,
 			`,"motivation":"changed"`,
+			`,"allergies":"changed"`,
+			`,"medicalConditions":"changed"`,
 		} {
 			wantCode(t, app.selfEdit(t, created.ID, valid(extra)), http.StatusBadRequest, response.CodeValidation)
 		}
@@ -493,7 +495,7 @@ func TestAdminProfileEdit(t *testing.T) {
 
 	t.Run("full edit is saved, unmasked and audited", func(t *testing.T) {
 		newID := validTestNationalID(191)
-		body := fmt.Sprintf(`{"fullName":"สมศักดิ์ ใจดี","nickname":"ศักดิ์","nationalId":%q,"phone":"0810000191","email":"New@Example.com","school":"โรงเรียนใหม่","province":"ลำพูน","grade":"ปวช.2","shirtSize":"3XL","motivation":"แก้ไขโดยพี่ค่าย","reason":"ผู้ปกครองแจ้งแก้ไขเลขบัตร"}`, newID)
+		body := fmt.Sprintf(`{"fullName":"สมศักดิ์ ใจดี","nickname":"ศักดิ์","nationalId":%q,"phone":"0810000191","email":"New@Example.com","school":"โรงเรียนใหม่","province":"ลำพูน","grade":"ปวช.2","shirtSize":"3XL","motivation":"แก้ไขโดยพี่ค่าย","allergies":"แพ้อาหารทะเล","medicalConditions":"หอบหืด","reason":"ผู้ปกครองแจ้งแก้ไขเลขบัตร"}`, newID)
 		rec := app.adminEdit(t, token, a.ID, body)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
@@ -501,12 +503,19 @@ func TestAdminProfileEdit(t *testing.T) {
 		var res service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &res)
 		if res.FullName != "สมศักดิ์ ใจดี" || res.NationalID != newID || res.Phone != "0810000191" || res.Email != "new@example.com" ||
-			res.Grade != "ปวช.2" || res.ShirtSize != "3XL" || res.Motivation != "แก้ไขโดยพี่ค่าย" || res.Province != "ลำพูน" {
+			res.Grade != "ปวช.2" || res.ShirtSize != "3XL" || res.Motivation != "แก้ไขโดยพี่ค่าย" || res.Province != "ลำพูน" ||
+			res.Allergies != "แพ้อาหารทะเล" || res.MedicalConditions != "หอบหืด" {
 			t.Fatalf("unexpected admin response (must be unmasked): %+v", res)
 		}
-		// The public lookup follows the new identifiers.
-		if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+newID, nil, nil); rec.Code != http.StatusOK {
-			t.Fatalf("lookup by the new national ID should work, got %d", rec.Code)
+		// The public lookup follows the new identifiers without leaking health notes or motivation.
+		pubRec := app.do(t, http.MethodGet, "/api/applications/status?q="+newID, nil, nil)
+		if pubRec.Code != http.StatusOK {
+			t.Fatalf("lookup by the new national ID should work, got %d", pubRec.Code)
+		}
+		for _, leaked := range []string{"allergies", "medicalConditions", "แพ้อาหารทะเล", "หอบหืด", "motivation"} {
+			if strings.Contains(pubRec.Body.String(), leaked) {
+				t.Fatalf("public status lookup must not leak %q: %s", leaked, pubRec.Body.String())
+			}
 		}
 		if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+validTestNationalID(181), nil, nil); rec.Code != http.StatusNotFound {
 			t.Fatalf("the old national ID should no longer match, got %d", rec.Code)
@@ -583,4 +592,44 @@ func TestSelfProfileEdit_IsRateLimited(t *testing.T) {
 	if limited == 0 {
 		t.Fatal("30 wrong-code attempts in a row must hit the rate limiter")
 	}
+}
+
+func TestHealthNotesRegistrationAndPrivacy(t *testing.T) {
+	app := setupRelaxedApp(t)
+	token := app.login(t)
+
+	id := validTestNationalID(221)
+	payload := fmt.Sprintf(
+		`{"fullName":"สมหญิง ใจดี","nickname":"หญิง","nationalId":%q,"phone":"0810000221","email":"ying.health@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"อยากทำ IoT","allergies":"  แพ้กุ้ง​และปู  ","medicalConditions":"  หอบหืด ต้องพกยาพ่น  "}`,
+		id,
+	)
+	rec := app.do(t, http.MethodPost, "/api/applications", strings.NewReader(payload), map[string]string{
+		"Idempotency-Key": "660e8400-e29b-41d4-a716-446655440221",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	for _, leaked := range []string{"allergies", "medicalConditions", "แพ้กุ้ง", "หอบหืด", "motivation"} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("public register response must not leak %q: %s", leaked, rec.Body.String())
+		}
+	}
+
+	var created service.ApplicationResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	adminView := app.adminView(t, token, created.ID)
+	if adminView.Allergies != "แพ้กุ้งและปู" || adminView.MedicalConditions != "หอบหืด ต้องพกยาพ่น" {
+		t.Fatalf("admin view did not normalize/return health notes: %+v", adminView)
+	}
+
+	// Oversized allergies (>500 runes) must fail cleanly with 400.
+	tooLong := fmt.Sprintf(
+		`{"fullName":"สมชาย ยาว","nickname":"ยาว","nationalId":%q,"phone":"0810000222","email":"","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"","allergies":%q}`,
+		validTestNationalID(222),
+		strings.Repeat("ก", 501),
+	)
+	wantCode(t, app.do(t, http.MethodPost, "/api/applications", strings.NewReader(tooLong), map[string]string{
+		"Idempotency-Key": "660e8400-e29b-41d4-a716-446655440222",
+	}), http.StatusBadRequest, response.CodeValidation)
 }

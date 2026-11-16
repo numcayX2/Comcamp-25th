@@ -46,20 +46,22 @@ var (
 	ErrInvalidVerifyCode     = errors.New("verification code does not match this application")
 	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
 	ErrProfileLocked         = errors.New("this application can no longer be edited, please contact staff")
-	ErrIdentityLocked        = newValidationError("full name, national ID, phone, email and motivation cannot be changed here, please contact staff")
+	ErrIdentityLocked        = newValidationError("full name, national ID, phone, email, motivation and health notes cannot be changed here, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
 // not a database error.
 const (
-	maxNameRunes       = 100
-	maxNicknameRunes   = 50
-	maxSchoolRunes     = 150
-	maxProvinceRunes   = 100
-	maxEmailRunes      = 150
-	maxMotivationRunes = 2000
-	maxReasonRunes     = 500
-	maxQueryLen        = 20
+	maxNameRunes              = 100
+	maxNicknameRunes          = 50
+	maxSchoolRunes            = 150
+	maxProvinceRunes          = 100
+	maxEmailRunes             = 150
+	maxMotivationRunes        = 2000
+	maxAllergiesRunes         = 500
+	maxMedicalConditionsRunes = 500
+	maxReasonRunes            = 500
+	maxQueryLen               = 20
 )
 
 var allowedGrades = map[string]bool{
@@ -90,18 +92,22 @@ type ApplicationCreateRequest struct {
 	NationalID string `json:"nationalId"`
 	Phone      string `json:"phone"`
 	Email      string `json:"email"`
-	School     string `json:"school"`
-	Grade      string `json:"grade"`
-	ShirtSize  string `json:"shirtSize"`
-	Motivation string `json:"motivation"`
-	Province   string `json:"province,omitempty"`
+	// TODO(feature): เพิ่มฟิลด์รับช่องทางติดต่อผู้ปกครอง 1 คน + เบอร์โทรศัพท์ผู้ปกครองจากฟอร์ม /register
+	School            string `json:"school"`
+	Grade             string `json:"grade"`
+	ShirtSize         string `json:"shirtSize"`
+	Motivation        string `json:"motivation"`
+	Allergies         string `json:"allergies,omitempty"`
+	MedicalConditions string `json:"medicalConditions,omitempty"`
+	Province          string `json:"province,omitempty"`
 	// TurnstileToken is the single-use Cloudflare Turnstile response. It is verified, never
 	// stored, and never logged.
 	TurnstileToken string `json:"turnstileToken,omitempty"`
 }
 
 // ApplicationResponse is the applicant DTO. Public endpoints return the masked view (see
-// toPublic); only /api/admin/* returns full values, the motivation and the slip URL.
+// toPublic); only /api/admin/* returns full values, free-text notes (motivation, allergies,
+// medicalConditions) and the slip URL.
 type ApplicationResponse struct {
 	ID                  string                   `json:"id"`
 	FullName            string                   `json:"fullName"`
@@ -114,6 +120,8 @@ type ApplicationResponse struct {
 	ShirtSize           string                   `json:"shirtSize"`
 	Province            string                   `json:"province,omitempty"`
 	Motivation          string                   `json:"motivation,omitempty"`
+	Allergies           string                   `json:"allergies,omitempty"`
+	MedicalConditions   string                   `json:"medicalConditions,omitempty"`
 	Status              domain.ApplicationStatus `json:"status"`
 	AttendanceConfirmed bool                     `json:"attendanceConfirmed"`
 	HasSlip             bool                     `json:"hasSlip"`
@@ -255,24 +263,27 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	}
 
 	applicant := &domain.Applicant{
-		ID:               uuid.New(),
-		NationalID:       req.NationalID,
-		Prefix:           "",
-		FirstName:        firstName,
-		LastName:         lastName,
-		Nickname:         req.Nickname,
-		BirthDate:        time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
-		Gender:           "unspecified",
-		School:           req.School,
-		Grade:            req.Grade,
-		Phone:            req.Phone,
-		Email:            req.Email,
-		Province:         province,
-		EmergencyContact: "ผู้ปกครอง",
-		EmergencyPhone:   req.Phone,
-		ShirtSize:        req.ShirtSize,
-		HasLaptop:        true,
-		Motivation:       &req.Motivation,
+		ID:         uuid.New(),
+		NationalID: req.NationalID,
+		Prefix:     "",
+		FirstName:  firstName,
+		LastName:   lastName,
+		Nickname:   req.Nickname,
+		BirthDate:  time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC), // Default if not filled in minimal form
+		Gender:     "unspecified",
+		School:     req.School,
+		Grade:      req.Grade,
+		Phone:      req.Phone,
+		Email:      req.Email,
+		Province:   province,
+		// TODO(feature): เปลี่ยนมาใช้ชื่อ-เบอร์โทรผู้ปกครอง (ผปค. 1 คน) ที่กรอกจากฟอร์ม /register แทนค่า fallback จากเบอร์ผู้สมัคร
+		EmergencyContact:  "ผู้ปกครอง",
+		EmergencyPhone:    req.Phone,
+		ShirtSize:         req.ShirtSize,
+		HasLaptop:         true,
+		Motivation:        &req.Motivation,
+		Allergies:         &req.Allergies,
+		MedicalConditions: &req.MedicalConditions,
 		// First come, first served: the quota check above is the selection, so the applicant holds
 		// a seat (and may upload a slip) straight away, with no staff step in between.
 		Status:              domain.StatusPassed,
@@ -349,7 +360,7 @@ func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID
 type profileInput struct {
 	FullName, Nickname, NationalID, Phone, Email string
 	School, Province, Grade, ShirtSize           string
-	Motivation                                   string
+	Motivation, Allergies, MedicalConditions     string
 }
 
 // cleanText normalises a single-line field: invisible characters pasted from LINE / Facebook are
@@ -379,6 +390,8 @@ func normalizeProfile(p profileInput) profileInput {
 	p.Grade = cleanText(p.Grade)
 	p.Province = cleanText(p.Province)
 	p.Motivation = strings.TrimSpace(stripZeroWidth(p.Motivation))
+	p.Allergies = strings.TrimSpace(stripZeroWidth(p.Allergies))
+	p.MedicalConditions = strings.TrimSpace(stripZeroWidth(p.MedicalConditions))
 	p.ShirtSize = strings.ToUpper(strings.TrimSpace(stripZeroWidth(p.ShirtSize)))
 	return p
 }
@@ -388,11 +401,13 @@ func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
 		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
 		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
+		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
 	})
 	return ApplicationCreateRequest{
 		FullName: p.FullName, Nickname: p.Nickname, NationalID: p.NationalID, Phone: p.Phone,
 		Email: p.Email, School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
-		Motivation: p.Motivation, Province: p.Province,
+		Motivation: p.Motivation, Allergies: p.Allergies, MedicalConditions: p.MedicalConditions,
+		Province:       p.Province,
 		TurnstileToken: strings.TrimSpace(req.TurnstileToken),
 	}
 }
@@ -461,6 +476,8 @@ func checkLengths(p profileInput) error {
 		{p.School, maxSchoolRunes, "school"},
 		{p.Province, maxProvinceRunes, "province"},
 		{p.Motivation, maxMotivationRunes, "motivation"},
+		{p.Allergies, maxAllergiesRunes, "allergies"},
+		{p.MedicalConditions, maxMedicalConditionsRunes, "medicalConditions"},
 	} {
 		if utf8.RuneCountInString(f.value) > f.max {
 			return newValidationError(fmt.Sprintf("%s is too long (max %d characters)", f.name, f.max))
@@ -513,6 +530,7 @@ func validateRequest(req ApplicationCreateRequest) error {
 		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
 		Email: req.Email, School: req.School, Province: req.Province, Grade: req.Grade,
 		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
+		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
 	})
 }
 
@@ -779,27 +797,31 @@ type SelfProfileRequest struct {
 	Grade      string `json:"grade"`
 	ShirtSize  string `json:"shirtSize"`
 
-	FullName   *string `json:"fullName,omitempty"`
-	NationalID *string `json:"nationalId,omitempty"`
-	Phone      *string `json:"phone,omitempty"`
-	Email      *string `json:"email,omitempty"`
-	Motivation *string `json:"motivation,omitempty"`
+	FullName          *string `json:"fullName,omitempty"`
+	NationalID        *string `json:"nationalId,omitempty"`
+	Phone             *string `json:"phone,omitempty"`
+	Email             *string `json:"email,omitempty"`
+	Motivation        *string `json:"motivation,omitempty"`
+	Allergies         *string `json:"allergies,omitempty"`
+	MedicalConditions *string `json:"medicalConditions,omitempty"`
 }
 
 // AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send
 // only what changed; the merged result is validated as a whole.
 type AdminProfileRequest struct {
-	FullName   *string `json:"fullName,omitempty"`
-	Nickname   *string `json:"nickname,omitempty"`
-	NationalID *string `json:"nationalId,omitempty"`
-	Phone      *string `json:"phone,omitempty"`
-	Email      *string `json:"email,omitempty"`
-	School     *string `json:"school,omitempty"`
-	Province   *string `json:"province,omitempty"`
-	Grade      *string `json:"grade,omitempty"`
-	ShirtSize  *string `json:"shirtSize,omitempty"`
-	Motivation *string `json:"motivation,omitempty"`
-	Reason     string  `json:"reason,omitempty"`
+	FullName          *string `json:"fullName,omitempty"`
+	Nickname          *string `json:"nickname,omitempty"`
+	NationalID        *string `json:"nationalId,omitempty"`
+	Phone             *string `json:"phone,omitempty"`
+	Email             *string `json:"email,omitempty"`
+	School            *string `json:"school,omitempty"`
+	Province          *string `json:"province,omitempty"`
+	Grade             *string `json:"grade,omitempty"`
+	ShirtSize         *string `json:"shirtSize,omitempty"`
+	Motivation        *string `json:"motivation,omitempty"`
+	Allergies         *string `json:"allergies,omitempty"`
+	MedicalConditions *string `json:"medicalConditions,omitempty"`
+	Reason            string  `json:"reason,omitempty"`
 }
 
 // profileOf is the stored profile as the shared validators see it.
@@ -814,6 +836,12 @@ func profileOf(a *domain.Applicant) profileInput {
 	}
 	if a.Motivation != nil {
 		p.Motivation = *a.Motivation
+	}
+	if a.Allergies != nil {
+		p.Allergies = *a.Allergies
+	}
+	if a.MedicalConditions != nil {
+		p.MedicalConditions = *a.MedicalConditions
 	}
 	return p
 }
@@ -833,6 +861,8 @@ func profileChanges(before, after profileInput) map[string]map[string]string {
 		{"grade", before.Grade, after.Grade},
 		{"shirtSize", before.ShirtSize, after.ShirtSize},
 		{"motivation", before.Motivation, after.Motivation},
+		{"allergies", before.Allergies, after.Allergies},
+		{"medicalConditions", before.MedicalConditions, after.MedicalConditions},
 	} {
 		if f.old != f.new {
 			changes[f.name] = map[string]string{"old": f.old, "new": f.new}
@@ -848,10 +878,13 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 		return domain.ProfileFields{}, err
 	}
 	motivation := p.Motivation
+	allergies := p.Allergies
+	medicalConditions := p.MedicalConditions
 	return domain.ProfileFields{
 		FirstName: first, LastName: last, Nickname: p.Nickname, NationalID: p.NationalID,
 		Phone: p.Phone, Email: p.Email, School: p.School, Province: p.Province, Grade: p.Grade,
-		ShirtSize: p.ShirtSize, Motivation: &motivation,
+		ShirtSize: p.ShirtSize, Motivation: &motivation, Allergies: &allergies,
+		MedicalConditions: &medicalConditions,
 	}, nil
 }
 
@@ -873,15 +906,15 @@ func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo s
 	if !applicant.Status.IsActive() {
 		return nil, ErrProfileLocked
 	}
-	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil || req.Motivation != nil {
+	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil || req.Motivation != nil || req.Allergies != nil || req.MedicalConditions != nil {
 		return nil, ErrIdentityLocked
 	}
 
 	before := profileOf(applicant)
 	after := normalizeProfile(profileInput{
 		FullName: before.FullName, NationalID: before.NationalID, Phone: before.Phone, Email: before.Email,
-		Motivation: before.Motivation,
-		Nickname:   req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
+		Motivation: before.Motivation, Allergies: before.Allergies, MedicalConditions: before.MedicalConditions,
+		Nickname: req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
 	})
 	if err := validateSecondary(after); err != nil {
 		return nil, err
@@ -940,7 +973,7 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 		{&merged.FullName, req.FullName}, {&merged.Nickname, req.Nickname}, {&merged.NationalID, req.NationalID},
 		{&merged.Phone, req.Phone}, {&merged.Email, req.Email}, {&merged.School, req.School},
 		{&merged.Province, req.Province}, {&merged.Grade, req.Grade}, {&merged.ShirtSize, req.ShirtSize},
-		{&merged.Motivation, req.Motivation},
+		{&merged.Motivation, req.Motivation}, {&merged.Allergies, req.Allergies}, {&merged.MedicalConditions, req.MedicalConditions},
 	} {
 		if f.src != nil {
 			*f.dst = *f.src
@@ -1042,6 +1075,12 @@ func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Pay
 	res := s.baseResponse(a)
 	if a.Motivation != nil {
 		res.Motivation = *a.Motivation
+	}
+	if a.Allergies != nil {
+		res.Allergies = *a.Allergies
+	}
+	if a.MedicalConditions != nil {
+		res.MedicalConditions = *a.MedicalConditions
 	}
 	if p != nil {
 		res.HasSlip = true

@@ -14,6 +14,7 @@ import {
   ApiHttpError,
   fetchPublicSettings,
   sanitizeDigits,
+  stripZeroWidth,
   submitApplication,
   type ApiSource,
   type Application,
@@ -21,6 +22,7 @@ import {
   type ShirtSize,
 } from '../lib/api';
 import {
+  ALLERGIES_MAX,
   EMPTY_FORM,
   FEE_TEXT,
   GRADES,
@@ -28,6 +30,7 @@ import {
   GRADE_OTHER_MAX,
   gradeValue,
   LAST_FORM_STEP,
+  MEDICAL_CONDITIONS_MAX,
   MOCK_FORM,
   MOTIVATION_MAX,
   RECEIPT_META,
@@ -659,7 +662,9 @@ export function RegisterSection() {
         province: form.province.trim(),
         grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
-        motivation: form.motivation.trim(),
+        motivation: stripZeroWidth(form.motivation).trim(),
+        allergies: stripZeroWidth(form.allergies).trim(),
+        medicalConditions: stripZeroWidth(form.medicalConditions).trim(),
         turnstileToken: turnstileToken || undefined,
       };
       // Same key on every retry: if an earlier attempt was saved but its answer was lost (timeout,
@@ -787,7 +792,7 @@ export function RegisterSection() {
   const percent = current < 0 ? 0 : Math.round(((current + 1) / TOTAL_STEPS) * 100);
   const stepOfText = `ขั้นตอน ${current + 1} จาก ${TOTAL_STEPS}`;
   const nextLabel = busy
-    ? 'กำลังส่งข้อมูล…'
+    ? 'กำลังส่งใบสมัคร…'
     : step === LAST_FORM_STEP
       ? 'ส่งใบสมัคร'
       : returnTo !== null
@@ -835,7 +840,7 @@ export function RegisterSection() {
                   {restoredAt ? (
                     <>
                       กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.)
-                      {' '}เลขบัตรประชาชนไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกอีกครั้ง
+                      {' '}เลขบัตรประชาชนและข้อมูลสุขภาพไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกใหม่อีกครั้ง
                     </>
                   ) : (
                     'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้เฉพาะแท็บนี้ และหายไปเมื่อปิดแท็บ (ปลอดภัยบนคอมพิวเตอร์ที่ใช้ร่วมกัน) ยกเว้นเลขบัตรประชาชนและข้อมูลสุขภาพที่ไม่บันทึกเลยตาม PDPA'
@@ -850,6 +855,7 @@ export function RegisterSection() {
               </>
             )}
           </div>
+          {/* TODO(feature): ต้องทำฟอร์มกรอกช่องทางติดต่อผู้ปกครองเพิ่ม (ผู้ปกครอง 1 คน + เบอร์โทรศัพท์ติดต่อผู้ปกครอง) ใน wizard นี้และเชื่อมต่อ Backend API */}
           <div className="rw-fields">
             <TextField
               id="fullName"
@@ -991,7 +997,7 @@ export function RegisterSection() {
             <div className="rw-field rw-span-6">
               <fieldset className="rw-fieldset">
                 <legend className="rw-label">
-                  <span>ไซส์เสื้อ</span>
+                  <span>ไซส์เสื้อค่าย (เลือกเบื้องต้น · ไซส์จริงรอยืนยัน)</span>
                 </legend>
                 <SizeChips value={form.shirtSize} invalid={Boolean(errors.shirtSize)} onChange={(v) => set('shirtSize', v)} />
                 {errors.shirtSize && (
@@ -1000,12 +1006,19 @@ export function RegisterSection() {
                   </p>
                 )}
               </fieldset>
+              <p className="rw-warn-note" role="note">
+                <span className="rw-warn-note__dot" aria-hidden="true" />
+                <span>
+                  <strong className="rw-warn-note__tag">มีเสื้อค่าย (คอนเฟิร์มแล้ว):</strong> ยังไม่แน่ใจว่าจะมีไซส์ใดบ้างและรอบอกเท่าใด
+                  กรุณาเลือกไซส์เบื้องต้นไว้ก่อน และกลับมาเปลี่ยนภายหลังได้ที่หน้า <span className="font-mono">/status</span>
+                </span>
+              </p>
             </div>
 
             <div className="rw-field rw-span-6">
-              {/* TODO(content): รอประกาศอย่างเป็นทางการ — ตารางรอบอกของไซส์ XS / 2XL / 3XL (ดู SIZE_CHEST ใน register/model.ts) */}
+              {/* TODO(content): รอประกาศอย่างเป็นทางการ — มีเสื้อค่ายแล้ว รอยืนยันรายการไซส์ที่มีจริงและตารางรอบอก (ดู SIZE_CHEST ใน register/model.ts) */}
               <table className="rw-table">
-                <caption>ตารางขนาดเสื้อค่าย</caption>
+                <caption>ตารางขนาดเสื้อโดยประมาณ (รอคอนเฟิร์มไซส์ที่มีจริง)</caption>
                 <thead>
                   <tr>
                     <th scope="col">ไซส์</th>
@@ -1054,7 +1067,7 @@ export function RegisterSection() {
                 id="motivation"
                 name="motivation"
                 className="rw-input rw-textarea"
-                rows={7}
+                rows={5}
                 maxLength={MOTIVATION_MAX}
                 value={form.motivation}
                 onChange={(e) => set('motivation', e.target.value)}
@@ -1063,6 +1076,64 @@ export function RegisterSection() {
                 aria-invalid={errors.motivation ? true : undefined}
                 aria-describedby={errors.motivation ? 'motivation-err' : undefined}
                 placeholder="เช่น อยากลองต่อวงจรเซนเซอร์ หรืออยากทำหน้าเว็บสั่งงานบอร์ดผ่านมือถือ"
+              />
+            </FieldShell>
+
+            <FieldShell
+              id="allergies"
+              label="หมายเหตุการแพ้อาหาร"
+              hint={
+                <>
+                  ไม่บังคับ · <span className="font-mono tabular-nums">{form.allergies.trim().length}/{ALLERGIES_MAX}</span>
+                </>
+              }
+              error={errors.allergies}
+            >
+              <p id="allergies-hint" className="rw-withdraw__hint" style={{ marginTop: 0, marginBottom: '6px' }}>
+                ระบุอาหารหรือวัตถุดิบที่แพ้ รวมถึงข้อจำกัดด้านอาหาร (เช่น มังสวิรัติ ฮาลาล) หากไม่มีให้เว้นว่างไว้ (ไม่บันทึกลงเครื่องตาม PDPA)
+              </p>
+              <textarea
+                id="allergies"
+                name="allergies"
+                className="rw-input rw-textarea"
+                rows={3}
+                maxLength={ALLERGIES_MAX}
+                value={form.allergies}
+                onChange={(e) => set('allergies', e.target.value)}
+                onBlur={() => blur('allergies')}
+                onKeyDown={onTextareaKey}
+                aria-invalid={errors.allergies ? true : undefined}
+                aria-describedby={['allergies-hint', errors.allergies ? 'allergies-err' : ''].filter(Boolean).join(' ')}
+                placeholder="เช่น แพ้กุ้งและอาหารทะเล / ทานมังสวิรัติ"
+              />
+            </FieldShell>
+
+            <FieldShell
+              id="medicalConditions"
+              label="หมายเหตุโรคประจำตัว"
+              hint={
+                <>
+                  ไม่บังคับ · <span className="font-mono tabular-nums">{form.medicalConditions.trim().length}/{MEDICAL_CONDITIONS_MAX}</span>
+                </>
+              }
+              error={errors.medicalConditions}
+            >
+              <p id="medicalConditions-hint" className="rw-withdraw__hint" style={{ marginTop: 0, marginBottom: '6px' }}>
+                ระบุโรคประจำตัว ยาที่ต้องพกประจำ หรือข้อควรระวังในการดูแลระหว่างเข้าค่าย หากไม่มีให้เว้นว่างไว้ (ไม่บันทึกลงเครื่องตาม PDPA)
+              </p>
+              <textarea
+                id="medicalConditions"
+                name="medicalConditions"
+                className="rw-input rw-textarea"
+                rows={3}
+                maxLength={MEDICAL_CONDITIONS_MAX}
+                value={form.medicalConditions}
+                onChange={(e) => set('medicalConditions', e.target.value)}
+                onBlur={() => blur('medicalConditions')}
+                onKeyDown={onTextareaKey}
+                aria-invalid={errors.medicalConditions ? true : undefined}
+                aria-describedby={['medicalConditions-hint', errors.medicalConditions ? 'medicalConditions-err' : ''].filter(Boolean).join(' ')}
+                placeholder="เช่น หอบหืด (มียาพ่นประจำตัว) / แพ้ยา..."
               />
             </FieldShell>
           </div>
@@ -1093,26 +1164,37 @@ export function RegisterSection() {
                 ]}
               />
               <ReviewGroup
-                title="เสื้อค่าย"
+                title="เสื้อค่าย (ไซส์เบื้องต้น · รอยืนยันไซส์จริง)"
                 onEdit={() => editFromReview(2)}
                 rows={[['ไซส์', <span className="font-mono" key="sz">{form.shirtSize}</span>]]}
               />
               <ReviewGroup
-                title="แรงบันดาลใจ"
+                title="แรงบันดาลใจและหมายเหตุสุขภาพ"
                 onEdit={() => editFromReview(3)}
-                rows={[['ความสนใจ', form.motivation.trim() ? <span className="rw-pre" key="mo">{form.motivation.trim()}</span> : <Empty key="mo" />]]}
+                rows={[
+                  ['ความสนใจ', form.motivation.trim() ? <span className="rw-pre" key="mo">{form.motivation.trim()}</span> : <Empty key="mo" />],
+                  ['การแพ้อาหาร', form.allergies.trim() ? <span className="rw-pre" key="al">{form.allergies.trim()}</span> : <Empty key="al" />],
+                  ['โรคประจำตัว', form.medicalConditions.trim() ? <span className="rw-pre" key="mc">{form.medicalConditions.trim()}</span> : <Empty key="mc" />],
+                ]}
               />
             </div>
 
             <section className="rw-fee" aria-labelledby="rw-fee-title">
               <div className="rw-fee__head">
                 <h3 id="rw-fee-title" className="rw-fee__title">
-                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย
+                  ขั้นตอนรับสิทธิ์และค่าสมัครเข้าร่วมค่าย (เบื้องต้น)
                 </h3>
                 <p className="rw-fee__amount">
                   <span className="font-mono tabular-nums">{feeText}</span> บาท
                 </p>
               </div>
+              <p className="rw-warn-note rw-warn-note--tight" role="note">
+                <span className="rw-warn-note__dot" aria-hidden="true" />
+                <span>
+                  <strong className="rw-warn-note__tag">ราคาเบื้องต้น · อาจเปลี่ยนแปลงได้:</strong> ยอดค่าสมัคร{' '}
+                  <span className="font-mono tabular-nums">{feeText}</span> บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการ กรุณาตรวจสอบยอดยืนยันล่าสุดก่อนโอนเงิน
+                </span>
+              </p>
               <ol className="rw-fee__steps">
                 <li>
                   <strong>ส่งใบสมัครเพื่อรับสิทธิ์ทันที</strong>
@@ -1121,7 +1203,7 @@ export function RegisterSection() {
                 </li>
                 <li>
                   <strong>
-                    โอนค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท หลังส่งใบสมัคร
+                    โอนค่าสมัคร (เบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท) หลังส่งใบสมัคร
                   </strong>
                   หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) ยังไม่ต้องโอนก่อนกดส่ง
                 </li>
@@ -1146,8 +1228,8 @@ export function RegisterSection() {
                 aria-describedby={errors.consent ? 'consent-err' : undefined}
               />
               <span>
-                ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน และดำเนินกิจกรรมค่ายเท่านั้น
-                และรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท (ชำระหลังส่งใบสมัคร)
+                ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
+                และรับทราบรายละเอียดค่าสมัครเบื้องต้น <span className="font-mono tabular-nums">{feeText}</span> บาท (อาจเปลี่ยนแปลงได้ · รอยืนยันก่อนชำระหลังส่งใบสมัคร)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
@@ -1290,7 +1372,7 @@ export function RegisterSection() {
           </span>{' '}
           ·{' '}
           <span className="nowrap">
-            ค่าสมัคร <span className="font-mono">{feeText}</span> บาท
+            ค่าสมัครเบื้องต้น <span className="font-mono">{feeText}</span> บาท
           </span>
         </p>
       </aside>

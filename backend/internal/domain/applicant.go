@@ -91,17 +91,19 @@ func (a *Applicant) FullName() string {
 
 // ProfileFields are the applicant columns that can be edited after registration.
 type ProfileFields struct {
-	FirstName  string
-	LastName   string
-	Nickname   string
-	NationalID string
-	Phone      string
-	Email      string
-	School     string
-	Province   string
-	Grade      string
-	ShirtSize  string
-	Motivation *string
+	FirstName         string
+	LastName          string
+	Nickname          string
+	NationalID        string
+	Phone             string
+	Email             string
+	School            string
+	Province          string
+	Grade             string
+	ShirtSize         string
+	Motivation        *string
+	Allergies         *string
+	MedicalConditions *string
 }
 
 type ApplicantStatusLog struct {

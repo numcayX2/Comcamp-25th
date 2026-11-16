@@ -271,9 +271,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
                 <div class="card-top"><span class="bento-tag">06 · CAMP FEE</span></div>
-                <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num">1,000</span> บาท</span></h3>
-                <!-- TODO(content): รอประกาศอย่างเป็นทางการ — รายการที่รวมในค่าสมัคร (ที่พัก/อาหาร/ชุดอุปกรณ์) — ยอด 1,000 บาท ยืนยันแล้ว -->
-                <p class="todo">รายการที่รวมในค่าสมัครรอประกาศ</p>
+                <h3>ค่าใช้จ่ายในการเข้าร่วม (เบื้องต้น) <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,000</span> บาท</span></h3>
+                <!-- TODO(content): รอประกาศอย่างเป็นทางการ — 1) คอนเฟิร์มยอดค่าสมัครจริง (1,000 บาทเป็นราคาเบื้องต้น อาจเปลี่ยนแปลงได้) 2) รายการที่รวมในค่าสมัคร (มีเสื้อค่ายยืนยันแล้ว; ที่พัก/อาหาร/ชุดอุปกรณ์รอประกาศ) 3) คอนเฟิร์มรายการไซส์เสื้อที่มีจริง -->
+                <p class="todo">มีเสื้อค่าย (คอนเฟิร์มแล้ว · ไซส์ที่มีจริงรออัปเดต) · ราคา 1,000 บาท ยังไม่คอนเฟิร์ม (อาจเปลี่ยนแปลงได้) และรายการอื่นที่รวมในค่าสมัครรอประกาศ</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
@@ -442,7 +442,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
               <h3>แนบสลิปโอนเงินยืนยันสิทธิ์</h3>
-              <p>ผู้สมัครที่ผ่านการคัดเลือกโอนเงินค่าธรรมเนียม <span class="font-mono tabular-nums">1,000</span> บาท และอัปโหลดรูปสลิปในระบบ</p>
+              <p>ผู้สมัครที่ผ่านการคัดเลือกโอนเงินค่าธรรมเนียม (เบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท · อาจเปลี่ยนแปลงได้ รอประกาศยืนยัน) และอัปโหลดรูปสลิปในระบบ</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
@@ -519,10 +519,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               </div>
             </div>
 
-            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — วันจัดค่าย รายละเอียดหอพัก และเบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ -->
+            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — วันจัดค่าย รายละเอียดหอพัก เบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ ยอดค่าสมัครสุทธิ รายการไซส์เสื้อค่ายที่มีจริง และลิงก์ LINE OpenChat โครงการ -->
             <p class="tm-status-note">
               <span class="tm-status-dot" aria-hidden="true"></span>
-              <span><strong class="tm-status-tag">รอประกาศเพิ่มเติม:</strong> วันจัดค่าย รายละเอียดหอพัก และเบอร์ติดต่ออาจารย์ผู้รับผิดชอบจะแจ้งยืนยันในระบบพร้อมคู่มือผู้มีสิทธิ์</span>
+              <span><strong class="tm-status-tag">รอประกาศเพิ่มเติม:</strong> วันจัดค่าย รายละเอียดหอพัก เบอร์ติดต่ออาจารย์ผู้รับผิดชอบ ยอดค่าสมัครสุทธิ รายการไซส์เสื้อค่ายที่มีจริง และลิงก์ LINE OpenChat จะแจ้งยืนยันในระบบพร้อมคู่มือผู้มีสิทธิ์</span>
             </p>
           </div>
         </div>
@@ -575,7 +575,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         <div class="ed-cta-band__body">
           <p class="ed-cta-band__eyebrow">COMCAMP #25 · REGISTRATION</p>
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
-          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums">30</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums">1,000</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
+          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums">30</span> ที่นั่ง · ค่าสมัครเบื้องต้น <span class="font-mono tabular-nums" data-camp-fee-num>1,000</span> บาท (อาจเปลี่ยนแปลงได้) · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
             <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta data-register-link>
               <span data-register-cta-label>เปิดรับ 16 พ.ย. 69</span>
@@ -662,6 +662,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                 <a href={FB_URL} target="_blank" rel="noopener noreferrer">
                   Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้
                 </a>
+              </li>
+              <!-- TODO(content): เพิ่มลิงก์ LINE OpenChat ของโครงการเข้าบนเว็บ (Footer / ใบตอบรับ / /status) เมื่อสร้างกลุ่มแล้ว -->
+              <li class="footer-col__note" style="color:var(--amber-text);font-weight:600;margin-top:4px">
+                LINE OpenChat: รอเพิ่มลิงก์เข้ากลุ่มโครงการ
               </li>
             </ul>
             <p class="footer-col__note">เปิดรับสมัคร <span class="font-mono tabular-nums">16</span> พ.ย. <span class="font-mono tabular-nums">2569</span> · <span class="font-mono tabular-nums">30</span> ที่นั่ง</p>

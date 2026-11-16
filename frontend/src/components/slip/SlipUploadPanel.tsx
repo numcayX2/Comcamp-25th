@@ -85,6 +85,7 @@ export function SlipUploadPanel({
   const [preparing, setPreparing] = useState(false);
   const [sent, setSent] = useState<Sent | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [progress, setProgress] = useState(0);
   const [fileError, setFileError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -247,7 +248,8 @@ export function SlipUploadPanel({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy || preparing || !file || !codeReady) return;
+    if (busyRef.current || busy || preparing || !file || !codeReady) return;
+    busyRef.current = true;
     setBusy(true);
     setProgress(0);
     setSubmitError(null);
@@ -287,6 +289,7 @@ export function SlipUploadPanel({
         setSubmitError(text);
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

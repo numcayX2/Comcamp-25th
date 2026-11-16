@@ -56,6 +56,8 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
     app.province ?? '',
     app.grade ?? '',
     app.shirtSize ?? '',
+    app.allergies ?? '',
+    app.medicalConditions ?? '',
   ];
   if (fields.some((f) => stripZeroWidth(f).toLowerCase().includes(q))) return true;
 
@@ -86,6 +88,8 @@ export const CSV_HEADERS = [
   'สถานะสลิป',
   'วันที่สมัคร',
   'เหตุผลการสมัคร',
+  'การแพ้อาหาร',
+  'โรคประจำตัว',
 ] as const;
 
 /**
@@ -167,6 +171,8 @@ export function buildApplicantsCsv(rows: Application[]): string {
         csvField(slipLabel(a)),
         csvField(formatCreated(a.createdAt)),
         csvField(a.motivation ?? ''),
+        csvField(a.allergies ?? ''),
+        csvField(a.medicalConditions ?? ''),
       ].join(','),
     );
   }

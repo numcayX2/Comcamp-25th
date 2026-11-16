@@ -3,11 +3,13 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,5 +322,65 @@ func TestRBAC_NoTokenIs401OnEveryAdminRoute(t *testing.T) {
 		if rec := app.do(t, rt.method, rt.path, nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a token: expected 401, got %d", rt.method, rt.path, rec.Code)
 		}
+	}
+}
+
+// Creating two separate admins verifies that admin1's token cannot be tampered to impersonate
+// admin2, every action is audited under admin1's own ID, and deactivating admin1 revokes only
+// admin1's sessions while admin2 stays unaffected.
+func TestSecurity_TwoAdmins_TokenCannotImpersonate(t *testing.T) {
+	app := setupUnlimitedApp(t)
+
+	token1, admin1ID := app.loginAs(t, "admin1", domain.RoleAdmin)
+	token2, admin2ID := app.loginAs(t, "admin2", domain.RoleAdmin)
+	if admin1ID == admin2ID {
+		t.Fatalf("expected distinct admin IDs, both were %d", admin1ID)
+	}
+
+	// 1. Tamper admin1's JWT payload to claim admin2's ID & username without re-signing.
+	parts := strings.Split(token1, ".")
+	if len(parts) != 3 {
+		t.Fatalf("unexpected JWT format")
+	}
+	rawPayload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(rawPayload, &claims); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	claims["adminId"] = admin2ID
+	claims["username"] = "admin2"
+	forgedPayload, _ := json.Marshal(claims)
+	forgedToken := parts[0] + "." + base64.RawURLEncoding.EncodeToString(forgedPayload) + "." + parts[2]
+
+	if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(forgedToken)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("forged admin1->admin2 token must be 401, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	// 2. Valid admin1 action is always attributed to admin1ID in audit_logs, never admin2ID.
+	rec := app.do(t, http.MethodPatch, "/api/admin/settings", bytes.NewBufferString(`{"maxCapacity":32}`), bearer(token1))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin1 settings update: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	entries := app.appRepo.Audit().Entries()
+	if len(entries) == 0 {
+		t.Fatalf("expected audit log entry for settings update")
+	}
+	last := entries[len(entries)-1]
+	if last.AdminID == nil || *last.AdminID != admin1ID {
+		t.Fatalf("expected audit AdminID=%d (admin1), got %v", admin1ID, last.AdminID)
+	}
+
+	// 3. Deactivating admin1 immediately invalidates admin1's token while admin2 remains active.
+	if err := app.adminRepo.SetActive(admin1ID, false); err != nil {
+		t.Fatalf("deactivate admin1: %v", err)
+	}
+	if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token1)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("deactivated admin1 token must be 401, got %d", rec.Code)
+	}
+	if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token2)); rec.Code != http.StatusOK {
+		t.Fatalf("admin2 token must remain 200, got %d", rec.Code)
 	}
 }

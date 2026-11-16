@@ -195,7 +195,7 @@ func profileOfRow(a *domain.Applicant) domain.ProfileFields {
 	return domain.ProfileFields{
 		FirstName: a.FirstName, LastName: a.LastName, Nickname: a.Nickname, NationalID: a.NationalID,
 		Phone: a.Phone, Email: a.Email, School: a.School, Province: a.Province, Grade: a.Grade,
-		ShirtSize: a.ShirtSize, Motivation: a.Motivation,
+		ShirtSize: a.ShirtSize, Motivation: a.Motivation, Allergies: a.Allergies, MedicalConditions: a.MedicalConditions,
 	}
 }
 

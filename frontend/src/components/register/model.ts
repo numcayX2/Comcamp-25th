@@ -5,8 +5,13 @@
 import type { ApplicationPayload, ShirtSize } from '../../lib/api';
 
 export const SEATS = 30;
+/**
+ * TODO(content): ค่าสมัครเบื้องต้น 1,000 บาท ยังไม่คอนเฟิร์มอย่างเป็นทางการและอาจเปลี่ยนแปลงได้
+ * หน้า /register และ /status ใช้ค่าจาก settings.campFee เป็นหลัก ค่านี้ใช้เฉพาะกรณี fallback
+ */
 export const FEE_TEXT = '1,000';
 export const FB_URL = 'https://www.facebook.com/CCCSMJU';
+// TODO(content): เพิ่มลิงก์ LINE OpenChat (เช่น LINE_OPENCHAT_URL) เข้าบนเว็บ (Footer / ใบตอบรับ / หน้า /status) เมื่อทีมงานสร้างกลุ่มแล้ว
 
 /** Format campFee from PublicSettings into Thai locale text, falling back to FEE_TEXT. */
 export function formatCampFee(fee: number | string | null | undefined): string {
@@ -22,6 +27,8 @@ export const EMAIL_MAX = 150;
 export const SCHOOL_MAX = 150;
 export const PROVINCE_MAX = 100;
 export const MOTIVATION_MAX = 2000;
+export const ALLERGIES_MAX = 500;
+export const MEDICAL_CONDITIONS_MAX = 500;
 
 export const GRADES = ['ม.4', 'ม.5', 'ม.6', 'ปวช.1', 'ปวช.2', 'ปวช.3'] as const;
 /** Select value for "other"; the applicant then types their own level, which is what gets submitted. */
@@ -30,9 +37,10 @@ export const GRADE_OTHER_MAX = 20; // grade column is VARCHAR(20)
 export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 
 /**
- * Chest circumference in inches (AGENTS.md §9.1 lists S 36", M 38", L 40", XL 42").
+ * TODO(content): รอประกาศอย่างเป็นทางการ —
+ *   มีเสื้อค่าย ComCamp #25 แน่นอนแล้ว (คอนเฟิร์มแล้ว)
+ *   รอคอนเฟิร์มเฉพาะรายการไซส์ที่จะเปิดให้เลือกจริง และตัวเลขรอบอก XS–3XL จากร้าน
  * null = not announced yet.
- * TODO(content): รอประกาศอย่างเป็นทางการ — ยืนยันตัวเลข S–XL และเพิ่มค่า XS / 2XL / 3XL จากทีมงาน
  */
 export const SIZE_CHEST: Record<ShirtSize, number | null> = {
   XS: null,
@@ -45,9 +53,11 @@ export const SIZE_CHEST: Record<ShirtSize, number | null> = {
 };
 
 /** Wizard form state. Selects start empty so nothing is submitted by accident. */
-export interface FormState extends Omit<ApplicationPayload, 'shirtSize' | 'province'> {
+export interface FormState extends Omit<ApplicationPayload, 'shirtSize' | 'province' | 'allergies' | 'medicalConditions'> {
   shirtSize: ShirtSize | '';
   province: string;
+  allergies: string;
+  medicalConditions: string;
   /** Free-text level, used only while `grade` is GRADE_OTHER. */
   gradeOther: string;
 }
@@ -87,6 +97,8 @@ export const EMPTY_FORM: FormState = {
   gradeOther: '',
   shirtSize: '',
   motivation: '',
+  allergies: '',
+  medicalConditions: '',
 };
 
 export const MOCK_FORM: FormState = {
@@ -101,6 +113,8 @@ export const MOCK_FORM: FormState = {
   gradeOther: '',
   shirtSize: 'L',
   motivation: 'สนใจการต่อวงจรเซนเซอร์และพัฒนา IoT Dashboard ผ่านบอร์ด ESP8266 ในค่าย ComCamp #25',
+  allergies: 'แพ้อาหารทะเล',
+  medicalConditions: '',
 };
 
 export type FieldKey = keyof FormState | 'consent';
@@ -115,6 +129,9 @@ export interface StepMeta {
   fields: FieldKey[];
 }
 
+// TODO(feature): ต้องทำฟอร์มกรอกช่องทางติดต่อผู้ปกครองเพิ่ม (ผู้ปกครอง 1 คน + เบอร์โทรศัพท์ติดต่อ 10 หลัก)
+// ปัจจุบัน STEPS ยังเก็บเฉพาะเบอร์ผู้สมัคร; DB มีคอลัมน์ parent_name / parent_relation / parent_phone /
+// emergency_contact / emergency_phone รองรับแล้ว แต่ต้องเพิ่มฟิลด์ใน FormState, ApplicationPayload และ Backend DTO
 export const STEPS: StepMeta[] = [
   {
     label: 'ข้อมูลผู้สมัคร',
@@ -129,16 +146,16 @@ export const STEPS: StepMeta[] = [
     fields: ['school', 'province', 'grade', 'gradeOther'],
   },
   {
-    label: 'เสื้อค่าย',
-    title: 'เสื้อค่าย',
-    lead: 'เลือกไซส์เสื้อค่ายโดยดูรอบอกจากตารางด้านล่าง',
+    label: 'เสื้อค่าย (ไซส์รอยืนยัน)',
+    title: 'เสื้อค่าย (มีเสื้อแน่นอน · ไซส์รอยืนยัน)',
+    lead: 'มีเสื้อค่าย ComCamp #25 แน่นอน แต่รายการไซส์ที่มีจริงอยู่ระหว่างรอคอนเฟิร์ม กรุณาเลือกไซส์เบื้องต้นไว้ก่อน',
     fields: ['shirtSize'],
   },
   {
-    label: 'แรงบันดาลใจ',
-    title: 'แรงบันดาลใจ',
-    lead: 'เล่าสั้น ๆ ว่าสนใจ IoT หรือไมโครคอนโทรลเลอร์ในด้านไหน (ไม่บังคับ)',
-    fields: ['motivation'],
+    label: 'หมายเหตุและสุขภาพ',
+    title: 'แรงบันดาลใจและหมายเหตุสุขภาพ',
+    lead: 'ข้อมูลทั้งหมดในขั้นตอนนี้ไม่บังคับ ใช้เตรียมอาหารและการดูแลสุขภาพให้ปลอดภัย (ไม่บันทึกลงเครื่องตาม PDPA)',
+    fields: ['motivation', 'allergies', 'medicalConditions'],
   },
   {
     label: 'ตรวจทานและยืนยัน',
@@ -242,6 +259,14 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     case 'motivation': {
       const m = form.motivation.trim();
       return m.length > MOTIVATION_MAX ? `ความยาวต้องไม่เกิน ${MOTIVATION_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
+    }
+    case 'allergies': {
+      const a = form.allergies.trim();
+      return a.length > ALLERGIES_MAX ? `ความยาวต้องไม่เกิน ${ALLERGIES_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
+    }
+    case 'medicalConditions': {
+      const mc = form.medicalConditions.trim();
+      return mc.length > MEDICAL_CONDITIONS_MAX ? `ความยาวต้องไม่เกิน ${MEDICAL_CONDITIONS_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
     }
     case 'consent':
       return consent ? undefined : 'กรุณาติ๊กยอมรับเงื่อนไขการใช้ข้อมูลก่อนส่งใบสมัคร';
