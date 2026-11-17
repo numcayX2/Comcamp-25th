@@ -68,21 +68,11 @@ import {
   WARNING,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED'];
-const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE', 'REFUND_PENDING', 'REFUNDED'];
+const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE'];
 
 type FilterKey = 'ALL' | 'SLIP_PENDING' | ApplicationStatus;
 type SortKey = 'newest' | 'slip_queue' | 'updated_desc';
-
-/** Optional slip verification & parent contact metadata when provided by an extended API payload or session cache. */
-type ApplicantSlipMeta = Application & {
-  adminNote?: string | null;
-  rejectionReason?: string | null;
-  verifiedAt?: string | null;
-  parentName?: string;
-  parentRelation?: string;
-  parentPhone?: string;
-};
 
 type LocalSlipVerdict = {
   approved: boolean;
@@ -543,8 +533,7 @@ export function AdminSection() {
     const releasesSeat = holdsSeat(app.status) && !holdsSeat(to);
     const leavesConfirmed = app.status === 'CONFIRMED' && to !== 'CONFIRMED';
     const bypassesSlipToConfirm = to === 'CONFIRMED' && app.status !== 'CONFIRMED';
-    const movesPassedToReserve = app.status === 'PASSED' && to === 'RESERVE';
-    if (releasesSeat || leavesConfirmed || bypassesSlipToConfirm || movesPassedToReserve) {
+    if (releasesSeat || leavesConfirmed || bypassesSlipToConfirm) {
       setConfirmDeleteId(null);
       setDeleteReason('');
       setStatusReason('');
@@ -681,7 +670,16 @@ export function AdminSection() {
       setApps((prev) =>
         prev.map((a) =>
           a.id === currentId
-            ? { ...a, status: newStatus, slipStatus: newSlip, updatedAt: verifiedAt }
+            ? {
+                ...a,
+                status: newStatus,
+                attendanceConfirmed: approved ? true : a.attendanceConfirmed,
+                slipStatus: newSlip,
+                adminNote: approved ? recordedNote : (a.adminNote ?? null),
+                rejectionReason: approved ? null : recordedNote,
+                verifiedAt,
+                updatedAt: verifiedAt,
+              }
             : a,
         ),
       );
@@ -1131,7 +1129,7 @@ export function AdminSection() {
               <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
                 <p className="flex items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
                   <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: TECH }} />
-                  ได้สิทธิ์แล้ว (รอตรวจสลิป)
+                  จองสิทธิ์ชั่วคราว (PASSED)
                 </p>
                 <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
                   {count('PASSED')} คน
@@ -1548,19 +1546,18 @@ export function AdminSection() {
                       slipIdx >= 0 && slipIdx < visibleWithSlip.length - 1 ? visibleWithSlip[slipIdx + 1] : null;
                     const nextPendingInView = findNextPendingSlip(a.id, visible);
                     const nextPendingGlobal = nextPendingInView ? null : findNextPendingSlip(a.id, sorted);
-                    const slipMeta = a as ApplicantSlipMeta;
                     const rawLocalVerdict = localSlipVerdicts[a.id];
                     const localVerdict =
                       rawLocalVerdict &&
                       (!rawLocalVerdict.paymentId || !a.slipPaymentId || rawLocalVerdict.paymentId === a.slipPaymentId)
                         ? rawLocalVerdict
                         : undefined;
-                    const savedNote =
-                      localVerdict?.note ??
-                      (a.slipStatus === 'REJECTED'
-                        ? (slipMeta.rejectionReason ?? slipMeta.adminNote ?? null)
-                        : (slipMeta.adminNote ?? null));
-                    const savedVerifiedAt = localVerdict?.verifiedAt ?? slipMeta.verifiedAt ?? null;
+                    const persistedNote =
+                      a.slipStatus === 'REJECTED'
+                        ? (a.rejectionReason?.trim() || a.adminNote?.trim() || null)
+                        : (a.adminNote?.trim() || null);
+                    const savedNote = localVerdict?.note?.trim() || persistedNote;
+                    const savedVerifiedAt = localVerdict?.verifiedAt || a.verifiedAt || null;
                     const allergyText = a.allergies?.trim();
                     const medicalText = a.medicalConditions?.trim();
 
@@ -1600,15 +1597,15 @@ export function AdminSection() {
                                 </span>
                               ) : null}
                             </p>
-                            {(slipMeta.parentName || slipMeta.parentPhone) && (
+                            {(a.parentName || a.parentPhone) && (
                               <p className="mt-0.5 break-words text-xs leading-5" style={{ color: INK_3 }}>
-                                ผู้ปกครอง: {slipMeta.parentName || '—'}
-                                {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
-                                {slipMeta.parentPhone ? (
+                                ผู้ปกครอง: {a.parentName || '—'}
+                                {a.parentRelation ? ` (${a.parentRelation})` : ''}
+                                {a.parentPhone ? (
                                   <>
                                     {' · '}
                                     <span className="font-mono tabular-nums" style={{ color: INK_2 }}>
-                                      {slipMeta.parentPhone}
+                                      {a.parentPhone}
                                     </span>
                                   </>
                                 ) : null}
@@ -1772,9 +1769,7 @@ export function AdminSection() {
                             ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
                             : pendingChange.to === 'CONFIRMED'
                               ? 'การเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ด้วยตนเองจะข้ามขั้นตอนตรวจสลิป (ควรใช้เมื่อตรวจสอบการชำระเงินเรียบร้อยแล้ว)'
-                              : pendingChange.from === 'PASSED' && pendingChange.to === 'RESERVE'
-                                ? 'การเปลี่ยนจาก “ได้สิทธิ์แล้ว” เป็น “ตัวสำรอง” จะเปลี่ยนสิทธิ์ผู้สมัครทันที หากส่งสลิปแล้วควรตรวจสอบสลิปก่อน'
-                                : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
+                              : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
                           {a.slipStatus === 'APPROVED' && pendingChange.to === 'REJECTED'
                             ? ' (ผู้สมัครมีสลิปที่อนุมัติแล้ว หากต้องคืนเงินแนะนำให้เลือก “รอคืนเงิน”)'
                             : ''}
@@ -1905,15 +1900,22 @@ export function AdminSection() {
                             <p className="mt-1 text-sm" style={{ color: INK }}>
                               {slipLabel(a)}
                             </p>
+                            {(a.slipStatus === 'APPROVED' || a.slipStatus === 'REJECTED') && (savedNote || savedVerifiedAt) && (
+                              <p className="mt-1 break-words text-xs leading-5" style={{ color: INK_3 }}>
+                                {savedNote ? `หมายเหตุ: ${savedNote}` : ''}
+                                {savedNote && savedVerifiedAt ? ' · ' : ''}
+                                {savedVerifiedAt ? `ตรวจเมื่อ ${formatBangkokDateTime(savedVerifiedAt)}` : ''}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้ปกครอง / เบอร์ติดต่อ</p>
                             <p className="mt-1 break-words text-sm" style={{ color: INK }}>
-                              {slipMeta.parentName || '—'}
-                              {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
+                              {a.parentName || '—'}
+                              {a.parentRelation ? ` (${a.parentRelation})` : ''}
                             </p>
                             <p className="mt-0.5 font-mono text-sm tabular-nums" style={{ color: INK_2 }}>
-                              {slipMeta.parentPhone || '—'}
+                              {a.parentPhone || '—'}
                             </p>
                           </div>
                           <div>
@@ -2145,11 +2147,11 @@ export function AdminSection() {
                             <div className="min-w-0 sm:col-span-2">
                               <dt className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้ปกครอง / เบอร์ติดต่อ</dt>
                               <dd className="mt-0.5 break-words" style={{ color: INK }}>
-                                {slipMeta.parentName || '—'}
-                                {slipMeta.parentRelation ? ` (${slipMeta.parentRelation})` : ''}
+                                {a.parentName || '—'}
+                                {a.parentRelation ? ` (${a.parentRelation})` : ''}
                                 {' · '}
                                 <span className="font-mono tabular-nums" style={{ color: INK_2 }}>
-                                  {slipMeta.parentPhone || '—'}
+                                  {a.parentPhone || '—'}
                                 </span>
                               </dd>
                             </div>

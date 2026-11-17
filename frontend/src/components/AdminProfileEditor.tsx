@@ -16,6 +16,8 @@ import {
   GRADE_OTHER_MAX,
   MEDICAL_CONDITIONS_MAX,
   SHIRT_SIZES,
+  SIZE_CHEST,
+  SIZE_LENGTH,
   gradeValue,
   isValidThaiNationalID,
   splitGrade,
@@ -492,7 +494,7 @@ export function AdminProfileEditor({
             </option>
             {SHIRT_SIZES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {s} · รอบอก {SIZE_CHEST[s]}&quot; · ยาว {SIZE_LENGTH[s]}&quot;
               </option>
             ))}
           </select>

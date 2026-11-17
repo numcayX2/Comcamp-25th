@@ -110,6 +110,7 @@ export function holdsSeat(status: ApplicationStatus): boolean {
   return status === 'PENDING' || status === 'PASSED' || status === 'RESERVE' || status === 'CONFIRMED';
 }
 
+/** Official IDO IDEA shirt sizes (strictly synced with register/model.ts & ErrInvalidShirtSize; backend keeps 'XS' only for legacy DB rows). */
 export type ShirtSize = 'SSS' | 'SS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL' | '4XL';
 
 export interface ApplicationPayload {
@@ -169,6 +170,10 @@ export interface ApplicantRecord {
    * applicant replaced while staff were looking at the old one is not approved by mistake.
    */
   slipPaymentId?: string | null;
+  /** Admin only: persisted slip review note, rejection reason, and verification timestamp from the latest slip row. */
+  adminNote?: string | null;
+  rejectionReason?: string | null;
+  verifiedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -742,6 +747,11 @@ export async function updateAdminSettings(
   return { data, source: 'LIVE GO API' };
 }
 
+const MOCK_SLIP_PAYMENT_IDS: Record<string, string> = {
+  'CC25-9A8B1C': '11111111-1111-4111-8111-111111111111',
+  'CC25-4D5E6F': '22222222-2222-4222-8222-222222222222',
+};
+
 /** GET /admin/applications */
 export function listApplications(
   token: string,
@@ -758,6 +768,9 @@ export function listApplications(
         nationalId: '1509900112233',
         phone: '0819876543',
         email: 'somkiat@school.ac.th',
+        parentName: 'สมชาย สุขสมบูรณ์',
+        parentRelation: 'บิดา',
+        parentPhone: '0811112233',
         school: 'โรงเรียนแม่โจ้วิทยาคม',
         grade: 'ม.5',
         shirtSize: 'XL',
@@ -766,10 +779,11 @@ export function listApplications(
         medicalConditions: '',
         province: 'เชียงใหม่',
         status: 'PASSED' as ApplicationStatus,
-        attendanceConfirmed: true,
+        attendanceConfirmed: false,
         hasSlip: true,
         slipStatus: 'PENDING' as SlipStatus,
         slipUrl: '/api/admin/applications/CC25-9A8B1C/slip',
+        slipPaymentId: MOCK_SLIP_PAYMENT_IDS['CC25-9A8B1C'],
         createdAt: new Date(Date.now() - 86400000).toISOString(),
       },
       {
@@ -779,6 +793,9 @@ export function listApplications(
         nationalId: '1509900223344',
         phone: '0891234567',
         email: 'kanya@school.ac.th',
+        parentName: 'กัญญา สิริวัฒน์',
+        parentRelation: 'มารดา',
+        parentPhone: '0892223344',
         school: 'โรงเรียนยุพราชวิทยาลัย',
         grade: 'ม.6',
         shirtSize: 'M',
@@ -789,6 +806,9 @@ export function listApplications(
         hasSlip: true,
         slipStatus: 'APPROVED' as SlipStatus,
         slipUrl: '/api/admin/applications/CC25-4D5E6F/slip',
+        slipPaymentId: MOCK_SLIP_PAYMENT_IDS['CC25-4D5E6F'],
+        adminNote: 'ยอดเงิน 1,200 บาท ถูกต้องครบถ้วน',
+        verifiedAt: new Date(Date.now() - 86400000).toISOString(),
         createdAt: new Date(Date.now() - 172800000).toISOString(),
       },
       {
@@ -798,6 +818,9 @@ export function listApplications(
         nationalId: '1509900334455',
         phone: '0845556677',
         email: 'teeradej@school.ac.th',
+        parentName: 'มานะ เจริญผล',
+        parentRelation: 'บิดา',
+        parentPhone: '0843334455',
         school: 'โรงเรียนเชียงใหม่คริสเตียน',
         grade: 'ม.4',
         shirtSize: 'L',
@@ -887,6 +910,29 @@ export interface AdminSlipInfo {
   paymentId: string | null;
 }
 
+/** Dev-only mock slip image blob when the Go backend is unreachable under `astro dev`. */
+function createMockSlipInfo(id: string): AdminSlipInfo {
+  const safeId = id.replace(/[^A-Za-z0-9_-]/g, '');
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="540" height="720" viewBox="0 0 540 720">',
+    '<rect width="540" height="720" fill="#F9F8F4"/>',
+    '<rect x="28" y="28" width="484" height="664" rx="16" fill="#FFFFFF" stroke="#1E1F24" stroke-width="2"/>',
+    '<text x="270" y="92" text-anchor="middle" font-family="monospace" font-size="22" font-weight="700" fill="#1E1F24">MOCK PAYMENT SLIP (DEV)</text>',
+    `<text x="270" y="142" text-anchor="middle" font-family="monospace" font-size="18" fill="#4B5563">REF: ${safeId}</text>`,
+    '<line x1="64" y1="180" x2="476" y2="180" stroke="#D1D5DB" stroke-width="1.5"/>',
+    '<text x="270" y="260" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#4B5563">Bangkok Bank · ComCamp #25</text>',
+    '<text x="270" y="328" text-anchor="middle" font-family="monospace" font-size="40" font-weight="700" fill="#047857">1,200.00 THB</text>',
+    '<text x="270" y="388" text-anchor="middle" font-family="monospace" font-size="16" fill="#6B7280">587-0-84106-0</text>',
+    '<text x="270" y="640" text-anchor="middle" font-family="monospace" font-size="14" fill="#9CA3AF">OFFLINE MOCK FALLBACK</text>',
+    '</svg>',
+  ].join('');
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  return {
+    url,
+    paymentId: MOCK_SLIP_PAYMENT_IDS[id] ?? '00000000-0000-4000-8000-000000000000',
+  };
+}
+
 /**
  * GET /admin/applications/:id/slip — returns both the object URL and the `X-Slip-Payment-Id`
  * response header so `verifyPaymentSlip` can guard against concurrent re-uploads (409 SLIP_CHANGED).
@@ -904,6 +950,11 @@ export async function fetchAdminSlipInfo(token: string, id: string): Promise<Adm
     const rawPid = res.headers.get('X-Slip-Payment-Id')?.trim();
     const url = URL.createObjectURL(await res.blob());
     return { url, paymentId: rawPid || null };
+  } catch (err) {
+    if (import.meta.env.DEV && !(err instanceof ApiHttpError)) {
+      return createMockSlipInfo(id);
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }

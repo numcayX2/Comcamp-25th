@@ -6,6 +6,7 @@
 export interface PublicSettingsPayload {
   serverTime: string;
   registrationOpenAt: string;
+  registrationCloseAt?: string;
   isOpen: boolean;
   currentCount?: number;
   maxCapacity?: number;
