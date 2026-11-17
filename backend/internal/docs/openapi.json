@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "ComCamp #25 API Documentation",
-    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับผู้ดูแลระบบ (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป, ตั้งค่าค่าย)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- มีบทบาทเดียวคือ admin สำหรับทุก endpoint ภายใต้ /admin/*\n- บทบาทอื่นหรือบัญชีที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\n- GET /admin/applications ส่งเลขบัตรประชาชนเต็ม 13 หลักให้ผู้ดูแลระบบบทบาท admin\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nEndpoint สาธารณะที่ยืนยันตัวตนด้วย verifyCode หรือ nationalId นับการตอบผิดต่อใบสมัคร: ผิด 5 ครั้งใน 15 นาที ล็อก 15 นาที ตอบ 429 RATE_LIMITED + Retry-After",
+    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับผู้ดูแลระบบ (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป, ตั้งค่าค่าย)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- มีบทบาทเดียวคือ admin สำหรับทุก endpoint ภายใต้ /admin/*\n- บทบาทอื่นหรือบัญชีที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\n- GET /admin/applications ส่งข้อมูลเต็ม (เบอร์ อีเมล ผู้ปกครอง ข้อมูลสุขภาพ) ให้ผู้ดูแลระบบบทบาท admin เท่านั้น ระบบไม่เก็บเลขบัตรประชาชนแล้ว (migration 000011)\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nรหัสใบสมัคร (CC25-XXXXXX, path {id}) คือหลักฐานตัวตนของผู้สมัครบน endpoint สาธารณะ (ค้นสถานะด้วยรหัส, confirm, slip, withdraw) ไม่มีเลขยืนยันหรือเลขบัตรประชาชนอีกต่อไป CodeGuard นับรหัสรูปแบบถูกต้องที่ไม่มีอยู่จริง (miss) ทุก endpoint รวมกัน: ต่อ client (IP หรือ IPv6 /64) miss 5 ครั้งใน 15 นาที ถูกปฏิเสธ 15 นาที และเพิ่มเป็นสองเท่าทุกครั้งที่ถูกล็อกซ้ำ (สูงสุด 24 ชั่วโมง) และรวมทุก client ต่อช่วง 5 นาที: ครบ 5 miss ปฏิเสธ client ที่มีประวัติ miss ครบ 10 miss ปฏิเสธทุก client จนจบช่วง 5 นาทีนั้น คำตอบเป็น 429 RATE_LIMITED + Retry-After ก่อนค้นฐานข้อมูลเสมอ บันทึก audit application.code.lockout / application.code.ceiling (ไม่บันทึกรหัสที่พิมพ์) การค้นด้วยเบอร์โทรไม่ผ่าน CodeGuard และไม่เคยส่งรหัสใบสมัครกลับ",
     "version": "1.0.0",
     "contact": {
       "name": "ComCamp 25 Technical Team",
@@ -63,7 +63,7 @@
       "get": {
         "tags": ["Public Settings"],
         "summary": "Get Public Camp Settings & Time Sync",
-        "description": "ดึงข้อมูลการตั้งค่าค่ายเพื่อซิงค์เวลาเครื่องลูกข่ายกับเวลาจริงของเซิร์ฟเวอร์ และตรวจสอบว่าระบบเปิดรับสมัครอยู่หรือไม่",
+        "description": "ดึงข้อมูลการตั้งค่าค่ายเพื่อซิงค์เวลาเครื่องลูกข่ายกับเวลาจริงของเซิร์ฟเวอร์ และตรวจสอบว่าระบบเปิดรับสมัครอยู่หรือไม่ ค่าเริ่มต้นตั้งแต่ migration 000011: เปิดรับสมัคร 2026-11-19 09:00 (+07) และ maxCapacity 40 ที่นั่ง (ปิดรับ 2026-12-18 23:59:59 +07 และค่าสมัคร 1,200 บาทคงเดิม) แอดมินปรับได้ที่ PATCH /admin/settings",
         "responses": {
           "200": {
             "description": "ข้อมูลการตั้งค่าปัจจุบัน",
@@ -90,7 +90,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Submit New Application",
-        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง) ใครสมัครก่อนได้ก่อน: ใบสมัครที่ผ่านการตรวจโควตาจะมีสถานะ PASSED ทันที (ไม่ต้องรอพี่ค่าย) และอัปโหลดสลิปได้เลย ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask ระบบตรวจกำหนดการเปิด/ปิดรับสมัครก่อนเรียก Cloudflare Turnstile: ช่วงที่ปิดรับสมัครจะตอบ REGISTRATION_CLOSED โดยไม่เรียก Cloudflare และไม่ใช้ token ส่วน idempotency key ที่ส่งให้ Cloudflare ถูกผูกกับเลขบัตรประชาชนของใบสมัคร (UUID แบบ name-based จาก X-Idempotency-Key + nationalId) คู่ token กับ key ที่ใช้ไปแล้วจึงเอาไปใช้กับเลขบัตรอื่นไม่ได้",
+        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบเบอร์โทร 10 หลัก, อีเมล และโควตา 40 ที่นั่ง ไม่มีช่องเลขประจำตัวประชาชน: body จากฟอร์มรุ่นเก่าที่ยังส่ง nationalId มาจะถูกละทิ้งโดยไม่อ่าน ไม่บันทึก และไม่ส่งกลับ) ใครสมัครก่อนได้ก่อน: ใบสมัครที่ผ่านการตรวจโควตาจะมีสถานะ PASSED ทันที (ไม่ต้องรอพี่ค่าย) และอัปโหลดสลิปได้เลย ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask ระบบตรวจกำหนดการเปิด/ปิดรับสมัครก่อนเรียก Cloudflare Turnstile: ช่วงที่ปิดรับสมัครจะตอบ REGISTRATION_CLOSED โดยไม่เรียก Cloudflare และไม่ใช้ token ส่วน idempotency key ที่ส่งให้ Cloudflare ถูกผูกกับเบอร์โทรของใบสมัคร (UUID แบบ name-based จาก X-Idempotency-Key + phone) คู่ token กับ key ที่ใช้ไปแล้วจึงเอาไปใช้กับเบอร์อื่นไม่ได้ ผู้สมัครควรเก็บรหัสใบสมัคร (id) ไว้เป็นความลับ เพราะเป็นหลักฐานตัวตนบนหน้า /status",
         "parameters": [
           {
             "name": "X-Idempotency-Key",
@@ -108,7 +108,6 @@
               "example": {
                 "fullName": "สมชาย ใจดี",
                 "nickname": "ชาย",
-                "nationalId": "1509900000000",
                 "phone": "0812345678",
                 "email": "somchai@example.com",
                 "school": "โรงเรียนแม่โจ้วิทยาคม",
@@ -129,7 +128,6 @@
                   "id": "CC25-8A4B2C",
                   "fullName": "สมชาย ใจดี",
                   "nickname": "ชาย",
-                  "nationalId": "1-5099-XXXXX-XX-X",
                   "phone": "XXX-XXX-5678",
                   "email": "s***@example.com",
                   "school": "โรงเรียนแม่โจ้วิทยาคม",
@@ -144,7 +142,7 @@
             }
           },
           "400": {
-            "description": "ข้อมูลไม่ถูกต้อง (เช่น เลขบัตรไม่ครบ 13 หลัก, ไซส์เสื้อผิด)",
+            "description": "ข้อมูลไม่ถูกต้อง (เช่น เบอร์โทรไม่ครบ 10 หลัก, ไซส์เสื้อผิด)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "403": {
@@ -156,11 +154,11 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } }
           },
           "409": {
-            "description": "code QUOTA_FULL = ครบโควตา 30 ที่นั่ง, code DUPLICATE_APPLICATION = เลขบัตร/เบอร์/อีเมลนี้สมัครแล้ว",
+            "description": "code QUOTA_FULL = ครบโควตา 40 ที่นั่ง, code DUPLICATE_APPLICATION = เบอร์โทรหรืออีเมลนี้มีใบสมัครที่ยังอยู่ในระบบแล้ว (ใบสมัครที่ยกเลิก/ถูกลบไม่นับ)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "422": { "description": "code IDEMPOTENCY_KEY_REUSED = key นี้ถูกใช้กับเลขบัตรประชาชนอื่นแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "422": { "description": "code IDEMPOTENCY_KEY_REUSED = key นี้ถูกใช้กับใบสมัครของเบอร์โทรอื่นแล้ว", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "429": { "description": "ส่งถี่เกินไป (8 ครั้ง/นาที/IP) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "503": { "description": "อ่านการตั้งค่าค่ายไม่ได้ชั่วคราว, ติดต่อ Cloudflare Turnstile ไม่ได้/หมดเวลา (fail closed: ไม่รับใบสมัครโดยไม่ผ่านการตรวจ) หรือรอคิวโควตาเกิน lock_timeout 3 วินาที (มี Retry-After) ใบสมัครยังไม่ถูกบันทึก ส่งซ้ำด้วย X-Idempotency-Key เดิมได้อย่างปลอดภัย", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
@@ -170,35 +168,35 @@
       "get": {
         "tags": ["Applications"],
         "summary": "Query Application Status",
-        "description": "ค้นหาใบสมัครและตรวจสอบสถานะด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทรศัพท์, หรือรหัสใบสมัคร (เช่น CC25-XXXXXX) ผลลัพธ์ mask เลขบัตร/เบอร์/อีเมลเสมอ และไม่มี slipUrl ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่างออกจากเลขบัตร/เบอร์ก่อนค้นหา",
+        "description": "ค้นหาใบสมัครด้วยเบอร์โทรศัพท์ 10 หลัก หรือรหัสใบสมัคร (CC25-XXXXXX) ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่าง แปลงเลขไทยเป็นเลขอารบิก และรับรหัสตัวพิมพ์เล็กได้ คำค้นที่เป็นตัวเลขแต่ไม่ใช่เบอร์ 10 หลักขึ้นต้นด้วย 0 (เช่นเลขประจำตัวประชาชนที่พิมพ์ตามความเคยชิน) ตอบ 400 และไม่ถูกค้นหา ค้นด้วยรหัสใบสมัคร: ได้ ApplicationResponse แบบ mask พร้อม id และ lookup = code (ผู้ค้นถือรหัสอยู่แล้ว) รหัสที่ไม่มีอยู่จริงนับใน CodeGuard ค้นด้วยเบอร์โทร: ได้ PhoneLookupResponse ซึ่งไม่มี id และไม่มีข้อมูลใดที่เปิดเผยรหัสใบสมัคร (ชื่อ mask, เบอร์/อีเมล mask, สถานะ, สถานะสลิป, เวลา) พร้อม codeRequired = true ให้หน้าเว็บปิดทุกปุ่มที่แก้ไขข้อมูล และแนะนำให้ดูรหัสในอีเมลหรือติดต่อพี่ค่าย ไม่มี slipUrl ในทั้งสองแบบ",
         "parameters": [
           {
             "name": "q",
             "in": "query",
             "required": true,
-            "description": "เลขบัตรประชาชน 13 หลัก หรือเบอร์โทร 10 หลัก หรือรหัสใบสมัคร",
+            "description": "เบอร์โทร 10 หลัก หรือรหัสใบสมัคร CC25-XXXXXX",
             "schema": { "type": "string" },
-            "example": "1509900000000"
+            "example": "CC25-8A4B2C"
           }
         ],
         "responses": {
           "200": {
-            "description": "พบข้อมูลใบสมัคร",
+            "description": "พบข้อมูลใบสมัคร: ค้นด้วยรหัสได้ ApplicationResponse (lookup = code) ค้นด้วยเบอร์ได้ PhoneLookupResponse (lookup = phone ไม่มี id)",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApplicationResponse" }
+                "schema": { "oneOf": [{ "$ref": "#/components/schemas/ApplicationResponse" }, { "$ref": "#/components/schemas/PhoneLookupResponse" }], "discriminator": { "propertyName": "lookup", "mapping": { "code": "#/components/schemas/ApplicationResponse", "phone": "#/components/schemas/PhoneLookupResponse" } } }
               }
             }
           },
           "400": {
-            "description": "ไม่ได้ส่งพารามิเตอร์ q หรือคำค้นไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "description": "ไม่ได้ส่งพารามิเตอร์ q หรือคำค้นไม่ใช่เบอร์โทร 10 หลัก / รหัส CC25-XXXXXX (code VALIDATION_ERROR) ไม่นับใน CodeGuard",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "404": {
-            "description": "ไม่พบข้อมูลใบสมัคร",
+            "description": "ไม่พบข้อมูลใบสมัคร (รหัสที่ไม่มีอยู่จริงนับเป็น miss ใน CodeGuard เบอร์โทรไม่นับ)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
-          "429": { "description": "ค้นหาถี่เกินไป (60 ครั้ง/นาที/IP)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ค้นหาถี่เกินไป (60 ครั้ง/นาที/IP) หรือ CodeGuard ปฏิเสธการค้นด้วยรหัสใบสมัคร (miss มากเกินไป ดูคำอธิบายด้านบนสุด) (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -206,7 +204,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Confirm or Decline Attendance",
-        "description": "ยืนยันการเข้าร่วมค่าย (ทำได้เฉพาะผู้สมัครที่มีสถานะ PASSED หรือ CONFIRMED) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน (AGENTS.md §13.5)",
+        "description": "ยืนยันการเข้าร่วมค่าย (ทำได้เฉพาะผู้สมัครที่มีสถานะ PASSED หรือ CONFIRMED) รหัสใบสมัครใน path คือหลักฐานตัวตน (ฟิลด์ยืนยันตัวตนเดิมจากหน้าเว็บรุ่นเก่าถูกละทิ้ง) รหัสที่ไม่มีอยู่จริงนับใน CodeGuard",
         "parameters": [
           {
             "name": "id",
@@ -221,7 +219,7 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/AttendanceConfirmRequest" },
-              "example": { "confirmed": true, "verifyCode": "2233" }
+              "example": { "confirmed": true }
             }
           }
         },
@@ -234,14 +232,13 @@
               }
             }
           },
-          "400": { "description": "ไม่ได้ส่ง verifyCode หรือไม่ใช่ตัวเลข 4 หลัก (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "JSON body ไม่ถูกต้อง (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร (รหัสรูปแบบถูกต้องที่ไม่มีอยู่จริงนับเป็น miss ใน CodeGuard)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
             "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือ client นี้ (หรือทุก client รวมกัน) ระบุรหัสใบสมัครที่ไม่มีอยู่จริงบ่อยเกินไป (ดูคำอธิบาย CodeGuard ด้านบนสุด) ตอบก่อนค้นฐานข้อมูลเสมอ จึงไม่บอกว่ารหัสมีอยู่หรือไม่ (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -249,7 +246,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Withdraw Own Application",
-        "description": "ผู้สมัครยกเลิกใบสมัครของตัวเอง (soft delete คืนที่นั่งทันที และสมัครใหม่ด้วยเลขบัตรเดิมได้) ต้องส่ง nationalId = เลขบัตรประชาชนเต็ม 13 หลักของผู้สมัคร (เลข 4 ตัวท้ายไม่พอ เพราะค้นใบสมัครด้วยเบอร์โทรได้) ตอบผิดนับรวมกับ verifyCode ของ endpoint อื่นของใบสมัครเดียวกัน ผิด 5 ครั้งใน 15 นาที ล็อก 15 นาที ยกเลิกเองไม่ได้เมื่อสถานะเป็น CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED หรือมีสลิปที่รอตรวจ (PENDING) / อนุมัติแล้ว (APPROVED) ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน",
+        "description": "ผู้สมัครยกเลิกใบสมัครของตัวเอง (soft delete คืนที่นั่งทันที และสมัครใหม่ด้วยเบอร์/อีเมลเดิมได้) รหัสใบสมัครใน path คือหลักฐานตัวตน (การค้นด้วยเบอร์โทรไม่เคยเปิดเผยรหัส) body เป็นทางเลือก { reason } ส่ง body ว่างได้ ฟิลด์อื่นจากหน้าเว็บรุ่นเก่าถูกละทิ้ง รหัสที่ไม่มีอยู่จริงนับใน CodeGuard ยกเลิกเองไม่ได้เมื่อสถานะเป็น CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED หรือมีสลิปที่รอตรวจ (PENDING) / อนุมัติแล้ว (APPROVED) ให้ติดต่อพี่ค่ายเพื่อบันทึกเป็นรอคืนเงิน",
         "parameters": [
           {
             "name": "id",
@@ -260,21 +257,20 @@
           }
         ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/WithdrawRequest" },
-              "example": { "nationalId": "1509901122337", "reason": "ไม่สะดวกเข้าร่วม" }
+              "example": { "reason": "ไม่สะดวกเข้าร่วม" }
             }
           }
         },
         "responses": {
           "200": { "description": "ยกเลิกสำเร็จ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } },
-          "400": { "description": "ไม่ได้ส่ง nationalId หรือไม่ใช่เลขบัตรประชาชน 13 หลักที่ถูกต้องตาม Mod-11 (รวมถึง body แบบเดิมที่ส่งแค่ verifyCode 4 หลัก) ไม่นับเป็นการตอบผิด (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "nationalId ไม่ตรงกับใบสมัครนี้ (code INVALID_VERIFY_CODE) นับเป็นการตอบผิด 1 ครั้ง", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "body ไม่ใช่ JSON ที่ถูกต้อง หรือ reason ยาวเกิน 500 ตัวอักษร (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร (รหัสรูปแบบถูกต้องที่ไม่มีอยู่จริงนับเป็น miss ใน CodeGuard)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "ยกเลิกเองไม่ได้ (CONFIRMED, ปิดรายการแล้ว หรือมีสลิปรอตรวจ/อนุมัติแล้ว) ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือ client นี้ (หรือทุก client รวมกัน) ระบุรหัสใบสมัครที่ไม่มีอยู่จริงบ่อยเกินไป (ดูคำอธิบาย CodeGuard ด้านบนสุด) ตอบก่อนค้นฐานข้อมูลเสมอ จึงไม่บอกว่ารหัสมีอยู่หรือไม่ (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -283,7 +279,7 @@
         "tags": ["Applications"],
         "deprecated": true,
         "summary": "Edit Own Profile (Disabled)",
-        "description": "ปิดใช้งานแล้ว: ผู้สมัครแก้ไขข้อมูลด้วยตนเองไม่ได้อีกต่อไป ทุกคำขอตอบ 403 FORBIDDEN ทันที โดยไม่อ่าน request body ไม่ตรวจ verifyCode (ไม่นับเป็นความพยายามผิดของ VerifyGuard) ไม่แตะฐานข้อมูล และไม่บันทึก audit ต้องการแก้ไขข้อมูลให้ติดต่อทีมงาน (พี่ค่ายแก้ไขผ่าน PATCH /admin/applications/{id}/profile) endpoint นี้ยังคงอยู่เพื่อให้ client เก่าได้รับข้อความที่ชัดเจน และยังอยู่ภายใต้ rate limit 20 ครั้ง/นาที/IP",
+        "description": "ปิดใช้งานแล้ว: ผู้สมัครแก้ไขข้อมูลด้วยตนเองไม่ได้อีกต่อไป ทุกคำขอตอบ 403 FORBIDDEN ทันที โดยไม่อ่าน request body ไม่ผ่าน CodeGuard (ไม่นับเป็น miss) ไม่แตะฐานข้อมูล และไม่บันทึก audit ต้องการแก้ไขข้อมูลให้ติดต่อทีมงาน (พี่ค่ายแก้ไขผ่าน PATCH /admin/applications/{id}/profile) endpoint นี้ยังคงอยู่เพื่อให้ client เก่าได้รับข้อความที่ชัดเจน และยังอยู่ภายใต้ rate limit 20 ครั้ง/นาที/IP",
         "parameters": [
           {
             "name": "id",
@@ -303,7 +299,7 @@
       "post": {
         "tags": ["Payments"],
         "summary": "Upload Payment Slip",
-        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (JPEG/PNG/WebP ตรวจจาก magic bytes, สูงสุด 5 MB, ความกว้าง/สูงไม่เกิน 4096 px ตรวจจาก header ของภาพ, ป้องกันสลิปซ้ำผ่าน SHA-256 เทียบเฉพาะสลิปที่ยัง PENDING หรือ APPROVED ของใบสมัครที่ยังไม่ถูกลบ: รูปของสลิปที่ถูกปฏิเสธ หรือของใบสมัครที่ถูกลบ/ยกเลิกแล้ว ส่งใหม่ได้) ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ไฟล์ถูกเขียนและ fsync ก่อนบันทึกลงฐานข้อมูล และไม่ถูกเปิดเป็น URL สาธารณะ ผู้สมัครมีสลิปที่รอตรวจได้ครั้งละ 1 ใบ: อัปโหลดใหม่ขณะที่ยังมีสลิป PENDING จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียวกัน บันทึก audit payment.slip.superseded) สลิปที่ถูกปฏิเสธเก็บไว้เป็นประวัติ และสลิปที่อนุมัติแล้วแทนที่ไม่ได้ (409 ALREADY_VERIFIED)",
+        "description": "อัปโหลดรูปหลักฐานการโอนเงิน (JPEG/PNG/WebP ตรวจจาก magic bytes, สูงสุด 5 MB, ความกว้าง/สูงไม่เกิน 4096 px ตรวจจาก header ของภาพ, ป้องกันสลิปซ้ำผ่าน SHA-256 เทียบเฉพาะสลิปที่ยัง PENDING หรือ APPROVED ของใบสมัครที่ยังไม่ถูกลบ: รูปของสลิปที่ถูกปฏิเสธ หรือของใบสมัครที่ถูกลบ/ยกเลิกแล้ว ส่งใหม่ได้) รหัสใบสมัครใน path คือหลักฐานตัวตน (ฟิลด์ยืนยันตัวตนเดิมจากหน้าเว็บรุ่นเก่าถูกละทิ้ง) รหัสที่ไม่มีอยู่จริงนับใน CodeGuard ไฟล์ถูกเขียนและ fsync ก่อนบันทึกลงฐานข้อมูล และไม่ถูกเปิดเป็น URL สาธารณะ ผู้สมัครมีสลิปที่รอตรวจได้ครั้งละ 1 ใบ: อัปโหลดใหม่ขณะที่ยังมีสลิป PENDING จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียวกัน บันทึก audit payment.slip.superseded) สลิปที่ถูกปฏิเสธเก็บไว้เป็นประวัติ และสลิปที่อนุมัติแล้วแทนที่ไม่ได้ (409 ALREADY_VERIFIED)",
         "parameters": [
           {
             "name": "id",
@@ -320,19 +316,13 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "verifyCode": {
-                    "type": "string",
-                    "pattern": "^[0-9]{4}$",
-                    "example": "2233",
-                    "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (ไม่รับเลขท้ายเบอร์โทร เพราะหน้าสถานะแสดงเลขนั้นอยู่แล้ว)"
-                  },
                   "slip": {
                     "type": "string",
                     "format": "binary",
                     "description": "ไฟล์รูปภาพสลิป (JPG, PNG, WebP สูงสุด 5MB, ไม่เกิน 4096×4096 px)"
                   }
                 },
-                "required": ["verifyCode", "slip"]
+                "required": ["slip"]
               }
             }
           }
@@ -353,15 +343,15 @@
               }
             }
           },
-          "400": { "description": "ไม่ใช่ไฟล์ JPEG/PNG/WebP หรืออ่าน header ภาพไม่ได้ (VALIDATION_ERROR), ภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS), ไม่ได้ส่ง verifyCode (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "verifyCode ไม่ตรง (INVALID_VERIFY_CODE) หรือผู้สมัครยังไม่ผ่านการคัดเลือก (FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "ไม่ใช่ไฟล์ JPEG/PNG/WebP หรืออ่าน header ภาพไม่ได้ (VALIDATION_ERROR), ภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS), ไม่ได้แนบไฟล์ slip (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "ผู้สมัครยังไม่ผ่านการคัดเลือกหรือใบสมัครปิดรายการแล้ว (FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
             "description": "code DUPLICATE_SLIP = รูปสลิปนี้เป็นของสลิปที่รอตรวจหรืออนุมัติแล้วของใบสมัครที่ยังอยู่ (สลิปที่ถูกปฏิเสธและสลิปของใบสมัครที่ถูกลบไม่นับ), code ALREADY_VERIFIED = สลิปได้รับการอนุมัติแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "ไฟล์เกิน 5 MB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือ client นี้ (หรือทุก client รวมกัน) ระบุรหัสใบสมัครที่ไม่มีอยู่จริงบ่อยเกินไป (ดูคำอธิบาย CodeGuard ด้านบนสุด) ตอบก่อนค้นฐานข้อมูลเสมอ จึงไม่บอกว่ารหัสมีอยู่หรือไม่ (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -410,7 +400,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Admin List Applications",
-        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: admin (nationalId เป็นเลขเต็ม 13 หลัก) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป และส่ง adminNote / rejectionReason / verifiedAt ของสลิปล่าสุดให้เฉพาะแอดมิน",
+        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: admin (เบอร์และอีเมลเป็นค่าเต็ม ระบบไม่เก็บเลขประจำตัวประชาชน) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป และส่ง adminNote / rejectionReason / verifiedAt ของสลิปล่าสุดให้เฉพาะแอดมิน",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -449,7 +439,7 @@
       "post": {
         "tags": ["Admin Management"],
         "summary": "Admin Record CSV Export",
-        "description": "บันทึกการส่งออกรายชื่อผู้สมัครเป็นไฟล์ CSV ลง audit_logs (action application.export.csv: จำนวนแถว รหัสใบสมัคร ตัวกรองสถานะ ผู้ส่งออกและ IP) หน้าแอดมินเรียกก่อนสร้างไฟล์ และสร้างไฟล์เมื่อบันทึกสำเร็จเท่านั้น ข้อความที่ค้นหาไม่ถูกบันทึก (มักเป็นเบอร์โทรหรือเลขบัตร) สิทธิ์: admin",
+        "description": "บันทึกการส่งออกรายชื่อผู้สมัครเป็นไฟล์ CSV ลง audit_logs (action application.export.csv: จำนวนแถว รหัสใบสมัคร ตัวกรองสถานะ ผู้ส่งออกและ IP) หน้าแอดมินเรียกก่อนสร้างไฟล์ และสร้างไฟล์เมื่อบันทึกสำเร็จเท่านั้น ข้อความที่ค้นหาไม่ถูกบันทึก (มักเป็นเบอร์โทรหรือชื่อ) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -534,7 +524,7 @@
       "delete": {
         "tags": ["Admin Management"],
         "summary": "Admin Delete Application",
-        "description": "ลบใบสมัคร (soft delete: คืนที่นั่งและปล่อยเลขบัตร/เบอร์/อีเมลให้สมัครใหม่ได้) body เป็นทางเลือก { reason } บันทึก audit_logs ถ้าผู้สมัครจ่ายเงินแล้ว ให้ใช้สถานะ REFUND_PENDING แทนเพื่อไม่ให้หายจากบัญชี สิทธิ์: admin",
+        "description": "ลบใบสมัคร (soft delete: คืนที่นั่งและปล่อยเบอร์/อีเมลให้สมัครใหม่ได้) body เป็นทางเลือก { reason } บันทึก audit_logs ถ้าผู้สมัครจ่ายเงินแล้ว ให้ใช้สถานะ REFUND_PENDING แทนเพื่อไม่ให้หายจากบัญชี สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -562,7 +552,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Edit Application Profile",
-        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, nationalId, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เลขบัตร Mod-11, เบอร์ 10 หลัก, อีเมล, ไซส์ SSS–4XL, ความยาว) เลขบัตร/เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: admin",
+        "description": "พี่ค่ายแก้ไขข้อมูลใบสมัครได้ทุกฟิลด์ รวมถึง fullName, phone, email (ทุกสถานะ) ส่งเฉพาะฟิลด์ที่ต้องการแก้ได้ ฟิลด์ที่ไม่ส่งจะคงค่าเดิม (ฟิลด์ที่ไม่รู้จักจากหน้าเว็บรุ่นเก่าถูกละทิ้ง) ระบบตรวจสอบข้อมูลทั้งหมดเหมือนตอนสมัคร (เบอร์ 10 หลัก, อีเมล, ไซส์ SSS–4XL, ความยาว) เบอร์/อีเมลซ้ำกับผู้สมัครอื่นที่ยังไม่ถูกลบตอบ 409 DUPLICATE_APPLICATION ส่งค่าเดิมของตัวเองได้ บันทึก audit_logs (application.profile.update) พร้อมค่าเก่า → ค่าใหม่และ reason ใน transaction เดียวกัน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -578,16 +568,16 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/AdminProfileRequest" },
-              "example": { "nationalId": "1509900000000", "phone": "0812345678", "reason": "ผู้ปกครองแจ้งว่ากรอกเลขบัตรผิด" }
+              "example": { "phone": "0812345678", "reason": "ผู้ปกครองแจ้งว่ากรอกเบอร์โทรผิด" }
             }
           }
         },
         "responses": {
           "200": { "description": "แก้ไขสำเร็จ (ข้อมูลเต็ม ไม่ mask)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } },
-          "400": { "description": "ข้อมูลไม่ถูกต้อง เช่น เลขบัตรไม่ผ่าน Mod-11, เบอร์ไม่ครบ 10 หลัก, อีเมล/ไซส์/ระดับชั้นผิด (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "ข้อมูลไม่ถูกต้อง เช่น เบอร์ไม่ครบ 10 หลัก, อีเมล/ไซส์/ระดับชั้นผิด (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "409": { "description": "code DUPLICATE_APPLICATION = เลขบัตร / เบอร์ / อีเมลซ้ำกับผู้สมัครอื่น", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "code DUPLICATE_APPLICATION = เบอร์ / อีเมลซ้ำกับผู้สมัครอื่นที่ยังอยู่ในระบบ", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
@@ -762,11 +752,11 @@
       },
       "ApplicationCreateRequest": {
         "type": "object",
-        "required": ["fullName", "nickname", "nationalId", "phone", "email", "school", "grade", "shirtSize"],
+        "description": "ไม่มีฟิลด์เลขประจำตัวประชาชน (migration 000011) ฟิลด์ nationalId ที่ฟอร์มรุ่นเก่าส่งมาจะถูกละทิ้งโดยไม่อ่าน",
+        "required": ["fullName", "nickname", "phone", "email", "school", "grade", "shirtSize"],
         "properties": {
           "fullName": { "type": "string", "example": "สมชาย ใจดี" },
           "nickname": { "type": "string", "example": "ชาย" },
-          "nationalId": { "type": "string", "example": "1509900000000", "description": "เลขบัตรประชาชน 13 หลัก" },
           "phone": { "type": "string", "example": "0812345678", "description": "เบอร์โทร 10 หลักขึ้นต้นด้วย 0" },
           "email": { "type": "string", "format": "email", "example": "somchai@example.com" },
           "parentName": { "type": "string", "maxLength": 150, "example": "สมศรี ใจดี", "description": "ชื่อ-นามสกุลผู้ปกครอง" },
@@ -784,11 +774,12 @@
       },
       "ApplicationResponse": {
         "type": "object",
+        "description": "ข้อมูลใบสมัคร id คือรหัสใบสมัครซึ่งเป็นหลักฐานตัวตนของผู้สมัคร จึงส่งกลับเฉพาะผู้ที่ถือรหัสอยู่แล้ว (ผลการสมัคร, ค้นด้วยรหัส, confirm) และ /api/admin/*",
         "properties": {
           "id": { "type": "string", "example": "CC25-8A4B2C" },
+          "lookup": { "type": "string", "enum": ["code"], "description": "มีเฉพาะผลของ GET /applications/status ที่ค้นด้วยรหัสใบสมัคร" },
           "fullName": { "type": "string", "example": "สมชาย ใจดี" },
           "nickname": { "type": "string", "example": "ชาย" },
-          "nationalId": { "type": "string", "example": "1-5099-XXXXX-XX-X", "description": "endpoint สาธารณะได้ค่าแบบ mask เสมอ, /api/admin/* ได้ค่าเต็ม" },
           "phone": { "type": "string", "example": "XXX-XXX-5678", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
           "email": { "type": "string", "example": "s***@example.com", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
           "parentName": { "type": "string", "description": "เฉพาะ /api/admin/*" },
@@ -819,19 +810,34 @@
           "updatedAt": { "type": "string", "format": "date-time" }
         }
       },
+      "PhoneLookupResponse": {
+        "type": "object",
+        "description": "ผลของ GET /applications/status ที่ค้นด้วยเบอร์โทร ใครก็ตามที่รู้เบอร์ค้นได้ จึงมีเพียงข้อมูลแสดงผลแบบ mask และสถานะ ไม่มี id และไม่มีข้อมูลใดที่เปิดเผยรหัสใบสมัคร (ไม่มีชื่อเล่น โรงเรียน ระดับชั้น ไซส์เสื้อ หรือจังหวัด) หน้าเว็บต้องปิดทุกปุ่มที่แก้ไขข้อมูล (แนบสลิป ยืนยันสิทธิ์ ยกเลิก) และแนะนำให้ค้นด้วยรหัส CC25-XXXXXX จากอีเมลหรือติดต่อพี่ค่าย",
+        "required": ["lookup", "codeRequired", "fullName", "phone", "status", "hasSlip", "createdAt"],
+        "properties": {
+          "lookup": { "type": "string", "enum": ["phone"] },
+          "codeRequired": { "type": "boolean", "example": true, "description": "เป็น true เสมอ: ต้องใช้รหัสใบสมัครจึงจะทำรายการได้" },
+          "fullName": { "type": "string", "example": "ส*** ใ***", "description": "เหลือเพียงอักษรแรกของแต่ละส่วนของชื่อ" },
+          "phone": { "type": "string", "example": "XXX-XXX-5678" },
+          "email": { "type": "string", "example": "s***@example.com" },
+          "status": { "type": "string", "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"], "example": "PASSED" },
+          "hasSlip": { "type": "boolean", "example": false },
+          "slipStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
       "AttendanceConfirmRequest": {
         "type": "object",
-        "required": ["confirmed", "verifyCode"],
+        "required": ["confirmed"],
         "properties": {
-          "confirmed": { "type": "boolean", "example": true },
-          "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร (AGENTS.md §13.5)" }
+          "confirmed": { "type": "boolean", "example": true }
         }
       },
       "WithdrawRequest": {
         "type": "object",
-        "required": ["nationalId"],
+        "description": "body เป็นทางเลือก (ส่ง {} หรือไม่ส่ง body ก็ได้) รหัสใบสมัครใน path คือหลักฐานตัวตน",
         "properties": {
-          "nationalId": { "type": "string", "example": "1509901122337", "description": "เลขบัตรประชาชนเต็ม 13 หลักของผู้สมัคร ผ่าน Mod-11 (ระบบตัดขีด ช่องว่าง และอักขระล่องหนออกให้) ใช้เทียบแล้วทิ้ง ไม่ถูกบันทึก log หรือส่งกลับ (AGENTS.md §13.5)" },
           "reason": { "type": "string", "maxLength": 500, "example": "ไม่สะดวกเข้าร่วม" }
         }
       },
@@ -841,7 +847,6 @@
         "properties": {
           "fullName": { "type": "string", "maxLength": 201, "example": "สมชาย ใจดี" },
           "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
-          "nationalId": { "type": "string", "example": "1509900000000", "description": "13 หลัก ผ่าน Mod-11" },
           "phone": { "type": "string", "example": "0812345678" },
           "email": { "type": "string", "format": "email", "description": "อีเมลผู้สมัคร (ห้ามเว้นว่างและห้ามซ้ำกับผู้สมัครอื่นที่ยังอยู่ในระบบ)" },
           "parentName": { "type": "string", "maxLength": 150, "example": "สมศรี ใจดี" },
@@ -854,7 +859,7 @@
           "motivation": { "type": "string", "maxLength": 2000 },
           "allergies": { "type": "string", "maxLength": 500 },
           "medicalConditions": { "type": "string", "maxLength": 500 },
-          "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเลขบัตรผิด" }
+          "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเบอร์โทรผิด" }
         }
       },
       "SlipUploadResponse": {
@@ -906,11 +911,11 @@
       "ErrorResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "example": "invalid national ID (must be 13 digits)" },
+          "error": { "type": "string", "example": "invalid phone number (must be 10 digits starting with 0)" },
           "code": {
             "type": "string",
             "description": "รหัสข้อผิดพลาดสำหรับโปรแกรม",
-            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_VERIFY_CODE", "INVALID_IMAGE_DIMENSIONS", "CAPTCHA_FAILED", "SLIP_CHANGED"]
+            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_IMAGE_DIMENSIONS", "CAPTCHA_FAILED", "SLIP_CHANGED"]
           }
         }
       },
