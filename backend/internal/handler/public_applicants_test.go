@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
 
 	"comcamp25-backend/internal/domain"
+	"comcamp25-backend/internal/handler"
+	"comcamp25-backend/internal/repository/memory"
 	"comcamp25-backend/internal/server"
+	"comcamp25-backend/internal/service"
 )
 
 const publicListPath = "/api/applications/public"
@@ -215,5 +220,70 @@ func TestDefaultRateLimits_PublicListHasItsOwnLimiter(t *testing.T) {
 		if other == any(l.PublicList) {
 			t.Fatalf("public list shares a limiter with %s", name)
 		}
+	}
+}
+
+// blockingPublicRepo holds every ListPublic call until release is closed (or fails with err).
+type blockingPublicRepo struct {
+	*memory.MemoryApplicantRepo
+	release chan struct{}
+	err     error
+}
+
+func (r *blockingPublicRepo) ListPublic(ctx context.Context) ([]domain.PublicApplicant, error) {
+	if r.release != nil {
+		<-r.release
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.MemoryApplicantRepo.ListPublic(ctx)
+}
+
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return &buf
+}
+
+// A visitor who leaves while the list is loading is not a server error: no 500, no error log.
+func TestPublicList_ClientDisconnectIsNotAnInternalError(t *testing.T) {
+	apps := memory.NewMemoryApplicantRepo()
+	repo := &blockingPublicRepo{MemoryApplicantRepo: apps, release: make(chan struct{})}
+	t.Cleanup(func() { close(repo.release) })
+	h := handler.NewApplicantHandler(service.NewApplicantService(repo, memory.NewMemorySettingRepo(), memory.NewMemoryPaymentRepo(apps)))
+	logs := captureLog(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	h.ListPublic(rec, httptest.NewRequest(http.MethodGet, publicListPath, nil).WithContext(ctx))
+
+	if rec.Body.Len() != 0 || rec.Code == http.StatusInternalServerError {
+		t.Fatalf("a disconnected client must get no answer, got %d %q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(logs.String(), "internal error") {
+		t.Fatalf("a client disconnect was logged as an internal error: %s", logs.String())
+	}
+}
+
+// A failure inside the service while the client is still waiting is still a logged 500, even
+// when it is a deadline (for example a slow database query).
+func TestPublicList_ServerDeadlineIsStillAnInternalError(t *testing.T) {
+	apps := memory.NewMemoryApplicantRepo()
+	repo := &blockingPublicRepo{MemoryApplicantRepo: apps, err: context.DeadlineExceeded}
+	h := handler.NewApplicantHandler(service.NewApplicantService(repo, memory.NewMemorySettingRepo(), memory.NewMemoryPaymentRepo(apps)))
+	logs := captureLog(t)
+
+	rec := httptest.NewRecorder()
+	h.ListPublic(rec, httptest.NewRequest(http.MethodGet, publicListPath, nil))
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "INTERNAL_ERROR") {
+		t.Fatalf("expected a generic 500, got %d %q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(logs.String(), "internal error") {
+		t.Fatal("a server-side failure must be logged")
 	}
 }

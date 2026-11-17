@@ -327,3 +327,29 @@ func wantNoRows(t *testing.T, rows []service.PublicApplicantEntry) {
 		t.Fatalf("expected no rows, got %+v", rows)
 	}
 }
+
+// The public list runs the same lazy unpaid expiry as /status, so an overdue seat is never
+// listed there while /status already reports it as expired; the post-expiry read is cached.
+func TestListPublicApplicants_ReleasesOverdueUnpaidBeforeReading(t *testing.T) {
+	f := newPublicListFixture(t)
+	ctx := context.Background()
+	kept := auditApplicant(t, f.apps, 61, domain.StatusPassed)
+	overdue := auditApplicant(t, f.apps, 62, domain.StatusPassed)
+	old := time.Now().UTC().Add(-service.UnpaidExpiryWindow - service.UnpaidGraceWindow - time.Hour)
+	if err := f.apps.SetTimestampsForTest(overdue.ID, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	got := f.list(t)
+	if len(got) != 1 || got[0].No != 1 || got[0].FullName != kept.FirstName+" "+kept.LastName {
+		t.Fatalf("expected only the paid-up seat, got %+v", got)
+	}
+	if a, _ := f.apps.GetByID(ctx, overdue.ID); a.Status != domain.StatusRejected {
+		t.Fatalf("the overdue seat must be released by the list read, status = %s", a.Status)
+	}
+
+	f.list(t)
+	if n := f.repo.lists.Load(); n != 1 {
+		t.Fatalf("the read after the expiry must be cached, got %d repository reads", n)
+	}
+}

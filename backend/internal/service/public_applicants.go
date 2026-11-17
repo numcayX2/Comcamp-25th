@@ -66,8 +66,10 @@ func (s *ApplicantService) InvalidatePublicList() {
 }
 
 // ListPublicApplicants returns the public applicants list (live PASSED and CONFIRMED
-// applications, oldest first). Concurrent misses share one repository read, isolated from any
-// single caller's cancellation, and each caller gets its own copy of the rows.
+// applications, oldest first). On a cache miss it first releases overdue unpaid seats, like the
+// other public reads. Concurrent misses share one repository read, isolated from any single
+// caller's cancellation, and each caller gets its own copy of the rows. When the caller's own
+// context ends first, its ctx.Err() (context.Canceled / DeadlineExceeded) is returned.
 func (s *ApplicantService) ListPublicApplicants(ctx context.Context) (*PublicApplicantsResponse, error) {
 	c := &s.publicList
 	c.mu.RLock()
@@ -84,6 +86,13 @@ func (s *ApplicantService) ListPublicApplicants(ctx context.Context) (*PublicApp
 	ch := c.group.DoChan("public-list-"+strconv.FormatUint(startVer, 10), func() (any, error) {
 		qCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
+		// Same lazy unpaid expiry as QueryStatus, ListAll and Submit, so the public list never
+		// shows a seat that /status already reports as expired. It runs on a cache miss only. A
+		// release invalidates the cache (notifySeatChange), so the version this read may cache
+		// under is taken after it: only a mutation from here on keeps the result out of the cache.
+		_, _ = s.ExpireOverdueUnpaid(qCtx, s.currentTime())
+		cacheVer := c.ver.Load()
 
 		rows, err := s.appRepo.ListPublic(qCtx)
 		if err != nil {
@@ -107,9 +116,9 @@ func (s *ApplicantService) ListPublicApplicants(ctx context.Context) (*PublicApp
 			})
 		}
 
-		if c.ver.Load() == startVer {
+		if c.ver.Load() == cacheVer {
 			c.mu.Lock()
-			if c.ver.Load() == startVer {
+			if c.ver.Load() == cacheVer {
 				c.rows = entries
 				c.expiresAt = time.Now().Add(publicListCacheTTL)
 			}
