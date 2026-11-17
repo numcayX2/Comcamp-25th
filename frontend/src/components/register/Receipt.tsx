@@ -12,7 +12,7 @@ import {
   type ApplicationStatus,
   type SlipStatus,
 } from '../../lib/api';
-import { describeRateLimit } from '../../lib/slip-upload';
+import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeRateLimit } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
 import {
   DORM_MAPS_URL,
@@ -59,40 +59,45 @@ function describeWithdrawError(err: unknown): ReactNode {
         </>
       );
     }
-    if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
+    // An unknown code and a wrong phone are the same 404 on purpose: never say which part was wrong.
+    if (err.status === 404) return WITHDRAW_MISMATCH_COPY;
     if (err.status >= 500) return 'ระบบขัดข้องชั่วคราว กรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
   }
   return 'ยกเลิกใบสมัครไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง';
 }
 
 /**
- * Self-service withdrawal. Collapsed to one quiet link; opening it shows a 2-step inline
- * confirmation, because cancelling gives the seat away for good. The application code this
- * receipt holds is the proof (no second secret to type). Focus lands on the safe "keep" button.
+ * Self-service withdrawal. Collapsed to one quiet link; opening it asks for the full phone number
+ * used to register (owner ruling R24: code + phone), because cancelling gives the seat away for
+ * good. The phone lives in this component's state only (never in browser storage) and is cleared on
+ * close and on success. A failure never says which part was wrong.
  */
 function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState('');
+  const phoneReady = /^0\d{9}$/.test(phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const keepRef = useRef<HTMLButtonElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef(false);
   const busyRef = useRef(false);
   const uid = useId();
-  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, err: `${uid}-err` };
+  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, phone: `${uid}-phone`, hint: `${uid}-hint`, err: `${uid}-err` };
 
-  // A disabled button cannot keep focus: after a failed attempt, refocus once busy has cleared.
-  const refocusConfirm = useRef(false);
+  // A disabled input cannot keep focus: after a failed attempt, refocus the phone once busy has cleared.
+  const refocusPhone = useRef(false);
   useEffect(() => {
-    if (!busy && refocusConfirm.current) {
-      refocusConfirm.current = false;
-      confirmRef.current?.focus();
+    if (!busy && refocusPhone.current) {
+      refocusPhone.current = false;
+      phoneRef.current?.focus();
+      phoneRef.current?.select();
     }
   }, [busy]);
 
   useEffect(() => {
-    if (open) keepRef.current?.focus();
+    if (open) phoneRef.current?.focus();
     else if (restoreFocus.current) {
       restoreFocus.current = false;
       toggleRef.current?.focus();
@@ -103,22 +108,24 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
     if (busy || busyRef.current) return;
     restoreFocus.current = true;
     setOpen(false);
+    setPhone('');
     setError(null);
   }
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
-    if (busyRef.current || busy) return;
+    if (busyRef.current || busy || !phoneReady) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      await withdrawApplication(appId);
+      await withdrawApplication(appId, phone);
       busyRef.current = false;
+      setPhone('');
       onWithdrawn(appId);
     } catch (err) {
       setError(describeWithdrawError(err));
-      refocusConfirm.current = true;
+      refocusPhone.current = true;
       busyRef.current = false;
       setBusy(false);
     }
@@ -164,7 +171,31 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
         หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums whitespace-nowrap select-all">{appId}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที
         ยกเลิกแล้วกู้คืนไม่ได้ แต่สมัครใหม่ได้หากยังมีที่นั่งว่าง
       </p>
-      <p className="rw-withdraw__hint">แน่ใจหรือไม่? กดยืนยันอีกครั้งเพื่อยกเลิกใบสมัครนี้</p>
+      <label className="rw-label" htmlFor={ids.phone}>
+        เบอร์โทรที่ใช้สมัคร
+      </label>
+      <input
+        ref={phoneRef}
+        id={ids.phone}
+        className="rw-input rw-input--mono rw-withdraw__phone"
+        value={phone}
+        // Digits only, max 10: Thai digits become 0-9; dashes, spaces and zero-width characters go (§9.2.2).
+        onChange={(e) => {
+          setPhone(cleanPhoneInput(e.target.value));
+          if (error) setError(null);
+        }}
+        type="tel"
+        inputMode="tel"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="08XXXXXXXX"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[ids.warn, ids.hint, error ? ids.err : ''].filter(Boolean).join(' ')}
+        disabled={busy}
+      />
+      <p id={ids.hint} className="rw-withdraw__hint">
+        กรอกเบอร์โทรศัพท์ <span className="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร แล้วกดยืนยันเพื่อยกเลิกใบสมัครนี้ ระบบไม่บันทึกเบอร์นี้ไว้ในเครื่อง
+      </p>
       <p id={ids.err} className="rw-withdraw__err" role="alert">
         {error}
       </p>
@@ -173,13 +204,13 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
           ref={confirmRef}
           type="submit"
           className="rw-btn rw-btn--danger rw-btn--sm"
-          disabled={busy}
+          disabled={busy || !phoneReady}
           aria-busy={busy || undefined}
           aria-describedby={[ids.warn, error ? ids.err : ''].filter(Boolean).join(' ')}
         >
           {busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกใบสมัคร'}
         </button>
-        <button ref={keepRef} type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={close} disabled={busy}>
+        <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={close} disabled={busy}>
           ไม่ยกเลิก (กลับ)
         </button>
       </div>

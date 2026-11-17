@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ApiHttpError, verifyPaymentSlip, type ApplicantRecord } from './api.ts';
+import {
+  ApiHttpError,
+  isApplicationCodeQuery,
+  isPhoneQuery,
+  normalizeLookupQuery,
+  verifyPaymentSlip,
+  type ApplicantRecord,
+} from './api.ts';
 import {
   CSV_HEADERS,
   buildApplicantsCsv,
@@ -170,6 +177,26 @@ test('Phase 5.1: no national ID column in the CSV; staff search by phone, code o
   assert.equal(matchesApplicantQuery(app, 'สมชาย'), true);
   assert.equal(matchesApplicantQuery(app, 'ชาย'), true);
   assert.equal(matchesApplicantQuery(app, '1100500000018'), false);
+});
+
+test('normalizeLookupQuery canonicalizes CC25 codes like the backend and keeps phones digit-only', () => {
+  const cases: Array<[string, string]> = [
+    ['CC25-1A2B3C', 'CC25-1A2B3C'],
+    ['cc25-1a2b3c', 'CC25-1A2B3C'],
+    ['CC25 1A2B3C', 'CC25-1A2B3C'],
+    ['cc251a2b3c', 'CC25-1A2B3C'],
+    [' CC25\u20101A2B3C ', 'CC25-1A2B3C'],
+    ['CC25\u22121A2B3C', 'CC25-1A2B3C'],
+    ['\u200BCC25-1A2B3C', 'CC25-1A2B3C'],
+    ['CC25-๑A๒B๓C', 'CC25-1A2B3C'],
+    ['081-234-5678', '0812345678'],
+    ['๐๘๑ ๒๓๔ ๕๖๗๘', '0812345678'],
+  ];
+  for (const [raw, want] of cases) assert.equal(normalizeLookupQuery(raw), want, JSON.stringify(raw));
+  assert.equal(isApplicationCodeQuery(normalizeLookupQuery('cc251a2b3c')), true);
+  assert.equal(isPhoneQuery(normalizeLookupQuery('081 234 5678')), true);
+  assert.equal(isPhoneQuery(normalizeLookupQuery('1100500000018')), false);
+  assert.equal(isApplicationCodeQuery(normalizeLookupQuery('CC25-1A2B3')), false);
 });
 
 const HOUR = 60 * 60 * 1000;

@@ -86,7 +86,7 @@ func TestCodeGuard_DefaultsAreTheProductionLimits(t *testing.T) {
 	g := NewCodeGuard(nil)
 	c := g.cfg
 	if c.ClientMaxMisses != 5 || c.ClientWindow != 15*time.Minute || c.BaseLockout != 15*time.Minute ||
-		c.MaxLockout != 24*time.Hour || c.StrikeMemory != 24*time.Hour || c.GlobalWindow != 5*time.Minute ||
+		c.MaxLockout != time.Hour || c.StrikeMemory != time.Hour || c.GlobalWindow != 5*time.Minute ||
 		c.GlobalSoftCeiling != 5 || c.GlobalHardCeiling != 10 || c.MaxClients != 50_000 {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
@@ -133,7 +133,8 @@ func TestCodeGuard_LocksClientAfterMaxMissesBeforeTheLookup(t *testing.T) {
 
 func TestCodeGuard_EscalationIsCappedAndForgotten(t *testing.T) {
 	g, clock, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 1000, GlobalHardCeiling: 1000})
-	want := []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour, 16 * time.Hour, 24 * time.Hour, 24 * time.Hour}
+	// Capped at 1h (shared IPs: CGNAT, school Wi-Fi). Steady state: 5 guesses per hour, ~120 a day.
+	want := []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, time.Hour, time.Hour}
 	for round, w := range want {
 		for i := 0; i < CodeClientMaxMisses; i++ {
 			_ = lookup(g, "c", codeMiss)
@@ -143,7 +144,7 @@ func TestCodeGuard_EscalationIsCappedAndForgotten(t *testing.T) {
 		}
 		clock.Advance(w)
 	}
-	// A day after the last lockout ended the strikes are forgotten: back to the base lockout.
+	// An hour after the last lockout ended the strikes are forgotten: back to the base lockout.
 	clock.Advance(CodeStrikeMemory)
 	for i := 0; i < CodeClientMaxMisses; i++ {
 		_ = lookup(g, "c", codeMiss)

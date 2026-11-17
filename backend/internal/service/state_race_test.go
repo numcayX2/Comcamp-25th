@@ -162,7 +162,7 @@ func TestRace_WithdrawWhileSlipArrives(t *testing.T) {
 			ctx := context.Background()
 			appNo, a := f.submit(t, 4100)
 			f.race.beforeSoftDelete = func() { meanwhile(f, t, a) }
-			if err := f.svc.Withdraw(ctx, appNo, "เปลี่ยนใจ", "203.0.113.2"); !errors.Is(err, service.ErrCannotWithdraw) {
+			if err := f.svc.Withdraw(ctx, appNo, a.Phone, "เปลี่ยนใจ", "203.0.113.2"); !errors.Is(err, service.ErrCannotWithdraw) {
 				t.Fatalf("want ErrCannotWithdraw, got %v", err)
 			}
 			if _, err := f.apps.GetByApplicationNo(ctx, appNo); err != nil {

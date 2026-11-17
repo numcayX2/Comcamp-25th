@@ -217,6 +217,17 @@ function describeValidationError(message: string, fallback: string): string {
   return fallback;
 }
 
+/** Withdraw failed on the code + phone check. Deliberately does not say which part was wrong (R24). */
+export const WITHDRAW_MISMATCH_COPY = 'ข้อมูลไม่ตรงกับใบสมัคร กรุณาตรวจสอบแล้วลองอีกครั้ง หากยังไม่สำเร็จ กรุณาติดต่อทีมงาน';
+
+/** Digits only (Thai digits converted, dashes/spaces/zero-width dropped), at most 10: the withdraw phone field. */
+export function cleanPhoneInput(value: string): string {
+  return value
+    .replace(/[๐-๙]/g, (c) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(c)))
+    .replace(/\D/g, '')
+    .slice(0, 10);
+}
+
 const NOT_FOUND_COPY = 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเบอร์โทรศัพท์หรือรหัสใบสมัคร (CC25-XXXXXX) อีกครั้ง';
 
 /** Thai copy keyed by the backend error code; never exposes raw English developer errors to users. */

@@ -925,6 +925,7 @@ html[data-theme="dark"] .rw-ticket {
 /* Quiet by default: one ink text link. The open panel is a plain ruled form, not a modal. */
 .rw-withdraw { margin-top: -8px; }
 .rw-withdraw--open { margin-top: 0; max-width: 520px; }
+.rw-withdraw__phone { max-width: 260px; }
 .rw-withdraw__warn { margin: 8px 0 16px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
 .rw-withdraw__hint { margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-3); }
 .rw-withdraw__err { min-height: 1.6em; margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-danger); }

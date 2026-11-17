@@ -95,8 +95,9 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 }
 
 // Withdraw is the applicant's own cancellation: POST /api/applications/{id}/withdraw with an
-// optional { reason }. The application code in the path is the proof: unknown code 404, a client
-// refused by the code guard 429 RATE_LIMITED + Retry-After, nothing left to cancel online 409.
+// { phone, reason? }. The application code in the path plus the full registered phone are the proof
+// (R24): an unknown code or a missing/wrong phone is the same 404, a client refused by the code guard
+// 429 RATE_LIMITED + Retry-After, nothing left to cancel online 409.
 func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -104,14 +105,18 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The code in the path plus the full registered phone are the proof (R24). A missing body or
+	// phone is not a 400: it goes through the same path as a wrong phone, so every failure looks
+	// like an unknown code.
 	var body struct {
+		Phone  string `json:"phone,omitempty"`
 		Reason string `json:"reason,omitempty"`
 	}
 	if !decodeOptionalJSON(w, r, &body) {
 		return
 	}
 
-	if err := h.appService.Withdraw(clientContext(r), id, body.Reason, middleware.RemoteIP(r)); err != nil {
+	if err := h.appService.Withdraw(clientContext(r), id, body.Phone, body.Reason, middleware.RemoteIP(r)); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}

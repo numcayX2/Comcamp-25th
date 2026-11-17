@@ -153,8 +153,8 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 	// clean applicant without a pending slip).
 	wApp := app.submit(t, "0895009504", "thai95004@example.com")
 	wCode := "\uFEFF" + toThaiDigits(strings.ToLower(wApp.ID))
-	wRec := app.do(t, http.MethodPost, "/api/applications/"+url.PathEscape(wCode)+"/withdraw", bytes.NewBufferString(`{"reason":"ถอนตัว"}`), nil)
+	wRec := app.do(t, http.MethodPost, "/api/applications/"+url.PathEscape(wCode)+"/withdraw", bytes.NewBufferString(fmt.Sprintf(`{"phone":%q,"reason":"ถอนตัว"}`, toThaiDigits("089-500-9504"))), nil)
 	if wRec.Code != http.StatusOK {
-		t.Fatalf("withdraw with a Thai-numeral code: expected 200, got %d (%s)", wRec.Code, wRec.Body.String())
+		t.Fatalf("withdraw with a Thai-numeral code and phone: expected 200, got %d (%s)", wRec.Code, wRec.Body.String())
 	}
 }

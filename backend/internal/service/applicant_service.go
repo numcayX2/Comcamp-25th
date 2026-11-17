@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -178,6 +179,11 @@ const (
 	UnpaidGraceWindow = 24 * time.Hour
 	// UnpaidExpiryReason is recorded in applicant_status_logs and audit_logs when auto-expired.
 	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 5 วัน (120 ชั่วโมง) หลังสมัคร"
+	// ExpiryPauseAfterCodeCeiling: no seat is auto-released while the application-code guard's global
+	// hard ceiling was reached within this long. During such a flood every code-keyed request (slip
+	// upload included) may be refused, so applicants could not have paid in time; they get at least
+	// this long after the flood ends before the sweep resumes.
+	ExpiryPauseAfterCodeCeiling = 24 * time.Hour
 )
 
 // WithCodeGuard replaces the service's own application-code guard with a shared one and returns
@@ -290,8 +296,16 @@ func NewApplicantService(
 // without a PENDING or APPROVED slip to REJECTED, invalidating the public settings cache whenever
 // at least one seat is released. Both cutoffs are derived here from the two window constants and
 // handed to the repository, so the grace offset can never drift from the expiry window again.
+//
+// While the code guard's hard ceiling fired within ExpiryPauseAfterCodeCeiling it releases nothing
+// (see there). A nil guard never pauses.
 func (s *ApplicantService) ExpireOverdueUnpaid(ctx context.Context, now time.Time) ([]string, error) {
 	utcNow := now.UTC()
+	if last := s.codes.LastHardCeilingAt(); !last.IsZero() && utcNow.Sub(last) < ExpiryPauseAfterCodeCeiling {
+		log.Printf("unpaid expiry paused: application-code guess ceiling reached at %s; seats are not auto-released until %s after it stops",
+			last.UTC().Format(time.RFC3339), ExpiryPauseAfterCodeCeiling)
+		return nil, nil
+	}
 	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, utcNow.Add(-UnpaidExpiryWindow), utcNow.Add(-UnpaidGraceWindow), UnpaidExpiryReason)
 	if len(expired) > 0 {
 		s.notifySeatChange()
@@ -898,8 +912,8 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 }
 
 // Withdraw lets applicants cancel their own application from the receipt or /status page. It is
-// public and keyed by the application code, which is the applicant's proof (an unknown code counts
-// against the client in the CodeGuard). The row is soft-deleted, which frees the seat (CountActive
+// public and keyed by the application code plus the full registered phone (R24; an unknown code or a
+// wrong phone counts against the client in the CodeGuard). The row is soft-deleted, which frees the seat (CountActive
 // ignores deleted rows) and lets the same person register again.
 //
 // Money may already have changed hands, and a soft-deleted row disappears from /admin, so only
@@ -907,13 +921,18 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 // or already approved, and not an application that is already closed (REJECTED, REFUND_PENDING,
 // REFUNDED). Everyone else gets ErrCannotWithdraw and is told to contact staff, who record the
 // cancellation as REFUND_PENDING so the refund stays on the ledger.
-func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, reason, ip string) error {
+func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, phone, reason, ip string) error {
 	reason = strings.TrimSpace(stripZeroWidth(reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
 		return newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
 	}
 
-	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionWithdraw, nil)
+	// Second factor (owner ruling R24): giving a seat away also needs the full registered phone
+	// number. A missing, malformed or wrong phone is answered exactly like an unknown code (404,
+	// counted by the code guard), so it tells nothing about whether the code exists. The typed phone
+	// is never logged or audited.
+	applicant, err := findByCodeMatching(ctx, s.codes, s.appRepo, applicationNo, CodeActionWithdraw, nil,
+		func(a *domain.Applicant) bool { return samePhone(phone, a.Phone) })
 	if err != nil {
 		return err
 	}

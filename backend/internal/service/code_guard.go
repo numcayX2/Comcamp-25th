@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"log"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +27,10 @@ import (
 //  1. Per client (the rate-limit key: the IP, or its /64 for IPv6). After CodeClientMaxMisses misses
 //     within CodeClientWindow the client is refused every code-keyed request for a lockout that
 //     doubles with each repeat (CodeBaseLockout up to CodeMaxLockout). Repeats are remembered until
-//     CodeStrikeMemory after the last lockout ended.
+//     CodeStrikeMemory after the last lockout ended. The cap is deliberately short (1h): Thai mobile
+//     CGNAT and school Wi-Fi put many students behind one IP, so one classmate's typos (or a prank)
+//     must not lock everyone on that IP out of their slip upload for a day. A single-IP attacker is
+//     still held to CodeClientMaxMisses guesses per CodeMaxLockout, about 120 a day.
 //  2. Globally, per fixed window of CodeGlobalWindow. Once the misses of all clients together reach
 //     CodeGlobalSoftCeiling, clients with a miss (or a lockout) on their record are refused until the
 //     window ends. At CodeGlobalHardCeiling every client is refused until the window ends. A client
@@ -45,8 +51,8 @@ const (
 	CodeClientMaxMisses   = 5
 	CodeClientWindow      = 15 * time.Minute
 	CodeBaseLockout       = 15 * time.Minute
-	CodeMaxLockout        = 24 * time.Hour
-	CodeStrikeMemory      = 24 * time.Hour
+	CodeMaxLockout        = time.Hour
+	CodeStrikeMemory      = time.Hour
 	CodeGlobalWindow      = 5 * time.Minute
 	CodeGlobalSoftCeiling = 5
 	CodeGlobalHardCeiling = 10
@@ -117,6 +123,8 @@ type CodeGuard struct {
 	globalPending int
 	softLogged    bool
 	hardLogged    bool
+	// lastHard is when the global hard ceiling was last reached (see LastHardCeilingAt).
+	lastHard time.Time
 }
 
 // NewCodeGuard uses the production limits. audit may be nil (no audit rows, tests only).
@@ -261,6 +269,9 @@ func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClien
 				"lockedForSeconds": int(lock / time.Second),
 			}})
 		}
+		if g.globalMisses >= g.cfg.GlobalHardCeiling {
+			g.lastHard = now
+		}
 		for _, level := range []struct {
 			name    string
 			ceiling int
@@ -289,6 +300,19 @@ func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClien
 	for _, e := range events {
 		g.record(ctx, e)
 	}
+}
+
+// LastHardCeilingAt reports when the global hard ceiling was last reached (the zero time if never).
+// While someone keeps every code-keyed request refused, applicants cannot upload a slip, so the
+// unpaid-expiry sweep asks this before releasing seats (ApplicantService.ExpireOverdueUnpaid). Safe
+// for concurrent use and on a nil guard.
+func (g *CodeGuard) LastHardCeilingAt() time.Time {
+	if g == nil {
+		return time.Time{}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.lastHard
 }
 
 // rollGlobalLocked starts a new global window once the current one has run out. Lookups in flight
@@ -417,6 +441,19 @@ func clientKeyFrom(ctx context.Context) string {
 	return "unknown"
 }
 
+// samePhone compares a typed phone number (normalised like registration: Thai digits, zero-width
+// characters, dashes and spaces) with the stored one in constant time. Hashing first keeps the
+// comparison independent of the typed length too. An empty typed phone never matches.
+func samePhone(typed, stored string) bool {
+	t := cleanNumber(strings.TrimSpace(typed))
+	if t == "" || stored == "" {
+		return false
+	}
+	a := sha256.Sum256([]byte(t))
+	b := sha256.Sum256([]byte(cleanNumber(stored)))
+	return subtle.ConstantTimeCompare(a[:], b[:]) == 1
+}
+
 // appNoRe is the canonical application code written by generateAppNo.
 var appNoRe = regexp.MustCompile(`^CC25-[0-9A-F]{6}$`)
 
@@ -426,6 +463,14 @@ var appNoRe = regexp.MustCompile(`^CC25-[0-9A-F]{6}$`)
 // code is looked up through the guard: an unknown one counts as a miss, and a refused client gets
 // *CodeGuessLimitedError before any lookup.
 func findByCode(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string, before func()) (*domain.Applicant, error) {
+	return findByCodeMatching(ctx, guard, repo, raw, action, before, nil)
+}
+
+// findByCodeMatching is findByCode with a second factor: when match is set, an application that
+// exists but fails match is treated exactly like an unknown code. It counts as a miss for the
+// client and the global budget and comes back as ErrApplicantNotFound, so the extra factor is not a
+// new oracle for whether a code exists.
+func findByCodeMatching(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string, before func(), match func(*domain.Applicant) bool) (*domain.Applicant, error) {
 	code := normalizeAppNo(raw)
 	if !appNoRe.MatchString(code) {
 		return nil, ErrApplicantNotFound
@@ -437,6 +482,10 @@ func findByCode(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepo
 		}
 		var err error
 		a, err = repo.GetByApplicationNo(ctx, code)
+		if err == nil && match != nil && !match(a) {
+			a = nil
+			return domain.ErrNotFound
+		}
 		return err
 	})
 	if err != nil {

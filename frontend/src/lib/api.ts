@@ -326,13 +326,17 @@ export function sanitizeDigits(value: string): string {
 /**
  * Status lookup query: a phone written with Thai numerals or hyphens/spaces becomes ASCII digits
  * only; anything else is treated as an application code (CC25-XXXXXX), whose own hyphen is kept
- * (a Unicode dash between CC25 and the hex becomes '-', inner spaces go).
+ * (a missing hyphen, a space or a Unicode dash between CC25 and the hex all become '-').
  */
 export function normalizeLookupQuery(raw: string): string {
   const q = normalizeThaiDigits(stripZeroWidth(raw)).trim();
   const digits = q.replace(/[\s\-\u2010-\u2015\u2212]/g, '');
   if (/^\d+$/.test(digits)) return digits;
-  return q.toUpperCase().replace(/\s+/g, '').replace(/[\u2010-\u2015\u2212]/g, '-');
+  const up = q.toUpperCase().replace(/\s+/g, '');
+  // Same leniency as the backend normalizeAppNo: CC25 1A2B3C, cc251a2b3c and a Unicode dash all
+  // become the canonical CC25-1A2B3C.
+  const m = /^CC25[-\u2010-\u2015\u2212]?([0-9A-F]{6})$/.exec(up);
+  return m ? `CC25-${m[1]}` : up.replace(/[\u2010-\u2015\u2212]/g, '-');
 }
 
 /** A 10-digit Thai mobile number starting with 0 (what the server accepts as a phone lookup). */
@@ -576,19 +580,22 @@ export function getApplicationStatus(query: string): Promise<ApiResult<StatusLoo
 
 /**
  * POST /api/applications/:id/withdraw — the applicant cancels their own application. The code in
- * the path is the proof (body: optional `{ reason }`). The server soft-deletes the row, which frees
- * the seat and lets the same person register again. 404 for an unknown code, 429 RATE_LIMITED +
- * Retry-After after too many unknown codes, 409 when the application cannot be cancelled online
- * (CONFIRMED, a slip already sent or approved, or already REJECTED / REFUND_PENDING / REFUNDED:
- * staff handle the refund). No offline fallback: this is a real mutation.
+ * the path plus the full registered phone are the proof (body `{ phone, reason? }`, owner ruling
+ * R24). The server soft-deletes the row, which frees the seat and lets the same person register
+ * again. An unknown code and a missing/wrong phone get the SAME 404 (the UI must not say which part
+ * was wrong); 429 RATE_LIMITED + Retry-After after too many misses; 409 when the application cannot
+ * be cancelled online (CONFIRMED, a slip already sent or approved, or already REJECTED /
+ * REFUND_PENDING / REFUNDED: staff handle the refund). No offline fallback: this is a real mutation.
+ * The phone is held by the caller in component state only, never in browser storage.
  */
 export async function withdrawApplication(
   id: string,
+  phone: string,
   reason?: string,
 ): Promise<ApiResult<{ message: string; id: string }>> {
   const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
     method: 'POST',
-    body: JSON.stringify({ reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+    body: JSON.stringify({ phone: sanitizeDigits(phone), reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
   });
   return { data, source: 'LIVE GO API' };
 }
