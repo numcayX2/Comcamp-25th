@@ -164,7 +164,7 @@ function ContactLinks({ inline = true }: { inline?: boolean }) {
           <a href={`tel:${c.tel}`} className={linkClass ? `${linkClass} font-mono tabular-nums` : 'font-mono tabular-nums'}>
             {c.phone}
           </a>{' '}
-          ({c.name})
+          · {c.name}
         </Fragment>
       ))}
     </>
@@ -933,7 +933,7 @@ export function RegisterSection() {
           <aside ref={rulesRef} className="rw-rules" aria-labelledby="rw-rules-title">
             <h3 id="rw-rules-title" className="rw-rules__title">
               <TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" />
-              <span>อ่าน <span className="font-mono tabular-nums">4</span> ข้อนี้ก่อนเริ่มกรอก</span>
+              <span>อ่าน <span className="font-mono tabular-nums">3</span> ข้อนี้ก่อนเริ่มกรอก</span>
             </h3>
             <ol className="rw-rules__list">
               <li>
@@ -942,7 +942,7 @@ export function RegisterSection() {
                 <strong className="rw-rules__label">วันจัดค่าย</strong>
                 <p>
                   <span className="font-mono tabular-nums">5–7</span> ก.พ. <span className="font-mono tabular-nums">2570</span> ·{' '}
-                  <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+                  <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)
                 </p>
                 </div>
               </li>
@@ -963,16 +963,6 @@ export function RegisterSection() {
                 <p>
                   โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังส่งใบสมัคร ·{' '}
                   <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
-                </p>
-                </div>
-              </li>
-              <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">4</span>
-                <div>
-                <strong className="rw-rules__label">สละสิทธิ์</strong>
-                <p>
-                  ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
-                  <strong className="rw-rules__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
                 </p>
                 </div>
               </li>
@@ -1457,7 +1447,7 @@ export function RegisterSection() {
                     โอนค่าสมัคร (<span className="font-mono tabular-nums">{feeText}</span> บาท) ภายใน{' '}
                     <span className="font-mono tabular-nums">3</span> วันหลังสมัคร
                   </strong>
-                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ
                 </li>
                 <li>
                   <strong>แนบสลิป เข้ากลุ่ม LINE OpenChat และรอรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
@@ -1481,7 +1471,7 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
-                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ) และเงื่อนไข<strong>โอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
+                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}

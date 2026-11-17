@@ -60,7 +60,7 @@ const navLinks = isAdmin ? [] : [
             class:list={['nav-mobile-item', active === 'register' && 'is-active']}
             aria-current={active === 'register' ? 'page' : undefined}
           >
-            <span data-nav-register-label>เปิดรับ 18 พ.ย. 69</span>
+            <span data-nav-register-label>ลงทะเบียนวันที่ 19 พ.ย. 69</span>
           </a>
           <a
             data-nav-status
@@ -102,7 +102,7 @@ const navLinks = isAdmin ? [] : [
         <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย">
           <p class="nav-overlay-label">[ ข้อมูลค่าย ]</p>
           <p class="nav-overlay-text">คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</p>
-          <p class="nav-overlay-text">เปิดรับ <span class="font-mono tabular-nums" data-nav-open-dot>18.11.69</span> · <span class="font-mono tabular-nums" data-nav-max-cap>30</span> ที่นั่ง</p>
+          <p class="nav-overlay-text">ลงทะเบียนวันที่ <span class="font-mono tabular-nums" data-nav-open-dot>19.11.69</span> · <span class="font-mono tabular-nums" data-nav-max-cap>30</span> ที่นั่ง</p>
           <p class="nav-overlay-copy">© 2569 ComCamp #25 · CS MJU</p>
         </div>
       )}
@@ -121,7 +121,7 @@ const navLinks = isAdmin ? [] : [
             disabled
             aria-disabled="true"
             aria-describedby="sticky-mini"
-          >18 พ.ย. 69</button>
+          >19 พ.ย. 69</button>
           <span id="sticky-mini" class="sr-only">กำลังโหลดสถานะ</span>
         </>
       )}
@@ -150,7 +150,7 @@ const navLinks = isAdmin ? [] : [
             href="/register"
             aria-current={active === 'register' ? 'page' : undefined}
           >
-            <span data-nav-register-label>เปิดรับ 18 พ.ย. 69</span>
+            <span data-nav-register-label>ลงทะเบียนวันที่ 19 พ.ย. 69</span>
           </a>
           <a
             data-nav-status
@@ -1224,7 +1224,7 @@ const navLinks = isAdmin ? [] : [
       case 'CLOSED':
         return { label: 'ปิดรับสมัครแล้ว', href: '/status', muted: true };
       default:
-        return { label: `เปิดรับ ${formatNavOpenShort(openAt)}`, href: '/register', muted: true };
+        return { label: `ลงทะเบียนวันที่ ${formatNavOpenShort(openAt)}`, href: '/register', muted: true };
     }
   }
 

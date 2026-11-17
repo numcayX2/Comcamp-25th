@@ -269,7 +269,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
     icon: Ticket,
     badge: `สมัครทันแล้ว · ${dl.remainingText}`,
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ`,
     toSlip: true,
   };
 }
@@ -348,7 +348,7 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                 <strong style={{ color: INK }}>อาจารย์ผู้รับผิดชอบ:</strong> {PROJECT_ADVISOR}
               </p>
               <p className="sm:col-span-2">
-                <strong style={{ color: INK }}>สถานที่อบรมและที่พัก:</strong> สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ ม.แม่โจ้ · ที่พัก {DORM_NAME} (แยกโซนชาย-หญิง){' '}
+                <strong style={{ color: INK }}>สถานที่อบรมและที่พัก:</strong> อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) · ที่พัก {DORM_NAME} (แยกโซนชาย-หญิง){' '}
                 <a
                   href={DORM_MAPS_URL}
                   target="_blank"
@@ -404,7 +404,7 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                     >
                       <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
                       <span className="font-mono tabular-nums">{c.phone}</span>
-                      <span className="font-normal" style={{ color: INK_MUTED }}>({c.name})</span>
+                      <span className="font-normal" style={{ color: INK_MUTED }}>· {c.name}</span>
                     </a>
                   ))}
                 </>
@@ -813,7 +813,7 @@ export function StatusSection() {
       } else if (err instanceof ApiHttpError && err.status === 409) {
         setWithdrawOpen(false);
         setWithdrawNid('');
-        setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน');
+        setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งยกเลิก');
         getApplicationStatus(app.id)
           .then((res) => {
             setApp(res.data);
@@ -1090,20 +1090,20 @@ export function StatusSection() {
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
                     {slipApproved ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ชำระเงินและตรวจสอบสลิปเรียบร้อยแล้ว (หากสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ชำระเงินและตรวจสอบสลิปเรียบร้อยแล้ว
                       </>
                     ) : slipState === 'PENDING' ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ได้รับสลิปแล้ว อยู่ระหว่างรอทีมงานตรวจสอบ (หากสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ได้รับสลิปแล้ว อยู่ระหว่างรอทีมงานตรวจสอบ
                       </>
                     ) : app.status === 'CONFIRMED' ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · สถานะยืนยันสิทธิ์แล้ว (หากยังไม่ได้แนบสลิป สามารถอัปโหลดด้านล่าง · โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · สถานะยืนยันสิทธิ์แล้ว (หากยังไม่ได้แนบสลิป สามารถอัปโหลดด้านล่าง)
                       </>
                     ) : (
                       <>
                         ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · กรุณาโอนและแนบสลิปภายใน{' '}
-                        <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร
                       </>
                     )}
                   </p>
@@ -1650,7 +1650,7 @@ export function StatusSection() {
                     ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'
                     : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'}{' '}
                   หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ หรือโทรติดต่อพี่ค่าย พร้อมแจ้งรหัสใบสมัคร{' '}
-                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
+                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (กรณีโอนเงินแล้วหรือยืนยันสิทธิ์แล้ว กรุณาติดต่อคุยกับทีมงานโดยตรง)
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a
@@ -1692,7 +1692,7 @@ export function StatusSection() {
             </h3>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
               ค่ายจัดวันที่ <strong className="tabular-nums" style={{ color: INK }}>5–7 กุมภาพันธ์ 2570</strong> (<span className="tabular-nums">3</span> วัน <span className="tabular-nums">2</span> คืน)
-              ณ อาคารเรียนสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ · พักค้างคืนที่ {DORM_NAME} (แยกโซนชาย-หญิง)
+              ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) · พักค้างคืนที่ {DORM_NAME} (แยกโซนชาย-หญิง)
             </p>
             <a
               href={DORM_MAPS_URL}
@@ -1705,6 +1705,9 @@ export function StatusSection() {
               <span>ดูแผนที่เรือนพัก (Google Maps)</span>
               <ArrowUpRight aria-hidden="true" size={15} strokeWidth={1.75} />
             </a>
+            <p className="mt-3 text-sm leading-7" style={{ color: INK_MUTED }}>
+              <strong style={{ color: INK }}>สิทธิพิเศษ:</strong> หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้
+            </p>
           </div>
 
           <div className="min-w-0">
@@ -1712,7 +1715,7 @@ export function StatusSection() {
               ค่าสมัครและอีเมลแจ้งผล
             </h3>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
-              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร · สละสิทธิ์ไม่คืนเงินทุกกรณี)
+              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร)
               รวม 7 รายการ: ที่พัก 2 คืน · อาหารหลัก 6 มื้อ · อาหารว่าง 5 มื้อ · เสื้อค่าย (SSS–4XL) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร
             </p>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
@@ -1754,6 +1757,21 @@ export function StatusSection() {
                 </li>
               ))}
             </ul>
+            <figure className="mt-3 flex items-center gap-3">
+              <img
+                src="/assets/facebook-page-qr.svg"
+                width={120}
+                height={120}
+                loading="lazy"
+                decoding="async"
+                alt="QR Code เพจ Facebook ComCamp (CCCSMJU)"
+                className="shrink-0 rounded-xl border p-2"
+                style={{ backgroundColor: '#FFFFFF', borderColor: RULE }}
+              />
+              <figcaption className="text-sm leading-7" style={{ color: INK_MUTED }}>
+                สแกนเพื่อเข้าเพจ Facebook
+              </figcaption>
+            </figure>
           </div>
         </div>
       </section>

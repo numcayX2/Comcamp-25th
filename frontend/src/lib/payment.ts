@@ -2,9 +2,9 @@
 
 /** Payment account for the camp fee. There is no QR code: transfer by account number only. */
 export const PAY_ACCOUNT = {
-  bank: 'ธนาคารกรุงเทพ',
+  bank: 'ธนาคารกรุงเทพ สาขาแม่โจ้',
   name: 'ชมรมคอมพิวเตอร์',
-  holders: 'นายภานุวัฒน์ นายอรรถวิท นายปวีณ',
+  holders: 'นาย ภานุวัฒน์ เมฆะ และ นาย อรรถวิท ชังคมานนท์ และ นาย ปวีณ เขื่อนแก้ว',
   number: '587-0-84106-0',
 } as const;
 

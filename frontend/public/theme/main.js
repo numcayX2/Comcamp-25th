@@ -149,9 +149,9 @@
     var openDateShort = formatOpenDateShort(openAtStr);
     var openDateFull = formatOpenDateFull(openAtStr);
     var openDateDot = formatOpenDateDot(openAtStr);
-    var ctaText = 'เปิดรับสมัคร ' + openDateNoYear, ctaHref = '#essentials', miniLabel = 'เปิดรับ ' + openDateShort, stickyDisabled = true;
-    var regCtaText = 'เปิดรับ ' + openDateShort, regCtaHref = registerHref, regCtaMuted = true;
-    var mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล', mtHref = '#timeline';
+    var ctaText = 'ลงทะเบียนวันที่ ' + openDateNoYear, ctaHref = '#essentials', miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort, stickyDisabled = true;
+    var regCtaText = 'ลงทะเบียนวันที่ ' + openDateShort, regCtaHref = registerHref, regCtaMuted = true;
+    var mtLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' · ดูข้อมูล', mtHref = '#timeline';
 
     if (seatsBig) {
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
@@ -181,14 +181,14 @@
     });
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
-      ctaText = 'เปิดรับสมัคร ' + openDateNoYear;
+      ctaText = 'ลงทะเบียนวันที่ ' + openDateNoYear;
       ctaHref = '#essentials';
-      regCtaText = 'เปิดรับ ' + openDateShort;
+      regCtaText = 'ลงทะเบียนวันที่ ' + openDateShort;
       regCtaHref = registerHref;
       regCtaMuted = true;
-      mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล';
+      mtLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' · ดูข้อมูล';
       mtHref = '#timeline';
-      miniLabel = 'เปิดรับ ' + openDateShort;
+      miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort;
       stickyDisabled = true;
       if (sticky) sticky.textContent = openDateShort;
       if (secondary) {

@@ -53,10 +53,10 @@ function describeWithdrawError(err: unknown): ReactNode {
               <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                 {c.phone}
               </a>{' '}
-              ({c.name})
+              · {c.name}
             </Fragment>
           ))}{' '}
-          เพื่อแจ้งสละสิทธิ์ (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
+          เพื่อแจ้งสละสิทธิ์
         </>
       );
     }
@@ -391,9 +391,6 @@ export function Receipt({
                 <li>
                   <strong className="rw-due__flag">เกินกำหนด ระบบตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
                 </li>
-                <li>
-                  <strong className="rw-due__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
-                </li>
               </ul>
               <a className="rw-due__jump" href="#rw-slip-title">
                 ไปแนบสลิป
@@ -490,7 +487,7 @@ export function Receipt({
         <ol className="rw-steps">
           <li>
             โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)
-            หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ (<strong>โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>)
+            หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ
           </li>
           <li>
             แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประจำตัว 13 หลัก หรือเบอร์โทรศัพท์
@@ -528,8 +525,14 @@ export function Receipt({
                 <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span className="font-mono tabular-nums">2570</span>
               </strong>
               <span className="rw-dl__sub">
-                <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+                <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)
               </span>
+            </dd>
+          </div>
+          <div className="rw-dl__row">
+            <dt>สิทธิพิเศษ</dt>
+            <dd>
+              <span className="rw-dl__sub">หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</span>
             </dd>
           </div>
           <div className="rw-dl__row">
@@ -582,10 +585,9 @@ export function Receipt({
                 <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                   {c.phone}
                 </a>{' '}
-                ({c.name})
+                · {c.name}
               </Fragment>
             ))}{' '}
-            (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
           </p>
         ) : (
           <WithdrawBlock appId={appId} onWithdrawn={onWithdrawn} />

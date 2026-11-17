@@ -73,7 +73,7 @@ export function SlipBlock({
               <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                 {c.phone}
               </a>{' '}
-              ({c.name})
+              · {c.name}
             </Fragment>
           ))}
         </p>
