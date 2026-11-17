@@ -561,6 +561,7 @@ export function StatusSection() {
   const editBusyRef = useRef(false);
   const withdrawBusyRef = useRef(false);
 
+  const resultAnchorRef = useRef<HTMLDivElement>(null);
   const runSearch = useCallback(async (rawQuery: string, opts?: { fromStoredReceipt?: boolean }) => {
     // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
     const query = normalizeLookupQuery(rawQuery);
@@ -676,7 +677,15 @@ export function StatusSection() {
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
     if (busy || searchBusyRef.current || !q.trim()) return;
-    void runSearch(q);
+    void runSearch(q).then(() => {
+      // On a phone the outcome lands below the fold; bring it up so the tap visibly did something.
+      requestAnimationFrame(() => {
+        const el = resultAnchorRef.current;
+        if (!el || el.getBoundingClientRect().top < window.innerHeight * 0.7) return;
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      });
+    });
   }
 
   function openEdit() {
@@ -881,40 +890,30 @@ export function StatusSection() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
-      {/* ── 01 · Masthead ─────────────────────────────────── */}
-      <header className="border-t-4 pt-4" style={{ borderColor: INK }}>
-        <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-6">
-          <div className="min-w-0">
-            <p className="font-mono text-xs font-medium uppercase tabular-nums" style={{ color: INK_SUBTLE }}>
-              ComCamp #25 — Status / 01
-            </p>
-            <h1 className="mt-2 text-balance text-3xl font-bold leading-[1.22] sm:text-5xl" style={{ color: INK }}>
-              ตรวจสอบสถานะใบสมัคร
-            </h1>
-          </div>
-          <p className="max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            ค้นหาด้วยเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span className="font-mono text-sm tabular-nums">CC25-XXXXXX</span>)
-          </p>
-        </div>
+      {/* ── Masthead + search: the search field is in the first phone screen ── */}
+      <header className="border-t-4 pt-5" style={{ borderColor: INK }}>
+        <h1 className="text-balance text-3xl font-bold leading-[1.22] sm:text-5xl" style={{ color: INK }}>
+          ตรวจสอบสถานะใบสมัคร
+        </h1>
+        <p className="mt-3 max-w-[52ch] text-base leading-7" style={{ color: INK_MUTED }}>
+          ดูผลการสมัคร ส่งสลิปโอนเงิน และแก้ไขข้อมูลได้ในหน้านี้ โดยไม่ต้องสมัครใหม่
+        </p>
       </header>
 
-      {/* ── 02 · Search strip ─────────────────────────────── */}
-      <section className="mt-8 grid gap-10 md:grid-cols-12">
-        <div className="md:col-span-5">
-          <p className="font-mono text-6xl font-semibold tabular-nums" style={{ color: INK }}>
-            02
-          </p>
-          <h2 className="mt-2 text-balance text-xl font-bold leading-8" style={{ color: INK }}>
+      <section className="mt-6 grid gap-x-10 gap-y-6 md:mt-10 md:grid-cols-12">
+        <div className="hidden md:col-span-5 md:block">
+          <h2 className="text-balance text-xl font-bold leading-8" style={{ color: INK }}>
             ค้นหาใบสมัครของน้อง
           </h2>
           <p className="mt-2 max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            ผลการคัดเลือก การยืนยันสิทธิ์ และการอัปโหลดสลิปโอนเงินทำได้ในหน้าเดียวโดยไม่ต้องสมัครใหม่
+            ใช้ข้อมูลอย่างใดอย่างหนึ่ง: เลขบัตรประจำตัว <span className="font-mono tabular-nums">13</span> หลัก
+            เบอร์โทรศัพท์ที่ใช้สมัคร หรือรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>
           </p>
         </div>
 
         <form onSubmit={onSearch} className="st-card md:col-span-7">
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
-            เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร
+            เลขบัตร 13 หลัก เบอร์โทร หรือรหัสใบสมัคร
           </label>
           <div className="relative flex items-center">
             <input
@@ -922,7 +921,9 @@ export function StatusSection() {
               id="status-q"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="เช่น 0812345678, 1103701234512 หรือ CC25-XXXXXX"
+              placeholder="เช่น 0812345678 หรือ CC25-XXXXXX"
+              autoComplete="off"
+              spellCheck={false}
               className="min-h-11 w-full rounded-none border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
               style={{ borderColor: BORDER_INPUT }}
             />
@@ -952,6 +953,8 @@ export function StatusSection() {
           </button>
         </form>
       </section>
+
+      <div ref={resultAnchorRef} aria-hidden="true" className="scroll-mt-24" />
 
       {storedNotice && (
         <div

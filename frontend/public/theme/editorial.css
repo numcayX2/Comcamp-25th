@@ -1443,3 +1443,6 @@ html[data-theme="dark"] .ed-sec details.faq-item summary::after {
     transform: none !important;
   }
 }
+
+/* Phone numbers never split at their hyphens. */
+a[href^="tel:"] { white-space: nowrap; }

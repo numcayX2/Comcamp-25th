@@ -90,6 +90,8 @@ interface TextFieldProps {
   digits?: number;
   /** Display grouping for a digits-only field: group sizes joined with hyphens (state stays raw digits). */
   groups?: number[];
+  /** Announces the field as required (the step lead says so visually). */
+  required?: boolean;
 }
 
 /** "1509900012345" + [1,4,5,2,1] -> "1-5099-00012-34-5"; partial input stays partial, no trailing hyphen. */
@@ -120,6 +122,7 @@ export function TextField({
   mono,
   digits,
   groups,
+  required,
 }: TextFieldProps) {
   const ref = useRef<HTMLInputElement>(null);
   const shown = groups ? formatGroups(value, groups) : value;
@@ -154,6 +157,7 @@ export function TextField({
           }
         }}
         onBlur={onBlur}
+        aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-err` : undefined}
         spellCheck={false}

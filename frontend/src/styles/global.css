@@ -129,3 +129,6 @@ html:not(.dark) select option {
   color: #121316 !important;
 }
 
+
+/* Phone numbers never split at their hyphens. */
+a[href^="tel:"] { white-space: nowrap; }

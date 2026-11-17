@@ -681,11 +681,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   align-items: center;
   justify-content: space-between;
   gap: 4px 16px;
-  margin-top: 14px;
-  padding: 10px 16px;
-  border: 1px solid var(--rw-rule);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--rw-ink) 4%, transparent);
+  margin-top: 8px;
 }
 .rw-draft__text { display: flex; align-items: flex-start; gap: 10px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-2); padding: 4px 0; }
 .rw-draft__text svg { flex: none; width: 16px; height: 16px; margin-top: 4px; color: var(--rw-ink-3); }
@@ -936,68 +932,39 @@ html[data-theme="dark"] .rw-ticket {
   font-weight: 600;
   color: var(--rw-warn-text);
 }
+/* Step 1 rules: a hairline ledger, not a card. Four rows a phone reads in one glance. */
 .rw-rules {
   margin-top: 18px;
-  padding: 20px 22px 12px;
-  border: 1px solid color-mix(in srgb, var(--rw-warn) 26%, var(--rw-rule));
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--rw-warn) 6%, var(--rw-surface));
-  box-shadow: 0 1px 2px rgba(18, 19, 22, 0.03), 0 12px 28px -18px rgba(18, 19, 22, 0.14);
-}
-html.dark .rw-rules,
-html[data-theme="dark"] .rw-rules {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24), 0 12px 28px -18px rgba(0, 0, 0, 0.6);
-}
-.rw-rules__head { display: flex; align-items: flex-start; gap: 14px; }
-.rw-rules__mark {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 9999px;
-  background: color-mix(in srgb, var(--rw-warn) 14%, var(--rw-surface));
-  color: var(--rw-warn-text);
-}
-.rw-rules__kicker {
-  margin: 0 0 3px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.5;
-  color: var(--rw-warn-text);
+  padding-top: 12px;
+  border-top: 2px solid var(--rw-warn-text);
 }
 .rw-rules__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.45;
   color: var(--rw-ink);
-  text-wrap: balance;
 }
-.rw-rules__list { margin: 16px 0 0; padding: 0; list-style: none; display: grid; }
+.rw-rules__title svg { flex: none; color: var(--rw-warn-text); }
+.rw-rules__list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; }
 .rw-rules__list > li {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 12px;
-  padding: 13px 0;
-  border-top: 1px solid color-mix(in srgb, var(--rw-rule) 72%, transparent);
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rw-rule);
 }
-.rw-rules__no {
-  display: block;
-  padding-top: 2px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.6;
-  letter-spacing: 0.04em;
-  color: var(--rw-warn-text);
-  font-variant-numeric: tabular-nums;
+@media (min-width: 640px) {
+  .rw-rules__list > li { grid-template-columns: 7.5rem 1fr; gap: 16px; align-items: baseline; }
 }
 .rw-rules__label {
   display: block;
-  margin-bottom: 2px;
   font-size: 0.875rem;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--rw-ink);
 }
 .rw-rules__list p {
@@ -1007,14 +974,15 @@ html[data-theme="dark"] .rw-rules {
   color: var(--rw-ink-2);
 }
 .rw-rules__flag { font-weight: 600; color: var(--rw-warn-text); }
-.rw-rules__contact {
-  margin: 2px 0 0;
-  padding: 12px 0 4px;
-  border-top: 1px solid color-mix(in srgb, var(--rw-rule) 72%, transparent);
+
+/* Contact line + draft notice close step 1, after the fields they describe. */
+.rw-ask {
+  margin: 28px 0 0;
   font-size: 0.8125rem;
-  line-height: 1.7;
+  line-height: 1.75;
   color: var(--rw-ink-2);
 }
+.rw-draft__text--restored { margin-top: 14px; color: var(--rw-ink); }
 
 .rw-diet-chips {
   display: flex;
@@ -1269,3 +1237,6 @@ html[data-theme="dark"] .rw-rules {
   .rw-step-view { animation: none; }
   .rw *, .rw *::before, .rw *::after { transition-duration: 0.01ms !important; }
 }
+
+/* Phone numbers never split at their hyphens. */
+a[href^="tel:"] { white-space: nowrap; }

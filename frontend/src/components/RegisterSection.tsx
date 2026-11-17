@@ -874,11 +874,9 @@ export function RegisterSection() {
     const ctx = gsap.context(() => {
       const rows = gsap.utils.toArray<HTMLElement>('.rw-rules__list > li');
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-      tl.from(root, { autoAlpha: 0, y: 18, duration: 0.5 })
-        .from('.rw-rules__mark', { scale: 0.5, autoAlpha: 0, duration: 0.5, ease: 'back.out(2)' }, 0.12)
-        .from(['.rw-rules__kicker', '.rw-rules__title'], { y: 10, autoAlpha: 0, duration: 0.45, stagger: 0.08 }, 0.18)
-        .from(rows, { x: -14, autoAlpha: 0, duration: 0.42, stagger: 0.07 }, 0.3)
-        .set([root, '.rw-rules__mark', '.rw-rules__kicker', '.rw-rules__title', ...rows], { clearProps: 'all' });
+      tl.from(root, { autoAlpha: 0, y: 12, duration: 0.4 })
+        .from(rows, { x: -10, autoAlpha: 0, duration: 0.36, stagger: 0.06 }, 0.16)
+        .set([root, ...rows], { clearProps: 'all' });
     }, root);
 
     return () => ctx.revert();
@@ -933,107 +931,54 @@ export function RegisterSection() {
         return (
           <>
           <aside ref={rulesRef} className="rw-rules" aria-labelledby="rw-rules-title">
-            <div className="rw-rules__head">
-              <span className="rw-rules__mark" aria-hidden="true">
-                <TriangleAlert size={20} strokeWidth={1.75} />
-              </span>
-              <div>
-                <p className="rw-rules__kicker">อ่านให้ครบทั้ง 4 ข้อก่อนเริ่มกรอก</p>
-                <h3 id="rw-rules-title" className="rw-rules__title">
-                  ข้อกำหนดสำคัญก่อนสมัคร ComCamp #25
-                </h3>
-              </div>
-            </div>
+            <h3 id="rw-rules-title" className="rw-rules__title">
+              <TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" />
+              <span>อ่าน <span className="font-mono tabular-nums">4</span> ข้อนี้ก่อนเริ่มกรอก</span>
+            </h3>
             <ol className="rw-rules__list">
               <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">01</span>
-                <div>
-                  <strong className="rw-rules__label">วันจัดค่ายจริง</strong>
-                  <p>
-                    วันที่ <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์{' '}
-                    <span className="font-mono tabular-nums">2570</span> (<span className="font-mono tabular-nums">3</span> วัน{' '}
-                    <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้)
-                  </p>
-                </div>
+                <strong className="rw-rules__label">วันจัดค่าย</strong>
+                <p>
+                  <span className="font-mono tabular-nums">5–7</span> ก.พ. <span className="font-mono tabular-nums">2570</span> ·{' '}
+                  <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+                </p>
               </li>
               <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">02</span>
-                <div>
-                  <strong className="rw-rules__label">เกณฑ์รับสมัคร</strong>
-                  <p>
-                    เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. –{' '}
-                    <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
-                    <span className="font-mono tabular-nums">2569</span> จำกัด{' '}
-                    <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง{' '}
-                    <strong className="rw-rules__flag">· เต็มก่อนปิดก่อนทันที</strong>
-                  </p>
-                </div>
+                <strong className="rw-rules__label">รับ <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง</strong>
+                <p>
+                  เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
+                  <span className="font-mono tabular-nums">2569</span> · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
+                </p>
               </li>
               <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">03</span>
-                <div>
-                  <strong className="rw-rules__label">กำหนดชำระเงิน</strong>
-                  <p>
-                    โอนและแนบสลิปภายใน <strong className="font-mono tabular-nums">3</strong> วัน{' '}
-                    (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร{' '}
-                    <strong className="rw-rules__flag">· เกินกำหนดตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ</strong>
-                  </p>
-                </div>
+                <strong className="rw-rules__label">ชำระเงิน</strong>
+                <p>
+                  โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังส่งใบสมัคร ·{' '}
+                  <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
+                </p>
               </li>
               <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">04</span>
-                <div>
-                  <strong className="rw-rules__label">เงื่อนไขการสละสิทธิ์</strong>
-                  <p>
-                    ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
-                    <strong className="rw-rules__flag">หากโอนเงินค่าสมัครแล้ว สละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
-                  </p>
-                </div>
+                <strong className="rw-rules__label">สละสิทธิ์</strong>
+                <p>
+                  ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
+                  <strong className="rw-rules__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
+                </p>
               </li>
             </ol>
-            <p className="rw-rules__contact">
-              สอบถามเพิ่มเติม: <ContactLinks />
-            </p>
           </aside>
-          <div className="rw-draft">
-            {confirmClear ? (
-              <>
-                <p className="rw-draft__text">ล้างข้อมูลที่กรอกไว้ทั้งหมดใช่ไหม</p>
-                <div className="rw-draft__actions">
-                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--danger" onClick={clearAll}>
-                    ยืนยันล้างข้อมูล
-                  </button>
-                  <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setConfirmClear(false)}>
-                    ยกเลิก
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="rw-draft__text">
-                  <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
-                  <span>
-                  {restoredAt ? (
-                    <>
-                      กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.)
-                      {' '}เลขบัตรประจำตัว 13 หลักและข้อมูลสุขภาพไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกใหม่อีกครั้ง
-                    </>
-                  ) : (
-                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้เฉพาะแท็บนี้ และหายไปเมื่อปิดแท็บ (ปลอดภัยบนคอมพิวเตอร์ที่ใช้ร่วมกัน) ยกเว้นเลขบัตรประจำตัว 13 หลักและข้อมูลสุขภาพที่ไม่บันทึกเลยตาม PDPA'
-                  )}
-                  </span>
-                </p>
-                {!formIsEmpty && (
-                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--quiet" onClick={() => setConfirmClear(true)}>
-                    ล้างข้อมูลร่าง
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+          {restoredAt && !confirmClear && (
+            <p className="rw-draft__text rw-draft__text--restored" role="status">
+              <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
+              <span>
+                กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.) ·
+                เลขบัตร <span className="font-mono tabular-nums">13</span> หลักไม่ถูกบันทึกตาม PDPA กรุณากรอกใหม่
+              </span>
+            </p>
+          )}
           <div className="rw-fields">
             <TextField
               id="fullName"
+              required
               label="ชื่อ-นามสกุล"
               span={4}
               value={form.fullName}
@@ -1045,6 +990,7 @@ export function RegisterSection() {
             />
             <TextField
               id="nickname"
+              required
               label="ชื่อเล่น"
               span={2}
               value={form.nickname}
@@ -1057,6 +1003,7 @@ export function RegisterSection() {
             <div className="rw-span-3" style={{ minWidth: 0 }}>
               <TextField
                 id="nationalId"
+                required
                 label="เลขบัตรประจำตัว 13 หลัก"
                 hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
                 groups={[1, 4, 5, 2, 1]}
@@ -1077,6 +1024,7 @@ export function RegisterSection() {
             </div>
             <TextField
               id="phone"
+              required
               label="เบอร์โทรศัพท์มือถือ"
               hint={<span className={form.phone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.phone.length}/10</span> หลัก</span>}
               groups={[3, 3, 4]}
@@ -1094,6 +1042,7 @@ export function RegisterSection() {
             />
             <TextField
               id="email"
+              required
               label="อีเมล"
               hint="ใช้รับอีเมลแจ้งรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
@@ -1114,6 +1063,7 @@ export function RegisterSection() {
             <div className="rw-fields">
             <TextField
               id="parentName"
+              required
               label="ชื่อ-นามสกุลผู้ปกครอง"
               span={4}
               value={form.parentName}
@@ -1124,6 +1074,7 @@ export function RegisterSection() {
             />
             <TextField
               id="parentRelation"
+              required
               label="ความสัมพันธ์ผู้ปกครอง"
               span={2}
               value={form.parentRelation}
@@ -1134,6 +1085,7 @@ export function RegisterSection() {
             />
             <TextField
               id="parentPhone"
+              required
               label="เบอร์โทรศัพท์ผู้ปกครอง"
               hint={<span className={form.parentPhone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.parentPhone.length}/10</span> หลัก</span>}
               groups={[3, 3, 4]}
@@ -1151,6 +1103,38 @@ export function RegisterSection() {
             />
             </div>
           </div>
+          <p className="rw-ask">
+            สอบถามเพิ่มเติม: <ContactLinks />
+          </p>
+          <div className="rw-draft">
+            {confirmClear ? (
+              <>
+                <p className="rw-draft__text">ล้างข้อมูลที่กรอกไว้ทั้งหมดใช่ไหม</p>
+                <div className="rw-draft__actions">
+                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--danger" onClick={clearAll}>
+                    ยืนยันล้างข้อมูล
+                  </button>
+                  <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setConfirmClear(false)}>
+                    ยกเลิก
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="rw-draft__text">
+                  <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <span>
+                  บันทึกร่างไว้เฉพาะแท็บนี้ และหายเมื่อปิดแท็บ · ไม่บันทึกเลขบัตร <span className="font-mono tabular-nums">13</span> หลักและข้อมูลสุขภาพตาม PDPA
+                  </span>
+                </p>
+                {!formIsEmpty && (
+                  <button type="button" className="rw-textlink rw-textlink--btn rw-textlink--quiet" onClick={() => setConfirmClear(true)}>
+                    ล้างข้อมูลร่าง
+                  </button>
+                )}
+              </>
+            )}
+          </div>
           </>
         );
 
@@ -1159,6 +1143,7 @@ export function RegisterSection() {
           <div className="rw-fields">
             <TextField
               id="school"
+              required
               label="โรงเรียน / สถานศึกษา"
               autoComplete="organization"
               value={form.school}
@@ -1169,6 +1154,7 @@ export function RegisterSection() {
             />
             <TextField
               id="province"
+              required
               label="จังหวัด"
               span={3}
               autoComplete="address-level1"
@@ -1182,6 +1168,7 @@ export function RegisterSection() {
               <select
                 id="grade"
                 name="grade"
+                aria-required="true"
                 className={`rw-input rw-select${form.grade ? '' : ' is-empty'}`}
                 value={form.grade}
                 onChange={(e) => set('grade', e.target.value)}
@@ -1203,6 +1190,7 @@ export function RegisterSection() {
             {form.grade === GRADE_OTHER && (
               <TextField
                 id="gradeOther"
+                required
                 label="ระบุระดับชั้น"
                 hint={<span className="font-mono">{cleanSingleLine(form.gradeOther).length}/{GRADE_OTHER_MAX}</span>}
                 span={6}

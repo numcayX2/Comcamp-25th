@@ -252,9 +252,23 @@ html[data-theme="dark"] {
   border-color: var(--hero-cta-hover-bg);
 }
 .hero__cta:hover svg { transform: translate(2px, -2px); }
+/* Registration open: the hero CTA is THE action on the page, so it takes the fern fill
+   (ink text, ~6.9:1). Before opening / when full it stays the quiet outline pill. */
+html[data-reg-open="true"] .hero__cta,
+html[data-reg-open="true"] .hero__cta:hover {
+  border-color: var(--fern-500);
+  background: var(--fern-500);
+  color: #121316;
+  font-weight: 600;
+}
+html[data-reg-open="true"] .hero__cta:hover { border-color: var(--fern-600); background: var(--fern-600); }
 
 .hero__link {
-  font-size: clamp(0.78rem, 1.1vh, 0.85rem);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  font-size: clamp(0.875rem, 1.2vh, 0.9375rem);
   color: var(--hero-ink-soft);
   text-decoration: underline;
   text-decoration-color: var(--hero-line-strong);
@@ -276,6 +290,7 @@ html[data-theme="dark"] {
   text-wrap: balance;
   max-width: 40ch;
 }
+.hero__proof > span:last-child { white-space: nowrap; }
 .hero__proof-sep { flex: none; width: 1px; align-self: stretch; min-height: 1em; background: var(--hero-line-strong); }
 /* Fee figure: the one number a visitor must see on entry. */
 .hero__fee{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:.15rem .65rem;margin:1rem 0 0;text-wrap:balance}
@@ -506,7 +521,7 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
     gap: clamp(0.75rem, 1.8vh, 1.35rem);
     min-height: 0;
   }
-  .hero__proof { justify-content: flex-start; text-align: left; margin-top: 1.1rem; }
+  .hero__proof { justify-content: flex-start; text-align: left; margin-top: 1.1rem; max-width: 40rem; }
   .hero__logo {
     width: clamp(5.25rem, 7vw, 7.25rem);
     margin-bottom: 0.15rem;
@@ -550,8 +565,8 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
   .hero__cta {
     padding: clamp(0.75rem, 1.35vh, 0.95rem) clamp(1.25rem, 1.5vw, 1.65rem);
     border-radius: 999px;
-    background: transparent;
   }
+  html:not([data-reg-open="true"]) .hero__cta { background: transparent; }
 
   .hero__stage-wrap {
     max-width: none;
