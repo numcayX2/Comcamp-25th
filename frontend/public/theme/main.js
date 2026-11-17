@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var OPEN_AT = '2026-11-18T00:00:00+07:00';
+  var OPEN_AT = '2026-11-19T09:00:00+07:00';
   var CLOSE_AT = '2026-12-18T23:59:59+07:00';
   var MAX = 30;
   var API_BASE = (typeof window !== 'undefined' && window.__CC25_API_BASE_URL__) || 'http://localhost:8000/api';
@@ -92,7 +92,7 @@
     failed: false,
     loading: true,
     explicitClosed: false,
-    syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at 00:00:00
+    syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at open time (09:00:00)
   };
 
   function formatCampFeeText(raw){
@@ -317,7 +317,7 @@
     checkMidnightResync();
   }
 
-  // Midnight Zero Jitter Buffer (AGENTS.md §8): when a pre-open countdown reaches 00:00:00, every
+  // Midnight Zero Jitter Buffer (AGENTS.md §8): when a pre-open countdown reaches the open time (09:00:00), every
   // open tab would re-fetch /api/settings/public in the same instant (thundering herd). Each tab
   // waits a random 200–2000 ms instead, and schedules at most one such re-fetch per pre-open sync.
   var midnightResyncScheduled = false;

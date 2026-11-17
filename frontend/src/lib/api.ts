@@ -15,7 +15,7 @@ export interface PublicSettings {
   isCertificateReleased?: boolean;
 }
 
-export const DEFAULT_TARGET_DATE = "2026-11-18T00:00:00+07:00";
+export const DEFAULT_TARGET_DATE = "2026-11-19T09:00:00+07:00";
 export const DEFAULT_CLOSE_DATE = "2026-12-18T23:59:59+07:00";
 
 export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {

@@ -78,7 +78,7 @@ type GateState = 'checking' | 'open' | 'pre_open' | 'full' | 'closed' | 'error';
 
 const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string; body: string }> = {
   pre_open: {
-    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 18 พ.ย. 2569 เวลา 00:00 น.',
+    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 19 พ.ย. 2569 เวลา 09:00 น.',
     body: 'แบบฟอร์มจะเปิดให้กรอกทันทีเมื่อถึงกำหนด ระหว่างนี้สามารถอ่านรายละเอียดค่ายและเตรียมข้อมูลส่วนตัวไว้ล่วงหน้าได้',
   },
   full: {
@@ -464,7 +464,7 @@ export function RegisterSection() {
         if (opensAt !== null && serverNow < opensAt && !settings.isOpen) {
           setGate('pre_open');
           setCountdownMs(Math.max(0, opensAt - serverNow));
-          // Students wait on this page for 00:00, and the copy promises the form opens by itself:
+          // Students wait on this page for 09:00, and the copy promises the form opens by itself:
           // re-check when the server's opening time arrives. The 200–2000 ms jitter keeps every
           // waiting tab from asking at the same instant (AGENTS.md §8, Midnight Zero Jitter Buffer).
           const jitter = 200 + Math.random() * 1800;
@@ -951,7 +951,7 @@ export function RegisterSection() {
                 <div>
                 <strong className="rw-rules__label">รับ <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง</strong>
                 <p>
-                  เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
+                  เปิดรับ <span className="font-mono tabular-nums">19</span> พ.ย. <span className="font-mono tabular-nums">09:00</span> น. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
                   <span className="font-mono tabular-nums">2569</span> · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
                 </p>
                 </div>

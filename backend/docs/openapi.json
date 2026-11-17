@@ -72,7 +72,7 @@
                 "schema": { "$ref": "#/components/schemas/PublicSettingsResponse" },
                 "example": {
                   "serverTime": "2026-11-04T05:00:00Z",
-                  "registrationOpenAt": "2026-11-18T00:00:00+07:00",
+                  "registrationOpenAt": "2026-11-19T09:00:00+07:00",
                   "registrationCloseAt": "2026-12-18T23:59:59+07:00",
                   "isOpen": false,
                   "currentCount": 0,
