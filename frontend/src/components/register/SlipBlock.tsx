@@ -1,6 +1,6 @@
 /**
  * Slip upload on the receipt (Step 06). It only ever renders after a successful submit, so nobody
- * can pay before the seat is secured (30-seat race). The same upload exists on /status for people
+ * can pay before the seat is secured (40-seat race). The same upload exists on /status for people
  * who pay later or whose slip was rejected. This block stays flat on the .rw-block flow: no card
  * inside the receipt card. The upload itself is the shared SlipUploadPanel.
  */

@@ -300,8 +300,8 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		if !settings.IsOpen {
 			t.Errorf("expected camp to be open in test")
 		}
-		if settings.MaxCapacity != 30 {
-			t.Errorf("expected max capacity 30, got %d", settings.MaxCapacity)
+		if settings.MaxCapacity != 40 {
+			t.Errorf("expected max capacity 40, got %d", settings.MaxCapacity)
 		}
 	})
 

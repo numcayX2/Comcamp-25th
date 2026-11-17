@@ -24,7 +24,7 @@ export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   registrationCloseAt: DEFAULT_CLOSE_DATE,
   isOpen: false,
   currentCount: 0,
-  maxCapacity: 30,
+  maxCapacity: 40,
   campFee: 1200,
   isCertificateReleased: false,
 };
@@ -690,7 +690,7 @@ const MOCK_ADMIN_SETTINGS: AdminSettings = {
   campName: 'ComCamp #25 (Mock)',
   registrationOpenAt: DEFAULT_TARGET_DATE,
   registrationCloseAt: DEFAULT_CLOSE_DATE,
-  maxCapacity: 30,
+  maxCapacity: 40,
   campFee: 1200,
   isManualClosed: false,
   updatedAt: new Date().toISOString(),

@@ -204,8 +204,8 @@ func TestSecurity_AdminSettingsQuota(t *testing.T) {
 	pub := app.do(t, http.MethodGet, "/api/settings/public", nil, nil)
 	var before domain.PublicSettingsResponse
 	_ = json.Unmarshal(pub.Body.Bytes(), &before)
-	if before.MaxCapacity != 30 {
-		t.Fatalf("default capacity: expected 30, got %d", before.MaxCapacity)
+	if before.MaxCapacity != 40 {
+		t.Fatalf("default capacity: expected 40, got %d", before.MaxCapacity)
 	}
 
 	for name, body := range map[string]string{

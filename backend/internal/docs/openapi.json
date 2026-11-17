@@ -76,7 +76,7 @@
                   "registrationCloseAt": "2026-12-18T23:59:59+07:00",
                   "isOpen": false,
                   "currentCount": 0,
-                  "maxCapacity": 30,
+                  "maxCapacity": 40,
                   "campFee": 1200.00,
                   "isCertificateReleased": false
                 }
@@ -90,7 +90,7 @@
       "post": {
         "tags": ["Applications"],
         "summary": "Submit New Application",
-        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 30 ที่นั่ง) ใครสมัครก่อนได้ก่อน: ใบสมัครที่ผ่านการตรวจโควตาจะมีสถานะ PASSED ทันที (ไม่ต้องรอพี่ค่าย) และอัปโหลดสลิปได้เลย ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask ระบบตรวจกำหนดการเปิด/ปิดรับสมัครก่อนเรียก Cloudflare Turnstile: ช่วงที่ปิดรับสมัครจะตอบ REGISTRATION_CLOSED โดยไม่เรียก Cloudflare และไม่ใช้ token ส่วน idempotency key ที่ส่งให้ Cloudflare ถูกผูกกับเลขบัตรประชาชนของใบสมัคร (UUID แบบ name-based จาก X-Idempotency-Key + nationalId) คู่ token กับ key ที่ใช้ไปแล้วจึงเอาไปใช้กับเลขบัตรอื่นไม่ได้",
+        "description": "ส่งแบบฟอร์มการรับสมัครใหม่ (ระบบจะตรวจสอบความถูกต้องของเลขบัตร 13 หลัก, เบอร์โทร 10 หลัก, และโควตา 40 ที่นั่ง) ใครสมัครก่อนได้ก่อน: ใบสมัครที่ผ่านการตรวจโควตาจะมีสถานะ PASSED ทันที (ไม่ต้องรอพี่ค่าย) และอัปโหลดสลิปได้เลย ส่ง X-Idempotency-Key เพื่อให้ส่งซ้ำได้อย่างปลอดภัย ผลลัพธ์เป็นข้อมูลแบบ mask ระบบตรวจกำหนดการเปิด/ปิดรับสมัครก่อนเรียก Cloudflare Turnstile: ช่วงที่ปิดรับสมัครจะตอบ REGISTRATION_CLOSED โดยไม่เรียก Cloudflare และไม่ใช้ token ส่วน idempotency key ที่ส่งให้ Cloudflare ถูกผูกกับเลขบัตรประชาชนของใบสมัคร (UUID แบบ name-based จาก X-Idempotency-Key + nationalId) คู่ token กับ key ที่ใช้ไปแล้วจึงเอาไปใช้กับเลขบัตรอื่นไม่ได้",
         "parameters": [
           {
             "name": "X-Idempotency-Key",
@@ -156,7 +156,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } }
           },
           "409": {
-            "description": "code QUOTA_FULL = ครบโควตา 30 ที่นั่ง, code DUPLICATE_APPLICATION = เลขบัตร/เบอร์/อีเมลนี้สมัครแล้ว",
+            "description": "code QUOTA_FULL = ครบโควตา 40 ที่นั่ง, code DUPLICATE_APPLICATION = เลขบัตร/เบอร์/อีเมลนี้สมัครแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -755,7 +755,7 @@
           "registrationCloseAt": { "type": "string", "format": "date-time" },
           "isOpen": { "type": "boolean" },
           "currentCount": { "type": "integer", "example": 15 },
-          "maxCapacity": { "type": "integer", "example": 30 },
+          "maxCapacity": { "type": "integer", "example": 40 },
           "campFee": { "type": "number", "example": 1200.00 },
           "isCertificateReleased": { "type": "boolean", "example": false }
         }

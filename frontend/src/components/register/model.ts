@@ -4,7 +4,7 @@
  */
 import { stripZeroWidth, type ApplicationPayload, type ShirtSize } from '../../lib/api';
 
-export const SEATS = 30;
+export const SEATS = 40;
 /**
  * Official confirmed camp fee in THB.
  * /register and /status read settings.campFee dynamically; FEE_TEXT is the offline fallback.

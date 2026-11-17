@@ -503,7 +503,7 @@ func NewMemorySettingRepo() *MemorySettingRepo {
 			CampName:            "ComCamp 25th",
 			RegistrationOpenAt:  openAt,
 			RegistrationCloseAt: closeAt,
-			MaxCapacity:         30,
+			MaxCapacity:         40,
 			CampFee:             decimal.NewFromFloat(1200.00),
 			IsManualClosed:      false,
 			UpdatedAt:           now,
