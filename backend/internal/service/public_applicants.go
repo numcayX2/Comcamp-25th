@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -77,8 +78,10 @@ func (s *ApplicantService) ListPublicApplicants(ctx context.Context) (*PublicApp
 	}
 	c.mu.RUnlock()
 
-	ch := c.group.DoChan("public-list", func() (any, error) {
-		startVer := c.ver.Load()
+	// The flight is keyed by the cache version, so a caller arriving after an invalidation starts
+	// a fresh read instead of joining one that began before the change.
+	startVer := c.ver.Load()
+	ch := c.group.DoChan("public-list-"+strconv.FormatUint(startVer, 10), func() (any, error) {
 		qCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 

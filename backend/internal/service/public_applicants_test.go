@@ -156,12 +156,13 @@ func TestListPublicApplicants_InvalidationDuringInFlightReadIsNotCached(t *testi
 
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	var once sync.Once
+	// Only the first read blocks (not sync.Once: its Do would also block every later caller).
+	var first atomic.Bool
 	f.repo.hook = func() {
-		once.Do(func() {
+		if first.CompareAndSwap(false, true) {
 			close(entered)
 			<-release
-		})
+		}
 	}
 	done := make(chan struct{})
 	go func() {
@@ -172,6 +173,22 @@ func TestListPublicApplicants_InvalidationDuringInFlightReadIsNotCached(t *testi
 	// Staff change the status while the read above is still running.
 	if _, err := f.svc.UpdateStatus(context.Background(), a.ApplicationNo, domain.StatusConfirmed, nil, "test", "127.0.0.1"); err != nil {
 		t.Fatal(err)
+	}
+	// A caller arriving after the change must not join the read that started before it (that read
+	// is still blocked here, so joining it would hang).
+	fresh := make(chan *service.PublicApplicantsResponse, 1)
+	go func() {
+		res, _ := f.svc.ListPublicApplicants(context.Background())
+		fresh <- res
+	}()
+	select {
+	case res := <-fresh:
+		if res == nil || len(res.Applicants) != 1 || res.Applicants[0].Status != "ยืนยันสิทธิ์แล้ว" {
+			t.Errorf("a read started after the change returned stale rows: %+v", res)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("a read started after the change joined the stale in-flight read")
 	}
 	close(release)
 	<-done
