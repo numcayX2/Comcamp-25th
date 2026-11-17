@@ -44,12 +44,13 @@ const (
 // review (no admin). The replaced slip's row and file are deleted.
 const AuditSlipSuperseded AuditAction = "payment.slip.superseded"
 
-// Public identity-check events (AGENTS.md §13.5), written without an admin.
+// Application-code guessing events (AGENTS.md §13.5, service.CodeGuard), written without an admin.
 const (
-	// AuditVerifyFailure is a repeated wrong verifyCode / nationalId for one application.
-	AuditVerifyFailure AuditAction = "application.verify.failure"
-	// AuditVerifyLockout is the wrong answer that locked the application for 15 minutes.
-	AuditVerifyLockout AuditAction = "application.verify.lockout"
+	// AuditCodeGuessLockout is one client (IP, or IPv6 /64) refused for a while after naming too many
+	// application codes that do not exist.
+	AuditCodeGuessLockout AuditAction = "application.code.lockout"
+	// AuditCodeGuessCeiling is the unknown codes of all clients together reaching a global ceiling.
+	AuditCodeGuessCeiling AuditAction = "application.code.ceiling"
 )
 
 // AuditEntry is one row of the append-only audit_logs table.

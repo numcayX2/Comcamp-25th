@@ -12,8 +12,8 @@ import (
 func TestSlipHash_RejectedSlipCanBeSentAgain(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	mine := app.submit(t, validTestNationalID(85_001), "0885000001", "re1@example.com")
-	other := app.submit(t, validTestNationalID(85_002), "0885000002", "re2@example.com")
+	mine := app.submit(t, "0885000001", "re1@example.com")
+	other := app.submit(t, "0885000002", "re2@example.com")
 	img := uniqueSlip(777)
 
 	if rec := app.uploadSlip(t, mine.ID, "slip.jpg", img); rec.Code != http.StatusOK {

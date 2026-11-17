@@ -124,7 +124,7 @@ func wantCode(t *testing.T, rec *httptest.ResponseRecorder, status int, code str
 // waiting for a staff status change.
 func TestFCFS_SlipUploadRightAfterSubmit(t *testing.T) {
 	app := setupTestApp(t)
-	created := app.submit(t, validTestNationalID(101), "0810000101", "fcfs@example.com")
+	created := app.submit(t, "0810000101", "fcfs@example.com")
 	if created.Status != domain.StatusPassed {
 		t.Fatalf("new application should be PASSED, got %s", created.Status)
 	}
@@ -149,9 +149,9 @@ func TestRefundStatuses_ReleaseSeatAndGuardReactivation(t *testing.T) {
 	token := app.login(t)
 	app.setCapacity(t, 1)
 
-	a := app.submit(t, validTestNationalID(111), "0810000111", "ra@example.com")
+	a := app.submit(t, "0810000111", "ra@example.com")
 	// The camp is full: the next student is refused.
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(112), "0810000112", "rb@example.com"), nil)
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("0810000112", "rb@example.com"), nil)
 	wantCode(t, rec, http.StatusConflict, response.CodeQuotaFull)
 	if got := app.publicCount(t); got != 1 {
 		t.Fatalf("count should be 1, got %d", got)
@@ -170,7 +170,7 @@ func TestRefundStatuses_ReleaseSeatAndGuardReactivation(t *testing.T) {
 	}
 
 	// Someone else takes the freed seat.
-	b := app.submit(t, validTestNationalID(112), "0810000112", "rb@example.com")
+	b := app.submit(t, "0810000112", "rb@example.com")
 	if got := app.publicCount(t); got != 1 {
 		t.Fatalf("count should be 1 again, got %d", got)
 	}
@@ -192,7 +192,7 @@ func TestRefundStatuses_ReleaseSeatAndGuardReactivation(t *testing.T) {
 	}
 
 	// Once B leaves, there is room again.
-	wantStatus(t, app.withdraw(t, b.ID, app.nationalIDs[b.ID]), http.StatusOK)
+	wantStatus(t, app.withdraw(t, b.ID), http.StatusOK)
 	wantCode(t, app.patchStatus(t, token, a.ID, domain.StatusPassed), http.StatusOK, "")
 	if got := app.publicCount(t); got != 1 {
 		t.Fatalf("count should be 1 after the restore, got %d", got)
@@ -205,11 +205,11 @@ func TestRefundStatuses_ConcurrentRestoresRespectQuota(t *testing.T) {
 	token := app.login(t)
 	app.setCapacity(t, 2)
 
-	a := app.submit(t, validTestNationalID(121), "0810000121", "c1@example.com")
-	b := app.submit(t, validTestNationalID(122), "0810000122", "c2@example.com")
+	a := app.submit(t, "0810000121", "c1@example.com")
+	b := app.submit(t, "0810000122", "c2@example.com")
 	wantCode(t, app.patchStatus(t, token, a.ID, domain.StatusRefunded), http.StatusOK, "")
 	wantCode(t, app.patchStatus(t, token, b.ID, domain.StatusRefunded), http.StatusOK, "")
-	app.submit(t, validTestNationalID(123), "0810000123", "c3@example.com") // takes one of the two freed seats
+	app.submit(t, "0810000123", "c3@example.com") // takes one of the two freed seats
 
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
@@ -246,9 +246,9 @@ func TestWithdraw_BlockedWhenMoneyOrRefundIsInvolved(t *testing.T) {
 	token := app.login(t)
 
 	// A slip is waiting for review: the applicant cannot make the row disappear.
-	withSlip := app.submit(t, validTestNationalID(131), "0810000131", "w1@example.com")
+	withSlip := app.submit(t, "0810000131", "w1@example.com")
 	wantCode(t, app.uploadSlip(t, withSlip.ID, "s.jpg", uniqueSlip(1)), http.StatusOK, "")
-	wantStatus(t, app.withdraw(t, withSlip.ID, app.nationalIDs[withSlip.ID]), http.StatusConflict)
+	wantStatus(t, app.withdraw(t, withSlip.ID), http.StatusConflict)
 	if got := app.status(t, withSlip.ID); got.Status != domain.StatusPassed || !got.HasSlip {
 		t.Fatalf("a blocked withdrawal must leave the application untouched, got %+v", got)
 	}
@@ -256,19 +256,19 @@ func TestWithdraw_BlockedWhenMoneyOrRefundIsInvolved(t *testing.T) {
 	// Closed applications cannot be withdrawn either: staff own the refund from here.
 	for i, st := range []domain.ApplicationStatus{domain.StatusRefundPending, domain.StatusRefunded, domain.StatusRejected} {
 		n := 140 + i
-		c := app.submit(t, validTestNationalID(n), fmt.Sprintf("08100001%02d", n%100), fmt.Sprintf("w%d@example.com", n))
+		c := app.submit(t, fmt.Sprintf("08100001%02d", n%100), fmt.Sprintf("w%d@example.com", n))
 		wantCode(t, app.patchStatus(t, token, c.ID, st), http.StatusOK, "")
-		wantStatus(t, app.withdraw(t, c.ID, app.nationalIDs[c.ID]), http.StatusConflict)
+		wantStatus(t, app.withdraw(t, c.ID), http.StatusConflict)
 		if app.status(t, c.ID).Status != st {
 			t.Fatalf("%s application must survive a withdrawal attempt", st)
 		}
 	}
 
 	// A slip staff already rejected is not money held: that applicant may still withdraw.
-	rejected := app.submit(t, validTestNationalID(150), "0810000150", "w150@example.com")
+	rejected := app.submit(t, "0810000150", "w150@example.com")
 	wantCode(t, app.uploadSlip(t, rejected.ID, "s.jpg", uniqueSlip(2)), http.StatusOK, "")
 	wantCode(t, app.verifySlip(t, token, rejected.ID, false), http.StatusOK, "")
-	wantStatus(t, app.withdraw(t, rejected.ID, app.nationalIDs[rejected.ID]), http.StatusOK)
+	wantStatus(t, app.withdraw(t, rejected.ID), http.StatusOK)
 }
 
 func TestVerifySlip_BlockedForRefundedOrRejectedApplications(t *testing.T) {
@@ -277,7 +277,7 @@ func TestVerifySlip_BlockedForRefundedOrRejectedApplications(t *testing.T) {
 
 	for i, st := range []domain.ApplicationStatus{domain.StatusRefundPending, domain.StatusRefunded, domain.StatusRejected} {
 		n := 160 + i
-		c := app.submit(t, validTestNationalID(n), fmt.Sprintf("08100001%02d", n%100), fmt.Sprintf("v%d@example.com", n))
+		c := app.submit(t, fmt.Sprintf("08100001%02d", n%100), fmt.Sprintf("v%d@example.com", n))
 		wantCode(t, app.uploadSlip(t, c.ID, "s.jpg", uniqueSlip(10+i)), http.StatusOK, "")
 		wantCode(t, app.patchStatus(t, token, c.ID, st), http.StatusOK, "")
 
@@ -301,24 +301,22 @@ func TestVerifySlip_BlockedForRefundedOrRejectedApplications(t *testing.T) {
 // ── applicant's own profile edit (disabled, staff-only since Phase 2.3) ────
 
 // The public PATCH /api/applications/{id}/profile route stays registered behind its rate limiter
-// but refuses every request with 403 FORBIDDEN: it never reads the body into the DB, never
-// consumes VerifyGuard attempts and never writes an audit row. Corrections go through staff.
+// but refuses every request with 403 FORBIDDEN: it never reads the body into the DB, never counts
+// towards the application-code guard and never writes an audit row. Corrections go through staff.
 func TestSelfProfileEdit_IsDisabled(t *testing.T) {
 	app := setupRelaxedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(171), "0810000171", "p1@example.com")
-	code := app.verifyCodes[created.ID]
+	created := app.submit(t, "0810000171", "p1@example.com")
 	orig := app.adminView(t, token, created.ID)
-	valid := fmt.Sprintf(`{"verifyCode":%q,"nickname":"ชาย","school":"โรงเรียนใหม่","province":"ลำปาง","grade":"ม.6","shirtSize":"M"}`, code)
-	wrong := app.wrongCode(created.ID)
+	valid := `{"nickname":"ชาย","school":"โรงเรียนใหม่","province":"ลำปาง","grade":"ม.6","shirtSize":"M"}`
 
 	t.Run("every request is refused with 403 FORBIDDEN and a Thai message", func(t *testing.T) {
 		bodies := []string{
 			valid,
 			`{}`,
 			`not json at all`,
-			strings.Replace(valid, code, wrong, 1),
-			fmt.Sprintf(`{"verifyCode":%q,"fullName":"คนอื่น ที่ต่าง"}`, code),
+			`{"verifyCode":"0000","nickname":"x"}`,
+			`{"fullName":"คนอื่น ที่ต่าง"}`,
 		}
 		for _, body := range bodies {
 			rec := app.selfEdit(t, created.ID, body)
@@ -329,6 +327,7 @@ func TestSelfProfileEdit_IsDisabled(t *testing.T) {
 		}
 		// An unknown application is no longer distinguishable from a known one.
 		wantCode(t, app.selfEdit(t, "CC25-NOPE00", valid), http.StatusForbidden, response.CodeForbidden)
+		wantCode(t, app.selfEdit(t, "CC25-000000", valid), http.StatusForbidden, response.CodeForbidden)
 	})
 
 	t.Run("nothing changes and nothing is audited", func(t *testing.T) {
@@ -340,17 +339,17 @@ func TestSelfProfileEdit_IsDisabled(t *testing.T) {
 		if n := len(auditEntries(app, domain.AuditProfileUpdateSelf, created.ID)); n != 0 {
 			t.Fatalf("expected no self-edit audit rows, got %d", n)
 		}
-		if n := len(app.auditFor(created.ID, domain.AuditVerifyFailure)) + len(app.auditFor(created.ID, domain.AuditVerifyLockout)); n != 0 {
-			t.Fatalf("a refused edit must not write verify audit rows, got %d", n)
+		if n := len(app.auditOf(domain.AuditCodeGuessLockout)) + len(app.auditOf(domain.AuditCodeGuessCeiling)); n != 0 {
+			t.Fatalf("a refused edit must not write code-guard audit rows, got %d", n)
 		}
 	})
 
-	t.Run("wrong codes do not consume VerifyGuard attempts", func(t *testing.T) {
-		for i := 0; i < service.MaxVerifyFailures+2; i++ {
-			wantCode(t, app.selfEdit(t, created.ID, strings.Replace(valid, code, wrong, 1)), http.StatusForbidden, response.CodeForbidden)
+	t.Run("unknown codes on the disabled route do not count towards the code guard", func(t *testing.T) {
+		for i := 0; i < service.CodeClientMaxMisses+2; i++ {
+			wantCode(t, app.selfEdit(t, fmt.Sprintf("CC25-%06X", 0xA00000+i), valid), http.StatusForbidden, response.CodeForbidden)
 		}
 		// The applicant is not locked out of the other self-service endpoints.
-		wantCode(t, app.confirmWith(t, created.ID, code), http.StatusOK, "")
+		wantCode(t, app.confirmWith(t, created.ID), http.StatusOK, "")
 	})
 
 	t.Run("closed and confirmed applications get the same answer", func(t *testing.T) {
@@ -378,8 +377,8 @@ func TestSelfProfileEdit_IsDisabled(t *testing.T) {
 func TestAdminProfileEdit(t *testing.T) {
 	app := setupRelaxedApp(t)
 	token := app.login(t)
-	a := app.submit(t, validTestNationalID(181), "0810000181", "a@example.com")
-	b := app.submit(t, validTestNationalID(182), "0810000182", "b@example.com")
+	a := app.submit(t, "0810000181", "a@example.com")
+	b := app.submit(t, "0810000182", "b@example.com")
 
 	t.Run("requires staff authentication", func(t *testing.T) {
 		wantCode(t, app.do(t, http.MethodPatch, "/api/admin/applications/"+a.ID+"/profile", bytes.NewBufferString(`{"nickname":"x"}`), nil), http.StatusUnauthorized, "")
@@ -389,8 +388,6 @@ func TestAdminProfileEdit(t *testing.T) {
 
 	t.Run("full validation", func(t *testing.T) {
 		for name, body := range map[string]string{
-			"bad national id":   `{"nationalId":"1234567890123"}`,
-			"short national":    `{"nationalId":"150990000"}`,
 			"bad phone":         `{"phone":"0912"}`,
 			"phone not zero":    `{"phone":"1234567890"}`,
 			"bad email":         `{"email":"not-an-email"}`,
@@ -409,17 +406,17 @@ func TestAdminProfileEdit(t *testing.T) {
 				wantCode(t, app.adminEdit(t, token, a.ID, body), http.StatusBadRequest, response.CodeValidation)
 			})
 		}
-		if got := app.adminView(t, token, a.ID); got.NationalID != validTestNationalID(181) || got.Phone != "0810000181" {
+		if got := app.adminView(t, token, a.ID); got.Phone != "0810000181" || got.Email != "a@example.com" {
 			t.Fatalf("rejected edits must not change anything: %+v", got)
 		}
 	})
 
 	t.Run("duplicates with another live applicant are a clean 409", func(t *testing.T) {
 		for name, body := range map[string]string{
-			"national id": fmt.Sprintf(`{"nationalId":%q}`, validTestNationalID(182)),
-			"phone":       `{"phone":"0810000182"}`,
-			"email":       `{"email":"b@example.com"}`,
-			"formatted":   `{"phone":"081-000-0182"}`,
+			"phone":          `{"phone":"0810000182"}`,
+			"email":          `{"email":"b@example.com"}`,
+			"email any case": `{"email":"B@Example.COM"}`,
+			"formatted":      `{"phone":"081-000-0182"}`,
 		} {
 			t.Run(name, func(t *testing.T) {
 				wantCode(t, app.adminEdit(t, token, a.ID, body), http.StatusConflict, response.CodeDuplicateApp)
@@ -428,7 +425,7 @@ func TestAdminProfileEdit(t *testing.T) {
 	})
 
 	t.Run("keeping the applicant's own identifiers is fine", func(t *testing.T) {
-		body := fmt.Sprintf(`{"nationalId":%q,"phone":"0810000181","email":"a@example.com","nickname":"เปลี่ยนชื่อเล่น"}`, validTestNationalID(181))
+		body := `{"phone":"0810000181","email":"a@example.com","nickname":"เปลี่ยนชื่อเล่น"}`
 		wantCode(t, app.adminEdit(t, token, a.ID, body), http.StatusOK, "")
 		if got := app.adminView(t, token, a.ID).Nickname; got != "เปลี่ยนชื่อเล่น" {
 			t.Fatalf("nickname not saved: %s", got)
@@ -436,31 +433,34 @@ func TestAdminProfileEdit(t *testing.T) {
 	})
 
 	t.Run("full edit is saved, unmasked and audited", func(t *testing.T) {
-		newID := validTestNationalID(191)
-		body := fmt.Sprintf(`{"fullName":"สมศักดิ์ ใจดี","nickname":"ศักดิ์","nationalId":%q,"phone":"0810000191","email":"New@Example.com","school":"โรงเรียนใหม่","province":"ลำพูน","grade":"ปวช.2","shirtSize":"3XL","motivation":"แก้ไขโดยพี่ค่าย","allergies":"แพ้อาหารทะเล","medicalConditions":"หอบหืด","reason":"ผู้ปกครองแจ้งแก้ไขเลขบัตร"}`, newID)
+		// A nationalId field from an outdated admin page is ignored.
+		body := `{"fullName":"สมศักดิ์ ใจดี","nickname":"ศักดิ์","nationalId":"1509900112233","phone":"0810000191","email":"New@Example.com","school":"โรงเรียนใหม่","province":"ลำพูน","grade":"ปวช.2","shirtSize":"3XL","motivation":"แก้ไขโดยพี่ค่าย","allergies":"แพ้อาหารทะเล","medicalConditions":"หอบหืด","reason":"ผู้ปกครองแจ้งแก้ไขเบอร์โทร"}`
 		rec := app.adminEdit(t, token, a.ID, body)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
 		}
 		var res service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &res)
-		if res.FullName != "สมศักดิ์ ใจดี" || res.NationalID != newID || res.Phone != "0810000191" || res.Email != "new@example.com" ||
+		if strings.Contains(rec.Body.String(), "1509900112233") || strings.Contains(rec.Body.String(), "nationalId") {
+			t.Fatalf("the ignored national ID must not come back: %s", rec.Body.String())
+		}
+		if res.FullName != "สมศักดิ์ ใจดี" || res.Phone != "0810000191" || res.Email != "new@example.com" ||
 			res.Grade != "ปวช.2" || res.ShirtSize != "3XL" || res.Motivation != "แก้ไขโดยพี่ค่าย" || res.Province != "ลำพูน" ||
 			res.Allergies != "แพ้อาหารทะเล" || res.MedicalConditions != "หอบหืด" {
 			t.Fatalf("unexpected admin response (must be unmasked): %+v", res)
 		}
-		// The public lookup follows the new identifiers without leaking health notes or motivation.
-		pubRec := app.do(t, http.MethodGet, "/api/applications/status?q="+newID, nil, nil)
+		// The public lookup follows the new phone without leaking health notes or motivation.
+		pubRec := app.do(t, http.MethodGet, "/api/applications/status?q=0810000191", nil, nil)
 		if pubRec.Code != http.StatusOK {
-			t.Fatalf("lookup by the new national ID should work, got %d", pubRec.Code)
+			t.Fatalf("lookup by the new phone should work, got %d", pubRec.Code)
 		}
 		for _, leaked := range []string{"allergies", "medicalConditions", "แพ้อาหารทะเล", "หอบหืด", "motivation"} {
 			if strings.Contains(pubRec.Body.String(), leaked) {
 				t.Fatalf("public status lookup must not leak %q: %s", leaked, pubRec.Body.String())
 			}
 		}
-		if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+validTestNationalID(181), nil, nil); rec.Code != http.StatusNotFound {
-			t.Fatalf("the old national ID should no longer match, got %d", rec.Code)
+		if rec := app.do(t, http.MethodGet, "/api/applications/status?q=0810000181", nil, nil); rec.Code != http.StatusNotFound {
+			t.Fatalf("the old phone should no longer match, got %d", rec.Code)
 		}
 
 		entries := auditEntries(app, domain.AuditProfileUpdate, a.ID)
@@ -471,11 +471,14 @@ func TestAdminProfileEdit(t *testing.T) {
 		if last.AdminID == nil || *last.AdminID != app.adminID {
 			t.Fatalf("audit entry must carry the admin id, got %v", last.AdminID)
 		}
-		if last.IPAddress == "" || last.Details["reason"] != "ผู้ปกครองแจ้งแก้ไขเลขบัตร" {
+		if last.IPAddress == "" || last.Details["reason"] != "ผู้ปกครองแจ้งแก้ไขเบอร์โทร" {
 			t.Fatalf("audit entry needs the IP and reason, got %+v", last)
 		}
 		changes, _ := last.Details["changes"].(map[string]map[string]string)
-		if changes["nationalId"]["old"] != validTestNationalID(181) || changes["nationalId"]["new"] != newID || changes["grade"]["new"] != "ปวช.2" {
+		if _, ok := changes["nationalId"]; ok {
+			t.Fatalf("there is no national ID to change any more: %+v", changes)
+		}
+		if changes["phone"]["old"] != "0810000181" || changes["phone"]["new"] != "0810000191" || changes["grade"]["new"] != "ปวช.2" {
 			t.Fatalf("audit changes should list old -> new, got %+v", last.Details["changes"])
 		}
 	})
@@ -484,14 +487,14 @@ func TestAdminProfileEdit(t *testing.T) {
 		before := app.adminView(t, token, a.ID)
 		wantCode(t, app.adminEdit(t, token, a.ID, `{"school":"เฉพาะโรงเรียน"}`), http.StatusOK, "")
 		after := app.adminView(t, token, a.ID)
-		if after.School != "เฉพาะโรงเรียน" || after.FullName != before.FullName || after.NationalID != before.NationalID || after.Motivation != before.Motivation {
+		if after.School != "เฉพาะโรงเรียน" || after.FullName != before.FullName || after.Phone != before.Phone || after.Motivation != before.Motivation {
 			t.Fatalf("partial edit changed other fields: before %+v after %+v", before, after)
 		}
 	})
 
 	t.Run("a deleted applicant's identifiers are free again", func(t *testing.T) {
 		wantCode(t, app.do(t, http.MethodDelete, "/api/admin/applications/"+b.ID, nil, bearer(token)), http.StatusOK, "")
-		body := fmt.Sprintf(`{"nationalId":%q,"phone":"0810000182","email":"b@example.com"}`, validTestNationalID(182))
+		body := `{"phone":"0810000182","email":"b@example.com"}`
 		wantCode(t, app.adminEdit(t, token, a.ID, body), http.StatusOK, "")
 	})
 
@@ -505,7 +508,7 @@ func TestAdminProfileEdit(t *testing.T) {
 func TestProfileEndpoints_BodyCap(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(201), "0810000201", "cap@example.com")
+	created := app.submit(t, "0810000201", "cap@example.com")
 	huge := `{"nickname":"` + strings.Repeat("ก", 200_000) + `"}`
 	wantCode(t, app.selfEdit(t, created.ID, huge), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge)
 	wantCode(t, app.adminEdit(t, token, created.ID, huge), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge)
@@ -514,12 +517,8 @@ func TestProfileEndpoints_BodyCap(t *testing.T) {
 // The disabled public edit route stays behind its rate limiter, so it cannot be hammered.
 func TestSelfProfileEdit_IsRateLimited(t *testing.T) {
 	app := setupTestApp(t)
-	created := app.submit(t, validTestNationalID(211), "0810000211", "rl@example.com")
-	wrong := "0000"
-	if app.verifyCodes[created.ID] == wrong {
-		wrong = "1111"
-	}
-	body := fmt.Sprintf(`{"verifyCode":%q,"nickname":"a","school":"b","province":"c","grade":"ม.6","shirtSize":"M"}`, wrong)
+	created := app.submit(t, "0810000211", "rl@example.com")
+	body := `{"nickname":"a","school":"b","province":"c","grade":"ม.6","shirtSize":"M"}`
 	limited := 0
 	for i := 0; i < 30; i++ {
 		rec := app.selfEdit(t, created.ID, body)
@@ -532,7 +531,7 @@ func TestSelfProfileEdit_IsRateLimited(t *testing.T) {
 		}
 	}
 	if limited == 0 {
-		t.Fatal("30 wrong-code attempts in a row must hit the rate limiter")
+		t.Fatal("30 attempts in a row must hit the rate limiter")
 	}
 }
 
@@ -540,11 +539,7 @@ func TestHealthNotesRegistrationAndPrivacy(t *testing.T) {
 	app := setupRelaxedApp(t)
 	token := app.login(t)
 
-	id := validTestNationalID(221)
-	payload := fmt.Sprintf(
-		`{"fullName":"สมหญิง ใจดี","nickname":"หญิง","nationalId":%q,"phone":"0810000221","email":"ying.health@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"อยากทำ IoT","allergies":"  แพ้กุ้ง​และปู  ","medicalConditions":"  หอบหืด ต้องพกยาพ่น  "}`,
-		id,
-	)
+	payload := `{"fullName":"สมหญิง ใจดี","nickname":"หญิง","phone":"0810000221","email":"ying.health@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"อยากทำ IoT","allergies":"  แพ้กุ้ง\u200bและปู  ","medicalConditions":"  หอบหืด ต้องพกยาพ่น  "}`
 	rec := app.do(t, http.MethodPost, "/api/applications", strings.NewReader(payload), map[string]string{
 		"Idempotency-Key": "660e8400-e29b-41d4-a716-446655440221",
 	})
@@ -567,8 +562,7 @@ func TestHealthNotesRegistrationAndPrivacy(t *testing.T) {
 
 	// Oversized allergies (>500 runes) must fail cleanly with 400.
 	tooLong := fmt.Sprintf(
-		`{"fullName":"สมชาย ยาว","nickname":"ยาว","nationalId":%q,"phone":"0810000222","email":"long222@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"","allergies":%q}`,
-		validTestNationalID(222),
+		`{"fullName":"สมชาย ยาว","nickname":"ยาว","phone":"0810000222","email":"long222@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"","allergies":%q}`,
 		strings.Repeat("ก", 501),
 	)
 	wantCode(t, app.do(t, http.MethodPost, "/api/applications", strings.NewReader(tooLong), map[string]string{

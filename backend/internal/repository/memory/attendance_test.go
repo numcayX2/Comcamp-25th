@@ -34,7 +34,7 @@ func TestMemory_UpdateAttendanceGuardsStatusAndAudits(t *testing.T) {
 	ctx := context.Background()
 	repo := memory.NewMemoryApplicantRepo()
 
-	a := &domain.Applicant{ID: uuid.New(), ApplicationNo: "CC25-ATT001", NationalID: "1100000000001", Phone: "0800000001", Status: domain.StatusPassed}
+	a := &domain.Applicant{ID: uuid.New(), ApplicationNo: "CC25-ATT001", Phone: "0800000001", Status: domain.StatusPassed}
 	if err := repo.Create(ctx, a); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestMemory_UpdateAttendanceGuardsStatusAndAudits(t *testing.T) {
 	// Every other status is refused and nothing changes.
 	before := countAttendanceAudits(repo)
 	for _, s := range []domain.ApplicationStatus{domain.StatusPending, domain.StatusRejected, domain.StatusRefundPending, domain.StatusRefunded} {
-		b := &domain.Applicant{ID: uuid.New(), ApplicationNo: "CC25-ATT-" + string(s), NationalID: "12" + uuid.NewString()[:11], Phone: "08" + uuid.NewString()[:8], Status: s}
+		b := &domain.Applicant{ID: uuid.New(), ApplicationNo: "CC25-ATT-" + string(s), Phone: "08" + uuid.NewString()[:8], Status: s}
 		if err := repo.Create(ctx, b); err != nil {
 			t.Fatal(err)
 		}

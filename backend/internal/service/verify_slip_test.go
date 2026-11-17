@@ -24,7 +24,6 @@ func TestVerifySlip_RequiresValidPaymentID(t *testing.T) {
 	a := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: "CC25-AA1122",
-		NationalID:    "1100500000018",
 		FirstName:     "ทดสอบ",
 		LastName:      "ระบบ",
 		Nickname:      "สอบ",
@@ -94,7 +93,6 @@ func TestVerifySlip_ReverifyApprovedAndRejected(t *testing.T) {
 	a := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: "CC25-BB2233",
-		NationalID:    validTestNationalID(5001),
 		FirstName:     "ทดสอบ",
 		LastName:      "ตรวจซ้ำ",
 		Nickname:      "ซ้ำ",
@@ -109,7 +107,6 @@ func TestVerifySlip_ReverifyApprovedAndRejected(t *testing.T) {
 	other := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: "CC25-BB2234",
-		NationalID:    validTestNationalID(5002),
 		FirstName:     "ทดสอบ",
 		LastName:      "อีกคน",
 		Nickname:      "อีก",

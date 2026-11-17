@@ -6,12 +6,24 @@ import "strings"
 // status API is reachable by anyone who knows a phone number, so hiding digits only in the UI
 // would still leak them in the JSON.
 
-// MaskNationalID renders 1509900112233 as 1-5099-XXXXX-XX-X.
-func MaskNationalID(id string) string {
-	if len(id) != 13 || !isNumeric(id) {
-		return "X-XXXX-XXXXX-XX-X"
+// MaskName keeps the first character of each name part: "สมชาย", "ใจดี" → "ส*** ใ***". It is the
+// name shown to someone who looked an application up by phone number only.
+func MaskName(first, last string) string {
+	part := func(s string) string {
+		r := []rune(strings.TrimSpace(s))
+		if len(r) == 0 {
+			return ""
+		}
+		return string(r[0]) + "***"
 	}
-	return id[0:1] + "-" + id[1:5] + "-XXXXX-XX-X"
+	f, l := part(first), part(last)
+	switch {
+	case f == "":
+		return l
+	case l == "":
+		return f
+	}
+	return f + " " + l
 }
 
 // MaskPhone renders 0812345678 as XXX-XXX-5678.

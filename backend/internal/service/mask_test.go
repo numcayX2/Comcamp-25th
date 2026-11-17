@@ -4,8 +4,11 @@ import "testing"
 
 func TestMasking(t *testing.T) {
 	cases := []struct{ got, want string }{
-		{MaskNationalID("1509900112233"), "1-5099-XXXXX-XX-X"},
-		{MaskNationalID("123"), "X-XXXX-XXXXX-XX-X"},
+		{MaskName("สมชาย", "ใจดี"), "ส*** ใ***"},
+		{MaskName("เกียรติ", ""), "เ***"},
+		{MaskName("", "ใจดี"), "ใ***"},
+		{MaskName(" ", " "), ""},
+		{MaskName("Somchai", "Jaidee"), "S*** J***"},
 		{MaskPhone("0812345678"), "XXX-XXX-5678"},
 		{MaskPhone("12"), "XXX-XXX-XXXX"},
 		{MaskEmail("somchai@example.com"), "s***@example.com"},

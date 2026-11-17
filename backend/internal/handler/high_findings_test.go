@@ -15,48 +15,49 @@ import (
 	"github.com/google/uuid"
 
 	"comcamp25-backend/internal/domain"
-	"comcamp25-backend/internal/service"
 )
 
 // ---------------------------------------------------------------------------------------------
-// Cross-endpoint PII: only RoleAdmin may access admin endpoints and read raw national IDs
+// Cross-endpoint PII: only RoleAdmin may access admin endpoints (and the full phone and email)
 // ---------------------------------------------------------------------------------------------
 
-// adminListIDs returns application ID -> nationalId as the given token sees it.
-func (a *testApp) adminListIDs(t *testing.T, token, query string) (map[string]string, string) {
+// adminListPhones returns application ID -> phone as the given token sees it.
+func (a *testApp) adminListPhones(t *testing.T, token, query string) (map[string]string, string) {
 	t.Helper()
 	rec := a.do(t, http.MethodGet, "/api/admin/applications"+query, nil, bearer(token))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("admin list: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	var list []struct {
-		ID         string `json:"id"`
-		NationalID string `json:"nationalId"`
+		ID    string `json:"id"`
+		Phone string `json:"phone"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
 	out := map[string]string{}
 	for _, x := range list {
-		out[x.ID] = x.NationalID
+		out[x.ID] = x.Phone
 	}
 	return out, rec.Body.String()
 }
 
-func TestAdminList_NationalIDIsVisibleToAdminAndPublicStatusRemainsMasked(t *testing.T) {
+func TestAdminList_FullContactIsVisibleToAdminAndPublicStatusRemainsMasked(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	nid := validTestNationalID(80_001)
-	created := app.submit(t, nid, "0880000001", "pii1@example.com")
+	created := app.submit(t, "0880000001", "pii1@example.com")
 
 	token, _ := app.loginAs(t, "pii-admin", domain.RoleAdmin)
 	for _, q := range []string{"", "?status=PASSED"} {
-		ids, _ := app.adminListIDs(t, token, q)
-		got, ok := ids[created.ID]
+		phones, body := app.adminListPhones(t, token, q)
+		got, ok := phones[created.ID]
 		if !ok {
 			t.Fatalf("admin: application missing from list%s", q)
 		}
-		if got != nid {
-			t.Fatalf("admin%s must get the raw national ID, got %q", q, got)
+		if got != "0880000001" {
+			t.Fatalf("admin%s must get the full phone number, got %q", q, got)
+		}
+		if strings.Contains(body, "nationalId") {
+			t.Fatalf("admin%s: there is no national ID any more: %s", q, body)
 		}
 	}
 
@@ -65,16 +66,14 @@ func TestAdminList_NationalIDIsVisibleToAdminAndPublicStatusRemainsMasked(t *tes
 	if pub.Code != http.StatusOK {
 		t.Fatalf("public status: expected 200, got %d", pub.Code)
 	}
-	if want := service.MaskNationalID(nid); !strings.Contains(pub.Body.String(), want) || strings.Contains(pub.Body.String(), nid) {
-		t.Fatalf("public status must mask national ID (%q), got %s", want, pub.Body.String())
+	if body := pub.Body.String(); !strings.Contains(body, "XXX-XXX-0001") || strings.Contains(body, "0880000001") || strings.Contains(body, "pii1@example.com") {
+		t.Fatalf("public status must mask the phone and email, got %s", body)
 	}
 }
 
 func TestAdminList_NonAdminCannotReadOrDelete(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	nid := validTestNationalID(80_002)
-	created := app.submit(t, nid, "0880000002", "pii2@example.com")
-	app.nationalIDs[created.ID] = nid
+	created := app.submit(t, "0880000002", "pii2@example.com")
 
 	for _, role := range []domain.AdminRole{domain.AdminRole("auditor"), domain.AdminRole("")} {
 		token, _ := app.loginAs(t, "nonadmin-"+string(role), role)
@@ -90,8 +89,8 @@ func TestAdminList_NonAdminCannotReadOrDelete(t *testing.T) {
 	if a, err := app.applicant(t, created.ID); err != nil || a.Status == domain.StatusRejected {
 		t.Fatalf("the application must be untouched, got %v / %v", a, err)
 	}
-	// The applicant themselves (who knows the ID) can still withdraw.
-	rec := app.withdrawRec(t, created.ID, nid)
+	// The applicant themselves (who holds the code) can still withdraw.
+	rec := app.withdrawRec(t, created.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the real applicant must still be able to withdraw, got %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -99,30 +98,15 @@ func TestAdminList_NonAdminCannotReadOrDelete(t *testing.T) {
 
 func TestAdminList_RoleDemotionRevokesAccessImmediately(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	nid := validTestNationalID(80_003)
-	created := app.submit(t, nid, "0880000003", "pii3@example.com")
+	created := app.submit(t, "0880000003", "pii3@example.com")
 	token, adminID := app.loginAs(t, "pii-demoted", domain.RoleAdmin)
 
-	if ids, _ := app.adminListIDs(t, token, ""); ids[created.ID] != nid {
-		t.Fatalf("admin should see the raw ID, got %q", ids[created.ID])
+	if phones, _ := app.adminListPhones(t, token, ""); phones[created.ID] != "0880000003" {
+		t.Fatalf("admin should see the full phone, got %q", phones[created.ID])
 	}
 	app.adminRepo.SetRole(adminID, domain.AdminRole("auditor")) // role is re-read from the DB on every request
 	if rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token)); rec.Code != http.StatusForbidden {
 		t.Fatalf("after demotion to non-admin role the same token must get 403, got %d", rec.Code)
-	}
-}
-
-func TestCanSeeFullNationalID_FailsClosed(t *testing.T) {
-	for role, want := range map[domain.AdminRole]bool{
-		domain.RoleAdmin: true,
-		"":               false,
-		"auditor":        false,
-		"ADMIN":          false,
-		"superadmin":     false,
-	} {
-		if got := service.CanSeeFullNationalID(role); got != want {
-			t.Errorf("CanSeeFullNationalID(%q) = %v, want %v", role, got, want)
-		}
 	}
 }
 
@@ -186,7 +170,7 @@ func (a *testApp) verifyWithPaymentID(t *testing.T, token, appID, paymentID stri
 
 func TestSlipReupload_ReplacesThePendingSlipAndItsFile(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	created := app.submit(t, validTestNationalID(81_001), "0881000001", "slip1@example.com")
+	created := app.submit(t, "0881000001", "slip1@example.com")
 
 	for i := 1; i <= 12; i++ {
 		if rec := app.uploadSlip(t, created.ID, "slip.jpg", uniqueSlip(100+i)); rec.Code != http.StatusOK {
@@ -232,8 +216,8 @@ func TestSlipReupload_ReplacesThePendingSlipAndItsFile(t *testing.T) {
 
 func TestSlipReupload_OtherApplicantsAreUntouched(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	a1 := app.submit(t, validTestNationalID(81_002), "0881000002", "slip2a@example.com")
-	a2 := app.submit(t, validTestNationalID(81_003), "0881000003", "slip2b@example.com")
+	a1 := app.submit(t, "0881000002", "slip2a@example.com")
+	a2 := app.submit(t, "0881000003", "slip2b@example.com")
 	if rec := app.uploadSlip(t, a1.ID, "s.jpg", uniqueSlip(201)); rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())
 	}
@@ -261,7 +245,7 @@ func TestSlipReupload_OtherApplicantsAreUntouched(t *testing.T) {
 func TestSlipReupload_ApprovedSlipIsNeverReplaced(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(81_004), "0881000004", "slip3@example.com")
+	created := app.submit(t, "0881000004", "slip3@example.com")
 	if rec := app.uploadSlip(t, created.ID, "s.jpg", uniqueSlip(301)); rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())
 	}
@@ -282,7 +266,7 @@ func TestSlipReupload_ApprovedSlipIsNeverReplaced(t *testing.T) {
 func TestSlipReupload_RejectedSlipIsKeptAsHistory(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(81_005), "0881000005", "slip4@example.com")
+	created := app.submit(t, "0881000005", "slip4@example.com")
 	if rec := app.uploadSlip(t, created.ID, "s.jpg", uniqueSlip(401)); rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())
 	}
@@ -310,7 +294,7 @@ func TestSlipReupload_RejectedSlipIsKeptAsHistory(t *testing.T) {
 // Parallel uploads for one applicant still end with exactly one pending slip and one file.
 func TestSlipReupload_ConcurrentUploadsLeaveOnePendingSlip(t *testing.T) {
 	app := setupUnlimitedApp(t)
-	created := app.submit(t, validTestNationalID(81_006), "0881000006", "slip5@example.com")
+	created := app.submit(t, "0881000006", "slip5@example.com")
 
 	const n = 24
 	var wg sync.WaitGroup
@@ -340,7 +324,7 @@ func TestSlipReupload_ConcurrentUploadsLeaveOnePendingSlip(t *testing.T) {
 func TestVerifySlip_AdminListAndSlipHeaderExposeThePaymentID(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(82_001), "0882000001", "swap0@example.com")
+	created := app.submit(t, "0882000001", "swap0@example.com")
 
 	// No slip: no slipPaymentId.
 	rec := app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token))
@@ -369,7 +353,7 @@ func TestVerifySlip_AdminListAndSlipHeaderExposeThePaymentID(t *testing.T) {
 func TestVerifySlip_StalePaymentIDIsRefusedAndNothingChanges(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(82_002), "0882000002", "swap1@example.com")
+	created := app.submit(t, "0882000002", "swap1@example.com")
 
 	if r := app.uploadSlip(t, created.ID, "s.jpg", uniqueSlip(701)); r.Code != http.StatusOK {
 		t.Fatal(r.Body.String())
@@ -407,7 +391,7 @@ func TestVerifySlip_StalePaymentIDIsRefusedAndNothingChanges(t *testing.T) {
 func TestVerifySlip_PaymentIDValidation(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(82_003), "0882000003", "swap2@example.com")
+	created := app.submit(t, "0882000003", "swap2@example.com")
 	if r := app.uploadSlip(t, created.ID, "s.jpg", uniqueSlip(801)); r.Code != http.StatusOK {
 		t.Fatal(r.Body.String())
 	}
@@ -419,7 +403,7 @@ func TestVerifySlip_PaymentIDValidation(t *testing.T) {
 		t.Fatalf("someone else's / unknown paymentId: expected 409, got %d", rec.Code)
 	}
 	// paymentId from ANOTHER applicant's slip must not settle this applicant's slip either.
-	other := app.submit(t, validTestNationalID(82_004), "0882000004", "swap3@example.com")
+	other := app.submit(t, "0882000004", "swap3@example.com")
 	if r := app.uploadSlip(t, other.ID, "s.jpg", uniqueSlip(802)); r.Code != http.StatusOK {
 		t.Fatal(r.Body.String())
 	}

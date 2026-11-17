@@ -129,13 +129,12 @@ func (m *MemoryApplicantRepo) createLocked(a *domain.Applicant) error {
 		if existing.ApplicationNo == a.ApplicationNo {
 			return domain.ErrDuplicateApplicationNo
 		}
-		// A withdrawn / deleted application no longer holds the person's identity, so they can
-		// register again (mirrors the partial unique indexes in migration 000003).
+		// A withdrawn / deleted application no longer holds the person's phone or email, so they
+		// can register again (mirrors the partial unique indexes in migration 000003).
 		if existing.DeletedAt != nil {
 			continue
 		}
-		if existing.NationalID == a.NationalID || existing.Phone == a.Phone ||
-			(a.Email != "" && existing.Email == a.Email) {
+		if existing.Phone == a.Phone || (a.Email != "" && existing.Email == a.Email) {
 			return domain.ErrDuplicateApplicant
 		}
 	}
@@ -173,18 +172,12 @@ func (m *MemoryApplicantRepo) GetByApplicationNo(ctx context.Context, appNo stri
 	return m.find(func(a *domain.Applicant) bool { return a.ApplicationNo == appNo })
 }
 
-func (m *MemoryApplicantRepo) GetByNationalID(ctx context.Context, nationalID string) (*domain.Applicant, error) {
-	return m.find(func(a *domain.Applicant) bool { return a.NationalID == nationalID })
+func (m *MemoryApplicantRepo) GetByPhone(ctx context.Context, phone string) (*domain.Applicant, error) {
+	return m.find(func(a *domain.Applicant) bool { return a.Phone == phone })
 }
 
 func (m *MemoryApplicantRepo) GetByIdempotencyKey(ctx context.Context, key uuid.UUID) (*domain.Applicant, error) {
 	return m.find(func(a *domain.Applicant) bool { return a.IdempotencyKey != nil && *a.IdempotencyKey == key })
-}
-
-func (m *MemoryApplicantRepo) FindByQuery(ctx context.Context, q string) (*domain.Applicant, error) {
-	return m.find(func(a *domain.Applicant) bool {
-		return a.ApplicationNo == q || a.NationalID == q || a.Phone == q
-	})
 }
 
 func (m *MemoryApplicantRepo) ListAll(ctx context.Context, status *domain.ApplicationStatus) ([]*domain.Applicant, error) {
@@ -273,8 +266,7 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 		if other.ID == id || other.DeletedAt != nil {
 			continue
 		}
-		if other.NationalID == p.NationalID || other.Phone == p.Phone ||
-			(p.Email != "" && other.Email == p.Email) {
+		if other.Phone == p.Phone || (p.Email != "" && other.Email == p.Email) {
 			return domain.ErrDuplicateApplicant
 		}
 	}
@@ -288,7 +280,7 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 		a.EmergencyPhone = p.Phone
 	}
 	a.FirstName, a.LastName, a.Nickname = p.FirstName, p.LastName, p.Nickname
-	a.NationalID, a.Phone, a.Email = p.NationalID, p.Phone, p.Email
+	a.Phone, a.Email = p.Phone, p.Email
 	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
 	a.Motivation, a.Allergies, a.MedicalConditions = p.Motivation, p.Allergies, p.MedicalConditions
 	a.ParentName, a.ParentRelation, a.ParentPhone = p.ParentName, p.ParentRelation, p.ParentPhone

@@ -17,7 +17,7 @@ func TestApplicantService_Delete_WritesMarshalableAuditWithFullName(t *testing.T
 	ctx := context.Background()
 
 	created, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName: "สมชาย ใจดี", Nickname: "ชาย", NationalID: validTestNationalID(31), Phone: "0812345631",
+		FullName: "สมชาย ใจดี", Nickname: "ชาย", Phone: "0812345631",
 		Email: "del31@example.com", School: "โรงเรียนแม่โจ้วิทยาคม", Grade: "ม.5", ShirtSize: "L",
 	})
 	if err != nil {
@@ -50,6 +50,9 @@ func TestApplicantService_Delete_WritesMarshalableAuditWithFullName(t *testing.T
 	}
 	if back["reason"] != "ผู้สมัครซ้ำ" {
 		t.Fatalf("reason missing from the audit details: %#v", back)
+	}
+	if _, ok := back["nationalId"]; ok {
+		t.Fatalf("the delete audit must not carry a national ID (migration 000011): %#v", back)
 	}
 	if found.AdminID == nil || *found.AdminID != 7 || found.TargetID != created.ID {
 		t.Fatalf("audit entry must name the admin and the target: %+v", found)

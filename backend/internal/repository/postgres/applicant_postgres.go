@@ -26,7 +26,7 @@ func NewApplicantPostgresRepo(pool *pgxpool.Pool) *ApplicantPostgresRepo {
 
 const insertApplicantSQL = `
 	INSERT INTO applicants (
-		id, application_no, national_id, prefix, first_name, last_name, nickname,
+		id, application_no, prefix, first_name, last_name, nickname,
 		birth_date, gender, school, grade, phone, email, line_id,
 		address_line, subdistrict, district, province, postal_code,
 		parent_name, parent_relation, parent_phone, emergency_contact, emergency_phone,
@@ -34,13 +34,13 @@ const insertApplicantSQL = `
 		parent_permission_url, status, attendance_confirmed, certificate_url,
 		idempotency_key, created_at, updated_at
 	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7,
-		$8, $9, $10, $11, $12, $13, $14,
-		$15, $16, $17, $18, $19,
-		$20, $21, $22, $23, $24,
-		$25, $26, $27, $28, $29, $30,
-		$31, $32, $33, $34,
-		$35, $36, $37
+		$1, $2, $3, $4, $5, $6,
+		$7, $8, $9, $10, $11, $12, $13,
+		$14, $15, $16, $17, $18,
+		$19, $20, $21, $22, $23,
+		$24, $25, $26, $27, $28, $29,
+		$30, $31, $32, $33,
+		$34, $35, $36
 	)
 `
 
@@ -53,7 +53,7 @@ func insertApplicant(ctx context.Context, db execer, a *domain.Applicant) error 
 	a.UpdatedAt = now
 
 	_, err := db.Exec(ctx, insertApplicantSQL,
-		a.ID, a.ApplicationNo, a.NationalID, a.Prefix, a.FirstName, a.LastName, a.Nickname,
+		a.ID, a.ApplicationNo, a.Prefix, a.FirstName, a.LastName, a.Nickname,
 		a.BirthDate, a.Gender, a.School, a.Grade, a.Phone, a.Email, a.LineID,
 		a.AddressLine, a.Subdistrict, a.District, a.Province, a.PostalCode,
 		a.ParentName, a.ParentRelation, a.ParentPhone, a.EmergencyContact, a.EmergencyPhone,
@@ -130,25 +130,15 @@ func (r *ApplicantPostgresRepo) GetByApplicationNo(ctx context.Context, appNo st
 	return r.scanSingle(r.pool.QueryRow(ctx, query, appNo))
 }
 
-func (r *ApplicantPostgresRepo) GetByNationalID(ctx context.Context, nationalID string) (*domain.Applicant, error) {
-	query := `SELECT ` + applicantColumns + ` FROM applicants WHERE national_id = $1 AND deleted_at IS NULL`
-	return r.scanSingle(r.pool.QueryRow(ctx, query, nationalID))
+// GetByPhone uses the live-row unique index uq_applicants_phone_live, so at most one row matches.
+func (r *ApplicantPostgresRepo) GetByPhone(ctx context.Context, phone string) (*domain.Applicant, error) {
+	query := `SELECT ` + applicantColumns + ` FROM applicants WHERE phone = $1 AND deleted_at IS NULL`
+	return r.scanSingle(r.pool.QueryRow(ctx, query, phone))
 }
 
 func (r *ApplicantPostgresRepo) GetByIdempotencyKey(ctx context.Context, key uuid.UUID) (*domain.Applicant, error) {
 	query := `SELECT ` + applicantColumns + ` FROM applicants WHERE idempotency_key = $1 AND deleted_at IS NULL`
 	return r.scanSingle(r.pool.QueryRow(ctx, query, key))
-}
-
-func (r *ApplicantPostgresRepo) FindByQuery(ctx context.Context, q string) (*domain.Applicant, error) {
-	query := `
-		SELECT ` + applicantColumns + `
-		FROM applicants
-		WHERE (application_no = $1 OR national_id = $1 OR phone = $1)
-		  AND deleted_at IS NULL
-		LIMIT 1
-	`
-	return r.scanSingle(r.pool.QueryRow(ctx, query, q))
 }
 
 func (r *ApplicantPostgresRepo) ListAll(ctx context.Context, status *domain.ApplicationStatus) ([]*domain.Applicant, error) {
@@ -281,14 +271,14 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 	_, err = tx.Exec(ctx, `
 		UPDATE applicants SET
 			first_name = $1, last_name = $2, nickname = $3,
-			national_id = $4, phone = $5, email = $6, school = $7, province = $8, grade = $9,
-			shirt_size = $10, motivation = $11, allergies = $12, medical_conditions = $13,
-			parent_name = $14, parent_relation = $15, parent_phone = $16,
-			emergency_contact = CASE WHEN $17 <> '' THEN $17 ELSE emergency_contact END,
-			emergency_phone = CASE WHEN $18 <> '' THEN $18 WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
-			updated_at = CASE WHEN $21::boolean THEN updated_at ELSE $19 END
-		WHERE id = $20
-	`, p.FirstName, p.LastName, p.Nickname, p.NationalID, p.Phone, p.Email, p.School, p.Province,
+			phone = $4, email = $5, school = $6, province = $7, grade = $8,
+			shirt_size = $9, motivation = $10, allergies = $11, medical_conditions = $12,
+			parent_name = $13, parent_relation = $14, parent_phone = $15,
+			emergency_contact = CASE WHEN $16 <> '' THEN $16 ELSE emergency_contact END,
+			emergency_phone = CASE WHEN $17 <> '' THEN $17 WHEN emergency_phone = phone THEN $4 ELSE emergency_phone END,
+			updated_at = CASE WHEN $20::boolean THEN updated_at ELSE $18 END
+		WHERE id = $19
+	`, p.FirstName, p.LastName, p.Nickname, p.Phone, p.Email, p.School, p.Province,
 		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions,
 		p.ParentName, p.ParentRelation, p.ParentPhone, p.EmergencyContact, p.EmergencyPhone,
 		time.Now().UTC(), id, requireActive)
@@ -594,7 +584,7 @@ func (r *ApplicantPostgresRepo) CountActive(ctx context.Context) (int, error) {
 }
 
 const applicantColumns = `
-	id, application_no, national_id, prefix, first_name, last_name, nickname,
+	id, application_no, prefix, first_name, last_name, nickname,
 	birth_date, gender, school, grade, phone, email, line_id,
 	address_line, subdistrict, district, province, postal_code,
 	parent_name, parent_relation, parent_phone, emergency_contact, emergency_phone,
@@ -614,7 +604,7 @@ type scannable interface {
 func scanApplicant(s scannable) (*domain.Applicant, error) {
 	var a domain.Applicant
 	err := s.Scan(
-		&a.ID, &a.ApplicationNo, &a.NationalID, &a.Prefix, &a.FirstName, &a.LastName, &a.Nickname,
+		&a.ID, &a.ApplicationNo, &a.Prefix, &a.FirstName, &a.LastName, &a.Nickname,
 		&a.BirthDate, &a.Gender, &a.School, &a.Grade, &a.Phone, &a.Email, &a.LineID,
 		&a.AddressLine, &a.Subdistrict, &a.District, &a.Province, &a.PostalCode,
 		&a.ParentName, &a.ParentRelation, &a.ParentPhone, &a.EmergencyContact, &a.EmergencyPhone,

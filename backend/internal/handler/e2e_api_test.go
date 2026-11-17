@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,12 +39,8 @@ type testApp struct {
 	// slipDir is where uploaded slips land on disk (the service stores them under <upload>/slips).
 	slipDir string
 	adminID int64
-	// verifyCodes maps application ID → last 4 national-ID digits, filled by submit, so the
-	// public confirm / slip helpers can pass the /status second factor (AGENTS.md §13.5).
-	verifyCodes map[string]string
-	// nationalIDs maps application ID → full national ID, for /withdraw.
-	nationalIDs map[string]string
-	// clock drives the verify-code lockout; Advance it to expire a lock without sleeping.
+	// clock drives the application-code guard; Advance it to expire a lockout or a global window
+	// without sleeping.
 	clock *testClock
 }
 
@@ -101,12 +98,12 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 
 	jwtSecret := "test-jwt-secret-key-32-characters-long"
 	clock := &testClock{}
-	// Wired like main: one lockout guard shared by every public verify-code endpoint.
+	// Wired like main: one application-code guard shared by every public code-keyed endpoint.
 	uploadDir := t.TempDir()
-	guard := service.NewVerifyGuardWith(appRepo.Audit(), service.VerifyGuardConfig{Now: clock.Now})
+	guard := service.NewCodeGuardWith(appRepo.Audit(), service.CodeGuardConfig{Now: clock.Now})
 	settingSvc := service.NewSettingService(setRepo, appRepo, appRepo.Audit())
 	applicantSvc := service.NewApplicantService(appRepo, setRepo, payRepo).
-		WithVerifyGuard(guard).
+		WithCodeGuard(guard).
 		WithAudit(appRepo.Audit()).
 		WithOnSeatChange(settingSvc.InvalidatePublicCache)
 	if captcha != nil {
@@ -116,7 +113,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
-		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithVerifyGuard(guard),
+		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard),
 	}
 
 	router := server.NewRouter(services, server.Options{
@@ -126,8 +123,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 
 	return &testApp{
 		Handler: router, appRepo: appRepo, adminRepo: admRepo, setRepo: setRepo, payRepo: payRepo,
-		slipDir: filepath.Join(uploadDir, "slips"), adminID: admin.ID,
-		verifyCodes: map[string]string{}, nationalIDs: map[string]string{}, clock: clock,
+		slipDir: filepath.Join(uploadDir, "slips"), adminID: admin.ID, clock: clock,
 	}
 }
 
@@ -166,26 +162,13 @@ func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }
 
-// validTestNationalID builds a 13-digit national ID that passes the Thai Mod-11 check: the
-// 12-digit body "15099" + seq (7 digits, zero-padded) plus its computed check digit. Distinct
-// seq values give distinct IDs.
-func validTestNationalID(seq int) string {
-	body := fmt.Sprintf("15099%07d", seq%10_000_000)
-	sum := 0
-	for i := 0; i < 12; i++ {
-		sum += int(body[i]-'0') * (13 - i)
-	}
-	return body + string(rune('0'+(11-sum%11)%10))
-}
+// e2ePhone is the phone number used by the end-to-end flow and the masking test.
+const e2ePhone = "0819876543"
 
-// e2eNationalID is the ID used by the end-to-end flow and the masking test.
-var e2eNationalID = validTestNationalID(112233)
-
-func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
+func applicationJSON(phone, email string) *bytes.Buffer {
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
 		FullName:   "สมเกียรติ สุขสมบูรณ์",
 		Nickname:   "เกียรติ",
-		NationalID: nationalID,
 		Phone:      phone,
 		Email:      email,
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -196,16 +179,14 @@ func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
 	return bytes.NewBuffer(body)
 }
 
-func (a *testApp) submit(t *testing.T, nationalID, phone, email string) service.ApplicationResponse {
+func (a *testApp) submit(t *testing.T, phone, email string) service.ApplicationResponse {
 	t.Helper()
-	rec := a.do(t, http.MethodPost, "/api/applications", applicationJSON(nationalID, phone, email), nil)
+	rec := a.do(t, http.MethodPost, "/api/applications", applicationJSON(phone, email), nil)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("submit: expected 201, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	var app service.ApplicationResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &app)
-	a.verifyCodes[app.ID] = nationalID[len(nationalID)-4:]
-	a.nationalIDs[app.ID] = nationalID
 	return app
 }
 
@@ -254,28 +235,20 @@ func mustBase64(s string) []byte {
 	return b
 }
 
-func slipForm(t *testing.T, filename, verifyCode string, data []byte) (*bytes.Buffer, map[string]string) {
+func slipForm(t *testing.T, filename string, data []byte) (*bytes.Buffer, map[string]string) {
 	t.Helper()
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	if verifyCode != "" {
-		_ = writer.WriteField("verifyCode", verifyCode)
-	}
 	part, _ := writer.CreateFormFile("slip", filename)
 	_, _ = part.Write(data)
 	_ = writer.Close()
 	return body, map[string]string{"Content-Type": writer.FormDataContentType()}
 }
 
-// uploadSlip posts a slip with the applicant's correct verifyCode.
+// uploadSlip posts a slip for the application code appID: the code in the path is the proof.
 func (a *testApp) uploadSlip(t *testing.T, appID, filename string, data []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	return a.uploadSlipWithCode(t, appID, a.verifyCodes[appID], filename, data)
-}
-
-func (a *testApp) uploadSlipWithCode(t *testing.T, appID, verifyCode, filename string, data []byte) *httptest.ResponseRecorder {
-	t.Helper()
-	body, headers := slipForm(t, filename, verifyCode, data)
+	body, headers := slipForm(t, filename, data)
 	return a.do(t, http.MethodPost, "/api/applications/"+appID+"/slip", body, headers)
 }
 
@@ -307,7 +280,7 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 
 	var created service.ApplicationResponse
 	t.Run("3. POST /api/applications", func(t *testing.T) {
-		created = app.submit(t, e2eNationalID, "0819876543", "somkiat@school.ac.th")
+		created = app.submit(t, e2ePhone, "somkiat@school.ac.th")
 		if created.ID == "" {
 			t.Errorf("expected generated Application ID")
 		}
@@ -317,15 +290,15 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("4. GET /api/applications/status?q={nationalId}", func(t *testing.T) {
-		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+e2eNationalID, nil, nil)
+	t.Run("4. GET /api/applications/status?q={code}", func(t *testing.T) {
+		rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}
 		var queried service.ApplicationResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &queried)
-		if queried.ID != created.ID {
-			t.Errorf("expected ID %s, got %s", created.ID, queried.ID)
+		if queried.ID != created.ID || queried.Lookup != service.LookupCode {
+			t.Errorf("expected the code lookup of %s, got %+v", created.ID, queried)
 		}
 	})
 
@@ -350,8 +323,11 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 		if len(list) != 1 {
 			t.Fatalf("expected 1 applicant, got %d", len(list))
 		}
-		if list[0].NationalID != e2eNationalID {
-			t.Errorf("admin list should return the full national ID, got %q", list[0].NationalID)
+		if list[0].Phone != e2ePhone || list[0].Email != "somkiat@school.ac.th" {
+			t.Errorf("admin list should return the full phone and email, got %q %q", list[0].Phone, list[0].Email)
+		}
+		if strings.Contains(rec.Body.String(), "nationalId") {
+			t.Errorf("the admin list must not carry a national ID field any more: %s", rec.Body.String())
 		}
 	})
 
@@ -365,8 +341,8 @@ func TestE2E_FullCampApplicationLifecycle(t *testing.T) {
 	})
 
 	t.Run("9. POST /api/applications/{id}/confirm", func(t *testing.T) {
-		// verifyCode = last 4 digits of the national ID (AGENTS.md §13.5).
-		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true,"verifyCode":"`+e2eNationalID[9:]+`"}`), nil)
+		// The application code in the path is the proof (AGENTS.md §13.5).
+		rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBufferString(`{"confirmed":true}`), nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d", rec.Code)
 		}

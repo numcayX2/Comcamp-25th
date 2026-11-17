@@ -98,7 +98,6 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 	req := service.ApplicationCreateRequest{
 		FullName:   "สมชาย ใจดี",
 		Nickname:   "ชาย",
-		NationalID: validTestNationalID(901),
 		Phone:      "0812345678",
 		Email:      "somchai@example.com",
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -225,7 +224,6 @@ func TestAsyncMailer_ConfirmedStageAndSkipOnRejectOrDuplicateNoteEdit(t *testing
 	a := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: "CC25-900902",
-		NationalID:    validTestNationalID(902),
 		FirstName:     "มานี",
 		LastName:      "มีใจ",
 		Nickname:      "นี",

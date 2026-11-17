@@ -96,9 +96,10 @@ func main() {
 		// silently ship an unprotected registration endpoint.
 		log.Fatal("Refusing to start: TURNSTILE_SECRET_KEY is empty in production")
 	}
-	// One lockout guard for every public endpoint that checks verifyCode / nationalId, so wrong
-	// answers count per application across confirm, slip, profile and withdraw (AGENTS.md §13.5).
-	verifyGuard := service.NewVerifyGuard(auditRepo)
+	// One application-code guard for every public endpoint keyed by CC25-XXXXXX (status lookup by
+	// code, confirm, slip, withdraw), so unknown codes count per client and globally across all of
+	// them (AGENTS.md §13.5).
+	codeGuard := service.NewCodeGuard(auditRepo)
 	settingSvc := service.NewSettingService(settingRepo, appRepo, auditRepo)
 	mailer := service.NewAsyncSMTPMailer(service.SMTPConfig{
 		Host:        cfg.SMTPHost,
@@ -108,7 +109,7 @@ func main() {
 		From:        cfg.SMTPFrom,
 		FrontendURL: cfg.FrontendURL,
 	}, auditRepo)
-	applicantSvc.WithVerifyGuard(verifyGuard).
+	applicantSvc.WithCodeGuard(codeGuard).
 		WithAudit(auditRepo).
 		WithOnSeatChange(settingSvc.InvalidatePublicCache).
 		WithMailer(mailer)
@@ -117,7 +118,7 @@ func main() {
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
 		Payment: service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
-			WithVerifyGuard(verifyGuard).
+			WithCodeGuard(codeGuard).
 			WithMailer(mailer),
 	}
 
