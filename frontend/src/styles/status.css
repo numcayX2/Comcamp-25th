@@ -83,3 +83,8 @@
 @media (prefers-reduced-motion: reduce) {
   .st-card, .st-highlight, .st-notice, .st-alert, .st-warning { transition: none !important; }
 }
+
+.st-card--compact { padding-top: 16px; }
+@media (min-width: 640px) {
+  .st-card--compact { padding: 20px 24px; }
+}

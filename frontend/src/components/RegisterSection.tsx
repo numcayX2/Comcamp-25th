@@ -937,32 +937,44 @@ export function RegisterSection() {
             </h3>
             <ol className="rw-rules__list">
               <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">1</span>
+                <div>
                 <strong className="rw-rules__label">วันจัดค่าย</strong>
                 <p>
                   <span className="font-mono tabular-nums">5–7</span> ก.พ. <span className="font-mono tabular-nums">2570</span> ·{' '}
                   <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
                 </p>
+                </div>
               </li>
               <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">2</span>
+                <div>
                 <strong className="rw-rules__label">รับ <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง</strong>
                 <p>
                   เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
                   <span className="font-mono tabular-nums">2569</span> · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
                 </p>
+                </div>
               </li>
               <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">3</span>
+                <div>
                 <strong className="rw-rules__label">ชำระเงิน</strong>
                 <p>
                   โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังส่งใบสมัคร ·{' '}
                   <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
                 </p>
+                </div>
               </li>
               <li>
+                <span className="rw-rules__no font-mono" aria-hidden="true">4</span>
+                <div>
                 <strong className="rw-rules__label">สละสิทธิ์</strong>
                 <p>
                   ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
                   <strong className="rw-rules__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
                 </p>
+                </div>
               </li>
             </ol>
           </aside>

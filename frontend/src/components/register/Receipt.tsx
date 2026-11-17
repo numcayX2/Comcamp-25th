@@ -1,7 +1,7 @@
 /** Step 06 — receipt + payment instructions, shown after a successful submit. */
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode, Ref } from 'react';
-import { ArrowRight, Check, Copy, TriangleAlert } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Copy, MapPin, Phone, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   getApplicationStatus,
@@ -361,29 +361,45 @@ export function Receipt({
           ชำระค่าสมัคร
         </h3>
         {!slipLocksWithdraw && (
-          <aside className="rw-rules" role="note" aria-label="แจ้งเตือนกำหนดเวลาชำระเงิน 3 วัน">
-            <p className="rw-rules__title">
+          <aside
+            className={`rw-due${deadline.isOverdue ? ' rw-due--over' : ''}`}
+            role="note"
+            aria-labelledby="rw-due-title"
+          >
+            <p id="rw-due-title" className="rw-due__title">
               <TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" />
               <span>
-                แจ้งเตือน: คุณยังไม่ได้แนบสลิปชำระเงิน — <span className="tabular-nums">{deadline.remainingText}</span>
+                {slip === 'REJECTED'
+                  ? <>แจ้งเตือน: สลิปไม่ผ่านการตรวจสอบ <span className="whitespace-nowrap">กรุณาแนบสลิปใหม่</span></>
+                  : deadline.isOverdue
+                    ? 'แจ้งเตือน: เลยกำหนดชำระเงินแล้ว'
+                    : <>แจ้งเตือน: คุณยังไม่ได้แนบ<span className="whitespace-nowrap">สลิปชำระเงิน</span></>}
               </span>
             </p>
-            <p className="rw-slip__lead" style={{ marginTop: '6px' }}>
-              ครบกำหนด <strong className="tabular-nums">{deadline.deadlineText}</strong> · หากไม่โอนและแนบสลิปภายใน{' '}
-              <strong className="font-mono tabular-nums">3</strong> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร
-              ระบบจะ<strong>ตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ</strong> (และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
-            </p>
+            <div className="rw-due__body">
+              <p className="rw-due__left tabular-nums">{deadline.remainingText}</p>
+              <p className="rw-due__when">
+                ครบกำหนด <strong className="tabular-nums">{deadline.deadlineText}</strong>
+              </p>
+              <ul className="rw-due__rules">
+                <li>
+                  โอน <strong className="font-mono tabular-nums">{feeText}</strong> บาท และแนบสลิปภายใน{' '}
+                  <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังสมัคร
+                </li>
+                <li>
+                  <strong className="rw-due__flag">เกินกำหนด ระบบตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
+                </li>
+                <li>
+                  <strong className="rw-due__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
+                </li>
+              </ul>
+              <a className="rw-due__jump" href="#rw-slip-title">
+                ไปแนบสลิป
+                <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" style={{ transform: 'rotate(90deg)' }} />
+              </a>
+            </div>
           </aside>
         )}
-        <p className="rw-warn-note rw-warn-note--tight" role="note">
-          <span className="rw-warn-note__dot" aria-hidden="true" />
-          <span>
-            <strong className="rw-warn-note__tag">ข้อกำหนดการโอนเงิน:</strong> กรุณาโอนเงินค่าสมัคร{' '}
-            <span className="font-mono tabular-nums">{feeText}</span> บาท และแนบสลิปภายใน{' '}
-            <strong className="font-mono tabular-nums">3</strong> <strong>วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)</strong> หลังสมัคร
-            เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ · <strong>หากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
-          </span>
-        </p>
 
         <article className="rw-ticket" aria-label="รายละเอียดการโอนเงิน">
           <header className="rw-ticket__head">
@@ -502,40 +518,49 @@ export function Receipt({
 
       <section className="rw-block" aria-labelledby="rw-camp-title">
         <h3 id="rw-camp-title" className="rw-block__title">ข้อมูลวันจัดค่ายและช่องทางติดต่อ</h3>
-        <dl className="rw-dl">
+        <dl className="rw-dl rw-dl--info">
           <div className="rw-dl__row">
             <dt>วันจัดค่าย</dt>
             <dd>
-              <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์{' '}
-              <span className="font-mono tabular-nums">2570</span> (<span className="font-mono tabular-nums">3</span> วัน{' '}
-              <span className="font-mono tabular-nums">2</span> คืน) ณ มหาวิทยาลัยแม่โจ้
+              <strong className="rw-dl__lead">
+                <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span className="font-mono tabular-nums">2570</span>
+              </strong>
+              <span className="rw-dl__sub">
+                <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+              </span>
             </dd>
           </div>
           <div className="rw-dl__row">
             <dt>ที่พักค่าย</dt>
             <dd>
-              {DORM_NAME} ·{' '}
-              <a href={DORM_MAPS_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
-                ดูแผนที่เรือนพัก (Google Maps)
+              <strong className="rw-dl__lead">{DORM_NAME}</strong>
+              <a href={DORM_MAPS_URL} className="rw-dl__link" target="_blank" rel="noopener noreferrer">
+                <MapPin size={16} strokeWidth={1.5} aria-hidden="true" />
+                <span>ดูแผนที่เรือนพัก (Google Maps)</span>
+                <ArrowUpRight size={14} strokeWidth={1.5} aria-hidden="true" />
               </a>
             </dd>
           </div>
           <div className="rw-dl__row">
             <dt>ติดต่อทีมงาน</dt>
             <dd>
-              <a href={FB_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
-                เพจ Facebook โครงการ
-              </a>
-              {' · '}
-              {STAFF_CONTACTS.map((c, idx) => (
-                <Fragment key={c.tel}>
-                  {idx > 0 && ' / '}
-                  <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
-                    {c.phone}
-                  </a>{' '}
-                  ({c.name})
-                </Fragment>
-              ))}
+              <ul className="rw-contacts">
+                <li>
+                  <a href={FB_URL} className="rw-dl__link" target="_blank" rel="noopener noreferrer">
+                    <span>เพจ Facebook โครงการ</span>
+                    <ArrowUpRight size={14} strokeWidth={1.5} aria-hidden="true" />
+                  </a>
+                </li>
+                {STAFF_CONTACTS.map((c) => (
+                  <li key={c.tel}>
+                    <a href={`tel:${c.tel}`} className="rw-dl__link">
+                      <Phone size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span className="font-mono tabular-nums">{c.phone}</span>
+                    </a>
+                    <span className="rw-contacts__name">{c.name}</span>
+                  </li>
+                ))}
+              </ul>
             </dd>
           </div>
         </dl>
