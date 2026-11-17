@@ -219,16 +219,16 @@ export function describeVerifyLock(err: unknown): string | null {
 function describeValidationError(message: string, fallback: string): string {
   const msg = message.toLowerCase();
   if (msg.includes('search query') || msg.includes("query parameter 'q'")) {
-    return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประชาชน 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
+    return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประจำตัว 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
   }
   if (msg.includes('file type') || msg.includes('slip') || msg.includes('multipart')) {
     return 'ไฟล์รูปภาพไม่ถูกต้อง รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP เท่านั้น';
   }
   if (msg.includes('verifycode')) {
-    return 'กรุณากรอกเลข 4 ตัวท้ายของบัตรประชาชนให้ครบ 4 หลัก';
+    return 'กรุณากรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักให้ครบ 4 หลัก';
   }
   if (msg.includes('national id')) {
-    return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+    return 'เลขบัตรประจำตัว 13 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
   }
   if (msg.includes('grade')) {
     return 'ระดับชั้นไม่ถูกต้อง กรุณาเลือกระดับชั้นหรือระบุความยาว 2–20 ตัวอักษร';
@@ -252,9 +252,9 @@ export function describeApiError(err: unknown, fallback: string): string {
   if (err instanceof ApiHttpError) {
     switch (err.code) {
       case 'NOT_FOUND':
-        return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
+        return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
       case 'INVALID_VERIFY_CODE':
-        return 'เลข 4 ตัวท้ายของบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
+        return 'เลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
       case 'INVALID_IMAGE_DIMENSIONS':
         return `รูปสลิปมีขนาดใหญ่เกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} พิกเซล กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`;
       case 'DUPLICATE_SLIP':
@@ -278,7 +278,7 @@ export function describeApiError(err: unknown, fallback: string): string {
       case 'QUOTA_FULL':
         return 'ขณะนี้มีผู้สมัครครบตามจำนวนที่รับแล้ว';
       case 'DUPLICATE_APPLICATION':
-        return 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว';
+        return 'เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว';
       case 'CAPTCHA_FAILED':
         return 'การยืนยันตัวตนไม่ผ่านหรือหมดอายุ กรุณายืนยันใหม่อีกครั้ง';
       case 'IDEMPOTENCY_KEY_REUSED':
@@ -294,7 +294,7 @@ export function describeApiError(err: unknown, fallback: string): string {
         : 'ทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
     }
     if (err.status === 404) {
-      return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
+      return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
     }
     if (err.status === 403) {
       return 'ไม่สามารถดำเนินการได้ในขณะนี้ กรุณาติดต่อทีมงานพี่ค่าย';

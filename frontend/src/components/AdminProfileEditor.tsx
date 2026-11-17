@@ -140,8 +140,8 @@ function validate(f: Form): Errors {
   else if (nickname.length > 50) e.nickname = 'ชื่อเล่นยาวได้ไม่เกิน 50 ตัวอักษร';
 
   const nid = sanitizeDigits(f.nationalId);
-  if (nid.length !== 13) e.nationalId = `เลขบัตรประชาชนต้องมี 13 หลัก (ตอนนี้ ${nid.length} หลัก)`;
-  else if (!isValidThaiNationalID(nid)) e.nationalId = 'เลขบัตรประชาชนไม่ผ่านการตรวจเลขตรวจสอบ (Mod-11)';
+  if (nid.length !== 13) e.nationalId = `เลขบัตรประจำตัวต้องมี 13 หลัก (ตอนนี้ ${nid.length} หลัก)`;
+  else if (!isValidThaiNationalID(nid)) e.nationalId = 'เลขบัตรประจำตัว 13 หลักไม่ผ่านการตรวจเลขตรวจสอบ (Mod-11)';
 
   if (!/^0\d{9}$/.test(sanitizeDigits(f.phone))) e.phone = 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
   const email = stripZeroWidth(f.email).replace(/\s+/g, '');
@@ -197,7 +197,7 @@ function validate(f: Form): Errors {
 function describeSaveError(err: unknown): string {
   if (err instanceof ApiHttpError) {
     if (err.code === 'DUPLICATE_APPLICATION' || err.status === 409) {
-      return 'เลขบัตรประชาชน เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง';
+      return 'เลขบัตรประจำตัว เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง';
     }
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกลบไปแล้ว กรุณากดรีเฟรชรายการ';
     if (err.status === 413) return 'ข้อมูลที่ส่งใหญ่เกินไป กรุณาลดความยาวเหตุผลการสมัคร';
@@ -208,7 +208,7 @@ function describeSaveError(err: unknown): string {
     }
     if (err.status === 400) {
       const m = err.message.toLowerCase();
-      if (m.includes('national id')) return 'เลขบัตรประชาชนไม่ถูกต้อง ต้องมี 13 หลักและผ่านการตรวจเลขตรวจสอบ';
+      if (m.includes('national id')) return 'เลขบัตรประจำตัวไม่ถูกต้อง ต้องมี 13 หลักและผ่านการตรวจเลขตรวจสอบ';
       if (m.includes('parent phone')) return 'เบอร์โทรผู้ปกครองไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('phone')) return 'เบอร์โทรไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('email')) return 'รูปแบบอีเมลไม่ถูกต้อง';
@@ -411,7 +411,7 @@ export function AdminProfileEditor({
         )}
       </div>
       <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_3 }}>
-        พี่ค่ายแก้ไขได้ทุกช่อง รวมถึงเลขบัตรประชาชน เบอร์โทร และอีเมล ระบบตรวจสอบข้อมูลเหมือนตอนสมัคร และบันทึกค่าเก่า → ค่าใหม่พร้อมเหตุผลลงประวัติการใช้งาน
+        พี่ค่ายแก้ไขได้ทุกช่อง รวมถึงเลขบัตรประจำตัว เบอร์โทร และอีเมล ระบบตรวจสอบข้อมูลเหมือนตอนสมัคร และบันทึกค่าเก่า → ค่าใหม่พร้อมเหตุผลลงประวัติการใช้งาน
       </p>
 
       <div className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-2">
@@ -421,7 +421,7 @@ export function AdminProfileEditor({
         <Field id={`${pid}-nickname`} label="ชื่อเล่น" error={errors.nickname}>
           <input {...input('nickname', { autoComplete: 'off' })} />
         </Field>
-        <Field id={`${pid}-nationalId`} label="เลขบัตรประชาชน" hint="13 หลัก" error={errors.nationalId}>
+        <Field id={`${pid}-nationalId`} label="เลขบัตรประจำตัว" hint="13 หลัก" error={errors.nationalId}>
           <input
             {...input('nationalId', {
               inputMode: 'numeric',

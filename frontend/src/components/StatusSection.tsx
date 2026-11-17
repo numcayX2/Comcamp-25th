@@ -491,7 +491,7 @@ function VerifyCodePrompt({ onFocusCode, action }: { onFocusCode: () => void; ac
       className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-sm leading-6"
       style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_MUTED }}
     >
-      <span>กรอกเลข 4 ตัวท้ายบัตรประชาชนด้านบนก่อนจึงจะ{action}ได้</span>
+      <span>กรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักด้านบนก่อนจึงจะ{action}ได้</span>
       <button
         type="button"
         onClick={onFocusCode}
@@ -599,7 +599,7 @@ export function StatusSection() {
         clearReceipt();
         setQ('');
         setApp(null);
-        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยเบอร์โทรศัพท์หรือเลขบัตรประชาชนได้ด้านล่าง`);
+        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยเบอร์โทรศัพท์หรือเลขบัตรประจำตัว 13 หลักได้ด้านล่าง`);
         return;
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
@@ -796,9 +796,9 @@ export function StatusSection() {
       if (locked) {
         setWithdrawErr(locked);
       } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
-        setWithdrawErr('เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง');
+        setWithdrawErr('เลขบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง');
       } else if (err instanceof ApiHttpError && err.status === 400) {
-        setWithdrawErr('กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง');
+        setWithdrawErr('กรุณากรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครให้ถูกต้อง');
       } else if (err instanceof ApiHttpError && err.status === 429) {
         setWithdrawErr(describeError(err, 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่'));
       } else if (err instanceof ApiHttpError && err.status === 409) {
@@ -893,7 +893,7 @@ export function StatusSection() {
             </h1>
           </div>
           <p className="max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            ค้นหาด้วยเลขบัตรประชาชน 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span className="font-mono text-sm tabular-nums">CC25-XXXXXX</span>)
+            ค้นหาด้วยเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร (<span className="font-mono text-sm tabular-nums">CC25-XXXXXX</span>)
           </p>
         </div>
       </header>
@@ -914,7 +914,7 @@ export function StatusSection() {
 
         <form onSubmit={onSearch} className="st-card md:col-span-7">
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
-            เลขบัตรประชาชน เบอร์โทรศัพท์ หรือรหัสใบสมัคร
+            เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัคร
           </label>
           <div className="relative flex items-center">
             <input
@@ -1076,7 +1076,7 @@ export function StatusSection() {
               {[
                 { k: 'ชื่อ – นามสกุล', v: app.fullName, mono: false },
                 { k: 'ชื่อเล่น', v: app.nickname || '–', mono: false },
-                { k: 'เลขบัตรประชาชน', v: app.nationalId, mono: true },
+                { k: 'เลขบัตรประจำตัว', v: app.nationalId, mono: true },
                 { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
                 { k: 'โรงเรียน', v: app.school, mono: false },
                 {
@@ -1108,7 +1108,7 @@ export function StatusSection() {
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm leading-6">
                     <p className="inline-flex items-center gap-2 font-medium" style={{ color: INK }}>
                       <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} className="shrink-0" style={{ color: 'var(--color-success)' }} />
-                      <span>ยืนยันตัวตนด้วยเลขบัตรประชาชนแล้ว (ส่งสลิป / แก้ไขข้อมูลได้ทันที)</span>
+                      <span>ยืนยันตัวตนด้วยเลขบัตรประจำตัว 13 หลักแล้ว (ส่งสลิป / แก้ไขข้อมูลได้ทันที)</span>
                     </p>
                     <button
                       type="button"
@@ -1158,7 +1158,7 @@ export function StatusSection() {
                       แก้ไขข้อมูลทั่วไป
                     </h3>
                     <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                      แก้ไขได้เฉพาะชื่อเล่น โรงเรียน จังหวัด ระดับชั้น และไซส์เสื้อ หากต้องการแก้ไขชื่อ-นามสกุล เลขบัตรประชาชน เบอร์โทรศัพท์ อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ/การแพ้อาหาร หรือเหตุผลการสมัคร
+                      แก้ไขได้เฉพาะชื่อเล่น โรงเรียน จังหวัด ระดับชั้น และไซส์เสื้อ หากต้องการแก้ไขชื่อ-นามสกุล เลขบัตรประจำตัว เบอร์โทรศัพท์ อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ/การแพ้อาหาร หรือเหตุผลการสมัคร
                       กรุณา{' '}
                       <a href={FB_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-4" style={{ color: INK }}>
                         ติดต่อทีมงานทางเพจ Facebook
@@ -1359,7 +1359,7 @@ export function StatusSection() {
                     </p>
                     <div className="mt-3 max-w-[22rem]">
                       <label htmlFor="withdraw-nid" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
-                        กรอกเลขบัตรประชาชน 13 หลักของผู้สมัครเพื่อยืนยัน
+                        กรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครเพื่อยืนยัน
                       </label>
                       <input
                         id="withdraw-nid"
@@ -1391,7 +1391,7 @@ export function StatusSection() {
                       />
                       <p id="withdraw-nid-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
                         {withdrawNidComplete && !withdrawNidValid ? (
-                          'เลขบัตรประชาชนนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
+                          'เลขบัตรประจำตัว 13 หลักนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
                         ) : (
                           <>
                             ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{withdrawNid.length}/13</span> หลัก)

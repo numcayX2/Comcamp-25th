@@ -45,10 +45,10 @@ export function VerifyCodeField({
   return (
     <div className="su-field">
       <label className="su-label" htmlFor={id}>
-        {label ?? 'เลข 4 ตัวท้ายของบัตรประชาชน'}
+        {label ?? 'เลข 4 ตัวท้ายของบัตรประจำตัว 13 หลัก'}
       </label>
       <p id={ids.hint} className="su-hint">
-        เลข 4 ตัวสุดท้ายบนบัตรประชาชน <span className="su-num">…–12-3</span> → <strong className="su-num">0123</strong>
+        เลข 4 ตัวสุดท้ายบนบัตรประจำตัว 13 หลัก <span className="su-num">…–12-3</span> → <strong className="su-num">0123</strong>
         {notPhone && ' · ไม่ใช่เบอร์โทรศัพท์'}
       </p>
       <p id={ids.why} className="su-hint su-hint--why">
