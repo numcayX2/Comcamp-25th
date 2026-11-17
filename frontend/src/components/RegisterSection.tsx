@@ -180,11 +180,11 @@ function describeSubmitError(err: unknown): ErrorBannerState {
     switch (err.code) {
       case 'DUPLICATE_APPLICATION':
         return {
-          text: 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ',
+          text: 'เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ',
         };
       case 'IDEMPOTENCY_KEY_REUSED':
         return {
-          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประชาชนอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประชาชนให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
+          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประจำตัว 13 หลักอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประจำตัวให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
         };
       case 'RATE_LIMITED': {
         const wait = err.retryAfterSeconds ? ` ${err.retryAfterSeconds} วินาที` : 'สักครู่';
@@ -213,7 +213,7 @@ function describeSubmitError(err: unknown): ErrorBannerState {
       case 'VALIDATION_ERROR': {
         const msg = err.message.toLowerCase();
         if (msg.includes('national id') || msg.includes('check digit')) {
-          return { text: 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง' };
+          return { text: 'เลขบัตรประจำตัว 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง' };
         }
         if (msg.includes('parent phone')) {
           return { text: 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0' };
@@ -1016,10 +1016,10 @@ export function RegisterSection() {
                   {restoredAt ? (
                     <>
                       กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.)
-                      {' '}เลขบัตรประชาชนและข้อมูลสุขภาพไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกใหม่อีกครั้ง
+                      {' '}เลขบัตรประจำตัว 13 หลักและข้อมูลสุขภาพไม่ถูกบันทึกในเครื่องตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA) กรุณากรอกใหม่อีกครั้ง
                     </>
                   ) : (
-                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้เฉพาะแท็บนี้ และหายไปเมื่อปิดแท็บ (ปลอดภัยบนคอมพิวเตอร์ที่ใช้ร่วมกัน) ยกเว้นเลขบัตรประชาชนและข้อมูลสุขภาพที่ไม่บันทึกเลยตาม PDPA'
+                    'ข้อมูลที่กรอกจะบันทึกเป็นร่างไว้เฉพาะแท็บนี้ และหายไปเมื่อปิดแท็บ (ปลอดภัยบนคอมพิวเตอร์ที่ใช้ร่วมกัน) ยกเว้นเลขบัตรประจำตัว 13 หลักและข้อมูลสุขภาพที่ไม่บันทึกเลยตาม PDPA'
                   )}
                   </span>
                 </p>
@@ -1054,22 +1054,27 @@ export function RegisterSection() {
               autoComplete="nickname"
               placeholder="เช่น ชาย"
             />
-            <TextField
-              id="nationalId"
-              label="เลขบัตรประชาชน"
-              hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
-              groups={[1, 4, 5, 2, 1]}
-              span={3}
-              mono
-              digits={13}
-              inputMode="numeric"
-              autoComplete="off"
-              value={form.nationalId}
-              error={errors.nationalId}
-              onChange={(v) => set('nationalId', v)}
-              onBlur={() => blur('nationalId')}
-              placeholder="X-XXXX-XXXXX-XX-X"
-            />
+            <div className="rw-span-3" style={{ minWidth: 0 }}>
+              <TextField
+                id="nationalId"
+                label="เลขบัตรประจำตัว 13 หลัก"
+                hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
+                groups={[1, 4, 5, 2, 1]}
+                span={3}
+                mono
+                digits={13}
+                inputMode="numeric"
+                autoComplete="off"
+                value={form.nationalId}
+                error={errors.nationalId}
+                onChange={(v) => set('nationalId', v)}
+                onBlur={() => blur('nationalId')}
+                placeholder="X-XXXX-XXXXX-XX-X"
+              />
+              <p className="rw-withdraw__hint" style={{ marginTop: '6px', marginBottom: 0, fontSize: '0.8125rem' }}>
+                ใช้ได้ทั้งบัตรประชาชนและบัตรชมพู (คนไม่มีสัญชาติไทย)
+              </p>
+            </div>
             <TextField
               id="phone"
               label="เบอร์โทรศัพท์มือถือ"
@@ -1381,7 +1386,7 @@ export function RegisterSection() {
                 rows={[
                   ['ชื่อ-นามสกุล', cleanSingleLine(form.fullName)],
                   ['ชื่อเล่น', cleanSingleLine(form.nickname)],
-                  ['เลขบัตรประชาชน', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
+                  ['เลขบัตรประจำตัว 13 หลัก', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],
                   ['ชื่อผู้ปกครอง', `${cleanSingleLine(form.parentName)} (${cleanSingleLine(form.parentRelation)})`],

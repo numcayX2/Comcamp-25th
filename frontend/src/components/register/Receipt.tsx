@@ -37,7 +37,7 @@ function describeWithdrawError(err: unknown): ReactNode {
   const locked = describeVerifyLock(err);
   if (locked) return locked;
   if (err instanceof ApiHttpError) {
-    if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
+    if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
     if (err.code === 'RATE_LIMITED') return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
     if (err.status === 409) {
       return (
@@ -61,7 +61,7 @@ function describeWithdrawError(err: unknown): ReactNode {
       );
     }
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
-    if (err.status === 400) return 'กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง';
+    if (err.status === 400) return 'กรุณากรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครให้ถูกต้อง';
   }
   return 'ยกเลิกใบสมัครไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง';
 }
@@ -171,7 +171,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
         ยกเลิกแล้วกู้คืนไม่ได้ แต่สมัครใหม่ได้หากยังมีที่นั่งว่าง
       </p>
       <label className="rw-label" htmlFor={ids.input}>
-        กรอกเลขบัตรประชาชน 13 หลักของผู้สมัครเพื่อยืนยัน
+        กรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครเพื่อยืนยัน
       </label>
       <input
         ref={inputRef}
@@ -193,7 +193,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
       />
       <p id={ids.hint} className="rw-withdraw__hint">
         {complete && !valid
-          ? 'เลขบัตรประชาชนนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
+          ? 'เลขบัตรประจำตัว 13 หลักนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
           : <>ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{code.length}/13</span> หลัก) ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง</>}
       </p>
       <p id={ids.err} className="rw-withdraw__err" role="alert">
@@ -475,8 +475,8 @@ export function Receipt({
             หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ (<strong>โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>)
           </li>
           <li>
-            แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประชาชน หรือเบอร์โทรศัพท์
-            (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป แต่สามารถใช้เบอร์โทรหรือเลขบัตรประชาชนค้นหาใบสมัครที่ส่งแล้วได้ที่หน้า{' '}
+            แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประจำตัว 13 หลัก หรือเบอร์โทรศัพท์
+            (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป แต่สามารถใช้เบอร์โทรหรือเลขบัตรประจำตัว 13 หลักค้นหาใบสมัครที่ส่งแล้วได้ที่หน้า{' '}
             <span className="font-mono">/status</span>)
           </li>
           <li>
