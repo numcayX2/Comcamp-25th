@@ -107,6 +107,7 @@ export function ApplicantsSection() {
     }
   }, []);
 
+  const [announcement, setAnnouncement] = useState('');
   useEffect(() => {
     mountedRef.current = true;
     void load();
@@ -137,6 +138,20 @@ export function ApplicantsSection() {
   }, [rows, query, province, status]);
 
   const filtersActive = query.trim() !== '' || province !== '' || status !== 'ALL';
+
+  // Screen-reader count: debounced so typing in the search box does not announce every keystroke.
+  const announceText =
+    state === 'loading'
+      ? 'กำลังโหลดรายชื่อ'
+      : state === 'error'
+        ? 'โหลดรายชื่อไม่สำเร็จ'
+        : filtersActive
+          ? `พบ ${filtered.length} คน จากทั้งหมด ${rows.length} คน`
+          : `ผู้สมัครทั้งหมด ${rows.length} คน`;
+  useEffect(() => {
+    const t = window.setTimeout(() => setAnnouncement(announceText), 400);
+    return () => window.clearTimeout(t);
+  }, [announceText]);
 
   const clearFilters = () => {
     setQuery('');
@@ -283,7 +298,10 @@ export function ApplicantsSection() {
 
       {/* ── Count / live region ── */}
       <div className="ap-summary mt-8 flex flex-wrap items-center justify-between gap-3">
-        <p role="status" aria-live="polite" className="inline-flex items-center gap-2 text-base font-semibold leading-7" style={{ color: INK }}>
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+        <p className="inline-flex items-center gap-2 text-base font-semibold leading-7" style={{ color: INK }}>
           <Users aria-hidden="true" size={18} strokeWidth={1.5} className="shrink-0" style={{ color: INK_MUTED }} />
           {state === 'loading' && <span>กำลังโหลดรายชื่อ…</span>}
           {state === 'error' && <span>โหลดรายชื่อไม่สำเร็จ</span>}

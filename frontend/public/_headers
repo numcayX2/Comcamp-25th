@@ -49,14 +49,17 @@
 /applicants
   ! Cache-Control
   Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
 
 /applicants/
   ! Cache-Control
   Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
 
 /applicants/*
   ! Cache-Control
   Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
 
 /_astro/*
   ! Cache-Control

@@ -13,6 +13,8 @@ interface Props {
   bodyClass?: string;
   /** Browser UI colour on mobile; match whatever sits at the top edge of the page. */
   themeColor?: string;
+  /** Keep the page out of search indexes (e.g. /applicants lists minors' names). */
+  noindex?: boolean;
 }
 
 const {
@@ -21,6 +23,7 @@ const {
   backToTop = true,
   bodyClass,
   themeColor = '#F9F8F4',
+  noindex = false,
 } = Astro.props;
 ---
 
@@ -39,6 +42,7 @@ const {
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="th_TH" />
     <meta property="og:title" content={title} />
