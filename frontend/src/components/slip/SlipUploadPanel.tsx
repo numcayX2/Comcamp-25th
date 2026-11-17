@@ -7,14 +7,13 @@
  *   picked -> a flat strip: thumbnail (opens a lightbox) + name, size, change / remove
  *   sent   -> a summary with "send a new one to replace"
  *
- * Oversized photos are shrunk in the browser (see prepareSlipFile). The verify code is state only.
- * With `verifyCode` given the field lives elsewhere (/status shares one field with confirm, edit
- * and withdraw); without it the panel renders its own field.
+ * Oversized photos are shrunk in the browser (see prepareSlipFile). The application code in
+ * `appId` is the applicant's proof; there is no second secret to type.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
-import { ApiHttpError, uploadPaymentSlip, type ApiSource, type SlipStatus } from '../../lib/api';
+import { uploadPaymentSlip, type ApiSource, type SlipStatus } from '../../lib/api';
 import {
   SLIP_ACCEPT,
   describeApiError,
@@ -23,7 +22,6 @@ import {
   prepareSlipFile,
 } from '../../lib/slip-upload';
 import { SlipLightbox } from './SlipLightbox';
-import { VerifyCodeField } from './VerifyCodeField';
 import '../../styles/slip-upload.css';
 
 /** Student-friendly success copy. Fixed on purpose: the API message names "เจ้าหน้าที่" and differs
@@ -42,41 +40,22 @@ export function SlipUploadPanel({
   appId,
   slip,
   disabled,
-  verifyCode: externalCode,
-  defaultVerifyCode,
-  codeInputId,
-  onCodeInvalid,
   onUploaded,
   submitLabel = 'ส่งสลิป',
   deferLink,
-  notPhone,
 }: {
   appId: string;
   /** What the server knows: null = no slip yet. */
   slip: SlipStatus | null;
   /** The application cannot take a slip (e.g. no longer holds a seat). */
   disabled?: boolean;
-  /** Controlled by the parent when the code field lives elsewhere on the page. */
-  verifyCode?: string;
-  /** Pre-filled 4-digit verify code kept in React memory (never persisted); hides the redundant input until edited. */
-  defaultVerifyCode?: string;
-  /** DOM id of that external field: refocused and selected after a wrong code. */
-  codeInputId?: string;
-  /** External mode: show (or clear with null) the wrong-code message beneath the parent's field. */
-  onCodeInvalid?: (message: string | null) => void;
   onUploaded: (status: SlipStatus, message: string, source: ApiSource) => void;
   submitLabel?: string;
   /** Quiet link under the submit button, e.g. "send it later on /status". */
   deferLink?: { href: string; label: string };
-  notPhone?: boolean;
 }) {
   const uid = useId();
-  const ids = { file: `${uid}-file`, code: `${uid}-code`, fileErr: `${uid}-fileerr`, subErr: `${uid}-suberr`, hint: `${uid}-hint` };
-  const external = externalCode !== undefined;
-  const validDefaultCode = !external && defaultVerifyCode && /^\d{4}$/.test(defaultVerifyCode) ? defaultVerifyCode : '';
-  const [innerCode, setInnerCode] = useState(validDefaultCode);
-  const [editingCode, setEditingCode] = useState(false);
-  const code = external ? externalCode : innerCode;
+  const ids = { file: `${uid}-file`, fileErr: `${uid}-fileerr`, subErr: `${uid}-suberr`, hint: `${uid}-hint` };
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -87,7 +66,6 @@ export function SlipUploadPanel({
   const busyRef = useRef(false);
   const [progress, setProgress] = useState(0);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [codeError, setCodeError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [replace, setReplace] = useState(false);
@@ -95,7 +73,6 @@ export function SlipUploadPanel({
   const [zoom, setZoom] = useState<string | null>(null);
   const [inputKey, setInputKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const refocusCode = useRef(false);
   const replaceBtnRef = useRef<HTMLButtonElement>(null);
   const refocusReplace = useRef(false);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -121,8 +98,6 @@ export function SlipUploadPanel({
 
   function cancelReplace() {
     clearPicked();
-    setCodeError(null);
-    onCodeInvalid?.(null);
     refocusReplace.current = true;
     setReplace(false);
   }
@@ -140,8 +115,7 @@ export function SlipUploadPanel({
 
   const state: SlipStatus | null = slip;
   const showForm = !disabled && state !== 'APPROVED' && (state === null || state === 'REJECTED' || replace);
-  const codeReady = code.length === 4;
-  const ready = Boolean(file) && codeReady;
+  const ready = Boolean(file);
 
   /** Validates, shrinks when needed, and shows the picked slip. */
   const pick = useCallback(
@@ -196,28 +170,6 @@ export function SlipUploadPanel({
     return () => window.removeEventListener('paste', onPaste);
   }, [showForm, busy, preparing]);
 
-  // Keep in-memory default code in sync in internal mode without ever touching browser storage.
-  useEffect(() => {
-    if (external) return;
-    if (validDefaultCode) {
-      if (!editingCode) setInnerCode(validDefaultCode);
-    } else {
-      setEditingCode(false);
-      setInnerCode('');
-    }
-  }, [external, validDefaultCode, editingCode]);
-
-  // A disabled input cannot take focus, so a wrong code refocuses and selects the digits once busy clears.
-  useEffect(() => {
-    if (busy || !refocusCode.current) return;
-    refocusCode.current = false;
-    const el = document.getElementById(codeInputId ?? ids.code);
-    if (el instanceof HTMLInputElement) {
-      el.focus();
-      el.select();
-    }
-  }, [busy, editingCode, codeInputId, ids.code]);
-
   function onDrop(e: DragEvent<HTMLElement>) {
     e.preventDefault();
     setDragging(false);
@@ -235,58 +187,28 @@ export function SlipUploadPanel({
     onDrop,
   };
 
-  function focusExternalCode() {
-    const el = document.getElementById(codeInputId ?? 'verify-code');
-    if (!el) return;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
-    if (el instanceof HTMLElement) {
-      el.focus({ preventScroll: true });
-    }
-  }
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busyRef.current || busy || preparing || !file || !codeReady) return;
+    if (busyRef.current || busy || preparing || !file) return;
     busyRef.current = true;
     setBusy(true);
     setProgress(0);
     setSubmitError(null);
-    setCodeError(null);
     setMessage(null);
-    onCodeInvalid?.(null);
     try {
-      const res = await uploadPaymentSlip(appId, file, code, setProgress);
+      const res = await uploadPaymentSlip(appId, file, setProgress);
       if (sent) URL.revokeObjectURL(sent.url);
       if (preview) setSent({ url: preview, name: file.name, size: file.size }); // ownership of the URL moves to `sent`
       setPreview(null);
       setFile(null);
       setResized(false);
       setReplace(false);
-      if (!external) {
-        setInnerCode(validDefaultCode);
-        setEditingCode(false);
-      }
       focusStatus.current = true;
       setMessage(SLIP_OK_HEADLINE);
       onUploaded(res.data.slipStatus ?? 'PENDING', SLIP_OK_HEADLINE, res.source);
     } catch (err) {
-      const text = describeApiError(err, 'ส่งสลิปไม่สำเร็จ กรุณาลองอีกครั้ง');
-      // The picked file and the typed digits are kept so a retry is one tap.
-      const isCodeError =
-        err instanceof ApiHttpError &&
-        (err.code === 'INVALID_VERIFY_CODE' ||
-          (err.code === 'VALIDATION_ERROR' && /verifycode/i.test(err.message)));
-      if (isCodeError) {
-        if (external) onCodeInvalid?.(text);
-        else {
-          setEditingCode(true);
-          setCodeError(text);
-        }
-        refocusCode.current = true;
-      } else {
-        setSubmitError(text);
-      }
+      // The picked file is kept so a retry is one tap.
+      setSubmitError(describeApiError(err, 'ส่งสลิปไม่สำเร็จ กรุณาลองอีกครั้ง'));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -420,34 +342,6 @@ export function SlipUploadPanel({
             )}
           </div>
 
-          {/* When /register keeps the 4-digit verify code in memory, submit silently without asking again. */}
-          {!external && (!validDefaultCode || editingCode) && (
-            <VerifyCodeField
-              id={ids.code}
-              value={innerCode}
-              onChange={(v) => {
-                setInnerCode(v);
-                if (codeError) setCodeError(null);
-              }}
-              error={codeError}
-              enterKeyHint="send"
-              disabled={busy}
-              notPhone={notPhone}
-            />
-          )}
-          {external && !codeReady && (
-            <div className="su-code-prompt">
-              <p className="su-note">
-                {file
-                  ? 'กรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักในช่องด้านบนก่อนส่งสลิป'
-                  : 'เลือกรูปสลิปและกรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักด้านบนก่อนส่งสลิป'}
-              </p>
-              <button type="button" className="su-link-btn" onClick={focusExternalCode}>
-                ไปกรอกรหัส 4 ตัวท้ายด้านบน
-              </button>
-            </div>
-          )}
-
           <div>
             <div className="su-actions">
               <button
@@ -468,14 +362,8 @@ export function SlipUploadPanel({
               <ul className="su-checklist" aria-live="polite">
                 <li data-done={Boolean(file)}>
                   <span aria-hidden="true">{file ? '✓' : '○'}</span>
-                  {external && file ? 'แนบสลิปแล้ว' : 'เลือกภาพสลิป'}
+                  เลือกภาพสลิป
                 </li>
-                {(external || !validDefaultCode || editingCode) && (
-                  <li data-done={codeReady}>
-                    <span aria-hidden="true">{codeReady ? '✓' : '○'}</span>
-                    {external ? 'กรอกเลข 4 ตัวด้านบน' : 'กรอกเลข 4 ตัวท้ายบัตร'}
-                  </li>
-                )}
               </ul>
             )}
             {submitError && (

@@ -116,7 +116,6 @@ export type ShirtSize = 'SSS' | 'SS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL' | 
 export interface ApplicationPayload {
   fullName: string;
   nickname: string;
-  nationalId: string;
   phone: string;
   email: string;
   parentName?: string;
@@ -138,16 +137,18 @@ export type SlipStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 /**
  * Applicant record matching the Go backend DTO.
  *
- * Public endpoints (status lookup, confirm, submit) return identifiers masked by the server
- * (AGENTS.md §13.5): nationalId `1-5099-XXXXX-XX-X`, phone `XXX-XXX-5678`, email `s***@x.com`,
- * and never a slip URL. Only /admin endpoints return full values and `slipUrl`, which is an
+ * Public endpoints (code lookup, confirm, submit) return identifiers masked by the server
+ * (AGENTS.md §13.5): phone `XXX-XXX-5678`, email `s***@x.com`, and never a slip URL.
+ * There is no national ID anywhere any more: the application code (CC25-XXXXXX) is the
+ * applicant's proof. Only /admin endpoints return full values and `slipUrl`, which is an
  * authenticated API path — load it with fetchAdminSlip, not an <img src>.
  */
 export interface ApplicantRecord {
   id: string;
+  /** 'code' on a public lookup by application code; absent elsewhere. */
+  lookup?: 'code';
   fullName: string;
   nickname?: string;
-  nationalId: string;
   phone: string;
   email?: string;
   parentName?: string;
@@ -179,6 +180,33 @@ export interface ApplicantRecord {
 }
 
 export type Application = ApplicantRecord;
+
+/**
+ * GET /applications/status?q=<phone> answer. It never carries the application code (no `id`,
+ * nothing derived from it): a phone number is easy to know, so it only shows a short masked
+ * status. Every write action (slip, confirm, withdraw) needs the code, which the applicant got
+ * on the receipt and in the email (`codeRequired`).
+ */
+export interface PhoneLookupResult {
+  lookup: 'phone';
+  codeRequired: boolean;
+  /** Masked, e.g. "ส*** ใ***". */
+  fullName: string;
+  phone: string;
+  email?: string;
+  status: ApplicationStatus;
+  hasSlip: boolean;
+  slipStatus?: SlipStatus | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type StatusLookupResult = Application | PhoneLookupResult;
+
+/** True for the phone-shaped answer, which must never enable a write action. */
+export function isPhoneLookup(r: StatusLookupResult | null | undefined): r is PhoneLookupResult {
+  return !!r && (r as PhoneLookupResult).lookup === 'phone';
+}
 
 export interface SlipUploadResult {
   id: string;
@@ -290,19 +318,31 @@ export function stripZeroWidth(value: string): string {
   return value.replace(ZERO_WIDTH_RE, '');
 }
 
-/** National ID / phone as the API expects them: digits only (normalises Thai digits, drops zero-width chars, hyphens, spaces). */
+/** Phone as the API expects it: digits only (normalises Thai digits, drops zero-width chars, hyphens, spaces). */
 export function sanitizeDigits(value: string): string {
   return normalizeThaiDigits(value).replace(/\D/g, '');
 }
 
 /**
- * Status lookup query: an ID or phone written with Thai numerals or hyphens/spaces becomes ASCII
- * digits only; anything else is treated as an application ID (CC25-XXXXXX), whose own hyphen is kept.
+ * Status lookup query: a phone written with Thai numerals or hyphens/spaces becomes ASCII digits
+ * only; anything else is treated as an application code (CC25-XXXXXX), whose own hyphen is kept
+ * (a Unicode dash between CC25 and the hex becomes '-', inner spaces go).
  */
 export function normalizeLookupQuery(raw: string): string {
   const q = normalizeThaiDigits(stripZeroWidth(raw)).trim();
   const digits = q.replace(/[\s\-\u2010-\u2015\u2212]/g, '');
-  return /^\d+$/.test(digits) ? digits : q.toUpperCase();
+  if (/^\d+$/.test(digits)) return digits;
+  return q.toUpperCase().replace(/\s+/g, '').replace(/[\u2010-\u2015\u2212]/g, '-');
+}
+
+/** A 10-digit Thai mobile number starting with 0 (what the server accepts as a phone lookup). */
+export function isPhoneQuery(q: string): boolean {
+  return /^0\d{9}$/.test(q);
+}
+
+/** CC25-XXXXXX after normalizeLookupQuery. */
+export function isApplicationCodeQuery(q: string): boolean {
+  return /^CC25-[0-9A-F]{6}$/.test(q);
 }
 
 /** Whether the applicant has uploaded a payment slip. */
@@ -492,71 +532,82 @@ export async function submitApplication(
   }
 }
 
-/** GET /applications/status?q=... */
-export function getApplicationStatus(query: string): Promise<ApiResult<Application>> {
+/**
+ * GET /applications/status?q=... — by application code the full masked record (`lookup: 'code'`,
+ * with `id`); by phone a PhoneLookupResult that never contains the code. Anything else is
+ * 400 VALIDATION_ERROR. Unknown codes count against a per-client and a global miss budget:
+ * 429 RATE_LIMITED + Retry-After when it is used up.
+ */
+export function getApplicationStatus(query: string): Promise<ApiResult<StatusLookupResult>> {
   const q = encodeURIComponent(query);
-  return withFallback(
-    () => fetchJson<Application>(`/applications/status?q=${q}`),
-    () => ({
-      id: query.toUpperCase().startsWith('CC25') ? query.toUpperCase() : 'CC25-MOCK01',
-      fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
-      nickname: 'เกียรติ',
-      nationalId: '1-5099-XXXXX-XX-X',
-      phone: 'XXX-XXX-6543',
-      email: 's***@school.ac.th',
-      school: 'โรงเรียนแม่โจ้วิทยาคม',
-      grade: 'ม.5',
-      shirtSize: 'XL',
-      province: 'เชียงใหม่',
-      status: 'PASSED' as ApplicationStatus,
-      attendanceConfirmed: false,
-      hasSlip: false,
-      createdAt: new Date().toISOString(),
-    }),
+  return withFallback<StatusLookupResult>(
+    () => fetchJson<StatusLookupResult>(`/applications/status?q=${q}`),
+    // Dev-only offline mock: shaped like the real answer, so a phone query has NO code in it.
+    () =>
+      !query.toUpperCase().startsWith('CC25')
+        ? {
+            lookup: 'phone',
+            codeRequired: true,
+            fullName: 'ส*** ส***',
+            phone: 'XXX-XXX-6543',
+            email: 's***@school.ac.th',
+            status: 'PASSED' as ApplicationStatus,
+            hasSlip: false,
+            createdAt: new Date().toISOString(),
+          }
+        : {
+            id: query.toUpperCase(),
+            lookup: 'code',
+            fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
+            nickname: 'เกียรติ',
+            phone: 'XXX-XXX-6543',
+            email: 's***@school.ac.th',
+            school: 'โรงเรียนแม่โจ้วิทยาคม',
+            grade: 'ม.5',
+            shirtSize: 'XL',
+            province: 'เชียงใหม่',
+            status: 'PASSED' as ApplicationStatus,
+            attendanceConfirmed: false,
+            hasSlip: false,
+            createdAt: new Date().toISOString(),
+          }
   );
 }
 
 /**
- * POST /api/applications/:id/withdraw — the applicant cancels their own application. Needs the
- * applicant's full 13-digit national ID (4 digits are not enough: anyone who knows the phone
- * number can look the application up). The caller keeps it in component state only and never in
- * localStorage / sessionStorage (AGENTS.md §9.2). The server soft-deletes the row, which frees the
- * seat and lets the same person register again. 400 for a malformed ID, 403 INVALID_VERIFY_CODE
- * for a wrong one, 429 RATE_LIMITED after 5 wrong answers in 15 minutes (the application is locked
- * for 15 minutes, Retry-After), 409 when the application cannot be cancelled online (CONFIRMED, a
- * slip already sent or approved, or already REJECTED / REFUND_PENDING / REFUNDED: staff handle
- * the refund), 404 if it is already gone.
+ * POST /api/applications/:id/withdraw — the applicant cancels their own application. The code in
+ * the path is the proof (body: optional `{ reason }`). The server soft-deletes the row, which frees
+ * the seat and lets the same person register again. 404 for an unknown code, 429 RATE_LIMITED +
+ * Retry-After after too many unknown codes, 409 when the application cannot be cancelled online
+ * (CONFIRMED, a slip already sent or approved, or already REJECTED / REFUND_PENDING / REFUNDED:
+ * staff handle the refund). No offline fallback: this is a real mutation.
  */
 export async function withdrawApplication(
   id: string,
-  nationalId: string,
   reason?: string,
 ): Promise<ApiResult<{ message: string; id: string }>> {
   const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
     method: 'POST',
-    body: JSON.stringify({ nationalId, reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+    body: JSON.stringify({ reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
   });
   return { data, source: 'LIVE GO API' };
 }
 
 /**
- * POST /applications/:id/confirm — body { confirmed, verifyCode }.
- * `verifyCode` is the last 4 digits of the applicant's national ID (AGENTS.md §13.5): the server
- * answers 403 INVALID_VERIFY_CODE when it does not match, so knowing an application ID alone is
- * not enough to act on someone else's application.
+ * POST /applications/:id/confirm — body { confirmed }. The application code in the path is the
+ * proof; unknown codes count against the miss budget (404, then 429 RATE_LIMITED + Retry-After).
  */
-export function confirmAttendance(id: string, confirmed: boolean, verifyCode: string): Promise<ApiResult<Application>> {
+export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiResult<Application>> {
   return withFallback(
     () =>
       fetchJson<Application>(`/applications/${encodeURIComponent(id)}/confirm`, {
         method: 'POST',
-        body: JSON.stringify({ confirmed, verifyCode }),
+        body: JSON.stringify({ confirmed }),
       }),
     () => ({
       id,
       fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
       nickname: 'เกียรติ',
-      nationalId: '1-5099-XXXXX-XX-X',
       phone: 'XXX-XXX-6543',
       email: 's***@school.ac.th',
       school: 'โรงเรียนแม่โจ้วิทยาคม',
@@ -573,18 +624,16 @@ export function confirmAttendance(id: string, confirmed: boolean, verifyCode: st
 
 /**
  * POST /applications/:id/slip
- * Uploads a payment slip image (multipart/form-data: 'verifyCode' + 'slip'). The server checks the
- * magic bytes, caps the image at 4096×4096 px (400 INVALID_IMAGE_DIMENSIONS) and requires
- * `verifyCode`, the last 4 digits of the applicant's national ID (403 INVALID_VERIFY_CODE).
+ * Uploads a payment slip image (multipart/form-data: 'slip'). The application code in the path is
+ * the proof (404 unknown code, 429 RATE_LIMITED + Retry-After after too many unknown codes). The
+ * server checks the magic bytes and caps the image at 4096×4096 px (400 INVALID_IMAGE_DIMENSIONS).
  */
 export function uploadPaymentSlip(
   id: string,
   file: File,
-  verifyCode: string,
   onProgress?: (percent: number) => void,
 ): Promise<ApiResult<SlipUploadResult>> {
   const formData = new FormData();
-  formData.append('verifyCode', verifyCode);
   formData.append('slip', file);
 
   return withFallback(
@@ -603,7 +652,6 @@ export function uploadPaymentSlip(
 export interface AdminProfilePayload {
   fullName?: string;
   nickname?: string;
-  nationalId?: string;
   phone?: string;
   email?: string;
   parentName?: string;
@@ -620,9 +668,8 @@ export interface AdminProfilePayload {
 }
 
 /**
- * PATCH /admin/applications/:id/profile — full validation server-side (Mod-11 national ID, phone,
- * email, shirt size, lengths). 409 DUPLICATE_APPLICATION when the national ID, phone or email
- * belongs to another live applicant. Every change is written to audit_logs with old -> new values.
+ * PATCH /admin/applications/:id/profile — full validation server-side (phone, email, shirt size,
+ * lengths). 409 DUPLICATE_APPLICATION when the phone or email belongs to another live applicant. Every change is written to audit_logs with old -> new values.
  */
 export async function updateApplicantProfile(
   token: string,
@@ -738,7 +785,6 @@ export function listApplications(
         id: 'CC25-9A8B1C',
         fullName: 'สมเกียรติ สุขสมบูรณ์',
         nickname: 'เกียรติ',
-        nationalId: '1509900112233',
         phone: '0819876543',
         email: 'somkiat@school.ac.th',
         parentName: 'สมชาย สุขสมบูรณ์',
@@ -763,7 +809,6 @@ export function listApplications(
         id: 'CC25-4D5E6F',
         fullName: 'กัญญาภัทร สิริวัฒน์',
         nickname: 'ฟ้า',
-        nationalId: '1509900223344',
         phone: '0891234567',
         email: 'kanya@school.ac.th',
         parentName: 'กัญญา สิริวัฒน์',
@@ -788,7 +833,6 @@ export function listApplications(
         id: 'CC25-112233',
         fullName: 'ธีรเดช เจริญผล',
         nickname: 'บอย',
-        nationalId: '1509900334455',
         phone: '0845556677',
         email: 'teeradej@school.ac.th',
         parentName: 'มานะ เจริญผล',
@@ -811,7 +855,7 @@ export function listApplications(
 /**
  * POST /admin/applications/export-audit — records a CSV export (application.export.csv in
  * audit_logs) before the dashboard builds the file. The search text is not sent: staff search by
- * phone number or national ID; only whether a search narrowed the list.
+ * phone number, application code or name; only whether a search narrowed the list.
  */
 export function recordCsvExport(
   token: string,

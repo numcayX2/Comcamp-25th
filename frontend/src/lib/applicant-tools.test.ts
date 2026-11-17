@@ -24,7 +24,6 @@ function sampleApplication(overrides: Partial<ApplicantRecord> = {}): ApplicantR
     id: 'CC25-TEST01',
     fullName: 'สมชาย ใจดี',
     nickname: 'ชาย',
-    nationalId: '1100500000018',
     phone: '0812345678',
     email: 'test@example.com',
     school: 'โรงเรียนแม่โจ้',
@@ -152,6 +151,25 @@ test('parent contact fields work in matchesApplicantQuery and buildApplicantsCsv
   assert.ok(csv.includes('อีเมล,ชื่อผู้ปกครอง,ความสัมพันธ์ผู้ปกครอง,เบอร์โทรผู้ปกครอง,โรงเรียน'));
   assert.ok(csv.includes(',test@example.com,สมศรี ใจดี,มารดา,"=""0898765432""",โรงเรียนแม่โจ้,'));
   assert.ok(csv.includes(',test@example.com,"\'=SUM(1,1)",บิดา,,โรงเรียนแม่โจ้,'));
+});
+
+test('Phase 5.1: no national ID column in the CSV; staff search by phone, code or name still works', () => {
+  assert.deepEqual(CSV_HEADERS.slice(0, 5), ['รหัสใบสมัคร', 'ชื่อ-นามสกุล', 'ชื่อเล่น', 'เบอร์โทรศัพท์', 'อีเมล']);
+  assert.ok(!CSV_HEADERS.some((h) => /ประชาชน|บัตร/.test(h)), 'no national ID header');
+
+  const app = sampleApplication();
+  const csv = buildApplicantsCsv([app]);
+  const [header, row] = csv.replace(/^\uFEFF/, '').split('\r\n');
+  assert.equal(header.split(',').length, CSV_HEADERS.length);
+  assert.ok(row.startsWith('CC25-TEST01,สมชาย ใจดี,ชาย,"=""0812345678""",test@example.com,'));
+
+  assert.equal(matchesApplicantQuery(app, 'cc25-test01'), true);
+  assert.equal(matchesApplicantQuery(app, 'CC25-TEST01'), true);
+  assert.equal(matchesApplicantQuery(app, '081-234-5678'), true);
+  assert.equal(matchesApplicantQuery(app, '๐๘๑๒๓๔'), true);
+  assert.equal(matchesApplicantQuery(app, 'สมชาย'), true);
+  assert.equal(matchesApplicantQuery(app, 'ชาย'), true);
+  assert.equal(matchesApplicantQuery(app, '1100500000018'), false);
 });
 
 const HOUR = 60 * 60 * 1000;

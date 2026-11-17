@@ -138,7 +138,6 @@ export const gradeValue = (f: Pick<FormState, 'grade' | 'gradeOther'>) =>
 export const EMPTY_FORM: FormState = {
   fullName: '',
   nickname: '',
-  nationalId: '',
   phone: '',
   email: '',
   parentName: '',
@@ -157,7 +156,6 @@ export const EMPTY_FORM: FormState = {
 export const MOCK_FORM: FormState = {
   fullName: 'สมชาย ทดสอบระบบ',
   nickname: 'ชาย',
-  nationalId: '1103701234512',
   phone: '0812345678',
   email: 'somchai.test@example.com',
   parentName: 'สมศรี ทดสอบระบบ',
@@ -190,7 +188,7 @@ export const STEPS: StepMeta[] = [
     label: 'ข้อมูลผู้สมัคร',
     title: 'ข้อมูลผู้สมัคร',
     lead: 'กรอกให้ครบทุกช่อง · ใช้ออกรหัสใบสมัครและติดต่อประสานงานกับผู้สมัครและผู้ปกครอง',
-    fields: ['fullName', 'nickname', 'nationalId', 'phone', 'email', 'parentName', 'parentRelation', 'parentPhone'],
+    fields: ['fullName', 'nickname', 'phone', 'email', 'parentName', 'parentRelation', 'parentPhone'],
   },
   {
     label: 'ข้อมูลการศึกษา',
@@ -237,14 +235,6 @@ export function normalizeThaiDigits(s: string): string {
 
 export const onlyDigits = (s: string) => normalizeThaiDigits(s).replace(/\D/g, '');
 
-/** 13 digits whose last digit is the Thai Mod-11 check digit (mirrors the Go backend). */
-export function isValidThaiNationalID(id: string): boolean {
-  if (!/^\d{13}$/.test(id)) return false;
-  let sum = 0;
-  for (let i = 0; i < 12; i++) sum += Number(id[i]) * (13 - i);
-  return (11 - (sum % 11)) % 10 === Number(id[12]);
-}
-
 export function cleanSingleLine(s: string): string {
   return stripZeroWidth(s).trim().replace(/\s+/g, ' ');
 }
@@ -272,14 +262,6 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       const n = cleanSingleLine(form.nickname);
       if (!n) return 'กรุณากรอกชื่อเล่น';
       return n.length > NICKNAME_MAX ? `ชื่อเล่นต้องยาวไม่เกิน ${NICKNAME_MAX} ตัวอักษร` : undefined;
-    }
-    case 'nationalId': {
-      const id = onlyDigits(form.nationalId);
-      if (id.length === 0) return 'กรุณากรอกเลขบัตรประจำตัว 13 หลัก';
-      if (id.length !== 13) return `เลขบัตรประจำตัวต้องมี 13 หลัก (ตอนนี้กรอกไว้ ${id.length} หลัก)`;
-      return isValidThaiNationalID(id)
-        ? undefined
-        : 'เลข 13 หลักไม่สัมพันธ์กันตามรหัสตรวจสอบบนบัตร (อาจพิมพ์ผิดหรือสลับหลัก กรุณาเทียบทีละกลุ่มอีกครั้ง)';
     }
     case 'phone': {
       const p = onlyDigits(form.phone);
@@ -369,12 +351,6 @@ export const firstErrorKey = (step: number, errors: FieldErrors): FieldKey | und
   STEPS[step].fields.find((k) => errors[k]);
 
 /* ───────────────────────── Display formatting ───────────────────────── */
-
-export function formatNationalId(v: string): string {
-  const d = onlyDigits(v);
-  if (d.length !== 13) return d;
-  return `${d[0]}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10, 12)}-${d[12]}`;
-}
 
 export function formatPhone(v: string): string {
   const d = onlyDigits(v);
