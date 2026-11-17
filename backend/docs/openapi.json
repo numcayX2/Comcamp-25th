@@ -114,7 +114,7 @@
                 "school": "โรงเรียนแม่โจ้วิทยาคม",
                 "grade": "ม.5",
                 "shirtSize": "L",
-                "motivation": "อยากเรียนรู้การเขียนโปรแกรม IoT และต่อวงจรฮาร์ดแวร์จริง"
+                "motivation": "อยากเรียนรู้การเขียนโปรแกรม Microcontroller และต่อวงจรฮาร์ดแวร์จริงด้วย Arduino UNO R3"
               }
             }
           }
@@ -788,7 +788,7 @@
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.5" },
           "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "L" },
-          "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
+          "motivation": { "type": "string", "example": "อยากเรียนรู้ Microcontroller และเขียนโปรแกรม Arduino UNO R3" },
           "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
           "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
           "province": { "type": "string", "example": "เชียงใหม่" },

@@ -601,7 +601,7 @@ func TestHealthNotesRegistrationAndPrivacy(t *testing.T) {
 
 	id := validTestNationalID(221)
 	payload := fmt.Sprintf(
-		`{"fullName":"สมหญิง ใจดี","nickname":"หญิง","nationalId":%q,"phone":"0810000221","email":"ying.health@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"อยากทำ IoT","allergies":"  แพ้กุ้ง​และปู  ","medicalConditions":"  หอบหืด ต้องพกยาพ่น  "}`,
+		`{"fullName":"สมหญิง ใจดี","nickname":"หญิง","nationalId":%q,"phone":"0810000221","email":"ying.health@example.com","school":"โรงเรียนแม่โจ้","province":"เชียงใหม่","grade":"ม.5","shirtSize":"M","motivation":"อยากทำโปรเจกต์ Microcontroller","allergies":"  แพ้กุ้ง​และปู  ","medicalConditions":"  หอบหืด ต้องพกยาพ่น  "}`,
 		id,
 	)
 	rec := app.do(t, http.MethodPost, "/api/applications", strings.NewReader(payload), map[string]string{

@@ -243,7 +243,7 @@ func captchaTestRequest(nid, token string) service.ApplicationCreateRequest {
 	return service.ApplicationCreateRequest{
 		FullName: "สมชาย ใจดี", Nickname: "ชาย", NationalID: nid, Phone: "0812345678",
 		Email: "somchai@example.com", School: "โรงเรียนแม่โจ้วิทยาคม", Grade: "ม.5", ShirtSize: "L",
-		Motivation: "อยากเรียนรู้ IoT", TurnstileToken: token,
+		Motivation: "อยากเรียนรู้ Arduino", TurnstileToken: token,
 	}
 }
 

@@ -15,7 +15,7 @@
 ### ✅ สิ่งที่ดำเนินการเสร็จสิ้นแล้ว (COMPLETED — ตรงตามโค้ดจริงถึง `f0f25d5`)
 
 1. **หน้าโฮมเพจ Flagship (`HomePage.astro`, `HeroSection.astro`, `SiteNav.astro`, `public/theme/*`)**
-   - **Hero 3D (`HeroSection.astro` + `src/scripts/hero-3d.js`):** แสดงบอร์ด **ESP8266 NodeMCU** ([`esp8266.glb`](frontend/public/models/esp8266.glb)) และ **Arduino UNO R3** ([`ArduinoR3.glb`](frontend/public/models/ArduinoR3.glb)) ใน WebGL canvas เดียวทรงตัว V (`HERO_3D_CONFIG`) พร้อม self-hosted Draco decoder ([`frontend/public/draco/gltf/`](frontend/public/draco/gltf/draco_decoder.js)), `fitRig()` auto-framing, mouse parallax, drag/touch-to-rotate, keyboard arrow rotation, `IntersectionObserver` หยุด render เมื่อเลื่อนพ้นจอ และ `prefers-reduced-motion` static fallback
+   - **Hero 3D (`HeroSection.astro` + `src/scripts/hero-3d.js`):** แสดงบอร์ด **Arduino UNO R3** ([`ArduinoR3.glb`](frontend/public/models/ArduinoR3.glb)) ใน WebGL canvas (`HERO_3D_CONFIG`) พร้อม self-hosted Draco decoder ([`frontend/public/draco/gltf/`](frontend/public/draco/gltf/draco_decoder.js)), `fitRig()` auto-framing, mouse parallax, drag/touch-to-rotate, keyboard arrow rotation, `IntersectionObserver` หยุด render เมื่อเลื่อนพ้นจอ และ `prefers-reduced-motion` static fallback
    - **Hero Typography, Animations & Zero-CLS:** หัวข้อ `Comcamp 25th` ใช้ **`@fontsource/space-grotesk` (`700`)** (แทน `@fontsource/pixelify-sans` เดิม — ปัจจุบันไม่มีไฟล์ใดใน `src/` หรือ `public/` import `@fontsource/pixelify-sans` แล้ว) พร้อม **ScrambleText** animation และคำบรรยาย `.hero__sub` ใช้ **GSAP `SplitText`** เลื่อนเข้าจากขวาไปซ้าย (`x: 44`, `mask: 'lines'`, `aria: 'none'`) หลัง `document.fonts.ready`; โลโก้ใช้ `<picture>` เสิร์ฟ WebP ([`comcamp25-logo-sm.webp`](frontend/public/assets/logo/comcamp25-logo-sm.webp)) พร้อม PNG fallback; preloads `.woff2` 5 ไฟล์ (`thai400`, `thai700`, `mono500`, `mono600`, `grotesk700`), defer การโหลด `hero-3d.js` หลัง `load` + `requestIdleCallback` เพื่อไม่แย่ง bandwidth จาก LCP, ล็อกขนาด `.hero__copy` / `.hero__stage-wrap` กัน CLS, และทำ pre-paint `.veil` bypass (`veil-skip`) สำหรับการเปิดซ้ำ / anchor jump / `prefers-reduced-motion` / `Save-Data`
    - **Navbar & Mobile ToC Drawer (`SiteNav.astro` + `main.js`):**
      - บนหน้าแรกใช้ `.site-nav.is-home { position: fixed !important }` ทำให้ `.hero` สูง `100svh` พอดีที่ `y = 0` และเลื่อนหลบอัตโนมัติเมื่อเข้า `#gallery`
@@ -84,7 +84,7 @@
 
 ## 1. Project Overview (ภาพรวมโครงการ)
 
-**ComCamp #25 (ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25)** เป็นค่ายวิชาการเชิงปฏิบัติการ (Hands-on Workshop & Hackathon) ระยะเวลา **3 วัน 2 คืน** จัดโดยสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ เพื่อเปิดโอกาสให้นักเรียนระดับมัธยมศึกษาตอนปลายและอาชีวศึกษาได้เรียนรู้การเขียนโปรแกรม การต่อวงจรฮาร์ดแวร์ไมโครคอนโทรลเลอร์ (Arduino UNO R3 & ESP8266 NodeMCU), ระบบ IoT (Internet of Things) และการสร้างหน้าเว็บ AI Dashboard ควบคุมอุปกรณ์ผ่านสมาร์ตโฟน โดยมุ่งเน้นการลงมือปฏิบัติจริงโดยไม่จำเป็นต้องมีพื้นฐานมาก่อน
+**ComCamp #25 (ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25)** เป็นค่ายวิชาการเชิงปฏิบัติการ (Hands-on Workshop & Hackathon) ระยะเวลา **3 วัน 2 คืน** จัดโดยสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ เพื่อเปิดโอกาสให้นักเรียนระดับมัธยมศึกษาตอนปลายและอาชีวศึกษาได้เรียนรู้การเขียนโปรแกรม การต่อวงจรฮาร์ดแวร์ไมโครคอนโทรลเลอร์ (Microcontroller: **Arduino UNO R3**) และการพัฒนาโครงงานระบบอัตโนมัติเชิงปฏิบัติการ โดยมุ่งเน้นการลงมือปฏิบัติจริงโดยไม่จำเป็นต้องมีพื้นฐานมาก่อน
 
 *(ดูเอกสารสถาปัตยกรรมระบบร่วมฉบับเต็มได้ที่ [`ComCamp.md`](ComCamp.md) และมาตรฐานวิศวกรรม Frontend/Security ได้ที่ [`AGENTS.md`](AGENTS.md))*
 
@@ -119,8 +119,8 @@ flowchart TD
         D1C --> D1D["4 Project Tracks Ideation<br/>+ Night Lab 1"]
     end
 
-    subgraph Day2["Day 2: IoT & AI Dashboard Sprint"]
-        D2A["ESP8266 NodeMCU Wi-Fi AP Mode<br/>(SSID: ComCamp25_xx)"] --> D2B["Local Embedded Web Server<br/>(192.168.4.1) & AI Web Dashboard"]
+    subgraph Day2["Day 2: Microcontroller & Hackathon Sprint"]
+        D2A["Arduino UNO R3 Sensor Integration<br/>(Ultrasonic, LDR, Buzzer & Actuators)"] --> D2B["Automated Control Logic<br/>& AI-Assisted Coding Workflow"]
         D2B --> D2C["Hackathon Project Sprint 1 & 2<br/>(Building Track Prototype)"]
         D2C --> D2D["Night Lab 2 & Prototype Testing"]
     end
@@ -196,7 +196,7 @@ Comcamp-site/
     │   │   ├── gallery/            # รูปสำรอง g01.jpg–g43.jpg + WebP (Ignored ใน Git, เสิร์ฟหลักจาก CDN)
     │   │   └── logo/               # comcamp25-logo-sm.webp, comcamp25-logo-sm.png, comcamp25-logo.png
     │   ├── draco/gltf/             # Self-hosted Draco decoder (draco_decoder.{js,wasm}, draco_wasm_wrapper.js)
-    │   ├── models/                 # โมเดล 3D: ArduinoR3.glb, esp8266.glb
+    │   ├── models/                 # โมเดล 3D: ArduinoR3.glb
     │   └── theme/
     │       ├── styles.css          # Master palette tokens, Hero Swiss tokens, Base & Memory Tunnel CSS
     │       ├── page.css            # Section 02 & Intro veil preloader styles
