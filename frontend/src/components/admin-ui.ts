@@ -16,6 +16,9 @@ export const TECH = 'var(--color-tech)';
 export const DANGER = 'var(--color-danger)';
 export const SUCCESS = 'var(--color-success)';
 export const WARNING = 'var(--color-warning)';
+/** Amber that is legible as text / as a filled button background (AGENTS §4.1 amber-text). */
+export const AMBER_TEXT = 'var(--color-warning-text)';
+export const AMBER_ON = 'var(--color-on-warning)';
 
 /** Focus treatment for every interactive control (AGENTS §11.3). */
 export const FOCUS =

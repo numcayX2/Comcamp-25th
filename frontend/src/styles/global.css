@@ -22,6 +22,8 @@
   --color-tech: #1A5FE0;
   --color-cta: #03B800;
   --color-warning: #B45309;
+  --color-warning-text: #9A4608;
+  --color-on-warning: #FFFFFF;
   --color-danger: #C62828;
   --color-success: #029E00;
   --color-btn-dark: #121316;
@@ -55,6 +57,8 @@ html[data-theme="dark"] {
   --color-ink-subtle: #9A9CA1;
   --color-tech: #337AFF;
   --color-warning: #F59E0B;
+  --color-warning-text: #F59E0B;
+  --color-on-warning: #0B0F19;
   --color-danger: #F87171;
   --color-success: #3DDC3A;
   --color-btn-dark: #F5F4EF;

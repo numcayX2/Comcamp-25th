@@ -45,7 +45,7 @@ import {
   matchesApplicantQuery,
   slipLabel,
 } from '../lib/applicant-tools';
-import { formatNationalId } from './register/model';
+import { describePaymentDeadline, formatNationalId } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { SlipLightbox } from './slip/SlipLightbox';
@@ -66,12 +66,14 @@ import {
   SURFACE_SUBTLE,
   TECH,
   WARNING,
+  AMBER_TEXT,
+  AMBER_ON,
 } from './admin-ui';
 
 const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
 const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE'];
 
-type FilterKey = 'ALL' | 'SLIP_PENDING' | ApplicationStatus;
+type FilterKey = 'ALL' | 'SLIP_PENDING' | 'AWAITING_PAY' | ApplicationStatus;
 type SortKey = 'newest' | 'slip_queue' | 'updated_desc';
 
 type LocalSlipVerdict = {
@@ -173,6 +175,17 @@ function isSlipPending(a: Application): boolean {
   return hasSlip(a) && (a.slipStatus ?? 'PENDING') === 'PENDING';
 }
 
+/** Holds a PASSED seat with nothing under review or approved: still owes the transfer + slip. */
+function isAwaitingPayment(a: Application): boolean {
+  if (a.status !== 'PASSED') return false;
+  if (!hasSlip(a)) return true;
+  return (a.slipStatus ?? 'PENDING') === 'REJECTED';
+}
+
+function isPaymentOverdue(a: Application, nowMs: number): boolean {
+  return isAwaitingPayment(a) && describePaymentDeadline(a.createdAt, nowMs).isOverdue;
+}
+
 function slipSortTier(a: Application): number {
   if (!hasSlip(a)) return 3;
   const s = a.slipStatus ?? 'PENDING';
@@ -258,25 +271,46 @@ function StatusSelect({
   );
 }
 
+/** Time left on the 3-day transfer window, shown only while the applicant still owes a slip. */
+function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
+  if (!isAwaitingPayment(app)) return null;
+  const d = describePaymentDeadline(app.createdAt, nowMs);
+  return (
+    <span
+      className="mt-0.5 block text-xs font-semibold leading-5"
+      style={{ color: d.isOverdue ? DANGER : d.isUrgent ? AMBER_TEXT : INK_3 }}
+      title={`ครบกำหนดโอน ${d.deadlineText}`}
+    >
+      {d.isOverdue ? 'เกินกำหนดโอน 3 วันแล้ว' : d.remainingText.replace('เหลือเวลาโอนอีก', 'เหลือเวลาโอน')}
+    </span>
+  );
+}
+
 /** Payment-slip state as a pill: the dot carries the colour, the text carries the meaning. */
-function SlipBadge({ app }: { app: Application }) {
+function SlipBadge({ app, nowMs }: { app: Application; nowMs: number }) {
   if (!hasSlip(app)) {
     return (
-      <span className="text-sm leading-7" style={{ color: INK_3 }}>
-        ยังไม่มีสลิป
+      <span className="block">
+        <span className="text-sm leading-7" style={{ color: INK_3 }}>
+          ยังไม่มีสลิป
+        </span>
+        <PaymentDue app={app} nowMs={nowMs} />
       </span>
     );
   }
   const s: SlipStatus = app.slipStatus ?? 'PENDING';
   return (
-    <span
-      className="inline-flex items-center gap-2 rounded-full border px-3 py-0.5 text-xs font-semibold leading-6"
-      style={{ borderColor: RULE, color: INK }}
-    >
-      <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: SLIP_DOT[s] }}>
-        ●
+    <span className="block">
+      <span
+        className="inline-flex items-center gap-2 rounded-full border px-3 py-0.5 text-xs font-semibold leading-6"
+        style={{ borderColor: RULE, color: INK }}
+      >
+        <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: SLIP_DOT[s] }}>
+          ●
+        </span>
+        {SLIP_LABELS[s]}
       </span>
-      {SLIP_LABELS[s]}
+      <PaymentDue app={app} nowMs={nowMs} />
     </span>
   );
 }
@@ -344,6 +378,12 @@ export function AdminSection() {
   const [query, setQuery] = useState('');
   /** Camp fee in baht from the settings panel; used in the note templates. */
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
+  /** Minute clock for the 3-day transfer countdowns. */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const [settingsRefreshKey, setSettingsRefreshKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -572,7 +612,9 @@ export function AdminSection() {
       ? sorted
       : filter === 'SLIP_PENDING'
         ? sorted.filter((a) => isSlipPending(a))
-        : sorted.filter((a) => a.status === filter);
+        : filter === 'AWAITING_PAY'
+          ? sorted.filter((a) => isAwaitingPayment(a))
+          : sorted.filter((a) => a.status === filter);
   const visible = byTab.filter((a) => matchesApplicantQuery(a, query));
   const searching = stripZeroWidth(query).trim() !== '';
 
@@ -862,11 +904,11 @@ export function AdminSection() {
     setError(null);
     try {
       const apiStatusFilter: ApplicationStatus | undefined =
-        filter === 'ALL' || filter === 'SLIP_PENDING' ? undefined : filter;
+        filter === 'ALL' || filter === 'SLIP_PENDING' || filter === 'AWAITING_PAY' ? undefined : filter;
       await recordCsvExport(token, {
         applicationIds: rows.map((a) => a.id),
         statusFilter: apiStatusFilter,
-        searchFiltered: searching || filter === 'SLIP_PENDING',
+        searchFiltered: searching || filter === 'SLIP_PENDING' || filter === 'AWAITING_PAY',
       });
       downloadCsv(csvFileName(), buildApplicantsCsv(rows));
       setActionSuccess(`ส่งออก ${rows.length} รายการเป็นไฟล์ CSV แล้ว (บันทึกประวัติการส่งออกแล้ว)`);
@@ -1048,6 +1090,8 @@ export function AdminSection() {
 
   const count = (s: ApplicationStatus) => apps.filter((a) => a.status === s).length;
   const pendingSlipCount = apps.filter((a) => isSlipPending(a)).length;
+  const awaitingPayCount = apps.filter((a) => isAwaitingPayment(a)).length;
+  const overduePayCount = apps.filter((a) => isPaymentOverdue(a, nowMs)).length;
   /** Same rule the server uses for the seat quota: REJECTED, REFUND_PENDING and REFUNDED released theirs. */
   const currentCount = apps.filter((a) => holdsSeat(a.status)).length;
   const countLabel = searching
@@ -1064,6 +1108,7 @@ export function AdminSection() {
   const tabs: { key: FilterKey; label: string; n: number }[] = [
     { key: 'ALL', label: 'ทั้งหมด', n: apps.length },
     { key: 'SLIP_PENDING', label: 'สลิปรอตรวจ', n: pendingSlipCount },
+    { key: 'AWAITING_PAY', label: 'รอโอน / ส่งสลิป', n: awaitingPayCount },
     ...STATUSES.map((s) => ({ key: s as FilterKey, label: STATUS_LABELS[s], n: count(s) })),
     ...legacyTabs,
   ];
@@ -1083,7 +1128,14 @@ export function AdminSection() {
         </h1>
         {token ? (
           <>
-            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {role && (
+              <p className="mt-3 max-w-[60ch] text-sm leading-7" style={{ color: INK_3 }}>
+                เข้าสู่ระบบในบทบาท <span className="font-mono" style={{ color: INK }}>{role}</span>
+                {' · '}
+                จัดการใบสมัคร ตรวจสลิป แก้ไขข้อมูล ส่งออก CSV และตั้งค่าค่าย
+              </p>
+            )}
+            <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
                 <p className="text-xs leading-5" style={{ color: INK_3 }}>ถือที่นั่งอยู่</p>
                 <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
@@ -1126,23 +1178,31 @@ export function AdminSection() {
                   {count('CONFIRMED')} คน
                 </p>
               </div>
-              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
-                <p className="flex items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
-                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: TECH }} />
-                  จองสิทธิ์ชั่วคราว (PASSED)
+              <button
+                type="button"
+                aria-pressed={filter === 'AWAITING_PAY'}
+                onClick={() => {
+                  setFilter('AWAITING_PAY');
+                  ledgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className={`min-h-11 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                style={{
+                  borderColor: filter === 'AWAITING_PAY' ? TECH : overduePayCount > 0 ? DANGER : RULE,
+                  backgroundColor: filter === 'AWAITING_PAY' ? SURFACE_SUBTLE : BG_CARD,
+                }}
+              >
+                <p className="flex items-center gap-1.5 text-xs font-semibold leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
+                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: overduePayCount > 0 ? DANGER : TECH }} />
+                  รอโอน / ส่งสลิป
                 </p>
                 <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {count('PASSED')} คน
+                  {awaitingPayCount} คน
                 </p>
-              </div>
+                <p className="mt-0.5 text-xs leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
+                  {overduePayCount > 0 ? `เกินกำหนด 3 วันแล้ว ${overduePayCount} คน` : 'ยังไม่มีใครเกินกำหนด 3 วัน'}
+                </p>
+              </button>
             </div>
-            {role && (
-              <p className="mt-3 max-w-[60ch] text-sm leading-7" style={{ color: INK_3 }}>
-                เข้าสู่ระบบในบทบาท <span className="font-mono" style={{ color: INK }}>{role}</span>
-                {' · '}
-                จัดการใบสมัคร ตรวจสลิป แก้ไขข้อมูล ส่งออก CSV และตั้งค่าค่าย
-              </p>
-            )}
           </>
         ) : (
           <p className="mt-4 max-w-[46ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
@@ -1616,7 +1676,7 @@ export function AdminSection() {
                                 {allergyText && (
                                   <span
                                     className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
-                                    style={{ borderColor: WARNING, color: WARNING, backgroundColor: SURFACE_SUBTLE }}
+                                    style={{ borderColor: WARNING, color: AMBER_TEXT, backgroundColor: SURFACE_SUBTLE }}
                                     title={`แพ้อาหาร: ${allergyText}`}
                                   >
                                     <span className="truncate">แพ้อาหาร: {allergyText}</span>
@@ -1625,7 +1685,7 @@ export function AdminSection() {
                                 {medicalText && (
                                   <span
                                     className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
-                                    style={{ borderColor: TECH, color: TECH, backgroundColor: SURFACE_SUBTLE }}
+                                    style={{ borderColor: TECH, color: INK, backgroundColor: SURFACE_SUBTLE }}
                                     title={`โรคประจำตัว: ${medicalText}`}
                                   >
                                     <span className="truncate">โรคประจำตัว: {medicalText}</span>
@@ -1656,19 +1716,19 @@ export function AdminSection() {
 
                           {/* Col 4: Slip badge + verify/inspect button */}
                           <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-col lg:items-start lg:gap-1.5">
-                            <SlipBadge app={a} />
+                            <SlipBadge app={a} nowMs={nowMs} />
                             {slip && can.viewSlip && (
                               <button
                                 id={`slip-btn-${a.id}`}
                                 type="button"
                                 aria-expanded={open}
                                 onClick={() => openSlip(a)}
-                                className={`inline-flex min-h-10 items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
-                                style={{
-                                  borderColor: open ? TECH : slipPending ? WARNING : RULE,
-                                  backgroundColor: open ? SURFACE_SUBTLE : BG_CARD,
-                                  color: slipPending && !open ? WARNING : TECH,
-                                }}
+                                className={`inline-flex min-h-10 items-center rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-[opacity,background-color] lg:min-h-9 ${slipPending && !open ? 'hover:opacity-90' : 'hover:bg-[var(--color-btn-ghost-hover)]'} ${FOCUS}`}
+                                style={
+                                  slipPending && !open
+                                    ? { borderColor: AMBER_TEXT, backgroundColor: AMBER_TEXT, color: AMBER_ON }
+                                    : { borderColor: open ? TECH : RULE, backgroundColor: open ? SURFACE_SUBTLE : BG_CARD, color: TECH }
+                                }
                               >
                                 {open ? 'ซ่อนสลิป' : slipPending ? 'ตรวจสลิป' : 'ดู/แก้ผลสลิป'}
                               </button>
@@ -1742,8 +1802,8 @@ export function AdminSection() {
                                     setConfirmDeleteId(a.id);
                                   });
                                 }}
-                                className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 lg:min-h-8 ${FOCUS}`}
-                                style={{ borderColor: RULE, backgroundColor: BG_CARD, color: DANGER }}
+                                className={`inline-flex min-h-10 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium underline-offset-4 transition-colors hover:underline disabled:opacity-50 lg:min-h-8 ${FOCUS}`}
+                                style={{ color: DANGER }}
                                 title={`ลบใบสมัคร ${a.id}`}
                               >
                                 <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
@@ -2059,7 +2119,7 @@ export function AdminSection() {
                               <h2 className="text-lg font-bold leading-[1.35]" style={{ color: INK }}>
                                 หลักฐานการชำระเงิน
                               </h2>
-                              <SlipBadge app={a} />
+                              <SlipBadge app={a} nowMs={nowMs} />
                               {slipIdx >= 0 && (
                                 <span className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
                                   สลิป {slipIdx + 1}/{visibleWithSlip.length}
@@ -2509,7 +2569,9 @@ export function AdminSection() {
                       ? 'ยังไม่มีใบสมัครเข้ามา เมื่อมีผู้สมัครรายชื่อจะแสดงที่นี่'
                       : filter === 'SLIP_PENDING'
                         ? 'ไม่มีสลิปรอตรวจในขณะนี้'
-                        : 'ไม่มีใบสมัครในสถานะนี้'}
+                        : filter === 'AWAITING_PAY'
+                          ? 'ทุกคนที่ได้สิทธิ์ส่งสลิปแล้ว'
+                          : 'ไม่มีใบสมัครในสถานะนี้'}
                   </p>
                 )}
               </div>
