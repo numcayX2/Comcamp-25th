@@ -115,25 +115,17 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, map[string]string{"message": "withdrawn successfully", "id": id})
 }
 
-// UpdateOwnProfile handles PATCH /api/applications/{id}/profile: the applicant own edit of
-// nickname, school, province, grade and shirt size, authorised by verifyCode.
+// UpdateOwnProfile handles PATCH /api/applications/{id}/profile. Applicant self-edit is disabled:
+// corrections go through staff (PATCH /api/admin/applications/{id}/profile). The route stays
+// registered behind its rate limiter so old clients get a clear 403 instead of a 404/405. It
+// answers before touching the body, the service or the database, so it consumes no VerifyGuard
+// attempt, writes no audit row and cannot be used to probe whether an application exists.
 func (h *ApplicantHandler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
-		return
-	}
-	var body service.SelfProfileRequest
-	if !decodeJSON(w, r, &body) {
-		return
-	}
-	app, err := h.appService.UpdateOwnProfile(r.Context(), id, body, middleware.RemoteIP(r))
-	if err != nil {
-		writeServiceError(w, r, err)
-		return
-	}
-	response.OK(w, app)
+	response.ErrorCode(w, http.StatusForbidden, response.CodeForbidden, selfProfileEditDisabledMessage)
 }
+
+// selfProfileEditDisabledMessage is the Thai notice returned by the disabled self-edit route.
+const selfProfileEditDisabledMessage = "ปิดการแก้ไขข้อมูลด้วยตนเองแล้ว กรุณาติดต่อทีมงานเพื่อขอแก้ไขข้อมูล"
 
 // AdminUpdateProfile handles PATCH /api/admin/applications/{id}/profile: the staff edit of any
 // field of an application, including identifiers.

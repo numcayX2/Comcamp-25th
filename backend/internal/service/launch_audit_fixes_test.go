@@ -40,8 +40,9 @@ func auditApplicant(t *testing.T, apps *memory.MemoryApplicantRepo, idx int, sta
 	return a
 }
 
-// Answering "will you attend" or editing one's own profile is not a payment: it must not extend the
-// 24h grace that keeps an unpaid seat from being released.
+// Answering "will you attend" is not a payment: it must not extend the grace that keeps an unpaid
+// seat from being released. (Applicants can no longer edit their own profile; staff edits are
+// covered by TestUnpaidExpiry_StaffEditKeepsGrace.)
 func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 	ctx := context.Background()
 	apps := memory.NewMemoryApplicantRepo()
@@ -50,9 +51,8 @@ func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 
 	control := auditApplicant(t, apps, 1, domain.StatusPassed)
 	confirmer := auditApplicant(t, apps, 2, domain.StatusPassed)
-	editor := auditApplicant(t, apps, 3, domain.StatusPassed)
 	old := time.Now().UTC().Add(-130 * time.Hour)
-	for _, a := range []*domain.Applicant{control, confirmer, editor} {
+	for _, a := range []*domain.Applicant{control, confirmer} {
 		if err := apps.SetTimestampsForTest(a.ID, old, old); err != nil {
 			t.Fatal(err)
 		}
@@ -61,13 +61,6 @@ func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 	if _, err := svc.ConfirmAttendance(ctx, confirmer.ApplicationNo, confirmer.NationalID[9:], true); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
-	if _, err := svc.UpdateOwnProfile(ctx, editor.ApplicationNo, service.SelfProfileRequest{
-		VerifyCode: editor.NationalID[9:], Nickname: "ชื่อใหม่", School: editor.School,
-		Province: editor.Province, Grade: editor.Grade, ShirtSize: editor.ShirtSize,
-	}, "127.0.0.1"); err != nil {
-		t.Fatalf("self profile edit: %v", err)
-	}
-
 	expired, err := svc.ExpireOverdueUnpaid(ctx, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +69,7 @@ func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 	for _, id := range expired {
 		got[id] = true
 	}
-	for _, a := range []*domain.Applicant{control, confirmer, editor} {
+	for _, a := range []*domain.Applicant{control, confirmer} {
 		if !got[a.ApplicationNo] {
 			t.Errorf("%s was not expired: self-service activity must not grant the 24h grace (expired=%v)", a.ApplicationNo, expired)
 		}

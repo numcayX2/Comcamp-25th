@@ -599,33 +599,6 @@ export function uploadPaymentSlip(
   );
 }
 
-/** The fields an applicant may edit themselves from /status. Identity fields are staff-only. */
-export interface SelfProfilePayload {
-  nickname: string;
-  school: string;
-  province: string;
-  grade: string;
-  shirtSize: ShirtSize;
-}
-
-/**
- * PATCH /applications/:id/profile — the applicant's own edit of nickname, school, province, grade
- * and shirt size. Needs the last 4 digits of the national ID (403 INVALID_VERIFY_CODE). 409 when
- * the application is REJECTED / REFUND_PENDING / REFUNDED, 400 for invalid values. Like every
- * mutation, a failure is thrown, never answered with mock data. The answer is the masked record.
- */
-export async function updateOwnProfile(
-  id: string,
-  verifyCode: string,
-  payload: SelfProfilePayload,
-): Promise<ApiResult<Application>> {
-  const data = await fetchJson<Application>(`/applications/${encodeURIComponent(id)}/profile`, {
-    method: 'PATCH',
-    body: JSON.stringify({ verifyCode, ...payload }),
-  });
-  return { data, source: 'LIVE GO API' };
-}
-
 /** Staff edit: any field may be sent; fields left out keep their stored value. */
 export interface AdminProfilePayload {
   fullName?: string;

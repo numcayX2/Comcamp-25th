@@ -39,7 +39,6 @@ const (
 const (
 	VerifyActionConfirm  = "confirm"
 	VerifyActionSlip     = "slip"
-	VerifyActionProfile  = "profile"
 	VerifyActionWithdraw = "withdraw"
 )
 

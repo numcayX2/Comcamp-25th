@@ -35,6 +35,26 @@ func TestOpenAPISpec(t *testing.T) {
 		}
 	}
 
+	// Applicant self-edit is disabled: the operation is documented as deprecated and answers 403.
+	var selfEdit struct {
+		Deprecated bool                       `json:"deprecated"`
+		Responses  map[string]json.RawMessage `json:"responses"`
+	}
+	if err := json.Unmarshal(spec.Paths["/applications/{id}/profile"]["patch"], &selfEdit); err != nil {
+		t.Fatalf("decode the self profile operation: %v", err)
+	}
+	if !selfEdit.Deprecated {
+		t.Error("PATCH /applications/{id}/profile must be marked deprecated")
+	}
+	if _, ok := selfEdit.Responses["403"]; !ok {
+		t.Error("PATCH /applications/{id}/profile must document its 403 response")
+	}
+	for _, code := range []string{"200", "400", "404", "409"} {
+		if _, ok := selfEdit.Responses[code]; ok {
+			t.Errorf("PATCH /applications/{id}/profile must not document a %s response any more", code)
+		}
+	}
+
 	have := map[string]bool{}
 	for _, s := range spec.Components.Schemas["ApplicationResponse"].Properties["status"].Enum {
 		have[s] = true
@@ -44,7 +64,7 @@ func TestOpenAPISpec(t *testing.T) {
 			t.Errorf("ApplicationResponse.status enum is missing %s", s)
 		}
 	}
-	for _, name := range []string{"SelfProfileRequest", "AdminProfileRequest", "WithdrawRequest"} {
+	for _, name := range []string{"AdminProfileRequest", "WithdrawRequest"} {
 		if _, ok := spec.Components.Schemas[name]; !ok {
 			t.Errorf("schema %s is missing", name)
 		}

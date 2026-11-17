@@ -86,7 +86,6 @@ func TestVerifyLockout_FiveWrongCodesLockTheApplication(t *testing.T) {
 	t.Run("locked for the right code on every endpoint", func(t *testing.T) {
 		wantLocked(t, app.confirmWith(t, victim.ID, app.verifyCodes[victim.ID]))
 		wantLocked(t, app.uploadSlip(t, victim.ID, "slip.jpg", uniqueSlip(81)))
-		wantLocked(t, app.profileWith(t, victim.ID, app.verifyCodes[victim.ID]))
 		wantLocked(t, app.withdrawRec(t, victim.ID, app.nationalIDs[victim.ID]))
 		if _, err := app.applicant(t, victim.ID); err != nil {
 			t.Fatalf("a locked withdraw must not remove the application: %v", err)
@@ -134,8 +133,9 @@ func TestVerifyLockout_FiveWrongCodesLockTheApplication(t *testing.T) {
 	})
 }
 
-// The counter is per application and shared by confirm, slip upload, profile edit and withdraw,
-// so spreading guesses over endpoints does not buy more of them.
+// The counter is per application and shared by confirm, slip upload and withdraw, so spreading
+// guesses over endpoints does not buy more of them. The disabled public profile edit takes no part:
+// it answers 403 without checking a code, so it can neither be used to guess nor to lock a victim.
 func TestVerifyLockout_SharedAcrossEndpoints(t *testing.T) {
 	app := setupRelaxedApp(t)
 	a := app.submit(t, validTestNationalID(83), "0810000083", "lock3@example.com")
@@ -143,8 +143,9 @@ func TestVerifyLockout_SharedAcrossEndpoints(t *testing.T) {
 
 	wantErrCode(t, app.confirmWith(t, a.ID, wrong), http.StatusForbidden, response.CodeInvalidVerifyCode)
 	wantErrCode(t, app.uploadSlipWithCode(t, a.ID, wrong, "slip.jpg", uniqueSlip(83)), http.StatusForbidden, response.CodeInvalidVerifyCode)
-	wantErrCode(t, app.profileWith(t, a.ID, wrong), http.StatusForbidden, response.CodeInvalidVerifyCode)
+	wantErrCode(t, app.profileWith(t, a.ID, wrong), http.StatusForbidden, response.CodeForbidden) // no attempt consumed
 	wantErrCode(t, app.withdrawRec(t, a.ID, validTestNationalID(9083)), http.StatusForbidden, response.CodeInvalidVerifyCode)
+	wantErrCode(t, app.confirmWith(t, a.ID, wrong), http.StatusForbidden, response.CodeInvalidVerifyCode)
 	wantLocked(t, app.uploadSlipWithCode(t, a.ID, wrong, "slip.jpg", uniqueSlip(84)))
 
 	lockouts := app.auditFor(a.ID, domain.AuditVerifyLockout)

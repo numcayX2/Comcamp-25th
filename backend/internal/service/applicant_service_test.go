@@ -490,37 +490,7 @@ func TestApplicantService_ParentContactFields(t *testing.T) {
 		t.Fatalf("ListAll missing parent fields: %+v", list[0])
 	}
 
-	// 4. Self-service profile edit refuses modifying parent fields and preserves them on other edits.
-	verifyCode := nid[9:]
-	newParent := "คนอื่น"
-	if _, err := svc.UpdateOwnProfile(ctx, submitted.ID, service.SelfProfileRequest{
-		VerifyCode: verifyCode,
-		Nickname:   "ทิวา",
-		School:     "โรงเรียนแม่โจ้",
-		Province:   "เชียงใหม่",
-		Grade:      "ม.5",
-		ShirtSize:  "L",
-		ParentName: &newParent,
-	}, "127.0.0.1"); !errors.Is(err, service.ErrIdentityLocked) {
-		t.Fatalf("self edit of parentName: expected ErrIdentityLocked, got %v", err)
-	}
-	if _, err := svc.UpdateOwnProfile(ctx, submitted.ID, service.SelfProfileRequest{
-		VerifyCode: verifyCode,
-		Nickname:   "ทิวา",
-		School:     "โรงเรียนแม่โจ้",
-		Province:   "เชียงใหม่",
-		Grade:      "ม.5",
-		ShirtSize:  "L",
-	}, "127.0.0.1"); err != nil {
-		t.Fatalf("self edit of allowed fields failed: %v", err)
-	}
-	afterSelf, _ := appRepo.GetByApplicationNo(ctx, submitted.ID)
-	if afterSelf.ParentName == nil || *afterSelf.ParentName != "สมศรี ทดสอบ" ||
-		afterSelf.ParentPhone == nil || *afterSelf.ParentPhone != "0898765432" {
-		t.Fatalf("self edit wiped parent fields: %+v", afterSelf)
-	}
-
-	// 5. AdminUpdateProfile validates and updates parent fields and emergency contact fallback.
+	// 4. AdminUpdateProfile validates and updates parent fields and emergency contact fallback.
 	badAdminPhone := "999"
 	if _, err := svc.AdminUpdateProfile(ctx, submitted.ID, service.AdminProfileRequest{
 		ParentPhone: &badAdminPhone,

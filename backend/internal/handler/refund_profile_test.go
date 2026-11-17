@@ -298,136 +298,77 @@ func TestVerifySlip_BlockedForRefundedOrRejectedApplications(t *testing.T) {
 	}
 }
 
-// ── applicant's own profile edit ───────────────────────────────────────────
+// ── applicant's own profile edit (disabled, staff-only since Phase 2.3) ────
 
-func TestSelfProfileEdit(t *testing.T) {
+// The public PATCH /api/applications/{id}/profile route stays registered behind its rate limiter
+// but refuses every request with 403 FORBIDDEN: it never reads the body into the DB, never
+// consumes VerifyGuard attempts and never writes an audit row. Corrections go through staff.
+func TestSelfProfileEdit_IsDisabled(t *testing.T) {
 	app := setupRelaxedApp(t)
 	token := app.login(t)
 	created := app.submit(t, validTestNationalID(171), "0810000171", "p1@example.com")
 	code := app.verifyCodes[created.ID]
-	orig := app.adminView(t, token, created.ID) // unmasked original, including the motivation
-	valid := func(extra string) string {
-		return fmt.Sprintf(`{"verifyCode":%q,"nickname":"ชาย","school":"โรงเรียนใหม่","province":"ลำปาง","grade":"ม.6","shirtSize":"M"%s}`, code, extra)
-	}
+	orig := app.adminView(t, token, created.ID)
+	valid := fmt.Sprintf(`{"verifyCode":%q,"nickname":"ชาย","school":"โรงเรียนใหม่","province":"ลำปาง","grade":"ม.6","shirtSize":"M"}`, code)
+	wrong := app.wrongCode(created.ID)
 
-	t.Run("verify code is required and checked", func(t *testing.T) {
-		wantCode(t, app.selfEdit(t, created.ID, `{"nickname":"ชาย","school":"ร","province":"ล","grade":"ม.6","shirtSize":"M"}`), http.StatusBadRequest, response.CodeValidation)
-		wrong := "0000"
-		if code == wrong {
-			wrong = "1111"
+	t.Run("every request is refused with 403 FORBIDDEN and a Thai message", func(t *testing.T) {
+		bodies := []string{
+			valid,
+			`{}`,
+			`not json at all`,
+			strings.Replace(valid, code, wrong, 1),
+			fmt.Sprintf(`{"verifyCode":%q,"fullName":"คนอื่น ที่ต่าง"}`, code),
 		}
-		wantCode(t, app.selfEdit(t, created.ID, strings.Replace(valid(""), code, wrong, 1)), http.StatusForbidden, response.CodeInvalidVerifyCode)
-		wantCode(t, app.selfEdit(t, "CC25-NOPE00", valid("")), http.StatusNotFound, "")
-		if got := app.adminView(t, token, created.ID); got.School == "โรงเรียนใหม่" {
-			t.Fatal("a rejected request must not change anything")
-		}
-	})
-
-	t.Run("allowed fields change, normalised, with a masked response and an audit row", func(t *testing.T) {
-		body := fmt.Sprintf(`{"verifyCode":%q,"nickname":"  ชาย​  ใหม่ ","school":"โรงเรียน   ใหม่","province":"ลำปาง","grade":"ปวส.1","shirtSize":"xl"}`, code)
-		rec := app.selfEdit(t, created.ID, body)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
-		}
-		var res service.ApplicationResponse
-		_ = json.Unmarshal(rec.Body.Bytes(), &res)
-		if res.Nickname != "ชาย ใหม่" || res.School != "โรงเรียน ใหม่" || res.Province != "ลำปาง" || res.Grade != "ปวส.1" || res.ShirtSize != "XL" {
-			t.Fatalf("unexpected normalised result: %+v", res)
-		}
-		if !strings.Contains(res.NationalID, "X") || !strings.Contains(res.Phone, "X") {
-			t.Fatalf("the response must stay masked, got %q / %q", res.NationalID, res.Phone)
-		}
-		for _, leaked := range []string{"adminNote", "admin_note", "motivation", "allergies", "medicalConditions", "slipUrl"} {
-			if strings.Contains(rec.Body.String(), leaked) {
-				t.Fatalf("public response must not contain %q: %s", leaked, rec.Body.String())
+		for _, body := range bodies {
+			rec := app.selfEdit(t, created.ID, body)
+			wantCode(t, rec, http.StatusForbidden, response.CodeForbidden)
+			if e := decodeErr(t, rec.Body.Bytes()); !strings.Contains(e.Error, "ปิดการแก้ไขข้อมูลด้วยตนเองแล้ว") {
+				t.Fatalf("expected the Thai notice, got %q", e.Error)
 			}
 		}
+		// An unknown application is no longer distinguishable from a known one.
+		wantCode(t, app.selfEdit(t, "CC25-NOPE00", valid), http.StatusForbidden, response.CodeForbidden)
+	})
 
-		// Identity is untouched; updatedAt moved.
-		full := app.adminView(t, token, created.ID)
-		if full.FullName != orig.FullName || full.NationalID != orig.NationalID || full.Phone != orig.Phone || full.Email != orig.Email {
-			t.Fatalf("identity fields changed: %+v", full)
+	t.Run("nothing changes and nothing is audited", func(t *testing.T) {
+		got := app.adminView(t, token, created.ID)
+		if got.Nickname != orig.Nickname || got.School != orig.School || got.Province != orig.Province ||
+			got.Grade != orig.Grade || got.ShirtSize != orig.ShirtSize || got.FullName != orig.FullName {
+			t.Fatalf("a refused request changed the record: %+v", got)
 		}
-
-		entries := auditEntries(app, domain.AuditProfileUpdateSelf, created.ID)
-		if len(entries) != 1 {
-			t.Fatalf("expected one self-edit audit entry, got %d", len(entries))
+		if n := len(auditEntries(app, domain.AuditProfileUpdateSelf, created.ID)); n != 0 {
+			t.Fatalf("expected no self-edit audit rows, got %d", n)
 		}
-		if entries[0].AdminID != nil {
-			t.Fatalf("a self edit must not carry an admin id, got %d", *entries[0].AdminID)
-		}
-		if entries[0].IPAddress == "" {
-			t.Fatal("the audit entry must record the IP address")
-		}
-		changes, _ := entries[0].Details["changes"].(map[string]map[string]string)
-		if changes["nickname"]["new"] != "ชาย ใหม่" || changes["nickname"]["old"] == "" || changes["grade"]["new"] != "ปวส.1" || changes["grade"]["old"] != "ม.5" {
-			t.Fatalf("audit changes should list old -> new, got %+v", entries[0].Details["changes"])
-		}
-		if _, same := changes["shirtSize"]; same {
-			t.Fatal("an unchanged field must not appear in the diff")
-		}
-		if _, touchedIdentity := changes["nationalId"]; touchedIdentity {
-			t.Fatal("identity must not appear in a self-edit diff")
+		if n := len(app.auditFor(created.ID, domain.AuditVerifyFailure)) + len(app.auditFor(created.ID, domain.AuditVerifyLockout)); n != 0 {
+			t.Fatalf("a refused edit must not write verify audit rows, got %d", n)
 		}
 	})
 
-	t.Run("saving the same values changes nothing and writes no audit row", func(t *testing.T) {
-		before := len(auditEntries(app, domain.AuditProfileUpdateSelf, created.ID))
-		body := fmt.Sprintf(`{"verifyCode":%q,"nickname":"ชาย ใหม่","school":"โรงเรียน ใหม่","province":"ลำปาง","grade":"ปวส.1","shirtSize":"XL"}`, code)
-		wantCode(t, app.selfEdit(t, created.ID, body), http.StatusOK, "")
-		if after := len(auditEntries(app, domain.AuditProfileUpdateSelf, created.ID)); after != before {
-			t.Fatalf("a no-op edit wrote %d audit rows", after-before)
+	t.Run("wrong codes do not consume VerifyGuard attempts", func(t *testing.T) {
+		for i := 0; i < service.MaxVerifyFailures+2; i++ {
+			wantCode(t, app.selfEdit(t, created.ID, strings.Replace(valid, code, wrong, 1)), http.StatusForbidden, response.CodeForbidden)
 		}
+		// The applicant is not locked out of the other self-service endpoints.
+		wantCode(t, app.confirmWith(t, created.ID, code), http.StatusOK, "")
 	})
 
-	t.Run("identity fields and motivation are refused", func(t *testing.T) {
-		for _, extra := range []string{
-			`,"fullName":"คนอื่น ที่ต่าง"`,
-			`,"nationalId":"` + validTestNationalID(999) + `"`,
-			`,"phone":"0899999999"`,
-			`,"email":"other@example.com"`,
-			`,"motivation":"changed"`,
-			`,"allergies":"changed"`,
-			`,"medicalConditions":"changed"`,
-		} {
-			wantCode(t, app.selfEdit(t, created.ID, valid(extra)), http.StatusBadRequest, response.CodeValidation)
-		}
-		full := app.adminView(t, token, created.ID)
-		if full.FullName != orig.FullName || full.NationalID != orig.NationalID || full.Phone != orig.Phone || full.Email != orig.Email || full.Motivation != orig.Motivation {
-			t.Fatalf("a refused request changed the record: %+v", full)
-		}
-	})
-
-	t.Run("bad values are rejected", func(t *testing.T) {
-		for _, body := range []string{
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":"","school":"ร","province":"ล","grade":"ม.6","shirtSize":"M"}`, code),
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"","grade":"ม.6","shirtSize":"M"}`, code),
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"ล","grade":"ม.6","shirtSize":"5XL"}`, code),
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":"ก","school":"ร","province":"ล","grade":"อื่นๆ","shirtSize":"M"}`, code),
-			fmt.Sprintf(`{"verifyCode":%q,"nickname":%q,"school":"ร","province":"ล","grade":"ม.6","shirtSize":"M"}`, code, strings.Repeat("ก", 51)),
-		} {
-			wantCode(t, app.selfEdit(t, created.ID, body), http.StatusBadRequest, response.CodeValidation)
-		}
-	})
-
-	t.Run("closed applications cannot be edited, and the code is checked first", func(t *testing.T) {
-		for _, st := range []domain.ApplicationStatus{domain.StatusRefundPending, domain.StatusRefunded, domain.StatusRejected} {
+	t.Run("closed and confirmed applications get the same answer", func(t *testing.T) {
+		for _, st := range []domain.ApplicationStatus{domain.StatusRefundPending, domain.StatusRejected, domain.StatusConfirmed} {
 			wantCode(t, app.patchStatus(t, token, created.ID, st), http.StatusOK, "")
-			wantCode(t, app.selfEdit(t, created.ID, valid("")), http.StatusConflict, response.CodeForbidden)
-			// A wrong code learns nothing about the state.
-			wrong := "0000"
-			if code == wrong {
-				wrong = "1111"
-			}
-			wantCode(t, app.selfEdit(t, created.ID, strings.Replace(valid(""), code, wrong, 1)), http.StatusForbidden, response.CodeInvalidVerifyCode)
+			wantCode(t, app.selfEdit(t, created.ID, valid), http.StatusForbidden, response.CodeForbidden)
+		}
+		if got := app.adminView(t, token, created.ID); got.School != orig.School || got.ShirtSize != orig.ShirtSize {
+			t.Fatalf("a refused request changed the record: %+v", got)
 		}
 	})
 
-	t.Run("a confirmed applicant can still fix a shirt size", func(t *testing.T) {
-		wantCode(t, app.patchStatus(t, token, created.ID, domain.StatusConfirmed), http.StatusOK, "")
-		wantCode(t, app.selfEdit(t, created.ID, valid("")), http.StatusOK, "")
-		if got := app.adminView(t, token, created.ID).ShirtSize; got != "M" {
-			t.Fatalf("expected shirt size M, got %s", got)
+	t.Run("staff can still edit the same application", func(t *testing.T) {
+		body := `{"nickname":"พี่แก้ให้","school":"โรงเรียนใหม่","province":"ลำปาง","grade":"ม.6","shirtSize":"M","reason":"ผู้สมัครแจ้งแก้ไข"}`
+		wantCode(t, app.adminEdit(t, token, created.ID, body), http.StatusOK, "")
+		got := app.adminView(t, token, created.ID)
+		if got.Nickname != "พี่แก้ให้" || got.School != "โรงเรียนใหม่" || got.Province != "ลำปาง" || got.Grade != "ม.6" || got.ShirtSize != "M" {
+			t.Fatalf("admin edit did not apply: %+v", got)
 		}
 	})
 }
@@ -570,7 +511,7 @@ func TestProfileEndpoints_BodyCap(t *testing.T) {
 	wantCode(t, app.adminEdit(t, token, created.ID, huge), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge)
 }
 
-// The applicant's own edit shares the public mutation limiter (verifyCode guessing is the attack).
+// The disabled public edit route stays behind its rate limiter, so it cannot be hammered.
 func TestSelfProfileEdit_IsRateLimited(t *testing.T) {
 	app := setupTestApp(t)
 	created := app.submit(t, validTestNationalID(211), "0810000211", "rl@example.com")

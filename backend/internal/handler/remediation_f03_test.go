@@ -128,10 +128,11 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 		t.Fatalf("confirm with Thai verifyCode: expected 200, got %d (%s)", confirmRec.Code, confirmRec.Body.String())
 	}
 
+	// The applicant self-edit route is disabled (staff-only): it answers 403 even for a valid code.
 	profBody := fmt.Sprintf(`{"verifyCode":%q,"nickname":"ชาย๒๕","school":"โรงเรียนวิทยาการ ๒๕","province":"เชียงใหม่","grade":"ม.5","shirtSize":"XL"}`, last4Thai)
 	profRec := app.do(t, http.MethodPatch, "/api/applications/"+created.ID+"/profile", bytes.NewBufferString(profBody), nil)
-	if profRec.Code != http.StatusOK {
-		t.Fatalf("self profile edit with Thai verifyCode: expected 200, got %d (%s)", profRec.Code, profRec.Body.String())
+	if profRec.Code != http.StatusForbidden {
+		t.Fatalf("self profile edit must be disabled: expected 403, got %d (%s)", profRec.Code, profRec.Body.String())
 	}
 
 	slipRec := app.uploadSlipWithCode(t, created.ID, "\u200B"+last4Thai, "s.jpg", uniqueSlip(950))

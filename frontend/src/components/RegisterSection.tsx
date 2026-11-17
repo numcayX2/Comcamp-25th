@@ -1253,7 +1253,7 @@ export function RegisterSection() {
                 </tbody>
               </table>
               <p className="rw-slip__note">
-                สามารถกลับมาแก้ไขไซส์เสื้อภายหลังได้ที่หน้า <span className="font-mono">/status</span> จนกว่าจะปิดแก้ไขข้อมูล
+                หากต้องการแก้ไขไซส์เสื้อภายหลัง กรุณาติดต่อทีมงานผ่านเพจ Facebook หรือโทรหาพี่ค่าย (ดูช่องทางติดต่อที่หน้า <span className="font-mono">/status</span>)
               </p>
             </div>
           </div>

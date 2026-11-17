@@ -241,7 +241,7 @@
             "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, profile, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -274,15 +274,16 @@
           "403": { "description": "nationalId ไม่ตรงกับใบสมัครนี้ (code INVALID_VERIFY_CODE) นับเป็นการตอบผิด 1 ครั้ง", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "ยกเลิกเองไม่ได้ (CONFIRMED, ปิดรายการแล้ว หรือมีสลิปรอตรวจ/อนุมัติแล้ว) ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, profile, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
     "/applications/{id}/profile": {
       "patch": {
         "tags": ["Applications"],
-        "summary": "Edit Own Secondary Profile Fields",
-        "description": "ผู้สมัครแก้ไขข้อมูลทั่วไปของตัวเอง ได้เฉพาะ nickname, school, province, grade (ม.4–ม.6, ปวช.1–ปวช.3 หรือกรอกเอง 2–20 ตัวอักษร) และ shirtSize ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ใช้ได้เมื่อสถานะ PENDING, PASSED, RESERVE หรือ CONFIRMED เท่านั้น ห้ามแก้ fullName, nationalId, phone, email, parentName, parentRelation, parentPhone, motivation, allergies และ medicalConditions ผ่าน endpoint นี้ (ส่งมาจะได้ 400) ต้องติดต่อพี่ค่าย ทุกการแก้ไขบันทึกใน audit_logs (application.profile.update.self) ผลลัพธ์เป็นข้อมูลแบบ mask",
+        "deprecated": true,
+        "summary": "Edit Own Profile (Disabled)",
+        "description": "ปิดใช้งานแล้ว: ผู้สมัครแก้ไขข้อมูลด้วยตนเองไม่ได้อีกต่อไป ทุกคำขอตอบ 403 FORBIDDEN ทันที โดยไม่อ่าน request body ไม่ตรวจ verifyCode (ไม่นับเป็นความพยายามผิดของ VerifyGuard) ไม่แตะฐานข้อมูล และไม่บันทึก audit ต้องการแก้ไขข้อมูลให้ติดต่อทีมงาน (พี่ค่ายแก้ไขผ่าน PATCH /admin/applications/{id}/profile) endpoint นี้ยังคงอยู่เพื่อให้ client เก่าได้รับข้อความที่ชัดเจน และยังอยู่ภายใต้ rate limit 20 ครั้ง/นาที/IP",
         "parameters": [
           {
             "name": "id",
@@ -292,23 +293,9 @@
             "schema": { "type": "string" }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SelfProfileRequest" },
-              "example": { "verifyCode": "2233", "nickname": "ชาย", "school": "โรงเรียนแม่โจ้วิทยาคม", "province": "เชียงใหม่", "grade": "ม.6", "shirtSize": "XL" }
-            }
-          }
-        },
         "responses": {
-          "200": { "description": "แก้ไขสำเร็จ (หรือไม่มีอะไรเปลี่ยน)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } },
-          "400": { "description": "verifyCode ไม่ครบ, ค่าที่ส่งไม่ถูกต้อง หรือพยายามแก้ fullName / nationalId / phone / email / parentName / parentRelation / parentPhone / motivation / allergies / medicalConditions (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "409": { "description": "สถานะ REJECTED, REFUND_PENDING หรือ REFUNDED แก้ไขเองไม่ได้ ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, profile, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "403": { "description": "ปิดการแก้ไขข้อมูลด้วยตนเองแล้ว กรุณาติดต่อทีมงานเพื่อขอแก้ไขข้อมูล (code FORBIDDEN) ตอบเหมือนกันทุกกรณี ไม่ว่าใบสมัครจะมีอยู่หรือไม่", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "ปิดการแก้ไขข้อมูลด้วยตนเองแล้ว กรุณาติดต่อทีมงานเพื่อขอแก้ไขข้อมูล", "code": "FORBIDDEN" } } } },
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -374,7 +361,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "ไฟล์เกิน 5 MB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, profile, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ทำรายการถี่เกินไป (20 ครั้ง/นาที/IP) หรือตอบเลขยืนยันตัวตนของใบสมัครนี้ผิด 5 ครั้งภายใน 15 นาที ซึ่งล็อกการยืนยันตัวตนของใบสมัครนี้ทุก endpoint (confirm, slip, withdraw) 15 นาที แม้ส่งค่าที่ถูก (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -846,19 +833,6 @@
         "properties": {
           "nationalId": { "type": "string", "example": "1509901122337", "description": "เลขบัตรประชาชนเต็ม 13 หลักของผู้สมัคร ผ่าน Mod-11 (ระบบตัดขีด ช่องว่าง และอักขระล่องหนออกให้) ใช้เทียบแล้วทิ้ง ไม่ถูกบันทึก log หรือส่งกลับ (AGENTS.md §13.5)" },
           "reason": { "type": "string", "maxLength": 500, "example": "ไม่สะดวกเข้าร่วม" }
-        }
-      },
-      "SelfProfileRequest": {
-        "type": "object",
-        "required": ["verifyCode", "nickname", "school", "province", "grade", "shirtSize"],
-        "description": "ฟิลด์ fullName, nationalId, phone, email, parentName, parentRelation, parentPhone, motivation, allergies, medicalConditions ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
-        "properties": {
-          "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร" },
-          "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
-          "school": { "type": "string", "maxLength": 150, "example": "โรงเรียนแม่โจ้วิทยาคม" },
-          "province": { "type": "string", "maxLength": 100, "example": "เชียงใหม่" },
-          "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.6" },
-          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "XL" }
         }
       },
       "AdminProfileRequest": {

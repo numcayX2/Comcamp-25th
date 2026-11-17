@@ -46,8 +46,6 @@ var (
 	ErrVerifyCodeRequired    = newValidationError("verifyCode must be the last 4 digits of the applicant's national ID")
 	ErrInvalidVerifyCode     = errors.New("verification code does not match this application")
 	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
-	ErrProfileLocked         = errors.New("this application can no longer be edited, please contact staff")
-	ErrIdentityLocked        = newValidationError("full name, national ID, phone, email, motivation and health notes cannot be changed here, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
@@ -674,21 +672,6 @@ func validateProfile(p profileInput) error {
 	return checkLengths(p)
 }
 
-// validateSecondary checks only the fields an applicant may edit themselves. Nothing here is an
-// identifier, so there is no way to use it to swap who the application belongs to.
-func validateSecondary(p profileInput) error {
-	if p.Nickname == "" || p.School == "" || p.Province == "" || p.Grade == "" {
-		return ErrRequiredFields
-	}
-	if !isValidShirtSize(p.ShirtSize) {
-		return ErrInvalidShirtSize
-	}
-	if !isValidGrade(p.Grade) {
-		return ErrInvalidGrade
-	}
-	return checkLengths(p)
-}
-
 func validateRequest(req ApplicationCreateRequest) error {
 	return validateProfile(profileInputOfRequest(req))
 }
@@ -959,31 +942,6 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, national
 	return nil
 }
 
-// SelfProfileRequest is the applicant's own edit of the secondary fields. The identity fields
-// are declared only so that a request which tries to change them is refused (ErrIdentityLocked)
-// instead of having them silently dropped: changing who an application belongs to is staff-only
-// (anti-scalping, PDPA).
-type SelfProfileRequest struct {
-	// VerifyCode is the last 4 digits of the applicant national ID (AGENTS.md section 13.5).
-	VerifyCode string `json:"verifyCode"`
-	Nickname   string `json:"nickname"`
-	School     string `json:"school"`
-	Province   string `json:"province"`
-	Grade      string `json:"grade"`
-	ShirtSize  string `json:"shirtSize"`
-
-	FullName          *string `json:"fullName,omitempty"`
-	NationalID        *string `json:"nationalId,omitempty"`
-	Phone             *string `json:"phone,omitempty"`
-	Email             *string `json:"email,omitempty"`
-	ParentName        *string `json:"parentName,omitempty"`
-	ParentRelation    *string `json:"parentRelation,omitempty"`
-	ParentPhone       *string `json:"parentPhone,omitempty"`
-	Motivation        *string `json:"motivation,omitempty"`
-	Allergies         *string `json:"allergies,omitempty"`
-	MedicalConditions *string `json:"medicalConditions,omitempty"`
-}
-
 // AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send
 // only what changed; the merged result is validated as a whole.
 type AdminProfileRequest struct {
@@ -1085,70 +1043,6 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 		EmergencyContact:  emergencyContact,
 		EmergencyPhone:    emergencyPhone,
 	}, nil
-}
-
-// UpdateOwnProfile lets an applicant fix their nickname, school, province, grade and shirt size
-// from /status. Public, so it needs the application ID plus verifyCode, only works while the
-// application still holds a seat, and refuses any attempt to touch identity fields. The change
-// and its audit row (application.profile.update.self, no admin) commit together.
-func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo string, req SelfProfileRequest, ip string) (*ApplicationResponse, error) {
-	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
-	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	// Authenticate before revealing anything about the application state.
-	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionProfile, ip, func() error {
-		return CheckVerifyCode(applicant, req.VerifyCode)
-	}); err != nil {
-		return nil, err
-	}
-	if !applicant.Status.IsActive() {
-		return nil, ErrProfileLocked
-	}
-	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil ||
-		req.ParentName != nil || req.ParentRelation != nil || req.ParentPhone != nil ||
-		req.Motivation != nil || req.Allergies != nil || req.MedicalConditions != nil {
-		return nil, ErrIdentityLocked
-	}
-
-	before := profileOf(applicant)
-	after := normalizeProfile(profileInput{
-		FullName: before.FullName, NationalID: before.NationalID, Phone: before.Phone, Email: before.Email,
-		ParentName: before.ParentName, ParentRelation: before.ParentRelation, ParentPhone: before.ParentPhone,
-		Motivation: before.Motivation, Allergies: before.Allergies, MedicalConditions: before.MedicalConditions,
-		Nickname: req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
-	})
-	if err := validateSecondary(after); err != nil {
-		return nil, err
-	}
-
-	changes := profileChanges(before, after)
-	if len(changes) == 0 {
-		return s.toPublic(ctx, applicant), nil
-	}
-	fields, err := profileFieldsOf(after)
-	if err != nil {
-		return nil, err
-	}
-	audit := &domain.AuditEntry{
-		Action:     domain.AuditProfileUpdateSelf,
-		TargetType: domain.AuditTargetApplicant,
-		TargetID:   applicant.ApplicationNo,
-		Details:    map[string]any{"changes": changes, "ip": ip, "selfService": true},
-		IPAddress:  ip,
-	}
-	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, true, audit); err != nil {
-		if errors.Is(err, domain.ErrStateConflict) {
-			return nil, ErrProfileLocked
-		}
-		return nil, notFoundOr(err)
-	}
-
-	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
-	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	return s.toPublic(ctx, updated), nil
 }
 
 // AdminUpdateProfile is the staff edit of any application (any status). The merged profile gets
