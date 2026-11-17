@@ -172,7 +172,7 @@ func (s *SettingService) GetAdminSettings(ctx context.Context) (*domain.Settings
 	return s.settingRepo.Get(ctx)
 }
 
-// Admin-adjustable limits. maxCapacity is the seat quota enforced at submit time (default 30
+// Admin-adjustable limits. maxCapacity is the seat quota enforced at submit time (default 40
 // from migration 000001); staff can raise or lower it without a deploy.
 const (
 	maxCampNameRunes = 150 // settings.camp_name VARCHAR(150)

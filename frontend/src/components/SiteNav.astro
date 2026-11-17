@@ -102,7 +102,7 @@ const navLinks = isAdmin ? [] : [
         <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย">
           <p class="nav-overlay-label">[ ข้อมูลค่าย ]</p>
           <p class="nav-overlay-text">คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</p>
-          <p class="nav-overlay-text">ลงทะเบียนวันที่ <span class="font-mono tabular-nums" data-nav-open-dot>19.11.69</span> · <span class="font-mono tabular-nums" data-nav-max-cap>30</span> ที่นั่ง</p>
+          <p class="nav-overlay-text">ลงทะเบียนวันที่ <span class="font-mono tabular-nums" data-nav-open-dot>19.11.69</span> · <span class="font-mono tabular-nums" data-nav-max-cap>40</span> ที่นั่ง</p>
           <p class="nav-overlay-copy">© 2569 ComCamp #25 · CS MJU</p>
         </div>
       )}
@@ -1278,7 +1278,7 @@ const navLinks = isAdmin ? [] : [
     const serverEpoch = settings.serverTime ? new Date(settings.serverTime).getTime() : Number.NaN;
     const offset = Number.isFinite(serverEpoch) ? serverEpoch - Date.now() : 0;
     const now = Date.now() + offset;
-    const max = typeof settings.maxCapacity === 'number' && settings.maxCapacity > 0 ? settings.maxCapacity : 30;
+    const max = typeof settings.maxCapacity === 'number' && settings.maxCapacity > 0 ? settings.maxCapacity : 40;
     const count = typeof settings.currentCount === 'number' ? settings.currentCount : 0;
     const seatsLeft = Math.max(0, max - count);
 
@@ -1303,7 +1303,7 @@ const navLinks = isAdmin ? [] : [
       const parsedOpenAt = settings.registrationOpenAt ? new Date(settings.registrationOpenAt).getTime() : DEFAULT_OPEN_AT;
       const openAt = Number.isFinite(parsedOpenAt) ? parsedOpenAt : DEFAULT_OPEN_AT;
       const state = resolveState(settings);
-      const max = typeof settings.maxCapacity === 'number' && settings.maxCapacity > 0 ? settings.maxCapacity : 30;
+      const max = typeof settings.maxCapacity === 'number' && settings.maxCapacity > 0 ? settings.maxCapacity : 40;
       const count = typeof settings.currentCount === 'number' ? settings.currentCount : 0;
       applyNavRegisterLabel(state, Math.max(0, max - count), openAt);
       applyNavDrawerMeta(openAt, max);
@@ -1312,7 +1312,7 @@ const navLinks = isAdmin ? [] : [
       // Fail closed when unreachable: PRE_OPEN before openAt, CLOSED after openAt.
       const fallbackState: RegistrationState = Date.now() < DEFAULT_OPEN_AT ? 'PRE_OPEN' : 'CLOSED';
       applyNavRegisterLabel(fallbackState, 0, DEFAULT_OPEN_AT);
-      applyNavDrawerMeta(DEFAULT_OPEN_AT, 30);
+      applyNavDrawerMeta(DEFAULT_OPEN_AT, 40);
       applyNavStatusVisibility(fallbackState);
     }
   }
