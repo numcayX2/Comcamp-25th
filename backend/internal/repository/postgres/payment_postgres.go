@@ -71,12 +71,19 @@ func (r *PaymentPostgresRepo) CreateReplacingPending(ctx context.Context, p *dom
 	}
 	// SoftDelete takes the same lock, so a withdrawal either finishes first (and the upload finds
 	// no live application here) or waits for this upload and then sees its PENDING slip.
-	var live bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM applicants WHERE id = $1 AND deleted_at IS NULL)`, p.ApplicantID).Scan(&live); err != nil {
+	// The unpaid-expiry sweep takes this same lock before it touches the applicant, so the status
+	// read here cannot flip to REJECTED between this check and the insert below. A slip is only
+	// accepted for an application that still holds a seat to pay for.
+	var appStatus domain.ApplicationStatus
+	err = tx.QueryRow(ctx, `SELECT status FROM applicants WHERE id = $1 AND deleted_at IS NULL`, p.ApplicantID).Scan(&appStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
 		return nil, fmt.Errorf("check applicant: %w", err)
 	}
-	if !live {
-		return nil, domain.ErrNotFound
+	if appStatus != domain.StatusPassed && appStatus != domain.StatusConfirmed {
+		return nil, domain.ErrStateConflict
 	}
 
 	rows, err := tx.Query(ctx, `SELECT `+paymentColumns+` FROM payments
@@ -296,6 +303,11 @@ func (r *PaymentPostgresRepo) settlePayment(ctx context.Context, paymentID uuid.
 	newPaymentStatus, newStatus := domain.PaymentRejected, domain.StatusPassed
 	if approved {
 		newPaymentStatus, newStatus = domain.PaymentApproved, domain.StatusConfirmed
+	} else if oldStatus == domain.StatusConfirmed && expectedStatus == domain.PaymentPending {
+		// The first slip is rejected, but staff already confirmed this seat (for example a cash
+		// payment): the seat stays confirmed. Only taking back an APPROVED slip (Reverify) demotes,
+		// because that approval was what confirmed the seat.
+		newStatus = domain.StatusConfirmed
 	}
 
 	var rejection *string

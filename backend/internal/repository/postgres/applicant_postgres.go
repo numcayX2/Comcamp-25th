@@ -286,12 +286,12 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 			parent_name = $14, parent_relation = $15, parent_phone = $16,
 			emergency_contact = CASE WHEN $17 <> '' THEN $17 ELSE emergency_contact END,
 			emergency_phone = CASE WHEN $18 <> '' THEN $18 WHEN emergency_phone = phone THEN $5 ELSE emergency_phone END,
-			updated_at = $19
+			updated_at = CASE WHEN $21::boolean THEN updated_at ELSE $19 END
 		WHERE id = $20
 	`, p.FirstName, p.LastName, p.Nickname, p.NationalID, p.Phone, p.Email, p.School, p.Province,
 		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions,
 		p.ParentName, p.ParentRelation, p.ParentPhone, p.EmergencyContact, p.EmergencyPhone,
-		time.Now().UTC(), id)
+		time.Now().UTC(), id, requireActive)
 	if err != nil {
 		if mapped := mapPgError(err); mapped != err {
 			return mapped
@@ -417,10 +417,10 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 
 	var status domain.ApplicationStatus
 	err = tx.QueryRow(ctx, `
-		UPDATE applicants SET attendance_confirmed = $1, updated_at = $2
-		WHERE id = $3 AND deleted_at IS NULL AND status IN ('PASSED', 'CONFIRMED')
+		UPDATE applicants SET attendance_confirmed = $1
+		WHERE id = $2 AND deleted_at IS NULL AND status IN ('PASSED', 'CONFIRMED')
 		RETURNING status
-	`, confirmed, time.Now().UTC(), id).Scan(&status)
+	`, confirmed, id).Scan(&status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM applicants WHERE id = $1 AND deleted_at IS NULL)`, id).Scan(&exists); err != nil {

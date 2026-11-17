@@ -225,6 +225,10 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 		case errors.Is(err, domain.ErrNotFound):
 			// Withdrawn or deleted while the file was being written.
 			return nil, ErrApplicantNotFound
+		case errors.Is(err, domain.ErrStateConflict):
+			// Rejected (for example by the unpaid-expiry sweep) or refunded while the file was being
+			// written: the seat is gone, so there is nothing for this slip to confirm.
+			return nil, ErrNotPassed
 		}
 		return nil, fmt.Errorf("failed to save payment record: %w", err)
 	}

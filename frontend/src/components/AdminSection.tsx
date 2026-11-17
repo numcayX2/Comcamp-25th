@@ -182,8 +182,30 @@ function isAwaitingPayment(a: Application): boolean {
   return (a.slipStatus ?? 'PENDING') === 'REJECTED';
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The transfer deadline the server actually enforces (ExpireOverdueUnpaid): 72h after registration,
+ * but never earlier than 24h after the last staff change (updatedAt, for example a restored seat) or
+ * 24h after a slip was rejected (verifiedAt). Computing it from createdAt alone would flag people the
+ * sweep deliberately leaves alone, so staff could reject someone who still has time.
+ */
+function paymentDeadline(a: Application, nowMs: number): ReturnType<typeof describePaymentDeadline> {
+  const at = (iso?: string | null) => {
+    const t = iso ? Date.parse(iso) : Number.NaN;
+    return Number.isFinite(t) ? t : 0;
+  };
+  const dueMs = Math.max(
+    at(a.createdAt) + 72 * HOUR_MS,
+    at(a.updatedAt) + 24 * HOUR_MS,
+    a.slipStatus === 'REJECTED' ? at(a.verifiedAt) + 24 * HOUR_MS : 0,
+  );
+  // describePaymentDeadline adds its own 72h to the registration time it is given.
+  return describePaymentDeadline(new Date(dueMs - 72 * HOUR_MS).toISOString(), nowMs);
+}
+
 function isPaymentOverdue(a: Application, nowMs: number): boolean {
-  return isAwaitingPayment(a) && describePaymentDeadline(a.createdAt, nowMs).isOverdue;
+  return isAwaitingPayment(a) && paymentDeadline(a, nowMs).isOverdue;
 }
 
 function slipSortTier(a: Application): number {
@@ -274,7 +296,7 @@ function StatusSelect({
 /** Time left on the 3-day transfer window, shown only while the applicant still owes a slip. */
 function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
   if (!isAwaitingPayment(app)) return null;
-  const d = describePaymentDeadline(app.createdAt, nowMs);
+  const d = paymentDeadline(app, nowMs);
   return (
     <span
       className="mt-0.5 block text-xs font-semibold leading-5"

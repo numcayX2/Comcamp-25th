@@ -56,7 +56,7 @@ import {
   SIZE_LENGTH,
   STAFF_CONTACTS,
   cleanSingleLine,
-  describePaymentDeadline,
+  describeApplicantPaymentDeadline,
   formatCampFee,
   gradeValue,
   isValidThaiNationalID,
@@ -252,7 +252,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
       body: 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ เมื่อสลิปผ่านการตรวจสอบ สถานะจะอัปเดตเป็น “ยืนยันสิทธิ์สมบูรณ์” โดยอัตโนมัติ',
     };
   }
-  const dl = describePaymentDeadline(app.createdAt, nowMs);
+  const dl = describeApplicantPaymentDeadline(app.createdAt, app.updatedAt, nowMs);
   if (slip === 'REJECTED') {
     return {
       tone: 'danger',
@@ -866,7 +866,7 @@ export function StatusSection() {
   // staff ledger so a refund can be recorded, so only staff can cancel from then on. A slip staff
   // rejected is not money held. A missing slipStatus on an uploaded slip counts as waiting.
   const moneyHeld = slipState === 'PENDING' || slipState === 'APPROVED';
-  const paymentDeadline = app ? describePaymentDeadline(app.createdAt, nowMs) : null;
+  const paymentDeadline = app ? describeApplicantPaymentDeadline(app.createdAt, app.updatedAt, nowMs) : null;
 
   useEffect(() => {
     if (!app || app.status !== 'PASSED' || slipApproved || moneyHeld) return;

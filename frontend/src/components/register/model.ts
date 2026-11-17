@@ -219,7 +219,7 @@ export const MOCK_FORM: FormState = {
   grade: 'ม.5',
   gradeOther: '',
   shirtSize: 'L',
-  motivation: 'สนใจการต่อวงจรเซนเซอร์และเขียนโค้ดควบคุมบอร์ด Arduino UNO R3 ในค่าย ComCamp #25',
+  motivation: 'สนใจการต่อวงจรเซนเซอร์และพัฒนา IoT Dashboard ผ่านบอร์ด ESP8266 ในค่าย ComCamp #25',
   allergies: 'แพ้อาหารทะเล',
   medicalConditions: '',
 };
@@ -277,6 +277,25 @@ export const RECEIPT_STEP = STEPS.length; // 5
 export const TOTAL_STEPS = STEPS.length + 1; // 6
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The deadline the server enforces for an unpaid seat: 72h after registration, but never earlier
+ * than 24h after the last staff change to the application (updatedAt, e.g. a restored seat).
+ * A slip rejected by staff adds a further 24h that is not part of the public response, so for
+ * that case the real deadline can be later than shown here, never earlier.
+ */
+export function describeApplicantPaymentDeadline(
+  createdAtIso?: string | null,
+  updatedAtIso?: string | null,
+  nowMs: number = Date.now(),
+): PaymentDeadlineInfo {
+  const created = createdAtIso ? Date.parse(createdAtIso) : Number.NaN;
+  if (!Number.isFinite(created)) return describePaymentDeadline(null, nowMs);
+  const updated = updatedAtIso ? Date.parse(updatedAtIso) : Number.NaN;
+  // due = max(created + 72h, updated + 24h)  =>  the base describePaymentDeadline adds 72h to:
+  const base = Number.isFinite(updated) ? Math.max(created, updated - 48 * 60 * 60 * 1000) : created;
+  return describePaymentDeadline(new Date(base).toISOString(), nowMs);
+}
 
 /* ───────────────────────── Validation ───────────────────────── */
 

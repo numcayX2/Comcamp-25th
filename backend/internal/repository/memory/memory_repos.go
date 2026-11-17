@@ -292,7 +292,9 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
 	a.Motivation, a.Allergies, a.MedicalConditions = p.Motivation, p.Allergies, p.MedicalConditions
 	a.ParentName, a.ParentRelation, a.ParentPhone = p.ParentName, p.ParentRelation, p.ParentPhone
-	a.UpdatedAt = time.Now().UTC()
+	if !requireActive { // staff edits count as activity; a self-service edit must not extend the unpaid-expiry grace
+		a.UpdatedAt = time.Now().UTC()
+	}
 
 	if audit != nil {
 		return m.audit.Log(ctx, withDetail(audit, "status", a.Status))
@@ -385,7 +387,6 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 		return domain.ErrStateConflict
 	}
 	a.AttendanceConfirmed = confirmed
-	a.UpdatedAt = time.Now().UTC()
 
 	if audit != nil {
 		return m.audit.Log(ctx, withDetail(audit, "status", a.Status))
@@ -764,9 +765,16 @@ func (m *MemoryPaymentRepo) CreateReplacingPending(ctx context.Context, p *domai
 		m.appRepo.mu.RLock()
 		a, ok := m.appRepo.data[p.ApplicantID]
 		live := ok && a.DeletedAt == nil
+		var st domain.ApplicationStatus
+		if live {
+			st = a.Status
+		}
 		m.appRepo.mu.RUnlock()
 		if !live {
 			return nil, domain.ErrNotFound
+		}
+		if st != domain.StatusPassed && st != domain.StatusConfirmed {
+			return nil, domain.ErrStateConflict
 		}
 	}
 
@@ -986,6 +994,9 @@ func (m *MemoryPaymentRepo) settle(ctx context.Context, paymentID uuid.UUID, exp
 		p.Status = domain.PaymentRejected
 		rejection := note
 		p.RejectionReason = &rejection
+		if oldStatus == domain.StatusConfirmed && expectedStatus == domain.PaymentPending {
+			newStatus = domain.StatusConfirmed
+		}
 	}
 	p.VerifiedByAdminID = &adminID
 	p.AdminNote = &adminNote

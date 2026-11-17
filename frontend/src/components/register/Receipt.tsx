@@ -23,7 +23,7 @@ import {
   RECEIPT_META,
   RECEIPT_STEP,
   STAFF_CONTACTS,
-  describePaymentDeadline,
+  describeApplicantPaymentDeadline,
   isValidThaiNationalID,
 } from './model';
 import { clearReceipt } from './storage';
@@ -239,6 +239,7 @@ export function Receipt({
   const [slip, setSlip] = useState<SlipStatus | null>(null);
   const [appStatus, setAppStatus] = useState<ApplicationStatus | null>(null);
   const [createdAt, setCreatedAt] = useState<string>(() => new Date().toISOString());
+  const [updatedAt, setUpdatedAt] = useState<string | undefined>(undefined);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [synced, setSynced] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -253,6 +254,7 @@ export function Receipt({
         setAppStatus(res.data.status);
         setSlip(hasSlip(res.data) ? (res.data.slipStatus ?? 'PENDING') : null);
         if (res.data.createdAt) setCreatedAt(res.data.createdAt);
+        setUpdatedAt(res.data.updatedAt);
       })
       .catch((err) => {
         if (!alive) return;
@@ -272,7 +274,7 @@ export function Receipt({
 
   // A slip waiting for review or approved (or a confirmed seat) blocks self-withdrawal: the server answers 409.
   const slipLocksWithdraw = slip === 'PENDING' || slip === 'APPROVED' || appStatus === 'CONFIRMED';
-  const deadline = describePaymentDeadline(createdAt, nowMs);
+  const deadline = describeApplicantPaymentDeadline(createdAt, updatedAt, nowMs);
 
   useEffect(() => {
     if (slipLocksWithdraw) return;
