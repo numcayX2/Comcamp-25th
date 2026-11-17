@@ -568,6 +568,7 @@
 
 /* Official "รอประกาศ" notice in text-safe --amber-text per AGENTS.md §12.2 */
 .ed-sec .bento .todo,
+.ed-sec .bento .ed-ledger__note,
 .ed-sec .tm-tile .todo {
   display: block;
   margin-top: 2px;
@@ -580,6 +581,7 @@
   color: var(--amber-text) !important;
 }
 .ed-sec .tm-tile .todo::before,
+.ed-sec .bento .ed-ledger__note::before,
 .ed-sec .bento .todo::before {
   content: "— ";
 }

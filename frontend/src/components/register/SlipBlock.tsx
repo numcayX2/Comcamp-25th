@@ -35,6 +35,7 @@ export function SlipBlock({
 }) {
   // Backend PaymentService.UploadSlip only allows PASSED and CONFIRMED.
   const closed = appStatus !== null && appStatus !== 'PASSED' && appStatus !== 'CONFIRMED';
+  const hasDefaultCode = Boolean(defaultVerifyCode && /^\d{4}$/.test(defaultVerifyCode));
   const badge = SLIP_BADGE[slip ?? 'NONE'];
 
   return (
@@ -50,8 +51,10 @@ export function SlipBlock({
       </div>
       <p className="rw-slip__steps" aria-label="ขั้นตอนยืนยันสิทธิ์">
         <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">72</span> ชม.</span>
-        <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> แนบสลิป</span>
-        <span className="rw-slip__step"><b className="font-mono tabular-nums">3</b> กรอกเลข <span className="font-mono tabular-nums">4</span> ตัว</span>
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> {hasDefaultCode ? 'แนบสลิปและกดส่ง' : 'แนบสลิป'}</span>
+        {!hasDefaultCode && (
+          <span className="rw-slip__step"><b className="font-mono tabular-nums">3</b> กรอกเลข <span className="font-mono tabular-nums">4</span> ตัว</span>
+        )}
       </p>
       <p className="rw-slip__privacy">รูปสลิปเปิดดูได้เฉพาะทีมงานในระบบของโครงการ</p>
 

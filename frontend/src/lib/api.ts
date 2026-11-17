@@ -673,7 +673,7 @@ export function adminLogin(username: string, password: string): Promise<ApiResul
 
 /* ── Admin settings (GET/PATCH /api/admin/settings) ─────────────────────── */
 
-/** Staff view of the camp settings. `campFee` is a decimal string from the Go backend (e.g. "1000"). */
+/** Staff view of the camp settings. `campFee` is a decimal string from the Go backend (e.g. "1200"). */
 export interface AdminSettings {
   id: number;
   campName: string;

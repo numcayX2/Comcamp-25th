@@ -752,8 +752,8 @@ export function RegisterSection() {
     setStep(0);
   }
 
-  /** The applicant withdrew from the receipt: the seat is free, so start over with a clean form. */
-  function onWithdrawn(id: string) {
+  /** The applicant withdrew from the receipt (or the record disappeared on the server): start over cleanly. */
+  function onWithdrawn(id: string, missing = false) {
     clearReceipt();
     clearIdempotencyKey();
     idemKeyRef.current = '';
@@ -770,7 +770,11 @@ export function RegisterSection() {
     setSource(null);
     setStep(0);
     noticeFocus.current = true;
-    setNotice(`ยกเลิกใบสมัคร ${id} เรียบร้อยแล้ว คืนโควตาที่นั่งแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`);
+    setNotice(
+      missing
+        ? `ล้างข้อมูลใบสมัคร ${id} ที่ไม่อยู่ในระบบแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`
+        : `ยกเลิกใบสมัคร ${id} เรียบร้อยแล้ว คืนโควตาที่นั่งแล้ว คุณสามารถเริ่มต้นสมัครใหม่ได้ทันที`,
+    );
     window.scrollTo({ top: 0 });
     checkGate(true); // the freed seat may reopen a full camp
   }

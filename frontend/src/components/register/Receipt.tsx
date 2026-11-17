@@ -204,7 +204,7 @@ export function Receipt({
   /** Last 4 digits of the national ID kept in React memory from /register step 01 (never stored). */
   defaultVerifyCode?: string;
   headingRef: Ref<HTMLHeadingElement>;
-  onWithdrawn: (id: string) => void;
+  onWithdrawn: (id: string, missing?: boolean) => void;
 }) {
   const [copy, setCopy] = useState<CopyState>('idle');
   const [acctCopy, setAcctCopy] = useState<CopyState>('idle');
@@ -298,7 +298,7 @@ export function Receipt({
           headingRef={headingRef}
         />
         <div className="rw-actions">
-          <button type="button" className="rw-btn rw-btn--primary" onClick={() => onWithdrawn(appId)}>
+          <button type="button" className="rw-btn rw-btn--primary" onClick={() => onWithdrawn(appId, true)}>
             กลับไปหน้าสมัครค่าย
           </button>
           <a href="/status" className="rw-btn rw-btn--ghost">

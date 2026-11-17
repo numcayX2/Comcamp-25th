@@ -420,36 +420,21 @@ export function SlipUploadPanel({
             )}
           </div>
 
-          {!external &&
-            (validDefaultCode && !editingCode ? (
-              <div className="su-code-prompt">
-                <p className="su-note">เลข <span className="su-num">4</span> ตัวท้ายบัตรประชาชนที่น้องกรอกตอนสมัคร ใส่ให้แล้ว</p>
-                <button
-                  type="button"
-                  className="su-link-btn"
-                  disabled={busy}
-                  onClick={() => {
-                    refocusCode.current = true;
-                    setEditingCode(true);
-                  }}
-                >
-                  แก้ไขรหัส 4 ตัว
-                </button>
-              </div>
-            ) : (
-              <VerifyCodeField
-                id={ids.code}
-                value={innerCode}
-                onChange={(v) => {
-                  setInnerCode(v);
-                  if (codeError) setCodeError(null);
-                }}
-                error={codeError}
-                enterKeyHint="send"
-                disabled={busy}
-                notPhone={notPhone}
-              />
-            ))}
+          {/* When /register keeps the 4-digit verify code in memory, submit silently without asking again. */}
+          {!external && (!validDefaultCode || editingCode) && (
+            <VerifyCodeField
+              id={ids.code}
+              value={innerCode}
+              onChange={(v) => {
+                setInnerCode(v);
+                if (codeError) setCodeError(null);
+              }}
+              error={codeError}
+              enterKeyHint="send"
+              disabled={busy}
+              notPhone={notPhone}
+            />
+          )}
           {external && !codeReady && (
             <div className="su-code-prompt">
               <p className="su-note">
@@ -485,10 +470,12 @@ export function SlipUploadPanel({
                   <span aria-hidden="true">{file ? '✓' : '○'}</span>
                   {external && file ? 'แนบสลิปแล้ว' : 'เลือกภาพสลิป'}
                 </li>
-                <li data-done={codeReady}>
-                  <span aria-hidden="true">{codeReady ? '✓' : '○'}</span>
-                  {external ? 'กรอกเลข 4 ตัวด้านบน' : 'กรอกเลข 4 ตัวท้ายบัตร'}
-                </li>
+                {(external || !validDefaultCode || editingCode) && (
+                  <li data-done={codeReady}>
+                    <span aria-hidden="true">{codeReady ? '✓' : '○'}</span>
+                    {external ? 'กรอกเลข 4 ตัวด้านบน' : 'กรอกเลข 4 ตัวท้ายบัตร'}
+                  </li>
+                )}
               </ul>
             )}
             {submitError && (
