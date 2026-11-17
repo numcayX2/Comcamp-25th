@@ -57,7 +57,6 @@ const navLinks = isAdmin ? [] : [
           <a
             href="/register"
             data-nav-register
-            data-register-link={isHome ? '' : undefined}
             class:list={['nav-mobile-item', active === 'register' && 'is-active']}
             aria-current={active === 'register' ? 'page' : undefined}
           >
@@ -147,7 +146,6 @@ const navLinks = isAdmin ? [] : [
         <>
           <a
             data-nav-register
-            data-register-link={isHome ? '' : undefined}
             class:list={['btn btn-primary nav-cta', active === 'register' && 'is-active']}
             href="/register"
             aria-current={active === 'register' ? 'page' : undefined}
@@ -1074,8 +1072,9 @@ const navLinks = isAdmin ? [] : [
     const menu = document.getElementById('site-menu');
 
     if (toggle && menu) {
+      const wide = window.matchMedia('(min-width: 900px)');
       const syncInert = (open: boolean) => {
-        menu.inert = !open && window.innerWidth < 768;
+        menu.inert = !open && !wide.matches;
       };
       syncInert(toggle.getAttribute('aria-expanded') === 'true');
 
@@ -1086,7 +1085,7 @@ const navLinks = isAdmin ? [] : [
           toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
           menu.classList.toggle('is-open', open);
           syncInert(open);
-          document.body.style.overflow = open && window.innerWidth < 768 ? 'hidden' : '';
+          document.body.style.overflow = open && !wide.matches ? 'hidden' : '';
         };
 
         // Capture phase + stopImmediatePropagation prevents duplicate listener in main.js on HomePage
@@ -1115,7 +1114,6 @@ const navLinks = isAdmin ? [] : [
           }
         });
 
-        const wide = window.matchMedia('(min-width: 900px)');
         const onWide = () => {
           if (wide.matches) {
             setOpen(false);
@@ -1150,12 +1148,14 @@ const navLinks = isAdmin ? [] : [
   interface NavSettings {
     serverTime?: string;
     registrationOpenAt?: string;
+    registrationCloseAt?: string;
     isOpen?: boolean;
     currentCount?: number;
     maxCapacity?: number;
   }
 
   const DEFAULT_OPEN_AT = new Date('2026-11-18T00:00:00+07:00').getTime();
+  const DEFAULT_CLOSE_AT = new Date('2026-12-18T23:59:59+07:00').getTime();
 
   const THAI_MONTHS_SHORT = [
     'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
@@ -1262,6 +1262,8 @@ const navLinks = isAdmin ? [] : [
   function resolveState(settings: NavSettings): RegistrationState {
     const parsedOpenAt = settings.registrationOpenAt ? new Date(settings.registrationOpenAt).getTime() : DEFAULT_OPEN_AT;
     const openAt = Number.isFinite(parsedOpenAt) ? parsedOpenAt : DEFAULT_OPEN_AT;
+    const parsedCloseAt = settings.registrationCloseAt ? new Date(settings.registrationCloseAt).getTime() : DEFAULT_CLOSE_AT;
+    const closeAt = Number.isFinite(parsedCloseAt) ? parsedCloseAt : DEFAULT_CLOSE_AT;
     const serverEpoch = settings.serverTime ? new Date(settings.serverTime).getTime() : Number.NaN;
     const offset = Number.isFinite(serverEpoch) ? serverEpoch - Date.now() : 0;
     const now = Date.now() + offset;
@@ -1270,6 +1272,7 @@ const navLinks = isAdmin ? [] : [
     const seatsLeft = Math.max(0, max - count);
 
     if (now < openAt && !settings.isOpen) return 'PRE_OPEN';
+    if (Number.isFinite(closeAt) && now >= closeAt) return 'CLOSED';
     if (seatsLeft <= 0) return 'FULL';
     if (!settings.isOpen) return 'CLOSED';
     if (seatsLeft <= 5) return 'ALMOST_FULL';
@@ -1295,10 +1298,11 @@ const navLinks = isAdmin ? [] : [
       applyNavDrawerMeta(openAt, max);
       applyNavStatusVisibility(state);
     } catch {
-      // Backend unreachable or slow: the server-rendered pre-open label stays as-is.
-      applyNavRegisterLabel('PRE_OPEN', 0, DEFAULT_OPEN_AT);
+      // Fail closed when unreachable: PRE_OPEN before openAt, CLOSED after openAt.
+      const fallbackState: RegistrationState = Date.now() < DEFAULT_OPEN_AT ? 'PRE_OPEN' : 'CLOSED';
+      applyNavRegisterLabel(fallbackState, 0, DEFAULT_OPEN_AT);
       applyNavDrawerMeta(DEFAULT_OPEN_AT, 30);
-      applyNavStatusVisibility('PRE_OPEN');
+      applyNavStatusVisibility(fallbackState);
     }
   }
 

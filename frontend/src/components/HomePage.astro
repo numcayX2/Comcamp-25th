@@ -229,8 +229,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <dd class="ed-metric__val">ม.<span class="font-mono tabular-nums">4–6</span> · ปวช.<span class="font-mono tabular-nums">1–3</span></dd>
             </div>
             <div class="ed-metric">
-              <dt class="ed-metric__label">OPENING DATE</dt>
-              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> · <span class="font-mono tabular-nums">00:00</span> น.</dd>
+              <dt class="ed-metric__label">REGISTRATION</dt>
+              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> (<span class="font-mono tabular-nums">00:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · เต็มก่อนปิดก่อนทันที</dd>
             </div>
           </dl>
 
@@ -280,7 +280,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="ed-ledger__info">
                 <div class="card-top"><span class="bento-tag">06 · CAMP FEE</span></div>
                 <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
-                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนภายใน <span class="font-mono">3</span> วันหลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
+                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) ภายใน <span class="font-mono">3</span> วันหลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
@@ -466,10 +466,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--01">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">01</span> · เปิดรับสมัคร</span>
-                <p class="tm-figure"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> <small><span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง</small></p>
+                <p class="tm-figure"><span class="tabular-nums" data-open-date-short>18 พ.ย. 69</span> – <span class="tabular-nums">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · เต็มก่อนปิดก่อนทันที</small></p>
               </div>
               <div class="tm-tile__detail">
-                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ตั้งแต่เวลา <span class="font-mono tabular-nums">00:00:00</span> น. <span style="white-space:nowrap">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์</p>
+                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ตั้งแต่ <span class="tabular-nums" data-open-date-full>18 พ.ย. 2569</span> เวลา <span class="font-mono tabular-nums">00:00:00</span> น. ถึง <span class="tabular-nums">18 ธ.ค. 2569</span> <span style="white-space:nowrap">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์ (เต็มก่อนปิดก่อนทันที)</p>
                 <p class="tm-tile-link" data-register-link><a class="ed-inline-link" href="/register"><span>ไปหน้าสมัครค่าย</span><span aria-hidden="true">→</span></a></p>
               </div>
             </div>
@@ -477,14 +477,14 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
               <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">3</span> วัน</h3>
-              <p>ผู้สมัครที่ผ่านการคัดเลือกโอนค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">3</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">3</span> วันระบบคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
+              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (FCFS) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">3</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">3</span> วันระบบคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
             <div role="listitem" class="tm-tile tm-tile--03">
               <span class="tm-num"><span class="font-mono tabular-nums">03</span> · ยืนยันสิทธิ์</span>
               <h3>พี่ค่ายตรวจสอบสลิป</h3>
-              <p>ทีมงานตรวจสอบความถูกต้องของหลักฐานการโอนเงิน และอัปเดตสถานะยืนยันสิทธิ์เข้าร่วมค่ายอย่างเป็นทางการ</p>
+              <p>ทีมงานตรวจสอบความถูกต้องของหลักฐานการโอนเงิน และอัปเดตสถานะยืนยันสิทธิ์เข้าร่วมค่ายอย่างเป็นทางการ (ระบบส่งอีเมลแจ้งผล <span class="font-mono tabular-nums">2</span> ช่วง: <span class="font-mono">PASSED</span> หลังสมัคร และ <span class="font-mono">CONFIRMED</span> หลังอนุมัติสลิป)</p>
             </div>
 
             <div role="listitem" class="tm-tile tm-tile--04 tm-tile--feature">
@@ -617,7 +617,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
           <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
-            <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta data-register-link>
+            <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta>
               <span data-register-cta-label>เปิดรับ 18 พ.ย. 69</span>
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square">
                 <path d="M4 12 12 4M5.5 4H12v6.5" />

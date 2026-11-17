@@ -116,6 +116,8 @@
     var now = getServerNow().getTime();
     var openAt = new Date(state.registrationOpenAt || OPEN_AT).getTime();
     if (now < openAt && !state.isOpen) return 'PRE_OPEN';
+    var closeAt = new Date(state.registrationCloseAt || CLOSE_AT).getTime();
+    if (isFinite(closeAt) && now >= closeAt) return 'CLOSED';
     var seatsLeft = Math.max(0, state.maxCapacity - state.currentCount);
     if (seatsLeft <= 0) return 'FULL';
     if (!state.isOpen && now >= openAt) {
@@ -135,6 +137,7 @@
     var seatsBig = $('bento-seats-num');
     var seatsCaption = $('bento-seats-caption');
     var extraCtas = document.querySelectorAll('[data-register-cta]');
+    var registerHref = (primary && primary.dataset && primary.dataset.registerHref) || '/register';
     // Nobody can have applied before opening, so the status check has nothing to look up.
     if (secondary) secondary.style.display = (s === 'LOADING' || s === 'PRE_OPEN') ? 'none' : '';
     document.documentElement.setAttribute('data-reg-open', (s === 'OPEN' || s === 'ALMOST_FULL') ? 'true' : 'false');
@@ -146,8 +149,9 @@
     var openDateShort = formatOpenDateShort(openAtStr);
     var openDateFull = formatOpenDateFull(openAtStr);
     var openDateDot = formatOpenDateDot(openAtStr);
-    var ctaText = 'เปิดรับสมัคร ' + openDateNoYear, ctaHref = '#experience', miniLabel = 'เปิดรับ ' + openDateShort, stickyDisabled = true;
-    var regCtaText = 'เปิดรับ ' + openDateShort, regCtaHref = '/register', regCtaMuted = true;
+    var ctaText = 'เปิดรับสมัคร ' + openDateNoYear, ctaHref = '#essentials', miniLabel = 'เปิดรับ ' + openDateShort, stickyDisabled = true;
+    var regCtaText = 'เปิดรับ ' + openDateShort, regCtaHref = registerHref, regCtaMuted = true;
+    var mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล', mtHref = '#timeline';
 
     if (seatsBig) {
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
@@ -178,10 +182,12 @@
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
       ctaText = 'เปิดรับสมัคร ' + openDateNoYear;
-      ctaHref = '#experience';
+      ctaHref = '#essentials';
       regCtaText = 'เปิดรับ ' + openDateShort;
-      regCtaHref = '/register';
+      regCtaHref = registerHref;
       regCtaMuted = true;
+      mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล';
+      mtHref = '#timeline';
       miniLabel = 'เปิดรับ ' + openDateShort;
       stickyDisabled = true;
       if (sticky) sticky.textContent = openDateShort;
@@ -196,6 +202,8 @@
       regCtaText = 'ดูรายละเอียดค่าย';
       regCtaHref = '#experience';
       regCtaMuted = true;
+      mtLabel = 'ดูรายละเอียดค่าย';
+      mtHref = '#experience';
       miniLabel = 'เชื่อมต่อไม่สำเร็จ';
       stickyDisabled = true;
       if (sticky) sticky.textContent = 'ตรวจสอบ';
@@ -206,10 +214,12 @@
       if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
     } else if (s === 'OPEN') {
       ctaText = 'สมัครค่าย';
-      ctaHref = '/register';
+      ctaHref = registerHref;
       regCtaText = 'สมัครค่าย';
-      regCtaHref = '/register';
+      regCtaHref = registerHref;
       regCtaMuted = false;
+      mtLabel = 'สมัครค่าย ComCamp #25';
+      mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + '/' + maxCap + ' ที่นั่ง';
       stickyDisabled = false;
       if (sticky) sticky.textContent = 'สมัครค่าย';
@@ -220,10 +230,12 @@
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served)';
     } else if (s === 'ALMOST_FULL') {
       ctaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
-      ctaHref = '/register';
+      ctaHref = registerHref;
       regCtaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ')';
-      regCtaHref = '/register';
+      regCtaHref = registerHref;
       regCtaMuted = false;
+      mtLabel = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
+      mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + ' ที่นั่ง';
       stickyDisabled = false;
       if (sticky) sticky.textContent = 'สมัคร';
@@ -239,6 +251,8 @@
       regCtaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
       regCtaHref = '/status';
       regCtaMuted = true;
+      mtLabel = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
+      mtHref = '/status';
       miniLabel = 'ที่นั่งเต็มแล้ว';
       stickyDisabled = false;
       if (sticky) sticky.textContent = 'ตรวจสถานะ';
@@ -249,17 +263,19 @@
       }
       if (seatsCaption) seatsCaption.textContent = 'ขณะนี้มีผู้สมัครครบ ' + maxCap + ' ที่นั่งแล้ว หากมีผู้สละสิทธิ์ระบบจะคืนที่นั่งว่างให้สมัครได้ทันที';
     } else { // CLOSED
-      ctaText = 'ดูรายละเอียดค่าย';
-      ctaHref = '#experience';
-      regCtaText = 'ปิดรับสมัครแล้ว';
+      ctaText = 'ปิดรับสมัครแล้ว · ตรวจสอบสถานะ';
+      ctaHref = '/status';
+      regCtaText = 'ปิดรับสมัครแล้ว · ตรวจสอบสถานะ';
       regCtaHref = '/status';
       regCtaMuted = true;
+      mtLabel = 'ปิดรับสมัครแล้ว · ตรวจสอบสถานะ';
+      mtHref = '/status';
       miniLabel = 'ปิดรับสมัครแล้ว';
       stickyDisabled = true;
       if (sticky) sticky.textContent = 'ปิดแล้ว';
       if (secondary) {
-        secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
-        secondary.setAttribute('href', '/status');
+        secondary.textContent = 'ดูรายละเอียดค่าย →';
+        secondary.setAttribute('href', '#experience');
       }
       if (seatsCaption) seatsCaption.textContent = 'ปิดรับสมัครแล้ว สามารถตรวจสอบสถานะใบสมัครได้ตลอดเวลา';
     }
@@ -288,6 +304,11 @@
       });
     }
 
+    var mtCta = document.querySelector('[data-mt="cta"]');
+    var mtCtaLabel = document.querySelector('[data-mt="cta-label"]');
+    if (mtCta) mtCta.setAttribute('href', mtHref);
+    if (mtCtaLabel) mtCtaLabel.textContent = mtLabel;
+
     if (mini) mini.textContent = miniLabel;
     if (sticky) {
       sticky.disabled = stickyDisabled;
@@ -312,7 +333,7 @@
 
   function navigateToRegister(){
     var s = computeHeroState();
-    if (s === 'PRE_OPEN' || s === 'CLOSED' || s === 'LOADING') return;
+    if (s === 'PRE_OPEN' || s === 'CLOSED' || s === 'LOADING' || s === 'FAILED') return;
     // Full: the form is locked, so the mobile button goes to the status page like the hero CTA.
     window.location.href = s === 'FULL' ? '/status' : '/register';
   }
@@ -404,11 +425,11 @@
         // A failed midnight re-fetch keeps the last good server data; no retry, so an overloaded
         // server is not hit again by every tab.
         if (quiet) return;
-        // Graceful offline fallback per AGENTS.md §0.2 & §8
+        // Fail closed on /settings/public failure so registration never defaults to OPEN offline.
         state.loading = false;
-        state.failed = false;
+        state.failed = true;
         state.isOpen = false;
-        state.explicitClosed = false;
+        state.explicitClosed = true;
         state.serverTime = new Date().toISOString();
         state.serverOffsetMs = 0;
         state.registrationOpenAt = OPEN_AT;
@@ -686,8 +707,8 @@
           eyebrow: "ComCamp 25",
           titleLines: ["แล้วพบกัน"],
           subtitle: "บทต่อไปของความทรงจำ กำลังรอให้คุณมาเขียนร่วมกัน",
-          ctaLabel: "ตรวจสอบสถานะ",
-          ctaHref: "/status",
+          ctaLabel: "ดูข้อมูลการรับสมัคร",
+          ctaHref: "#timeline",
           ctaTarget: "_self",
         },
       },
@@ -1025,6 +1046,7 @@
     };
 
     window.memoryTunnel = new MemoryTunnel(CONFIG, MEMORY_IMAGES);
+    applyHeroState();
   })();
 
   // Navbar: mobile disclosure + scroll-spy for the section in view.
@@ -1032,10 +1054,17 @@
     var nav = document.querySelector('.site-nav');
     var menu = $('site-menu');
     var toggle = document.querySelector('.nav-toggle');
+    var wideMq = window.matchMedia ? window.matchMedia('(min-width:900px)') : null;
+    var isMobileNav = function(){
+      return wideMq ? !wideMq.matches : window.innerWidth < 900;
+    };
     var setOpen = function(open){
       if (!toggle || !menu) return;
+      var mobile = isMobileNav();
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       menu.classList.toggle('is-open', open);
+      menu.inert = !open && mobile;
+      document.body.style.overflow = open && mobile ? 'hidden' : '';
     };
     if (menu && toggle && !toggle.dataset.ccNavBound){
       toggle.addEventListener('click', function(){ setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
@@ -1043,10 +1072,18 @@
       document.addEventListener('keydown', function(e){
         if (e.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true'){ setOpen(false); toggle.focus(); }
       });
-      var wide = window.matchMedia('(min-width:900px)');
-      var onWide = function(){ if (wide.matches) setOpen(false); };
-      if (wide.addEventListener) wide.addEventListener('change', onWide);
-      else if (wide.addListener) wide.addListener(onWide);
+      if (wideMq) {
+        var onWide = function(){
+          if (wideMq.matches) {
+            setOpen(false);
+            menu.inert = false;
+          } else {
+            menu.inert = toggle.getAttribute('aria-expanded') !== 'true';
+          }
+        };
+        if (wideMq.addEventListener) wideMq.addEventListener('change', onWide);
+        else if (wideMq.addListener) wideMq.addListener(onWide);
+      }
     }
     if (nav) {
       var gallery = $('gallery');
@@ -1069,6 +1106,7 @@
           var hidden = push >= 0.98;
           nav.style.pointerEvents = hidden ? 'none' : '';
           nav.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+          nav.inert = hidden;
           if (hidden) setOpen(false);
         };
         var requestNav = function(){ if (!navTick) navTick = requestAnimationFrame(updateNav); };
