@@ -8,9 +8,8 @@ const { active = 'home', isHome = false } = Astro.props;
 const isAdmin = active === 'admin';
 // Staff work on one page: the camp's marketing anchors, the sign-up CTA and the status lookup are noise there.
 const navLinks = isAdmin ? [] : [
-  { href: isHome ? '#experience' : '/#experience', label: 'กิจกรรม' },
+  { href: isHome ? '#experience' : '/#experience', label: 'หลักสูตร' },
   { href: isHome ? '#essentials' : '/#essentials', label: 'ข้อมูล' },
-  { href: isHome ? '#journey' : '/#journey', label: 'เส้นทาง' },
   { href: isHome ? '#timeline' : '/#timeline', label: 'ไทม์ไลน์' },
   { href: isHome ? '#faq' : '/#faq', label: 'คำถามที่พบบ่อย' },
   { href: isHome ? '#gallery' : '/#gallery', label: 'แกลเลอรี' },
@@ -547,7 +546,11 @@ const navLinks = isAdmin ? [] : [
     }
     .nav-links {
       position: fixed;
-      inset: 0;
+      /* Longhand offsets: `inset` is unsupported before Safari 14.1 (iOS <= 14.4 in-app WebViews). */
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       z-index: 60;
       display: flex;
       flex-direction: column;

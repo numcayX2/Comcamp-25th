@@ -159,66 +159,84 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <!-- Section 01: Hero — 3D Hardware Stage (Arduino UNO R3 & ESP8266) -->
     <HeroSection titleStyle="pixel" registerHref="/register" statusHref="/status" />
 
-    <!-- Section 02: What you'll actually do — editorial chapter list -->
-    <section id="experience" class="ed-sec" aria-labelledby="experience-title">
-      <div class="wrap exp">
-        <header class="exp-intro">
-          <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">ประสบการณ์ในค่าย · <span class="font-mono tabular-nums">4</span> ปฏิบัติการ</span></p>
-          <h2 id="experience-title" class="exp-title">สิ่งที่จะได้ทำจริงในค่าย</h2>
-          <p class="exp-lead">เรียนรู้จากการลงมือปฏิบัติจริง ตั้งแต่การต่อวงจรและควบคุมฮาร์ดแวร์ระดับไมโครคอนโทรลเลอร์ ไปจนถึงการสร้างเว็บอินเทอร์เฟซที่สั่งงานผ่านสมาร์ตโฟนได้โดยตรง</p>
-          <p class="ed-aside-meta">เน้นปฏิบัติจริงทุกหัวข้อพร้อมชุดบอร์ดประจำตัว</p>
+    <!-- Section 02: Curriculum (merged "what you build" + "4 steps over 3 days") — central spine -->
+    <section id="experience" class="ed-sec ed-sec--curriculum" aria-labelledby="experience-title">
+      <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">หลักสูตร</span></p>
+      <div class="wrap">
+        <header class="section-head">
+          <h2 id="experience-title" class="section-title">หลักสูตร <span class="font-mono tabular-nums">4</span> ขั้นตอน ตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน</h2>
+          <p class="body">เรียนรู้จากการลงมือปฏิบัติจริงพร้อมชุดบอร์ดประจำตัว ตั้งแต่จำลองวงจร ต่อฮาร์ดแวร์ระดับไมโครคอนโทรลเลอร์ ไปจนถึงสร้างเว็บที่สั่งงานผ่านสมาร์ตโฟนได้โดยตรง</p>
         </header>
 
-        <ol class="exp-list">
-          <li class="exp-item">
-            <span class="exp-num" aria-hidden="true">01</span>
-            <div class="exp-body">
-              <h3 class="exp-item-title">ปล่อยสัญญาณ Wi-Fi จากบอร์ด</h3>
-              <p class="exp-item-text">ทดลองตั้งค่า ESP8266 ในโหมด Access Point (AP Mode) เพื่อให้สมาร์ตโฟนเกาะสัญญาณและส่งคำสั่งควบคุมอุปกรณ์ได้โดยตรงไม่ต้องพึ่งเราเตอร์</p>
-              <p class="exp-spec"><span class="exp-key th-label">โหมด</span><span class="exp-val">SoftAP / 192.168.4.1</span></p>
+        <div id="journey" class="ed-anchor"></div>
+        <div class="journey journey--spine" role="list">
+          <div role="listitem" class="step">
+            <div class="step-aside">
+              <div class="step-big-num" aria-hidden="true">01</div>
+              <div class="day th-label">วันที่ <span class="font-mono tabular-nums">1</span></div>
             </div>
-          </li>
-
-          <li class="exp-item">
-            <span class="exp-num" aria-hidden="true">02</span>
-            <div class="exp-body">
-              <h3 class="exp-item-title">ประกอบวงจรและอ่านค่าเซนเซอร์</h3>
-              <p class="exp-item-text">ต่อวงจรจริงบน Breadboard ร่วมกับเซนเซอร์ Ultrasonic HC-SR04, LDR วัดแสง และ Active Buzzer เพื่อเข้าใจกระบวนการ Input, Process และ Output</p>
-              <p class="exp-spec"><span class="exp-key th-label">อุปกรณ์</span><span class="exp-val">HC-SR04 / LDR / Buzzer</span></p>
+            <span class="step-node" aria-hidden="true"></span>
+            <div class="step-content">
+              <div class="step-num th-label">ขั้นที่ <span class="font-mono tabular-nums">1</span> · รับรู้และจำลอง</div>
+              <h3>ปูพื้นฐานและจำลองวงจร</h3>
+              <p>ทำความเข้าใจแนวคิด Input → Process → Output แล้วจำลองวงจรไฟกระพริบกับเซนเซอร์วัดแสง LDR บนคอมพิวเตอร์ก่อนต่อของจริงเพื่อป้องกันการลัดวงจร ไม่มีพื้นฐานก็เริ่มได้</p>
+              <p class="step-spec"><span class="step-spec__key th-label">เครื่องมือ</span><span class="step-spec__val">Autodesk Tinkercad Circuits</span></p>
             </div>
-          </li>
-
-          <li class="exp-item">
-            <span class="exp-num" aria-hidden="true">03</span>
-            <div class="exp-body">
-              <h3 class="exp-item-title">ควบคุมฮาร์ดแวร์ผ่านหน้าเว็บ</h3>
-              <p class="exp-item-text">เขียนโปรแกรมสร้าง Embedded Web Server บนตัวชิป และเปิดหน้า Mobile Dashboard เพื่อกดสวิตช์สั่งงานฮาร์ดแวร์ผ่านเครือข่ายท้องถิ่นทันที</p>
-              <p class="exp-spec"><span class="exp-key th-label">การเชื่อมต่อ</span><span class="exp-val">HTTP Server / Local LAN</span></p>
+          </div>
+          <div role="listitem" class="step">
+            <div class="step-aside">
+              <div class="step-big-num" aria-hidden="true">02</div>
+              <div class="day th-label">วันที่ <span class="font-mono tabular-nums">1</span></div>
             </div>
-          </li>
-
-          <li class="exp-item">
-            <span class="exp-num" aria-hidden="true">04</span>
-            <div class="exp-body">
-              <h3 class="exp-item-title">เริ่มต้นง่ายแม้ไม่มีพื้นฐาน</h3>
-              <p class="exp-item-text">ฝึกจำลองการต่อวงจรบน Autodesk Tinkercad Circuits เพื่อป้องกันการลัดวงจร และเรียนรู้วิธีใช้ AI ช่วยขึ้นโครงสร้าง Web Interface อย่างเป็นระบบ</p>
-              <p class="exp-spec"><span class="exp-key th-label">เครื่องมือ</span><span class="exp-val">Tinkercad / Code Assist</span></p>
+            <span class="step-node" aria-hidden="true"></span>
+            <div class="step-content">
+              <div class="step-num th-label">ขั้นที่ <span class="font-mono tabular-nums">2</span> · ควบคุมด้วยวงจรจริง</div>
+              <h3>ต่อวงจรจริงและอ่านค่าเซนเซอร์</h3>
+              <p>ประกอบวงจรบน Breadboard อัปโหลดโค้ดภาษา C/C++ สั่งเซนเซอร์วัดระยะ และขับเสียงเตือนด้วย Active Buzzer</p>
+              <p class="step-spec"><span class="step-spec__key th-label">บอร์ดและเซนเซอร์</span><span class="step-spec__val">Arduino UNO R3 / HC-SR04 Ultrasonic</span></p>
             </div>
-          </li>
-        </ol>
+          </div>
+          <div role="listitem" class="step">
+            <div class="step-aside">
+              <div class="step-big-num" aria-hidden="true">03</div>
+              <div class="day th-label">วันที่ <span class="font-mono tabular-nums">2</span></div>
+            </div>
+            <span class="step-node" aria-hidden="true"></span>
+            <div class="step-content">
+              <div class="step-num th-label">ขั้นที่ <span class="font-mono tabular-nums">3</span> · IoT ไร้สาย</div>
+              <h3>ปล่อย Wi-Fi จากบอร์ดและสั่งงานผ่านเว็บ</h3>
+              <p>ตั้งค่าบอร์ดในโหมด Access Point ให้สมาร์ตโฟนเชื่อมต่อได้โดยตรงไม่ต้องพึ่งเราเตอร์ สร้าง Embedded Web Server บนชิป และใช้ AI ช่วยขึ้นโครงหน้า Mobile Dashboard เพื่อกดสั่งงานฮาร์ดแวร์ผ่านเครือข่ายท้องถิ่น</p>
+              <p class="step-spec"><span class="step-spec__key th-label">การเชื่อมต่อ</span><span class="step-spec__val">ESP8266 / SoftAP / 192.168.4.1</span></p>
+            </div>
+          </div>
+          <div role="listitem" class="step">
+            <div class="step-aside">
+              <div class="step-big-num" aria-hidden="true">04</div>
+              <div class="day th-label">วันที่ <span class="font-mono tabular-nums">2–3</span></div>
+            </div>
+            <span class="step-node" aria-hidden="true"></span>
+            <div class="step-content">
+              <div class="step-num th-label">ขั้นที่ <span class="font-mono tabular-nums">4</span> · ต้นแบบและนำเสนอ</div>
+              <h3>พัฒนาโปรเจกต์และนำเสนอ</h3>
+              <p>รวมทีมพัฒนาต้นแบบตามโจทย์ท้าทาย แล้วสาธิตผลงานสดบนเวที<span class="ed-nw">ทีมละ <span class="font-mono tabular-nums">3</span> นาที</span></p>
+              <p class="step-spec"><span class="step-spec__key th-label">รูปแบบ</span><span class="step-spec__val">Hackathon / Live Demo</span></p>
+            </div>
+          </div>
+        </div>
+        <p class="ed-journey-signoff"><span class="step-node step-node--end" aria-hidden="true"></span><span class="ed-signoff-note">ผู้เข้าร่วมทุกคนได้รับเกียรติบัตรจากสาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</span></p>
       </div>
     </section>
 
-    <!-- Section 03: Camp Essentials -->
-    <section id="essentials" class="ed-sec ed-sec--alt" aria-labelledby="essentials-title">
+    <!-- Section 03: Camp Essentials — split masthead with stat stack + raised bento mosaic -->
+    <section id="essentials" class="ed-sec ed-sec--essentials" aria-labelledby="essentials-title">
+      <p class="ed-index"><span class="ed-index__no">03</span><span class="ed-index__label">ข้อมูลก่อนสมัคร</span></p>
       <div class="wrap">
-        <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">03</span><span class="ed-index__label">ข้อมูลก่อนสมัคร</span></p>
-          <h2 id="essentials-title" class="section-title">ข้อมูลที่ควรรู้ก่อนสมัคร</h2>
-          <p class="body">สรุปคุณสมบัติ อุปกรณ์ จำนวนที่นั่ง สถานที่ และค่าใช้จ่าย เพื่อให้ตัดสินใจและเตรียมตัวได้ครบในหน้าเดียว</p>
-          <p class="ed-aside-meta">ข้อมูลสำคัญสำหรับผู้สมัครและผู้ปกครอง</p>
-        </div>
-        <div class="ed-main">
+        <div class="ess-head">
+          <div class="section-head">
+            <h2 id="essentials-title" class="section-title">ข้อมูลที่ควรรู้ก่อนสมัคร</h2>
+            <p class="body">สรุปคุณสมบัติ อุปกรณ์ จำนวนที่นั่ง สถานที่ และค่าใช้จ่าย เพื่อให้ตัดสินใจและเตรียมตัวได้ครบในหน้าเดียว</p>
+            <p class="ed-aside-meta">ข้อมูลสำคัญสำหรับผู้สมัครและผู้ปกครอง</p>
+          </div>
           <dl class="ed-metrics" aria-label="สรุปภาพรวมค่าย">
             <div class="ed-metric">
               <dt class="ed-metric__label th-label">ระยะเวลา</dt>
@@ -233,6 +251,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · เต็มก่อนปิดก่อนทันที</dd>
             </div>
           </dl>
+        </div>
+        <div class="ed-main">
 
           <div class="bento" role="list">
             <div role="listitem" class="card ed-cell--split">
@@ -377,74 +397,11 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
       </div>
     </section>
 
-    <!-- Section 04: Learning Journey -->
-    <section id="journey" class="ed-sec" aria-labelledby="journey-title">
+    <!-- Section 04: Timeline & Parental Peace-of-Mind — horizontal track + raised care panel -->
+    <section id="timeline" class="ed-sec ed-sec--timeline" aria-labelledby="timeline-title">
+      <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">ไทม์ไลน์และการดูแล</span></p>
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">เส้นทางเรียนรู้</span></p>
-          <h2 id="journey-title" class="section-title"><span class="font-mono tabular-nums">4</span> ขั้นตอนตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน</h2>
-          <p class="body">จากการจำลองวงจรและพื้นฐาน Input → Process → Output สู่การต่อฮาร์ดแวร์จริง เชื่อมต่อ IoT และนำเสนอโปรเจกต์บนเวที</p>
-          <p class="ed-aside-meta">ปูพื้นฐานจนสร้างผลงานจริงพร้อมเกียรติบัตร</p>
-        </div>
-        <div class="ed-main">
-          <div class="journey journey--typo" role="list">
-            <div role="listitem" class="step">
-              <div class="step-big-num" aria-hidden="true">01</div>
-              <div class="step-content">
-                <div class="step-meta">
-                  <div class="step-num th-label">ขั้นที่ 1 · รับรู้และจำลอง</div>
-                  <div class="day th-label">วันที่ 1</div>
-                </div>
-                <h3>ปูพื้นฐานและจำลองวงจร</h3>
-                <p>ทำความเข้าใจแนวคิด Input → Process → Output และจำลองวงจรไฟกระพริบกับเซนเซอร์วัดแสง LDR บน Autodesk Tinkercad Circuits</p>
-              </div>
-            </div>
-            <div role="listitem" class="step">
-              <div class="step-big-num" aria-hidden="true">02</div>
-              <div class="step-content">
-                <div class="step-meta">
-                  <div class="step-num th-label">ขั้นที่ 2 · ควบคุมด้วยวงจรจริง</div>
-                  <div class="day th-label">วันที่ 1</div>
-                </div>
-                <h3>คุมบอร์ด Arduino UNO R3</h3>
-                <p>ประกอบวงจรจริง อัปโหลดโค้ดภาษา C/C++ สั่งงานเซนเซอร์ Ultrasonic HC-SR04 วัดระยะ และขับเสียงเตือนด้วย Active Buzzer</p>
-              </div>
-            </div>
-            <div role="listitem" class="step">
-              <div class="step-big-num" aria-hidden="true">03</div>
-              <div class="step-content">
-                <div class="step-meta">
-                  <div class="step-num th-label">ขั้นที่ 3 · IoT ไร้สาย</div>
-                  <div class="day th-label">วันที่ 2</div>
-                </div>
-                <h3>เชื่อม ESP8266 และเว็บควบคุม</h3>
-                <p>ตั้งค่า Wi-Fi AP Mode สร้าง Local Web Server บน IP <span class="font-mono tabular-nums">192.168.4.1</span> และออกแบบ Mobile Dashboard เพื่อสั่งงานฮาร์ดแวร์ผ่านสมาร์ตโฟน</p>
-              </div>
-            </div>
-            <div role="listitem" class="step">
-              <div class="step-big-num" aria-hidden="true">04</div>
-              <div class="step-content">
-                <div class="step-meta">
-                  <div class="step-num th-label">ขั้นที่ 4 · ต้นแบบและนำเสนอ</div>
-                  <div class="day th-label">วันที่ 2–3</div>
-                </div>
-                <h3>พัฒนาโปรเจกต์และนำเสนอ</h3>
-                <p>รวมทีมทำ Hackathon ตามโจทย์ท้าทาย สาธิตผลงานสดบนเวทีทีมละ <span class="font-mono tabular-nums">3</span> นาที และรับมอบเกียรติบัตรเมื่อจบกิจกรรม</p>
-              </div>
-            </div>
-          </div>
-          <div class="ed-journey-signoff">
-            <span class="ed-signoff-note">ผู้เข้าร่วมทุกคนได้รับเกียรติบัตรจากสาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section 05: Timeline & Parental Peace-of-Mind -->
-    <section id="timeline" class="ed-sec ed-sec--alt" aria-labelledby="timeline-title">
-      <div class="wrap">
-        <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">05</span><span class="ed-index__label">ไทม์ไลน์และการดูแล</span></p>
           <h2 id="timeline-title" class="section-title">ไทม์ไลน์การสมัครและการดูแลผู้เข้าร่วม</h2>
           <p class="body">คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ พร้อมมาตรการดูแลความปลอดภัยสำหรับผู้ปกครอง</p>
           <p class="ed-aside-meta">ขั้นตอนสมัครและมาตรฐานความปลอดภัย</p>
@@ -460,7 +417,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--01">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">01</span> · ลงทะเบียน</span>
-                <p class="tm-figure"><span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> – <span class="tabular-nums">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · เต็มก่อนปิดก่อนทันที</small></p>
+                <p class="tm-figure"><span class="tabular-nums ed-nw" data-open-date-short>19 พ.ย. 69</span> – <span class="tabular-nums ed-nw">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · เต็มก่อนปิดก่อนทันที</small></p>
               </div>
               <div class="tm-tile__detail">
                 <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ ลงทะเบียนวันที่ <span class="tabular-nums" data-open-date-full>19 พ.ย. 2569</span> เวลา <span class="font-mono tabular-nums" data-open-time>09:00</span> น. ถึง <span class="tabular-nums">18 ธ.ค. 2569</span> <span style="white-space:nowrap">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์ (เต็มก่อนปิดก่อนทันที)</p>
@@ -484,7 +441,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--04 tm-tile--feature">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">04</span> · วันจัดค่าย</span>
-                <h3>วันที่ <span class="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span class="font-mono tabular-nums">2570</span> (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน) ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</h3>
+                <h3>วันที่ <span class="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span class="font-mono tabular-nums">2570</span> (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน) ณ <span class="ed-nw">อาคาร 60 ปี แม่โจ้</span> <span class="ed-nw">ชั้น 6</span> <span class="ed-nw">มหาวิทยาลัยแม่โจ้</span> <span class="ed-nw">จ.เชียงใหม่</span></h3>
               </div>
               <div class="tm-tile__detail">
                 <p>เดินทางเข้าร่วมกิจกรรมและเข้าพักตามกำหนดการและคู่มือผู้มีสิทธิ์ที่ประกาศในระบบ (ลิงก์และ QR เข้ากลุ่ม LINE OpenChat จะแสดงหลังแนบสลิปชำระเงินในระบบ)</p>
@@ -562,11 +519,11 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
       </div>
     </section>
 
-    <!-- Section 06: FAQ -->
-    <section id="faq" class="ed-sec" aria-labelledby="faq-title">
+    <!-- Section 05: FAQ — sticky question index + stacked raised answers -->
+    <section id="faq" class="ed-sec ed-sec--faq" aria-labelledby="faq-title">
+      <p class="ed-index"><span class="ed-index__no">05</span><span class="ed-index__label">คำถามที่พบบ่อย</span></p>
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">06</span><span class="ed-index__label">คำถามที่พบบ่อย</span></p>
           <h2 id="faq-title" class="section-title">คำถามที่พบบ่อย</h2>
           <p class="body">รวบรวมข้อสงสัยเกี่ยวกับพื้นฐานผู้สมัคร อุปกรณ์ การคัดเลือก และขั้นตอนการยืนยันสิทธิ์ผ่านมือถือ</p>
         </div>
@@ -602,12 +559,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <!-- Pre-Gallery Conversion CTA Band (sits on canvas-0 to blend seamlessly into .mt-fade) -->
     <section class="ed-cta-band" aria-labelledby="pre-gallery-cta-title">
       <div class="wrap ed-cta-band__wrap">
-        <div class="ed-cta-band__aside">
-          <p class="ed-index"><span class="ed-index__no">→</span><span class="ed-index__label">สมัครเข้าร่วม</span></p>
-        </div>
         <div class="ed-cta-band__body">
           <p class="ed-cta-band__eyebrow th-label">ComCamp #25 · รับสมัคร</p>
-          <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
+          <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย <span class="ed-nw">ComCamp <span class="font-mono tabular-nums">#25</span></span> <span class="ed-nw">แล้วหรือยัง?</span></h2>
           <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
             <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta>
@@ -627,7 +581,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <!-- Seamless fade from the page surface into the dark gallery -->
     <div class="mt-fade" aria-hidden="true"></div>
 
-    <!-- Section 07: Last Year Gallery — Memory Tunnel -->
+    <!-- Section 06: Last Year Gallery — Memory Tunnel -->
     <section id="gallery" class="mt" aria-labelledby="gallery-title">
       <div class="mt__sticky">
         <h2 id="gallery-title" class="sr-only">บรรยากาศค่ายปีที่แล้ว ComCamp #24</h2>
@@ -659,8 +613,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     </section>
   </main>
 
-  <!-- Section 08: Footer -->
+  <!-- Section 07: Footer — oversized wordmark colophon -->
   <footer class="ed-footer">
+    <div class="wrap footer-mark" aria-hidden="true"><span>Comcamp</span> <span>25th</span></div>
     <div class="wrap footer-grid">
       <div>
         <p class="ed-index"><span class="ed-index__no">©</span><span class="ed-index__label"><span class="th-label">ข้อมูลโครงการ</span></span></p>
@@ -680,9 +635,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <div class="footer-col">
             <p class="footer-col__head">สารบัญหน้าเว็บ</p>
             <ul class="footer-links">
-              <li><a href="#experience">กิจกรรมในค่าย</a></li>
+              <li><a href="#experience">หลักสูตร</a></li>
               <li><a href="#essentials">ข้อมูลก่อนสมัคร</a></li>
-              <li><a href="#journey">เส้นทางเรียนรู้</a></li>
               <li><a href="#timeline">ไทม์ไลน์และการดูแล</a></li>
               <li><a href="#faq">คำถามที่พบบ่อย</a></li>
               <li><a href="#gallery">แกลเลอรีค่าย</a></li>
