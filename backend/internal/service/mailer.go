@@ -3,12 +3,14 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	htmltmpl "html/template"
 	"log"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -480,6 +482,37 @@ func formatBangkokThaiDateTime(t time.Time) string {
 	return fmt.Sprintf("%d %s %d เวลา %02d:%02d น.", bkk.Day(), months[int(bkk.Month())], bkk.Year()+543, bkk.Hour(), bkk.Minute())
 }
 
+func encodeQuotedPrintable(raw []byte) ([]byte, error) {
+	var out bytes.Buffer
+	qp := quotedprintable.NewWriter(&out)
+	if _, err := qp.Write(raw); err != nil {
+		return nil, err
+	}
+	if err := qp.Close(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func formatAddressHeader(raw string) string {
+	clean := stripCRLF(raw)
+	if parsed, err := mail.ParseAddress(clean); err == nil && parsed.Address != "" {
+		return (&mail.Address{Name: parsed.Name, Address: parsed.Address}).String()
+	}
+	return clean
+}
+
+func buildMessageID(fromHeader string) string {
+	bare := extractBareAddress(fromHeader)
+	domainPart := "comcamp.local"
+	if at := strings.LastIndex(bare, "@"); at >= 0 && at+1 < len(bare) {
+		domainPart = stripCRLF(bare[at+1:])
+	}
+	var rnd [8]byte
+	_, _ = rand.Read(rnd[:])
+	return fmt.Sprintf("<cc25-%d.%x@%s>", time.Now().UTC().UnixNano(), rnd, domainPart)
+}
+
 func buildMultipartMIME(fromHeader, to, subject string, txt *texttmpl.Template, htm *htmltmpl.Template, data any) ([]byte, error) {
 	var textBuf, htmlBuf bytes.Buffer
 	if err := txt.Execute(&textBuf, data); err != nil {
@@ -489,24 +522,35 @@ func buildMultipartMIME(fromHeader, to, subject string, txt *texttmpl.Template, 
 		return nil, err
 	}
 
+	textQP, err := encodeQuotedPrintable(textBuf.Bytes())
+	if err != nil {
+		return nil, err
+	}
+	htmlQP, err := encodeQuotedPrintable(htmlBuf.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
 	boundary := fmt.Sprintf("cc25-%d", time.Now().UnixNano())
 	encodedSubject := mime.BEncoding.Encode("UTF-8", stripCRLF(subject))
 
 	var msg bytes.Buffer
-	msg.WriteString("From: " + stripCRLF(fromHeader) + "\r\n")
-	msg.WriteString("To: " + stripCRLF(to) + "\r\n")
+	msg.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	msg.WriteString("From: " + formatAddressHeader(fromHeader) + "\r\n")
+	msg.WriteString("To: " + formatAddressHeader(to) + "\r\n")
 	msg.WriteString("Subject: " + encodedSubject + "\r\n")
+	msg.WriteString("Message-ID: " + buildMessageID(fromHeader) + "\r\n")
 	msg.WriteString("MIME-Version: 1.0\r\n")
 	msg.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
 	msg.WriteString("\r\n")
 	msg.WriteString("--" + boundary + "\r\n")
 	msg.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
-	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	msg.Write(textBuf.Bytes())
+	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	msg.Write(textQP)
 	msg.WriteString("\r\n--" + boundary + "\r\n")
 	msg.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
-	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	msg.Write(htmlBuf.Bytes())
+	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+	msg.Write(htmlQP)
 	msg.WriteString("\r\n--" + boundary + "--\r\n")
 	return msg.Bytes(), nil
 }

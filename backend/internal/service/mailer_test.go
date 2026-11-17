@@ -3,6 +3,11 @@ package service_test
 import (
 	"context"
 	"errors"
+	"io"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
+	"net/mail"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +26,51 @@ type capturedMail struct {
 	from string
 	to   string
 	raw  string
+}
+
+func decodeMIMEBodies(t *testing.T, raw string) string {
+	t.Helper()
+	for i, line := range strings.Split(raw, "\r\n") {
+		if len(line) > 998 {
+			t.Fatalf("RFC 5322 line length exceeded at line %d (%d bytes > 998)", i+1, len(line))
+		}
+	}
+	msg, err := mail.ReadMessage(strings.NewReader(raw))
+	if err != nil {
+		t.Fatalf("mail.ReadMessage failed: %v", err)
+	}
+	if strings.TrimSpace(msg.Header.Get("Date")) == "" {
+		t.Fatalf("missing Date header")
+	}
+	if mid := strings.TrimSpace(msg.Header.Get("Message-ID")); !strings.HasPrefix(mid, "<cc25-") || !strings.HasSuffix(mid, ">") {
+		t.Fatalf("invalid or missing Message-ID header: %q", mid)
+	}
+	_, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("ParseMediaType failed: %v", err)
+	}
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	var all strings.Builder
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("NextPart failed: %v", err)
+		}
+		var r io.Reader = part
+		if strings.EqualFold(part.Header.Get("Content-Transfer-Encoding"), "quoted-printable") {
+			r = quotedprintable.NewReader(part)
+		}
+		b, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("read part failed: %v", err)
+		}
+		all.Write(b)
+		all.WriteByte('\n')
+	}
+	return all.String()
 }
 
 func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
@@ -80,6 +130,7 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 	if m.from != "noreply@comcamp.csmju.com" || m.to != "somchai@example.com" {
 		t.Fatalf("unexpected envelope from=%q to=%q", m.from, m.to)
 	}
+	decoded := decodeMIMEBodies(t, m.raw)
 	for _, want := range []string{
 		res.ID,
 		"1,200",
@@ -89,7 +140,7 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 		"080-993-8214",
 		"063-784-4515",
 	} {
-		if !strings.Contains(m.raw, want) {
+		if !strings.Contains(decoded, want) {
 			t.Errorf("registration email missing %q", want)
 		}
 	}
@@ -186,7 +237,7 @@ func TestAsyncMailer_ConfirmedStageAndSkipOnRejectOrDuplicateNoteEdit(t *testing
 	if len(sent) != 1 {
 		t.Fatalf("expected exactly 1 CONFIRMED email, got %d", len(sent))
 	}
-	body := sent[0].raw
+	body := decodeMIMEBodies(t, sent[0].raw)
 	for _, want := range []string{
 		a.ApplicationNo,
 		"เรือนพักสมาคมศิษย์เก่าแม่โจ้",
