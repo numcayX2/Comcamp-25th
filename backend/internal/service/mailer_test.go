@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -143,6 +144,19 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 		if !strings.Contains(decoded, want) {
 			t.Errorf("registration email missing %q", want)
 		}
+	}
+	// Since 000011 the code is the applicant's only key on /status: both parts say to keep it.
+	if cnt := strings.Count(decoded, "กุญแจส่วนตัวของคุณบนหน้าตรวจสอบสถานะ"); cnt != 2 {
+		t.Errorf("expected the keep-your-code notice in both text and HTML parts (count=%d)", cnt)
+	}
+	for _, gone := range []string{"เลขบัตร", "4 ตัวท้าย", "verifyCode", "nationalId"} {
+		if strings.Contains(decoded, gone) {
+			t.Errorf("registration email still mentions %q", gone)
+		}
+	}
+	// Thai never sits inside <code> (IBM Plex Mono has no Thai glyphs); only codes/numbers do.
+	if loc := regexp.MustCompile(`<code[^>]*>[^<]*\p{Thai}`).FindStringIndex(decoded); loc != nil {
+		t.Errorf("Thai text inside <code>: %q", decoded[loc[0]:loc[1]])
 	}
 	if cnt := strings.Count(decoded, "กระเป๋าพร้อมปั๊มลาย"); cnt != 2 {
 		t.Errorf("expected 'กระเป๋าพร้อมปั๊มลาย' in both text and HTML parts (count=%d)", cnt)
