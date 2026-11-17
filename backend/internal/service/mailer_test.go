@@ -86,6 +86,8 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 		"587-0-84106-0",
 		"https://comcamp.csmju.com/status?q=" + res.ID,
 		"เรือนพักสมาคมศิษย์เก่าแม่โจ้",
+		"080-993-8214",
+		"063-784-4515",
 	} {
 		if !strings.Contains(m.raw, want) {
 			t.Errorf("registration email missing %q", want)
@@ -191,6 +193,8 @@ func TestAsyncMailer_ConfirmedStageAndSkipOnRejectOrDuplicateNoteEdit(t *testing
 		"https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7",
 		"https://line.me/ti/g2/",
 		"2XL",
+		"080-993-8214",
+		"063-784-4515",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("confirmed email missing %q", want)

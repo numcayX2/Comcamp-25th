@@ -32,6 +32,7 @@ const (
 	campBankNumber      = "587-0-84106-0"
 	campBankAccountName = "ชมรมคอมพิวเตอร์ (นายภานุวัฒน์ นายอรรถวิท นายปวีณ)"
 	campFBPageURL       = "https://www.facebook.com/CCCSMJU"
+	campStaffContact    = "080-993-8214 (นายบูรพา มหัทธีรนางกูร) / 063-784-4515 (นางสาวธมล นวลหมวก)"
 )
 
 var bangkokZone = time.FixedZone("Asia/Bangkok", 7*60*60)
@@ -224,6 +225,7 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		BankAccount   string
 		StatusURL     string
 		FBPageURL     string
+		StaffContact  string
 	}{
 		ApplicationNo: stripCRLF(data.ApplicationNo),
 		FullName:      stripCRLF(data.FullName),
@@ -235,6 +237,7 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		BankAccount:   campBankAccountName,
 		StatusURL:     m.statusURL + "?q=" + urlQueryEscape(data.ApplicationNo),
 		FBPageURL:     campFBPageURL,
+		StaffContact:  campStaffContact,
 	}
 
 	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 3 วัน", view.ApplicationNo)
@@ -268,6 +271,7 @@ func (m *AsyncSMTPMailer) EnqueueConfirmed(data ConfirmedEmailData) {
 		LineURL       string
 		StatusURL     string
 		FBPageURL     string
+		StaffContact  string
 	}{
 		ApplicationNo: stripCRLF(data.ApplicationNo),
 		FullName:      stripCRLF(data.FullName),
@@ -278,6 +282,7 @@ func (m *AsyncSMTPMailer) EnqueueConfirmed(data ConfirmedEmailData) {
 		LineURL:       campLineOpenChatURL,
 		StatusURL:     m.statusURL + "?q=" + urlQueryEscape(data.ApplicationNo),
 		FBPageURL:     campFBPageURL,
+		StaffContact:  campStaffContact,
 	}
 
 	subject := fmt.Sprintf("[ComCamp #25] ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์ (%s) · 5–7 ก.พ. 2570", view.ApplicationNo)
@@ -523,6 +528,7 @@ var regTextTmpl = texttmpl.Must(texttmpl.New("regText").Parse(`สวัสด�
 (หลังส่งสลิปบนหน้าเว็บ จะได้รับ QR Code และปุ่มเข้ากลุ่ม LINE OpenChat ทันที)
 
 ติดต่อสอบถาม: {{.FBPageURL}}
+โทรพี่ค่าย: {{.StaffContact}}
 สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
 `))
 
@@ -539,7 +545,7 @@ var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
   <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ · โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
 </div>
 <p><a href="{{.StatusURL}}" style="display:inline-block;padding:10px 20px;border-radius:9999px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">ไปหน้าตรวจสอบสถานะและแนบสลิป</a></p>
-<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a></p>
+<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> (นายบูรพา มหัทธีรนางกูร) / <a href="tel:0637844515">063-784-4515</a> (นางสาวธมล นวลหมวก)</p>
 </body></html>`))
 
 var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสดีน้อง {{.Nickname}} ({{.FullName}})
@@ -561,6 +567,7 @@ var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสด
 
 ตรวจสอบสถานะและรายละเอียดเพิ่มเติม: {{.StatusURL}}
 สอบถามเพิ่มเติม: {{.FBPageURL}}
+โทรพี่ค่าย: {{.StaffContact}}
 `))
 
 var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
@@ -580,5 +587,5 @@ var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
   <li><strong>เครื่องแต่งกายและของใช้ส่วนตัว (3 วัน 2 คืน):</strong> ชุดลำลองสุภาพ (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ), ชุดนอน, เสื้อกันหนาว, ผ้าเช็ดตัวและของใช้ส่วนตัว (มีเสื้อค่ายแจกให้)</li>
   <li><strong>อุปกรณ์อิเล็กทรอนิกส์:</strong> สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อมบอร์ด ESP8266; โน้ตบุ๊กส่วนตัวไม่บังคับ)</li>
 </ul>
-<p style="font-size:0.9em;color:#4a4d55;">ดูข้อมูลใบสมัครได้ที่ <a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a></p>
+<p style="font-size:0.9em;color:#4a4d55;">ดูข้อมูลใบสมัครได้ที่ <a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> (นายบูรพา มหัทธีรนางกูร) / <a href="tel:0637844515">063-784-4515</a> (นางสาวธมล นวลหมวก)</p>
 </body></html>`))

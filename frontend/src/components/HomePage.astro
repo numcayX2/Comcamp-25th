@@ -3,7 +3,7 @@ import '../styles/fonts.css';
 import SiteNav from './SiteNav.astro';
 import HeroSection from './HeroSection.astro';
 import BackToTop from './BackToTop.astro';
-import { FB_URL } from './register/model';
+import { FB_URL, STAFF_CONTACTS } from './register/model';
 import thai400 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-400-normal.woff2?url';
 import thai700 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-700-normal.woff2?url';
 import mono500 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2?url';
@@ -549,16 +549,17 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   </svg>
                   <span class="ed-en">DIRECT CONTACT</span>
                 </div>
-                <h3>ช่องทางติดต่อผู้รับผิดชอบ</h3>
-                <p>มีเบอร์โทรศัพท์และช่องทางติดต่ออาจารย์ผู้รับผิดชอบโครงการโดยตรงตลอดระยะเวลาจัดค่าย</p>
+                <h3>ช่องทางติดต่อพี่ค่ายและผู้รับผิดชอบ</h3>
+                <p>สามารถโทรติดต่อพี่ค่ายผู้ประสานงานโครงการได้โดยตรง รวมถึงช่องทางประสานงานอาจารย์ผู้รับผิดชอบตลอดระยะเวลาจัดค่าย</p>
+                <div class="tm-contact-list">
+                  {STAFF_CONTACTS.map((c) => (
+                    <a class="ed-inline-link tm-tile-link" href={`tel:${c.tel}`}>
+                      <span><span class="font-mono tabular-nums">{c.phone}</span> · {c.name}</span>
+                    </a>
+                  ))}
+                </div>
               </div>
             </div>
-
-            <!-- TODO(content): รอประกาศอย่างเป็นทางการ — เบอร์โทรศัพท์อาจารย์ผู้รับผิดชอบ/พี่ค่าย -->
-            <p class="tm-status-note">
-              <span class="tm-status-dot" aria-hidden="true"></span>
-              <span><strong class="tm-status-tag">รอประกาศเพิ่มเติม:</strong> เบอร์ติดต่ออาจารย์ผู้รับผิดชอบและพี่ค่ายจะแจ้งยืนยันในระบบพร้อมคู่มือผู้มีสิทธิ์</span>
-            </p>
           </div>
         </div>
       </div>
@@ -698,7 +699,13 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้
                 </a>
               </li>
-              <!-- TODO(content): เพิ่มข้อมูลติดต่อพี่ค่าย (Staff Contact) ใน Footer เมื่อได้รับข้อมูลยืนยัน (LINE OpenChat แสดงหลังชำระเงินเท่านั้น) -->
+              {STAFF_CONTACTS.map((c) => (
+                <li>
+                  <a href={`tel:${c.tel}`}>
+                    <span><span class="font-mono tabular-nums">{c.phone}</span> · {c.name}</span>
+                  </a>
+                </li>
+              ))}
             </ul>
             <p class="footer-col__note">เปิดรับสมัคร <span class="tabular-nums" data-open-date-full>18 พ.ย. 2569</span> · <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง</p>
           </div>

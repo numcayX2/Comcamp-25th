@@ -16,6 +16,10 @@ export const LINE_OPENCHAT_URL =
 export const LINE_OPENCHAT_QR_SRC = '/assets/line-openchat-qr.jpg';
 export const DORM_NAME = 'เรือนพักสมาคมศิษย์เก่าแม่โจ้';
 export const DORM_MAPS_URL = 'https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7';
+export const STAFF_CONTACTS = [
+  { name: 'นายบูรพา มหัทธีรนางกูร', phone: '080-993-8214', tel: '0809938214' },
+  { name: 'นางสาวธมล นวลหมวก', phone: '063-784-4515', tel: '0637844515' },
+] as const;
 
 export const PAYMENT_WINDOW_HOURS = 72;
 export const PAYMENT_WINDOW_MS = PAYMENT_WINDOW_HOURS * 60 * 60 * 1000;
