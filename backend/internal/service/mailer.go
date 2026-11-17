@@ -583,7 +583,7 @@ var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
 <p>ระบบบันทึกใบสมัครและจองที่นั่งชั่วคราวให้เรียบร้อยแล้ว (<strong>ยังไม่ใช่สถานะยืนยันสิทธิ์สมบูรณ์</strong> จนกว่าจะชำระเงินและทีมงานตรวจสลิปอนุมัติ)</p>
 <div style="border:1px solid #d4d4d8;padding:14px 16px;margin:16px 0;background:#f9f8f4;">
   <p style="margin:0 0 6px;"><strong>รหัสใบสมัคร:</strong> <code style="font-size:1.1em;">{{.ApplicationNo}}</code></p>
-  <p style="margin:0 0 6px;"><strong>ค่าสมัคร:</strong> {{.CampFee}} บาท (รวมที่พัก 2 คืน, อาหาร 6 มื้อ + เบรก 5 มื้อ, เสื้อค่าย, กระเป๋า, เอกสารอบรม, เกียรติบัตร)</p>
+  <p style="margin:0 0 6px;"><strong>ค่าสมัคร:</strong> {{.CampFee}} บาท (รวมที่พัก 2 คืน, อาหาร 6 มื้อ + เบรก 5 มื้อ, เสื้อค่าย, กระเป๋าพร้อมปั๊มลาย, เอกสารอบรม, เกียรติบัตร)</p>
   <p style="margin:0 0 6px;"><strong>โอนเข้าบัญชี:</strong> {{.BankName}} · <code>{{.BankNumber}}</code></p>
   <p style="margin:0 0 6px;"><strong>ชื่อบัญชี:</strong> {{.BankAccount}}</p>
   <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ · โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>

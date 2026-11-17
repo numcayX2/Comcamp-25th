@@ -308,12 +308,19 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 }
 
 // setStatusTx updates applicants.status and appends the status log inside an open transaction.
+// Transitioning to CONFIRMED also marks attendance_confirmed = true atomically.
 func setStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, oldStatus, newStatus domain.ApplicationStatus, adminID *int64, reason string) error {
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE applicants SET status = $1, updated_at = $2 WHERE id = $3`, newStatus, now, id); err != nil {
+	var err error
+	if newStatus == domain.StatusConfirmed {
+		_, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, attendance_confirmed = true, updated_at = $2 WHERE id = $3`, newStatus, now, id)
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, updated_at = $2 WHERE id = $3`, newStatus, now, id)
+	}
+	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
-	_, err := tx.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO applicant_status_logs (applicant_id, changed_by_admin_id, old_status, new_status, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, id, adminID, oldStatus, newStatus, reason, now)
@@ -437,26 +444,33 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 }
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
-// at or before cutoff without a PENDING or APPROVED slip to REJECTED, returning their
-// application numbers. Each candidate runs in its own transaction acquiring lockApplicantSlips
-// before the applicant row lock (matching SoftDelete / CreateReplacingPending lock order) and
-// re-checks both deadline and payment presence so concurrent slip uploads or parallel sweeps
-// never clash or double-expire.
+// at or before cutoff (now - 72h) without a PENDING or APPROVED slip to REJECTED, while
+// granting a 24h grace period from applicants.updated_at and from any REJECTED payment's
+// verified_at (or uploaded_at when verified_at is null). Each candidate runs in its own
+// transaction acquiring lockApplicantSlips before the applicant row lock (matching SoftDelete /
+// CreateReplacingPending lock order) and re-checks both deadlines and payment presence so
+// concurrent slip uploads or parallel sweeps never clash or double-expire.
 func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
+	utcCutoff := cutoff.UTC()
+	graceCutoff := utcCutoff.Add(48 * time.Hour)
 	rows, err := r.pool.Query(ctx, `
 		SELECT id
 		FROM applicants
 		WHERE deleted_at IS NULL
 		  AND status IN ('PENDING', 'PASSED', 'RESERVE')
 		  AND created_at <= $1
+		  AND updated_at <= $2
 		  AND NOT EXISTS (
 			  SELECT 1 FROM payments p
 			  WHERE p.applicant_id = applicants.id
 			    AND NOT p.applicant_deleted
-			    AND p.status IN ('PENDING', 'APPROVED')
+			    AND (
+			        p.status IN ('PENDING', 'APPROVED')
+			        OR (p.status = 'REJECTED' AND COALESCE(p.verified_at, p.uploaded_at) > $2)
+			    )
 		  )
 		ORDER BY created_at ASC
-	`, cutoff.UTC())
+	`, utcCutoff, graceCutoff)
 	if err != nil {
 		return nil, fmt.Errorf("list overdue unpaid applicants: %w", err)
 	}
@@ -476,7 +490,7 @@ func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff 
 
 	var expired []string
 	for _, id := range candidateIDs {
-		appNo, ok, err := r.expireSingleUnpaid(ctx, id, cutoff.UTC(), reason)
+		appNo, ok, err := r.expireSingleUnpaid(ctx, id, utcCutoff, graceCutoff, reason)
 		if err != nil {
 			return expired, err
 		}
@@ -487,7 +501,7 @@ func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff 
 	return expired, nil
 }
 
-func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.UUID, cutoff time.Time, reason string) (string, bool, error) {
+func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.UUID, cutoff, graceCutoff time.Time, reason string) (string, bool, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return "", false, err
@@ -502,13 +516,14 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 		appNo     string
 		oldStatus domain.ApplicationStatus
 		createdAt time.Time
+		updatedAt time.Time
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT application_no, status, created_at
+		SELECT application_no, status, created_at, updated_at
 		FROM applicants
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR UPDATE
-	`, id).Scan(&appNo, &oldStatus, &createdAt)
+	`, id).Scan(&appNo, &oldStatus, &createdAt, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
@@ -518,23 +533,26 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 	if oldStatus != domain.StatusPending && oldStatus != domain.StatusPassed && oldStatus != domain.StatusReserve {
 		return "", false, nil
 	}
-	if createdAt.UTC().After(cutoff) {
+	if createdAt.UTC().After(cutoff) || updatedAt.UTC().After(graceCutoff) {
 		return "", false, nil
 	}
 
-	var hasProtectedSlip bool
+	var hasProtectedOrGraceSlip bool
 	err = tx.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM payments
 			WHERE applicant_id = $1
 			  AND NOT applicant_deleted
-			  AND status IN ('PENDING', 'APPROVED')
+			  AND (
+			      status IN ('PENDING', 'APPROVED')
+			      OR (status = 'REJECTED' AND COALESCE(verified_at, uploaded_at) > $2)
+			  )
 		)
-	`, id).Scan(&hasProtectedSlip)
+	`, id, graceCutoff).Scan(&hasProtectedOrGraceSlip)
 	if err != nil {
 		return "", false, fmt.Errorf("check overdue applicant slips: %w", err)
 	}
-	if hasProtectedSlip {
+	if hasProtectedOrGraceSlip {
 		return "", false, nil
 	}
 

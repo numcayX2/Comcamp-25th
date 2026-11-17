@@ -759,3 +759,250 @@ func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
 		t.Fatalf("expected 1 active seat after swap, got %d", n)
 	}
 }
+
+func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
+	ctx := context.Background()
+	appRepo := memory.NewMemoryApplicantRepo()
+	setRepo := memory.NewMemorySettingRepo()
+	payRepo := memory.NewMemoryPaymentRepo(appRepo)
+
+	now := time.Now().UTC()
+	svc := service.NewApplicantService(appRepo, setRepo, payRepo).
+		WithAudit(appRepo.Audit()).
+		WithNow(func() time.Time { return now })
+	psvc := service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir())
+
+	submitSample := func(idx int, phone, email string) *domain.Applicant {
+		res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+			FullName:   "สมหญิง ทดสอบ",
+			Nickname:   "หญิง",
+			NationalID: validTestNationalID(100 + idx),
+			Phone:      phone,
+			Email:      email,
+			School:     "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:      "ม.5",
+			ShirtSize:  "M",
+		})
+		if err != nil {
+			t.Fatalf("submit %d failed: %v", idx, err)
+		}
+		app, err := appRepo.GetByApplicationNo(ctx, res.ID)
+		if err != nil {
+			t.Fatalf("GetByApplicationNo %d failed: %v", idx, err)
+		}
+		return app
+	}
+
+	// Submit all 4 applicants first (before backdating timestamps, because Submit runs ExpireOverdueUnpaid).
+	neverPaid := submitSample(1, "0850000001", "g1@test.com")
+	rejectedSlipApp := submitSample(2, "0850000002", "g2@test.com")
+	restoredApp := submitSample(3, "0850000003", "g3@test.com")
+	fallbackApp := submitSample(4, "0850000004", "g4@test.com")
+
+	// 1. Overdue unpaid applicant created 73h ago with no slip -> expires immediately.
+	if err := appRepo.SetTimestampsForTest(neverPaid.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Applicant created 73h ago whose slip was just rejected via VerifySlip -> 24h grace period.
+	rejectedPay := &domain.Payment{
+		ID:          uuid.New(),
+		ApplicantID: rejectedSlipApp.ID,
+		SlipURL:     "slips/rejected-grace.jpg",
+		Amount:      decimal.NewFromInt(1200),
+		Status:      domain.PaymentPending,
+	}
+	if _, err := payRepo.CreateReplacingPending(ctx, rejectedPay); err != nil {
+		t.Fatal(err)
+	}
+	if err := appRepo.SetTimestampsForTest(rejectedSlipApp.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := psvc.VerifySlip(ctx, rejectedSlipApp.ApplicationNo, rejectedPay.ID.String(), false, 1, "สลิปไม่ชัด", "127.0.0.1"); err != nil {
+		t.Fatalf("VerifySlip reject failed: %v", err)
+	}
+
+	// 3. Applicant created 73h ago, rejected, then restored to PASSED by staff at `now` -> 24h grace from updated_at.
+	adminID := int64(1)
+	if _, err := svc.UpdateStatus(ctx, restoredApp.ApplicationNo, domain.StatusRejected, &adminID, "expired", "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateStatus(ctx, restoredApp.ApplicationNo, domain.StatusPassed, &adminID, "restored", "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := appRepo.SetTimestampsForTest(restoredApp.ID, now.Add(-73*time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Applicant created 73h ago with updated_at=73h ago, but latest REJECTED slip has verified_at=nil and uploaded_at=10h ago.
+	fallbackPay := &domain.Payment{
+		ID:          uuid.New(),
+		ApplicantID: fallbackApp.ID,
+		SlipURL:     "slips/fallback-grace.jpg",
+		Amount:      decimal.NewFromInt(1200),
+		Status:      domain.PaymentRejected,
+	}
+	if err := payRepo.Create(ctx, fallbackPay); err != nil {
+		t.Fatal(err)
+	}
+	if err := payRepo.SetPaymentTimestampsForTest(fallbackPay.ID, now.Add(-10*time.Hour), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := appRepo.SetTimestampsForTest(fallbackApp.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sweep at now+1m: only neverPaid expires; all 3 grace-protected applicants remain PASSED.
+	exp1, err := svc.ExpireOverdueUnpaid(ctx, now.Add(1*time.Minute))
+	if err != nil {
+		t.Fatalf("sweep at +1m failed: %v", err)
+	}
+	if len(exp1) != 1 || exp1[0] != neverPaid.ApplicationNo {
+		t.Fatalf("expected only %s to expire at +1m, got %v", neverPaid.ApplicationNo, exp1)
+	}
+
+	// Sweep at now+15h: fallbackApp (10h + 15h = 25h > 24h) expires; rejectedSlipApp & restoredApp still protected.
+	exp2, err := svc.ExpireOverdueUnpaid(ctx, now.Add(15*time.Hour))
+	if err != nil {
+		t.Fatalf("sweep at +15h failed: %v", err)
+	}
+	if len(exp2) != 1 || exp2[0] != fallbackApp.ApplicationNo {
+		t.Fatalf("expected only %s to expire at +15h, got %v", fallbackApp.ApplicationNo, exp2)
+	}
+
+	// Sweep at now+23h: rejectedSlipApp & restoredApp still within 24h grace.
+	exp3, err := svc.ExpireOverdueUnpaid(ctx, now.Add(23*time.Hour))
+	if err != nil {
+		t.Fatalf("sweep at +23h failed: %v", err)
+	}
+	if len(exp3) != 0 {
+		t.Fatalf("expected 0 expired at +23h, got %v", exp3)
+	}
+
+	// Sweep at now+24h+1m: both rejectedSlipApp and restoredApp expire.
+	exp4, err := svc.ExpireOverdueUnpaid(ctx, now.Add(24*time.Hour+1*time.Minute))
+	if err != nil {
+		t.Fatalf("sweep at +24h1m failed: %v", err)
+	}
+	if len(exp4) != 2 {
+		t.Fatalf("expected 2 expired at +24h1m, got %v", exp4)
+	}
+}
+
+type mockConfirmedMailer struct {
+	confirmed []service.ConfirmedEmailData
+}
+
+func (m *mockConfirmedMailer) EnqueueRegistration(service.RegistrationEmailData) {}
+func (m *mockConfirmedMailer) EnqueueConfirmed(d service.ConfirmedEmailData) {
+	m.confirmed = append(m.confirmed, d)
+}
+func (m *mockConfirmedMailer) Shutdown(context.Context) error { return nil }
+
+func TestApplicantService_UpdateStatusConfirmed_MarksAttendanceAndSendsMail(t *testing.T) {
+	ctx := context.Background()
+	svc, appRepo, _ := setupTestServices()
+	mailer := &mockConfirmedMailer{}
+	svc.WithMailer(mailer)
+
+	res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName:   "กิตติ ยืนยัน",
+		Nickname:   "กิต",
+		NationalID: validTestNationalID(120),
+		Phone:      "0851112233",
+		Email:      "kitti@example.com",
+		School:     "โรงเรียนแม่โจ้วิทยาคม",
+		Grade:      "ม.6",
+		ShirtSize:  "L",
+	})
+	if err != nil {
+		t.Fatalf("submit failed: %v", err)
+	}
+	if res.AttendanceConfirmed {
+		t.Fatal("expected initial AttendanceConfirmed=false")
+	}
+
+	adminID := int64(1)
+	updated, err := svc.UpdateStatus(ctx, res.ID, domain.StatusConfirmed, &adminID, "ชำระเงินสด", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("UpdateStatus to CONFIRMED failed: %v", err)
+	}
+	if !updated.AttendanceConfirmed || updated.Status != domain.StatusConfirmed {
+		t.Fatalf("expected CONFIRMED + AttendanceConfirmed=true, got status=%s attendance=%v", updated.Status, updated.AttendanceConfirmed)
+	}
+	stored, _ := appRepo.GetByApplicationNo(ctx, res.ID)
+	if !stored.AttendanceConfirmed {
+		t.Fatal("expected stored applicant AttendanceConfirmed=true")
+	}
+	if len(mailer.confirmed) != 1 || mailer.confirmed[0].ApplicationNo != res.ID {
+		t.Fatalf("expected 1 Stage 2 email enqueued, got %+v", mailer.confirmed)
+	}
+
+	// Re-submitting CONFIRMED when already CONFIRMED must not send a duplicate email.
+	if _, err := svc.UpdateStatus(ctx, res.ID, domain.StatusConfirmed, &adminID, "note", "127.0.0.1"); err != nil {
+		t.Fatalf("repeat UpdateStatus CONFIRMED failed: %v", err)
+	}
+	if len(mailer.confirmed) != 1 {
+		t.Fatalf("expected no duplicate Stage 2 email when already CONFIRMED, got %d", len(mailer.confirmed))
+	}
+}
+
+func TestApplicantService_AdminListIncludesPaymentNotesAndPublicHidesThem(t *testing.T) {
+	ctx := context.Background()
+	appRepo := memory.NewMemoryApplicantRepo()
+	setRepo := memory.NewMemorySettingRepo()
+	payRepo := memory.NewMemoryPaymentRepo(appRepo)
+	svc := service.NewApplicantService(appRepo, setRepo, payRepo).WithAudit(appRepo.Audit())
+	psvc := service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir())
+
+	created, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName:   "นภา ทดสอบ",
+		Nickname:   "ภา",
+		NationalID: validTestNationalID(121),
+		Phone:      "0852223344",
+		Email:      "napa@example.com",
+		School:     "โรงเรียนยุพราช",
+		Grade:      "ม.5",
+		ShirtSize:  "M",
+	})
+	if err != nil {
+		t.Fatalf("submit failed: %v", err)
+	}
+	app, _ := appRepo.GetByApplicationNo(ctx, created.ID)
+	p := &domain.Payment{
+		ID:          uuid.New(),
+		ApplicantID: app.ID,
+		SlipURL:     "slips/note-check.jpg",
+		Amount:      decimal.NewFromInt(1200),
+		Status:      domain.PaymentPending,
+	}
+	if _, err := payRepo.CreateReplacingPending(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := psvc.VerifySlip(ctx, created.ID, p.ID.String(), false, 1, "ยอดเงินไม่ตรง", "127.0.0.1"); err != nil {
+		t.Fatalf("VerifySlip reject failed: %v", err)
+	}
+
+	adminList, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	if err != nil || len(adminList) != 1 {
+		t.Fatalf("ListAll failed: len=%d err=%v", len(adminList), err)
+	}
+	got := adminList[0]
+	if got.AdminNote == nil || *got.AdminNote != "ยอดเงินไม่ตรง" {
+		t.Fatalf("expected AdminNote='ยอดเงินไม่ตรง', got %v", got.AdminNote)
+	}
+	if got.RejectionReason == nil || *got.RejectionReason != "ยอดเงินไม่ตรง" {
+		t.Fatalf("expected RejectionReason='ยอดเงินไม่ตรง', got %v", got.RejectionReason)
+	}
+	if got.VerifiedAt == nil || *got.VerifiedAt == "" {
+		t.Fatalf("expected VerifiedAt to be populated, got %v", got.VerifiedAt)
+	}
+
+	pub, err := svc.QueryStatus(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("QueryStatus failed: %v", err)
+	}
+	if pub.AdminNote != nil || pub.RejectionReason != nil || pub.VerifiedAt != nil || pub.SlipURL != nil || pub.SlipPaymentID != nil {
+		t.Fatalf("public status leaked admin slip metadata: %+v", pub)
+	}
+}

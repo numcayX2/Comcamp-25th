@@ -144,6 +144,9 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 			t.Errorf("registration email missing %q", want)
 		}
 	}
+	if cnt := strings.Count(decoded, "กระเป๋าพร้อมปั๊มลาย"); cnt != 2 {
+		t.Errorf("expected 'กระเป๋าพร้อมปั๊มลาย' in both text and HTML parts (count=%d)", cnt)
+	}
 
 	entries := appRepo.Audit().Entries()
 	found := false

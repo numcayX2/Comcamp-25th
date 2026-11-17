@@ -101,8 +101,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*domain.PublicS
 
 		now := time.Now().UTC()
 		isOpen := !settings.IsManualClosed &&
-			now.After(settings.RegistrationOpenAt) &&
-			now.Before(settings.RegistrationCloseAt)
+			!now.Before(settings.RegistrationOpenAt) &&
+			!now.After(settings.RegistrationCloseAt)
 
 		activeCount, countErr := s.appRepo.CountActive(qCtx)
 		if countErr != nil {
@@ -304,7 +304,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, req UpdateSettingsR
 func parseSettingTime(field, v string) (time.Time, error) {
 	t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
 	if err != nil {
-		return time.Time{}, newValidationError(field + " must be an RFC 3339 time, e.g. 2026-11-16T00:00:00+07:00")
+		return time.Time{}, newValidationError(field + " must be an RFC 3339 time, e.g. 2026-11-18T00:00:00+07:00")
 	}
 	return t.UTC(), nil
 }

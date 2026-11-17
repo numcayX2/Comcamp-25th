@@ -24,7 +24,7 @@ Internet / Campus HTTPS (Host Nginx / Caddy / Cloudflare Tunnel)
 
 ## ขั้นตอนที่ 1: ตรวจสอบเวลาและพื้นที่ของเซิร์ฟเวอร์
 
-ระบบกำหนดเวลาเปิดรับสมัครอัตโนมัติที่ `2026-11-16 00:00:00+07:00` ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
+ระบบกำหนดเวลาเปิด-ปิดรับสมัครอัตโนมัติที่ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07:00` ถึง `2026-12-18 23:59:59+07:00`) ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
 
 ```bash
 timedatectl status
@@ -65,6 +65,7 @@ openssl rand -hex 32
 | `FRONTEND_URL` | Origin สาธารณะจริง **ไม่มี `/` ปิดท้าย** เช่น `https://comcamp.cs.science.ac.th` |
 | `TURNSTILE_SECRET_KEY`, `PUBLIC_TURNSTILE_SITE_KEY` | คีย์จริงจาก Cloudflare Dashboard (ห้ามใช้ Dummy Key `1x000...` — Image Frontend และ Backend จะปฏิเสธโดยอัตโนมัติ) และต้องเพิ่มโดเมนใน Cloudflare Turnstile Widget ให้ตรงกับ `FRONTEND_URL` |
 | `APP_NET_SUBNET`, `TRUSTED_PROXIES` | ค่าเริ่มต้น `172.28.0.0/24` หากชนกับวง Docker Bridge เดิมบนเครื่องภาควิชา ให้เปลี่ยนเป็นวงอื่นที่ว่าง (เช่น `172.29.0.0/24`) แล้วตั้ง `TRUSTED_PROXIES` ให้ครอบคลุมวงนั้น |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | การส่งอีเมลแจ้งรับสมัครและยืนยันสิทธิ์ (Stage 1 / Stage 2) ผ่าน Go async SMTP mailer — เว้น `SMTP_HOST=` ว่างไว้หากยังไม่เปิดใช้งานอีเมล |
 | `EDGE_BIND_IP`, `EDGE_HTTP_PORT` | ค่าเริ่มต้น `127.0.0.1:8080` หากพอร์ต `8080` มีบริการอื่นของภาควิชาใช้อยู่แล้ว ให้เปลี่ยน `EDGE_HTTP_PORT` (เช่น `18080`) |
 
 > **กรณีเปลี่ยน Origin ภายนอก:** ค่าเริ่มต้นใช้ `PUBLIC_API_URL=/api` ผ่าน `edge-proxy` จึงไม่ต้องแก้ไข CSP แต่หากปรับ `PUBLIC_API_URL` หรือ `PUBLIC_GALLERY_BASE_URL` ไปใช้โดเมนอื่น อย่าลืมเพิ่ม Origin นั้นใน `connect-src` / `img-src` ของ [`frontend/nginx/snippets/security-headers.conf`](../frontend/nginx/snippets/security-headers.conf) ก่อน Build
@@ -84,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000007`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000010`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000008_update_registration_schedule.up.sql` และผล Query `settings` (`id = 1`) แสดงเวลาเปิดรับ `2026-11-18 00:00:00` (จาก commit `5eb8b14`)
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000010_update_camp_fee_1200.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07` ถึง `2026-12-18 23:59:59+07`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`)
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -187,7 +188,9 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f backend e
 > [!CAUTION]
 > **ห้ามสั่ง `docker compose -f docker-compose.prod.yml down -v` หรือ `docker volume prune` บนเซิร์ฟเวอร์จริงโดยเด็ดขาด** เพราะจะลบทั้งฐานข้อมูล (`pgdata_prod`) และสลิปโอนเงิน (`uploads_data`) ทิ้งถาวร
 
-### 7.1 สคริปต์สำรองข้อมูล (`/opt/cc25-backups/backup.sh`)
+### 7.1 สคริปต์สำรองข้อมูล (`/opt/cc25-backups/backup.sh` หรือ `$HOME/cc25-backups/backup.sh` สำหรับ rootless)
+
+> **สำหรับเซิร์ฟเวอร์ rootless (เช่น user `comclub`):** ใช้ `BACKUP_DIR="$HOME/cc25-backups"` (สร้างด้วย `mkdir -p "$HOME/cc25-backups/db" "$HOME/cc25-backups/slips" && chmod 700 "$HOME/cc25-backups"` โดยไม่ใช้ `sudo`) และเขียน log ลง `$HOME/cc25-backups/backup.log` ใน crontab ของผู้ใช้แทน `/var/log/cc25-backup.log`
 
 ```bash
 sudo mkdir -p /opt/cc25-backups/db /opt/cc25-backups/slips

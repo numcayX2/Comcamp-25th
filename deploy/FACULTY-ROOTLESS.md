@@ -23,7 +23,7 @@
 | 1 | `https://comcampdev.csmju.com` ถูกทำ TLS ที่ไหน — proxy ระดับคณะ/มหาวิทยาลัย หรือต้องทำบนเครื่องนี้เอง? | ถ้าทำบนเครื่องนี้ rootless จะผูก 443 ไม่ได้โดยตรง ต้องทราบก่อนเลือกสถาปัตยกรรม |
 | 2 | proxy ชั้นหน้าชี้มาที่ `202.28.37.1:6000` ตรง ๆ หรือยังไม่ได้ตั้ง? | กำหนด `EDGE_BIND_IP` — ใช้ `0.0.0.0` ถ้า proxy อยู่คนละเครื่อง, `127.0.0.1` ถ้าอยู่เครื่องเดียวกัน |
 | 3 | `comcampdev.csmju.com` เป็นโดเมนทดสอบชั่วคราวหรือโดเมนสุดท้าย? | เปลี่ยนโดเมนทีหลังต้อง rebuild + เปลี่ยน `FRONTEND_URL` + ออก Turnstile key ใหม่ |
-| 4 | อีเมล `comclub@csmju.com` ใช้กับส่วนไหนของระบบ? | ตอนนี้ Go backend ไม่มีโค้ด SMTP เลย — block `MAIL_*` ที่อาจารย์ให้เป็นตัวอย่าง Laravel จึงเป็นแค่ข้อมูล server ต้องตัดสินใจว่าเพิ่มโค้ดส่งเมลหรือใช้บริการภายนอก |
+| 4 | อีเมล `comclub@csmju.com` ใช้กับส่วนไหนของระบบ? | Go backend มีระบบส่งอีเมลแบบ asynchronous ผ่าน SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` ใน `.env.prod.example`) สำหรับแจ้งรับใบสมัคร (Stage 1) และแจ้งยืนยันสิทธิ์ (Stage 2) — หากเว้น `SMTP_HOST=` ว่างไว้ ระบบจะทำงานแบบ no-op; เมื่อได้ค่า SMTP จริง (เช่น `mail.csmju.com` + app key) ให้ใส่ใน `.env.prod` เพื่อเปิดส่งอีเมลทันที |
 
 ---
 
@@ -88,6 +88,7 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 | `EDGE_BIND_IP` | `0.0.0.0` ถ้า proxy อยู่คนละเครื่อง / `127.0.0.1` ถ้าอยู่เครื่องเดียวกัน |
 | `TURNSTILE_SECRET_KEY`, `PUBLIC_TURNSTILE_SITE_KEY` | ต้องเป็น key จริงของโดเมน `comcampdev.csmju.com` — ยังไม่พบหลักฐานว่า gen แล้ว (dummy ถูกปฏิเสธ) |
 | `APP_NET_SUBNET`, `TRUSTED_PROXIES` | ใช้ `172.28.0.0/24` ได้ถ้าไม่ชน ถ้าชนให้เปลี่ยนเป็นวงอื่นแล้วอัปเดต `TRUSTED_PROXIES` ให้ตรง |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | ตั้งค่าเมลภาควิชา (`mail.csmju.com` + app key) เพื่อส่งอีเมล Stage 1 / Stage 2 อัตโนมัติ (ถ้าเว้น `SMTP_HOST=` ว่างไว้จะปิดการส่งชั่วคราว) |
 | `COMPOSE_PROJECT_NAME` | `comcamp25` (ล็อกชื่อ container/volume) |
 
 ---
@@ -105,7 +106,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน log ของ `db` ต้องเห็น migration `000001` → `000008_update_registration_schedule.up.sql` → `000009_update_shirt_sizes.up.sql` (ขยายไซส์เสื้อเป็น `SSS–4XL` — ถ้าเปิด DB volume เก่าที่มีอยู่แล้ว ต้องรัน `000008` และ `000009` เพิ่มเอง ไม่อย่างนั้นวันเปิดรับที่ 18 พ.ย. จะเพี้ยนและไซส์ `SSS`/`SS`/`4XL` จะ insert ไม่ผ่าน)
+ใน log ของ `db` ต้องเห็น migration `000001` → `000008_update_registration_schedule.up.sql` → `000009_update_shirt_sizes.up.sql` → `000010_update_camp_fee_1200.up.sql` (กำหนดการ `18 พ.ย.–18 ธ.ค. 2569`, ไซส์เสื้อ `SSS–4XL`, และค่าสมัคร `1,200` บาท — ถ้าเปิด DB volume เก่าที่มีอยู่แล้ว ต้องรัน `000008`, `000009`, และ `000010` เพิ่มเอง ไม่อย่างนั้นวันเปิดรับที่ `18 พ.ย.–18 ธ.ค. 2569`, ไซส์ `SSS`/`SS`/`4XL`, และค่าสมัคร `1,200` บาท จะไม่ตรง)
 
 สร้างบัญชีแอดมินแบบโต้ตอบ (รหัสผ่านพิมพ์ผ่าน stdin ไม่ค้างใน history):
 
@@ -134,7 +135,7 @@ curl -sSI https://comcampdev.csmju.com | head -n 1
 ## 6. สิ่งที่ RUNBOOK เดิมใช้ไม่ได้กับ rootless
 
 - ทุกคำสั่ง `sudo docker ...` → ใช้ `docker ...` ตรง ๆ
-- `/opt/cc25-backups` → ใช้ `$HOME/cc25-backups` (comclub ไม่มีสิทธิ์เขียน `/opt`) และใส่ crontab ของ comclub แทน root
+- `/opt/cc25-backups` → ใช้ `$HOME/cc25-backups` (`mkdir -p "$HOME/cc25-backups/db" "$HOME/cc25-backups/slips" && chmod 700 "$HOME/cc25-backups"` โดยไม่ใช้ `sudo`) และแก้ `BACKUP_DIR="$HOME/cc25-backups"` รวมถึง log crontab เป็น `$HOME/cc25-backups/backup.log` ใน crontab ของ `comclub` แทน root
 - `sudo timedatectl` / `/etc/letsencrypt` → ต้องขออาจารย์จัดการให้ หรือยืนยันว่า proxy ชั้นหน้าทำ TLS อยู่แล้ว
 - **ห้าม** `docker compose ... down -v` หรือ `docker volume prune` — จะลบ `pgdata_prod` และสลิปถาวร
 
@@ -142,6 +143,6 @@ curl -sSI https://comcampdev.csmju.com | head -n 1
 
 ## 7. สถานะงานแอปก่อนเปิดรับสมัคร (อ้างอิงจาก `5eb8b14` + งานเตรียม Go-Live บนเครื่อง)
 
-เสร็จแล้วใน working tree (อย่าลืม `commit & push` ก่อน `git clone` บนเซิร์ฟเวอร์): กำหนดการ `18 พ.ย.–18 ธ.ค. 2569` + migration `000008`, ฟิลด์ผู้ปกครองครบทั้ง stack, reverify สลิป, ตาราง admin 6 คอลัมน์, วันจัดค่าย `5–7 ก.พ. 2570` บนหน้าเว็บ, กล่องเตือน 4 ข้อใน `/register` Step 01 + นโยบายไม่คืนเงินทุกกรณี, ระบบคืนที่นั่งอัตโนมัติเกิน 72 ชม. (`ExpireOverdueUnpaid`), ตัวเลือกด่วนแพ้อาหาร/ไม่ทานหมู (`DIETARY_QUICK_OPTIONS`), ไซส์เสื้อ `SSS–4XL` + migration `000009`, และ QR เข้า LINE OpenChat หลังส่งสลิป
+เสร็จแล้วใน working tree (อย่าลืม `commit & push` ก่อน `git clone` บนเซิร์ฟเวอร์): กำหนดการ `18 พ.ย.–18 ธ.ค. 2569` + migration `000008`, ค่าสมัคร `1,200` บาท + migration `000010`, ฟิลด์ผู้ปกครองครบทั้ง stack, reverify สลิป, ตาราง admin 6 คอลัมน์, วันจัดค่าย `5–7 ก.พ. 2570` บนหน้าเว็บ, กล่องเตือน 4 ข้อใน `/register` Step 01 + นโยบายไม่คืนเงินทุกกรณี, ระบบคืนที่นั่งอัตโนมัติเกิน 72 ชม. (`ExpireOverdueUnpaid` พร้อม grace period 24 ชม. หลังปฏิเสธสลิป/คืนสิทธิ์), ตัวเลือกด่วนแพ้อาหาร/ไม่ทานหมู (`DIETARY_QUICK_OPTIONS`), ไซส์เสื้อ `SSS–4XL` + migration `000009`, ระบบส่งอีเมลแจ้งรับสมัครและยืนยันสิทธิ์ผ่าน SMTP (async mailer), และ QR เข้า LINE OpenChat หลังส่งสลิป
 
-ยังรอข้อมูลจริง/ตัดสินใจ (Round 2 หลังออนไลน์): Turnstile key จริงของ `comcampdev.csmju.com`, คำตอบอาจารย์ 4 ข้อในหมวด 0 (DNS/proxy พอร์ต 6000, ตำแหน่งทำ TLS, โดเมนสุดท้าย, SMTP), และข้อมูล TBD (ชื่ออาคาร/หอพัก/เบอร์ติดต่อ Staff & อาจารย์/คอนเฟิร์มยอดสุทธิ)
+ยังรอข้อมูลจริง/ตัดสินใจ (Round 2 หลังออนไลน์): Turnstile key จริงของ `comcampdev.csmju.com`, คำตอบอาจารย์ 4 ข้อในหมวด 0 (DNS/proxy พอร์ต 6000, ตำแหน่งทำ TLS, โดเมนสุดท้าย, ค่า `SMTP_*` จริงใน `.env.prod`), และข้อมูล TBD (เลขห้องแล็บ/ตึก)

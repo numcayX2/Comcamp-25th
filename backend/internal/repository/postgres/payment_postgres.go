@@ -160,7 +160,7 @@ func (r *PaymentPostgresRepo) GetByApplicantID(ctx context.Context, applicantID 
 }
 
 func (r *PaymentPostgresRepo) GetLatestByApplicantID(ctx context.Context, applicantID uuid.UUID) (*domain.Payment, error) {
-	query := `SELECT ` + paymentColumns + ` FROM payments WHERE applicant_id = $1 ORDER BY uploaded_at DESC LIMIT 1`
+	query := `SELECT ` + paymentColumns + ` FROM payments WHERE applicant_id = $1 ORDER BY uploaded_at DESC, id DESC LIMIT 1`
 	return r.scan(r.pool.QueryRow(ctx, query, applicantID))
 }
 
@@ -322,6 +322,10 @@ func (r *PaymentPostgresRepo) settlePayment(ctx context.Context, paymentID uuid.
 	if oldStatus != newStatus {
 		if err := setStatusTx(ctx, tx, applicantID, oldStatus, newStatus, &adminID, note); err != nil {
 			return err
+		}
+	} else if !isReverify && newStatus == domain.StatusConfirmed {
+		if _, err := tx.Exec(ctx, `UPDATE applicants SET attendance_confirmed = true, updated_at = $1 WHERE id = $2`, now, applicantID); err != nil {
+			return fmt.Errorf("failed to confirm attendance: %w", err)
 		}
 	}
 

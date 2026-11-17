@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -230,5 +231,22 @@ func TestSettingService_GetPublicSettings_CountActiveErrorNotSwallowed(t *testin
 	}
 	if res == nil {
 		t.Fatal("expected non-nil response after recovery")
+	}
+}
+
+func TestSettingService_UpdateSettings_InvalidTimeExampleUses20261118(t *testing.T) {
+	setRepo := memory.NewMemorySettingRepo()
+	appRepo := memory.NewMemoryApplicantRepo()
+	svc := service.NewSettingService(setRepo, appRepo, appRepo.Audit())
+
+	bad := "not-a-timestamp"
+	_, err := svc.UpdateSettings(context.Background(), service.UpdateSettingsRequest{
+		RegistrationOpenAt: &bad,
+	}, 1, "127.0.0.1")
+	if err == nil {
+		t.Fatal("expected error for invalid RFC3339 timestamp")
+	}
+	if !strings.Contains(err.Error(), "2026-11-18T00:00:00+07:00") {
+		t.Fatalf("expected error example 2026-11-18T00:00:00+07:00, got %q", err.Error())
 	}
 }

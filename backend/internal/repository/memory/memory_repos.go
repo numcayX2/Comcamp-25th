@@ -307,6 +307,9 @@ func (m *MemoryApplicantRepo) setStatusLocked(id uuid.UUID, newStatus domain.App
 	}
 	oldStatus := a.Status
 	a.Status = newStatus
+	if newStatus == domain.StatusConfirmed {
+		a.AttendanceConfirmed = true
+	}
 	a.UpdatedAt = time.Now().UTC()
 
 	r := reason
@@ -391,8 +394,9 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 }
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
-// at or before cutoff without a PENDING or APPROVED slip to REJECTED under payments -> applicants
-// lock ordering, writing both status logs and audit entries.
+// at or before cutoff (now - 72h) whose updated_at and latest REJECTED slip timestamp are at or
+// before the 24h grace cutoff (cutoff + 48h = now - 24h) and that have no PENDING or APPROVED
+// slip to REJECTED under payments -> applicants lock ordering, writing both status logs and audit entries.
 func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
 	if p := m.payments; p != nil {
 		p.mu.Lock()
@@ -402,6 +406,7 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff ti
 	defer m.mu.Unlock()
 
 	utcCutoff := cutoff.UTC()
+	graceCutoff := utcCutoff.Add(48 * time.Hour)
 	var expired []string
 	for id, a := range m.data {
 		if a.DeletedAt != nil {
@@ -410,10 +415,10 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff ti
 		if a.Status != domain.StatusPending && a.Status != domain.StatusPassed && a.Status != domain.StatusReserve {
 			continue
 		}
-		if a.CreatedAt.UTC().After(utcCutoff) {
+		if a.CreatedAt.UTC().After(utcCutoff) || a.UpdatedAt.UTC().After(graceCutoff) {
 			continue
 		}
-		if m.payments != nil && m.payments.holdsSlipLocked(id) {
+		if m.payments != nil && m.payments.blocksExpiryLocked(id, graceCutoff) {
 			continue
 		}
 
@@ -438,6 +443,19 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff ti
 		expired = append(expired, a.ApplicationNo)
 	}
 	return expired, nil
+}
+
+// SetTimestampsForTest overwrites an applicant's CreatedAt and UpdatedAt (used by tests).
+func (m *MemoryApplicantRepo) SetTimestampsForTest(id uuid.UUID, createdAt, updatedAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.data[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	a.CreatedAt = createdAt.UTC()
+	a.UpdatedAt = updatedAt.UTC()
+	return nil
 }
 
 func (m *MemoryApplicantRepo) CountActive(ctx context.Context) (int, error) {
@@ -664,6 +682,47 @@ func (m *MemoryPaymentRepo) holdsSlipLocked(applicantID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+// blocksExpiryLocked reports whether the applicant has a PENDING/APPROVED slip or a REJECTED slip
+// still within the 24h grace window (verified_at or uploaded_at > graceCutoff). Caller holds m.mu.
+func (m *MemoryPaymentRepo) blocksExpiryLocked(applicantID uuid.UUID, graceCutoff time.Time) bool {
+	for _, p := range m.data {
+		if p.ApplicantID != applicantID {
+			continue
+		}
+		if p.Status == domain.PaymentPending || p.Status == domain.PaymentApproved {
+			return true
+		}
+		if p.Status == domain.PaymentRejected {
+			ts := p.UploadedAt
+			if p.VerifiedAt != nil {
+				ts = *p.VerifiedAt
+			}
+			if ts.UTC().After(graceCutoff) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SetPaymentTimestampsForTest overwrites a payment's UploadedAt and VerifiedAt (used by tests).
+func (m *MemoryPaymentRepo) SetPaymentTimestampsForTest(id uuid.UUID, uploadedAt time.Time, verifiedAt *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.data[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	p.UploadedAt = uploadedAt.UTC()
+	if verifiedAt != nil {
+		v := verifiedAt.UTC()
+		p.VerifiedAt = &v
+	} else {
+		p.VerifiedAt = nil
+	}
+	return nil
 }
 
 func (m *MemoryPaymentRepo) Create(ctx context.Context, p *domain.Payment) error {

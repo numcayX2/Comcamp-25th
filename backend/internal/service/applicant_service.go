@@ -138,9 +138,12 @@ type ApplicationResponse struct {
 	SlipURL *string `json:"slipUrl,omitempty"`
 	// SlipPaymentID (admin only) identifies the latest slip. The admin UI sends it back as
 	// paymentId with the verdict, so a slip replaced meanwhile is not settled by mistake.
-	SlipPaymentID *string `json:"slipPaymentId,omitempty"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt,omitempty"`
+	SlipPaymentID   *string `json:"slipPaymentId,omitempty"`
+	AdminNote       *string `json:"adminNote,omitempty"`
+	RejectionReason *string `json:"rejectionReason,omitempty"`
+	VerifiedAt      *string `json:"verifiedAt,omitempty"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt,omitempty"`
 }
 
 type ApplicantService struct {
@@ -167,6 +170,9 @@ const (
 	// UnpaidExpiryWindow is the deadline (3 days) after registration by which an applicant
 	// must upload a payment slip before their seat is automatically released.
 	UnpaidExpiryWindow = 72 * time.Hour
+	// UnpaidGraceWindow is the minimum 24h window granted after updated_at or a slip rejection
+	// so applicants rejected or restored after 72h are not re-expired before they can re-upload.
+	UnpaidGraceWindow = 24 * time.Hour
 	// UnpaidExpiryReason is recorded in applicant_status_logs and audit_logs when auto-expired.
 	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน (72 ชั่วโมง) หลังสมัคร"
 )
@@ -835,10 +841,23 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 			return nil, notFoundOr(err)
 		}
 	}
-	if retakesSeat || applicant.Status.IsActive() != newStatus.IsActive() {
+	previousStatus := applicant.Status
+	if retakesSeat || previousStatus.IsActive() != newStatus.IsActive() {
 		s.notifySeatChange()
 	}
 	applicant.Status = newStatus
+	if newStatus == domain.StatusConfirmed {
+		applicant.AttendanceConfirmed = true
+		if previousStatus != domain.StatusConfirmed && s.mailer != nil && applicant.Email != "" {
+			s.mailer.EnqueueConfirmed(ConfirmedEmailData{
+				ApplicationNo: applicant.ApplicationNo,
+				FullName:      applicant.FullName(),
+				Nickname:      applicant.Nickname,
+				Email:         applicant.Email,
+				ShirtSize:     applicant.ShirtSize,
+			})
+		}
+	}
 
 	return s.toAdmin(ctx, applicant)
 }
@@ -1279,6 +1298,18 @@ func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Pay
 		res.SlipURL = &url
 		pid := p.ID.String()
 		res.SlipPaymentID = &pid
+		if p.AdminNote != nil {
+			note := *p.AdminNote
+			res.AdminNote = &note
+		}
+		if p.RejectionReason != nil {
+			reason := *p.RejectionReason
+			res.RejectionReason = &reason
+		}
+		if p.VerifiedAt != nil {
+			ts := p.VerifiedAt.UTC().Format(time.RFC3339)
+			res.VerifiedAt = &ts
+		}
 	}
 	return res
 }

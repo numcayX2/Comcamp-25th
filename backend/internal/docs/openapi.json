@@ -72,7 +72,8 @@
                 "schema": { "$ref": "#/components/schemas/PublicSettingsResponse" },
                 "example": {
                   "serverTime": "2026-11-04T05:00:00Z",
-                  "registrationOpenAt": "2026-11-16T00:00:00+07:00",
+                  "registrationOpenAt": "2026-11-18T00:00:00+07:00",
+                  "registrationCloseAt": "2026-12-18T23:59:59+07:00",
                   "isOpen": false,
                   "currentCount": 0,
                   "maxCapacity": 30,
@@ -137,7 +138,7 @@
                   "status": "PASSED",
                   "attendanceConfirmed": false,
                   "hasSlip": false,
-                  "createdAt": "2026-11-16T00:01:23Z"
+                  "createdAt": "2026-11-18T00:01:23Z"
                 }
               }
             }
@@ -189,6 +190,10 @@
               }
             }
           },
+          "400": {
+            "description": "ไม่ได้ส่งพารามิเตอร์ q หรือคำค้นไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
           "404": {
             "description": "ไม่พบข้อมูลใบสมัคร",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
@@ -231,6 +236,7 @@
           },
           "400": { "description": "ไม่ได้ส่ง verifyCode หรือไม่ใช่ตัวเลข 4 หลัก (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
             "description": "ไม่สามารถยืนยันสิทธิ์ได้ (สถานะยังไม่ผ่านการคัดเลือก)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
@@ -276,7 +282,7 @@
       "patch": {
         "tags": ["Applications"],
         "summary": "Edit Own Secondary Profile Fields",
-        "description": "ผู้สมัครแก้ไขข้อมูลทั่วไปของตัวเอง ได้เฉพาะ nickname, school, province, grade (ม.4–ม.6, ปวช.1–ปวช.3 หรือกรอกเอง 2–20 ตัวอักษร) และ shirtSize ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ใช้ได้เมื่อสถานะ PENDING, PASSED, RESERVE หรือ CONFIRMED เท่านั้น ห้ามแก้ fullName, nationalId, phone, email และ motivation ผ่าน endpoint นี้ (ส่งมาจะได้ 400) ต้องติดต่อพี่ค่าย ทุกการแก้ไขบันทึกใน audit_logs (application.profile.update.self) ผลลัพธ์เป็นข้อมูลแบบ mask",
+        "description": "ผู้สมัครแก้ไขข้อมูลทั่วไปของตัวเอง ได้เฉพาะ nickname, school, province, grade (ม.4–ม.6, ปวช.1–ปวช.3 หรือกรอกเอง 2–20 ตัวอักษร) และ shirtSize ต้องส่ง verifyCode = เลข 4 ตัวท้ายของบัตรประชาชน ใช้ได้เมื่อสถานะ PENDING, PASSED, RESERVE หรือ CONFIRMED เท่านั้น ห้ามแก้ fullName, nationalId, phone, email, parentName, parentRelation, parentPhone, motivation, allergies และ medicalConditions ผ่าน endpoint นี้ (ส่งมาจะได้ 400) ต้องติดต่อพี่ค่าย ทุกการแก้ไขบันทึกใน audit_logs (application.profile.update.self) ผลลัพธ์เป็นข้อมูลแบบ mask",
         "parameters": [
           {
             "name": "id",
@@ -297,7 +303,7 @@
         },
         "responses": {
           "200": { "description": "แก้ไขสำเร็จ (หรือไม่มีอะไรเปลี่ยน)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } } },
-          "400": { "description": "verifyCode ไม่ครบ, ค่าที่ส่งไม่ถูกต้อง หรือพยายามแก้ fullName / nationalId / phone / email / motivation (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "400": { "description": "verifyCode ไม่ครบ, ค่าที่ส่งไม่ถูกต้อง หรือพยายามแก้ fullName / nationalId / phone / email / parentName / parentRelation / parentPhone / motivation / allergies / medicalConditions (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "verifyCode ไม่ตรงกับเลข 4 ตัวท้ายของบัตรประชาชน (code INVALID_VERIFY_CODE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": { "description": "สถานะ REJECTED, REFUND_PENDING หรือ REFUNDED แก้ไขเองไม่ได้ ให้ติดต่อพี่ค่าย (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -362,6 +368,7 @@
           },
           "400": { "description": "ไม่ใช่ไฟล์ JPEG/PNG/WebP หรืออ่าน header ภาพไม่ได้ (VALIDATION_ERROR), ภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS), ไม่ได้ส่ง verifyCode (VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "verifyCode ไม่ตรง (INVALID_VERIFY_CODE) หรือผู้สมัครยังไม่ผ่านการคัดเลือก (FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "409": {
             "description": "code DUPLICATE_SLIP = รูปสลิปนี้เป็นของสลิปที่รอตรวจหรืออนุมัติแล้วของใบสมัครที่ยังอยู่ (สลิปที่ถูกปฏิเสธและสลิปของใบสมัครที่ถูกลบไม่นับ), code ALREADY_VERIFIED = สลิปได้รับการอนุมัติแล้ว",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
@@ -401,6 +408,10 @@
               }
             }
           },
+          "400": {
+            "description": "JSON body ไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
           "401": {
             "description": "Username หรือ Password ไม่ถูกต้อง",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
@@ -412,7 +423,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Admin List Applications",
-        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: admin (nationalId เป็นเลขเต็ม 13 หลัก) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป",
+        "description": "ดูรายชื่อผู้สมัครทั้งหมด พร้อมรูปสลิปและสถานะ (ต้องแนบ Bearer Token) สิทธิ์: admin (nationalId เป็นเลขเต็ม 13 หลัก) slipPaymentId คือรหัสสลิปล่าสุด ส่งกลับมาเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป และส่ง adminNote / rejectionReason / verifiedAt ของสลิปล่าสุดให้เฉพาะแอดมิน",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -434,6 +445,10 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "พารามิเตอร์ status ไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "401": {
             "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)",
@@ -490,7 +505,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Update Application Status",
-        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ตัวสำรอง (RESERVE), รอคืนเงิน (REFUND_PENDING) หรือคืนเงินแล้ว (REFUNDED) การเปลี่ยนจาก REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่ง จะตรวจโควตาแบบ atomic ถ้าเต็มตอบ 409 QUOTA_FULL (ใบสมัครคงสถานะเดิม) สิทธิ์: admin",
+        "description": "ปรับเปลี่ยนสถานะใบสมัคร เช่น ตัวสำรอง (RESERVE), ยืนยันสิทธิ์ (CONFIRMED — ตั้ง attendanceConfirmed = true และส่งอีเมลยืนยันสิทธิ์อัตโนมัติ), รอคืนเงิน (REFUND_PENDING) หรือคืนเงินแล้ว (REFUNDED) การเปลี่ยนจาก REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่ง จะตรวจโควตาแบบ atomic ถ้าเต็มตอบ 409 QUOTA_FULL (ใบสมัครคงสถานะเดิม) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -631,7 +646,7 @@
       "patch": {
         "tags": ["Admin Management"],
         "summary": "Admin Manual Slip Verification",
-        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ (อนุมัติ → CONFIRMED, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ต้องส่ง paymentId (UUID จาก slipPaymentId หรือ header X-Slip-Payment-Id ของสลิปที่เปิดดู) ทุกครั้งเพื่อป้องกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างตรวจ: หากไม่ใช่สลิปล่าสุดจะตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร สิทธิ์: admin",
+        "description": "อนุมัติหรือปฏิเสธสลิปโอนเงินที่ยังรอตรวจ หรือตรวจแก้ผลสลิปล่าสุดที่เคยตรวจแล้ว (อนุมัติ → CONFIRMED และตั้ง attendanceConfirmed = true, ปฏิเสธ → PASSED เพื่อให้อัปโหลดใหม่) บันทึก audit_logs ใน transaction เดียวกัน ต้องส่ง paymentId (UUID จาก slipPaymentId หรือ header X-Slip-Payment-Id ของสลิปที่เปิดดู) ทุกครั้งเพื่อป้องกันกรณีผู้สมัครอัปโหลดสลิปใหม่ระหว่างตรวจ: หากไม่ใช่สลิปล่าสุดจะตอบ 409 SLIP_CHANGED และไม่เปลี่ยนอะไร สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -649,7 +664,7 @@
               "schema": { "$ref": "#/components/schemas/VerifySlipRequest" },
               "example": {
                 "approved": true,
-                "note": "ยอดเงินเข้าบัญชี 1,200 บาท ผ่านธนาคารกรุงไทย ถูกต้องครบถ้วน",
+                "note": "ยอดเงินเข้าบัญชี 1,200 บาท ผ่านธนาคารกรุงเทพ ถูกต้องครบถ้วน",
                 "paymentId": "0b6c8a52-3f0e-4d8e-9a51-7c1d2e3f4a50"
               }
             }
@@ -705,7 +720,7 @@
               "example": {
                 "campName": "ComCamp #25",
                 "maxCapacity": 50,
-                "campFee": 300.00,
+                "campFee": 1200.00,
                 "isManualClosed": false
               }
             }
@@ -720,6 +735,7 @@
               }
             }
           },
+          "400": { "description": "ข้อมูลไม่ถูกต้อง (เช่น รูปแบบเวลาไม่เป็น RFC 3339, maxCapacity ต่ำกว่าจำนวนผู้สมัครปัจจุบัน หรือไม่มีฟิลด์ให้อัปเดต) (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
@@ -770,8 +786,8 @@
           "parentRelation": { "type": "string", "maxLength": 50, "example": "มารดา", "description": "ความสัมพันธ์ของผู้ปกครอง" },
           "parentPhone": { "type": "string", "example": "0898765432", "description": "เบอร์โทรศัพท์ผู้ปกครอง 10 หลักขึ้นต้นด้วย 0" },
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
-          "grade": { "type": "string", "enum": ["ม.4", "ม.5", "ม.6", "ปวช.1", "ปวช.2", "ปวช.3"], "example": "ม.5" },
-          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "L" },
+          "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.5" },
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "L" },
           "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
           "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
           "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
@@ -809,6 +825,9 @@
           "slipStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "nullable": true },
           "slipUrl": { "type": "string", "nullable": true, "example": "/api/admin/applications/CC25-8A4B2C/slip", "description": "เฉพาะ /api/admin/*: path ของ API ที่ต้องใช้ Bearer token" },
           "slipPaymentId": { "type": "string", "format": "uuid", "nullable": true, "description": "เฉพาะ /api/admin/*: รหัสสลิปล่าสุด ส่งกลับเป็น paymentId ตอนอนุมัติ/ปฏิเสธสลิป" },
+          "adminNote": { "type": "string", "nullable": true, "description": "เฉพาะ /api/admin/*: หมายเหตุจากเจ้าหน้าที่ในการตรวจสลิปล่าสุด" },
+          "rejectionReason": { "type": "string", "nullable": true, "description": "เฉพาะ /api/admin/*: เหตุผลเมื่อปฏิเสธสลิปล่าสุด" },
+          "verifiedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "เฉพาะ /api/admin/*: เวลาที่ตรวจสลิปล่าสุด (RFC 3339)" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         }
@@ -832,14 +851,14 @@
       "SelfProfileRequest": {
         "type": "object",
         "required": ["verifyCode", "nickname", "school", "province", "grade", "shirtSize"],
-        "description": "ฟิลด์ fullName, nationalId, phone, email, motivation, allergies, medicalConditions ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
+        "description": "ฟิลด์ fullName, nationalId, phone, email, parentName, parentRelation, parentPhone, motivation, allergies, medicalConditions ไม่รับผ่าน endpoint สาธารณะ: ถ้าส่งมาจะตอบ 400",
         "properties": {
           "verifyCode": { "type": "string", "pattern": "^[0-9]{4}$", "example": "2233", "description": "เลข 4 ตัวท้ายของบัตรประชาชนผู้สมัคร" },
           "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
           "school": { "type": "string", "maxLength": 150, "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "province": { "type": "string", "maxLength": 100, "example": "เชียงใหม่" },
           "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.6" },
-          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "XL" }
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "XL" }
         }
       },
       "AdminProfileRequest": {
@@ -857,7 +876,7 @@
           "school": { "type": "string", "maxLength": 150 },
           "province": { "type": "string", "maxLength": 100 },
           "grade": { "type": "string", "example": "ม.6" },
-          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"] },
+          "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"] },
           "motivation": { "type": "string", "maxLength": 2000 },
           "allergies": { "type": "string", "maxLength": 500 },
           "medicalConditions": { "type": "string", "maxLength": 500 },
@@ -938,7 +957,7 @@
           "paymentDeadline": { "type": "string", "format": "date-time" },
           "certificateReleaseAt": { "type": "string", "format": "date-time" },
           "maxCapacity": { "type": "integer", "example": 50 },
-          "campFee": { "type": "number", "example": 300.00 },
+          "campFee": { "type": "number", "example": 1200.00 },
           "isManualClosed": { "type": "boolean", "example": false }
         }
       },
@@ -954,7 +973,7 @@
           "paymentDeadline": { "type": "string", "format": "date-time" },
           "certificateReleaseAt": { "type": "string", "format": "date-time" },
           "maxCapacity": { "type": "integer", "example": 50 },
-          "campFee": { "type": "number", "example": 300.00 },
+          "campFee": { "type": "number", "example": 1200.00 },
           "isManualClosed": { "type": "boolean", "example": false },
           "updatedAt": { "type": "string", "format": "date-time" }
         }

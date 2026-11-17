@@ -146,8 +146,8 @@ func TestVerifySlip_ReverifyApprovedAndRejected(t *testing.T) {
 	}
 	gotApp, _ := apps.GetByID(ctx, a.ID)
 	gotPay, _ := pays.GetByID(ctx, p.ID)
-	if gotApp.Status != domain.StatusConfirmed || gotPay.Status != domain.PaymentApproved {
-		t.Fatalf("after approve: status=%s payment=%s, want CONFIRMED/APPROVED", gotApp.Status, gotPay.Status)
+	if gotApp.Status != domain.StatusConfirmed || !gotApp.AttendanceConfirmed || gotPay.Status != domain.PaymentApproved {
+		t.Fatalf("after approve: status=%s attendance=%v payment=%s, want CONFIRMED/true/APPROVED", gotApp.Status, gotApp.AttendanceConfirmed, gotPay.Status)
 	}
 	if dup, _ := pays.CheckDuplicateSlipHash(ctx, slipHash); !dup {
 		t.Fatal("approved slip must hold its hash")
