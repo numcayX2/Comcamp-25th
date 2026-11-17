@@ -1267,7 +1267,7 @@ export function RegisterSection() {
           <div className="rw-fields">
             <FieldShell
               id="motivation"
-              label="ความสนใจด้าน IoT / ไมโครคอนโทรลเลอร์"
+              label="ความสนใจด้านไมโครคอนโทรลเลอร์และการเข้าร่วมค่าย"
               hint={
                 <>
                   ไม่บังคับ · <span className="font-mono tabular-nums">{form.motivation.trim().length}/{MOTIVATION_MAX}</span>
@@ -1287,7 +1287,7 @@ export function RegisterSection() {
                 onKeyDown={onTextareaKey}
                 aria-invalid={errors.motivation ? true : undefined}
                 aria-describedby={errors.motivation ? 'motivation-err' : undefined}
-                placeholder="เช่น อยากลองต่อวงจรเซนเซอร์ หรืออยากทำหน้าเว็บสั่งงานบอร์ดผ่านมือถือ"
+                placeholder="เช่น อยากลองต่อวงจรเซนเซอร์ หรืออยากฝึกเขียนโค้ดควบคุมบอร์ด Arduino"
               />
             </FieldShell>
 
@@ -1439,7 +1439,7 @@ export function RegisterSection() {
                 <strong>รวม <span className="font-mono tabular-nums">7</span> รายการตลอดค่าย:</strong>{' '}
                 ที่พัก <span className="font-mono tabular-nums">2</span> คืน (เรือนพักสมาคมศิษย์เก่าแม่โจ้) · อาหารหลัก{' '}
                 <span className="font-mono tabular-nums">6</span> มื้อ · อาหารว่าง <span className="font-mono tabular-nums">5</span> มื้อ ·
-                เสื้อค่าย ComCamp #25 · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร (ส่วนชุดบอร์ด Arduino/ESP8266 ใช้ฝึกปฏิบัติในห้องแล็บ)
+                เสื้อค่าย ComCamp #25 · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร (ส่วนชุดบอร์ด Arduino UNO R3 ใช้ฝึกปฏิบัติในห้องแล็บ)
               </p>
               <ol className="rw-fee__steps">
                 <li>

@@ -428,10 +428,6 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
   font-weight: 600;
   color: var(--hero-ink);
 }
-.hero-stage__fallback-plus {
-  font-size: 0.8rem;
-  opacity: 0.5;
-}
 .hero-stage[data-state="fallback"] .hero-stage__fallback { display: flex; }
 .hero-stage[data-state="fallback"] .hero-stage__loading { display: none; }
 .hero-stage[data-state="fallback"] canvas { display: none; }

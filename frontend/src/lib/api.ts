@@ -774,7 +774,7 @@ export function listApplications(
         school: 'โรงเรียนแม่โจ้วิทยาคม',
         grade: 'ม.5',
         shirtSize: 'XL',
-        motivation: 'อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard',
+        motivation: 'อยากเรียนรู้การต่อวงจรเซนเซอร์และเขียนโค้ดควบคุมบอร์ด Arduino UNO R3',
         allergies: 'แพ้กุ้ง',
         medicalConditions: '',
         province: 'เชียงใหม่',

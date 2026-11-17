@@ -219,7 +219,7 @@ export const MOCK_FORM: FormState = {
   grade: 'ม.5',
   gradeOther: '',
   shirtSize: 'L',
-  motivation: 'สนใจการต่อวงจรเซนเซอร์และพัฒนา IoT Dashboard ผ่านบอร์ด ESP8266 ในค่าย ComCamp #25',
+  motivation: 'สนใจการต่อวงจรเซนเซอร์และเขียนโค้ดควบคุมบอร์ด Arduino UNO R3 ในค่าย ComCamp #25',
   allergies: 'แพ้อาหารทะเล',
   medicalConditions: '',
 };
