@@ -386,12 +386,17 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                     <a
                       key={c.tel}
                       href={`tel:${c.tel}`}
-                      className={`inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+                      className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
                       style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                     >
                       <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                      <span className="font-mono tabular-nums">{c.phone}</span>
-                      <span className="font-normal" style={{ color: INK_MUTED }}>· {c.name}</span>
+                      <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                        <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                        <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                          <span aria-hidden="true" className="hidden sm:inline">· </span>
+                          {c.name}
+                        </span>
+                      </span>
                     </a>
                   ))}
                 </>
@@ -1135,12 +1140,17 @@ export function StatusSection() {
                   <a
                     key={c.tel}
                     href={`tel:${c.tel}`}
-                    className={`inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+                    className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
                     style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                   >
                     <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                    <span className="font-mono tabular-nums">{c.phone}</span>
-                    <span className="font-normal" style={{ color: INK_MUTED }}>· {c.name}</span>
+                    <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                      <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                      <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                        <span aria-hidden="true" className="hidden sm:inline">· </span>
+                        {c.name}
+                      </span>
+                    </span>
                   </a>
                 ))}
               </div>

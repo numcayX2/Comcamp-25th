@@ -24,7 +24,10 @@
           timeZone: 'Asia/Bangkok',
           year: 'numeric',
           month: 'numeric',
-          day: 'numeric'
+          day: 'numeric',
+          hour: 'numeric',
+          minute: 'numeric',
+          hourCycle: 'h23'
         });
         if (fmt.formatToParts) {
           var parts = fmt.formatToParts(d);
@@ -39,7 +42,9 @@
               month: map.month,
               year: map.year,
               beYear: beYear,
-              beYear2: ('0' + (beYear % 100)).slice(-2)
+              beYear2: ('0' + (beYear % 100)).slice(-2),
+              hour: (map.hour || 0) % 24,
+              minute: map.minute || 0
             };
           }
         }
@@ -55,8 +60,37 @@
       month: month,
       year: year,
       beYear: beYearFallback,
-      beYear2: ('0' + (beYearFallback % 100)).slice(-2)
+      beYear2: ('0' + (beYearFallback % 100)).slice(-2),
+      hour: bkk.getUTCHours(),
+      minute: bkk.getUTCMinutes()
     };
+  }
+
+  // Opening time of day in Asia/Bangkok ("09:00"), derived from the same registrationOpenAt as the date.
+  function formatOpenTime(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return ('0' + p.hour).slice(-2) + ':' + ('0' + p.minute).slice(-2);
+  }
+
+  // Sets a label whose template may contain one {t} placeholder. The time goes into a mono span
+  // (Thai stays outside it, AGENTS §5.3); the resulting text equals the server-rendered default exactly.
+  function setRichLabel(el, tpl, time){
+    if (!el) return;
+    var i = tpl.indexOf('{t}');
+    var plain = tpl.replace('{t}', time);
+    if (i < 0) {
+      if (el.textContent !== plain || el.children.length) el.textContent = plain;
+      return;
+    }
+    if (el.textContent === plain && el.querySelector('[data-open-time]')) return;
+    el.textContent = '';
+    el.appendChild(document.createTextNode(tpl.slice(0, i)));
+    var m = document.createElement('span');
+    m.className = 'font-mono tabular-nums';
+    m.setAttribute('data-open-time', '');
+    m.textContent = time;
+    el.appendChild(m);
+    el.appendChild(document.createTextNode(tpl.slice(i + 3)));
   }
 
   function formatOpenDateNoYear(isoStr){
@@ -149,9 +183,13 @@
     var openDateShort = formatOpenDateShort(openAtStr);
     var openDateFull = formatOpenDateFull(openAtStr);
     var openDateDot = formatOpenDateDot(openAtStr);
-    var ctaText = 'ลงทะเบียนวันที่ ' + openDateNoYear, ctaHref = '#essentials', miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort, stickyDisabled = true;
-    var regCtaText = 'ลงทะเบียนวันที่ ' + openDateShort, regCtaHref = registerHref, regCtaMuted = true;
-    var mtLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' · ดูข้อมูล', mtHref = '#timeline';
+    var openTime = formatOpenTime(openAtStr);
+    // Pre-open labels always carry the opening time (the site opens at 09:00, not midnight). {t} = mono time span.
+    var preOpenWide = 'ลงทะเบียนวันที่ ' + openDateShort + ' ({t} น.)';
+    var preOpenSticky = openDateNoYear + ' {t} น.';
+    var ctaText = preOpenWide, ctaHref = '#essentials', miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' เวลา ' + openTime + ' น.', stickyText = preOpenSticky, stickyDisabled = true;
+    var regCtaText = preOpenWide, regCtaHref = registerHref, regCtaMuted = true;
+    var mtLabel = preOpenWide + ' · ดูข้อมูล', mtHref = '#timeline';
 
     if (seatsBig) {
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
@@ -175,22 +213,25 @@
     document.querySelectorAll('[data-open-date-dot]').forEach(function(el){
       if (el.textContent !== openDateDot) el.textContent = openDateDot;
     });
+    document.querySelectorAll('[data-open-time]').forEach(function(el){
+      if (el.textContent !== openTime) el.textContent = openTime;
+    });
     var maxCapStr = String(maxCap);
     document.querySelectorAll('[data-max-capacity]').forEach(function(el){
       if (el.textContent !== maxCapStr) el.textContent = maxCapStr;
     });
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
-      ctaText = 'ลงทะเบียนวันที่ ' + openDateNoYear;
+      ctaText = preOpenWide;
       ctaHref = '#essentials';
-      regCtaText = 'ลงทะเบียนวันที่ ' + openDateShort;
+      regCtaText = preOpenWide;
       regCtaHref = registerHref;
       regCtaMuted = true;
-      mtLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' · ดูข้อมูล';
+      mtLabel = preOpenWide + ' · ดูข้อมูล';
       mtHref = '#timeline';
-      miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort;
+      miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' เวลา ' + openTime + ' น.';
+      stickyText = preOpenSticky;
       stickyDisabled = true;
-      if (sticky) sticky.textContent = openDateShort;
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
@@ -206,7 +247,7 @@
       mtHref = '#experience';
       miniLabel = 'เชื่อมต่อไม่สำเร็จ';
       stickyDisabled = true;
-      if (sticky) sticky.textContent = 'ตรวจสอบ';
+      stickyText = 'ตรวจสอบ';
       if (secondary) {
         secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
         secondary.setAttribute('href', '#retry-status');
@@ -222,7 +263,7 @@
       mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + '/' + maxCap + ' ที่นั่ง';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'สมัครค่าย';
+      stickyText = 'สมัครค่าย';
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
@@ -238,7 +279,7 @@
       mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + ' ที่นั่ง';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'สมัคร';
+      stickyText = 'สมัคร';
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
@@ -255,7 +296,7 @@
       mtHref = '/status';
       miniLabel = 'ที่นั่งเต็มแล้ว';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'ตรวจสถานะ';
+      stickyText = 'ตรวจสถานะ';
       // The primary CTA already leads to /status, so the secondary link points at the camp details.
       if (secondary) {
         secondary.textContent = 'ดูรายละเอียดค่าย →';
@@ -272,7 +313,7 @@
       mtHref = '/status';
       miniLabel = 'ปิดรับสมัครแล้ว';
       stickyDisabled = true;
-      if (sticky) sticky.textContent = 'ปิดแล้ว';
+      stickyText = 'ปิดแล้ว';
       if (secondary) {
         secondary.textContent = 'ดูรายละเอียดค่าย →';
         secondary.setAttribute('href', '#experience');
@@ -282,22 +323,14 @@
 
     if (primary) {
       var primarySpan = primary.querySelector('span');
-      if (primarySpan) {
-        primarySpan.textContent = ctaText;
-      } else {
-        primary.textContent = ctaText;
-      }
+      setRichLabel(primarySpan || primary, ctaText, openTime);
       primary.setAttribute('href', ctaHref);
     }
 
     if (extraCtas.length) {
       extraCtas.forEach(function(el){
         var target = el.querySelector('[data-register-cta-label]') || el.querySelector('span');
-        if (target) {
-          target.textContent = regCtaText;
-        } else {
-          el.textContent = regCtaText;
-        }
+        setRichLabel(target || el, regCtaText, openTime);
         el.setAttribute('href', regCtaHref);
         el.setAttribute('data-reg-state', s);
         el.classList.toggle('is-pre-open', regCtaMuted);
@@ -307,10 +340,11 @@
     var mtCta = document.querySelector('[data-mt="cta"]');
     var mtCtaLabel = document.querySelector('[data-mt="cta-label"]');
     if (mtCta) mtCta.setAttribute('href', mtHref);
-    if (mtCtaLabel) mtCtaLabel.textContent = mtLabel;
+    if (mtCtaLabel) setRichLabel(mtCtaLabel, mtLabel, openTime);
 
     if (mini) mini.textContent = miniLabel;
     if (sticky) {
+      setRichLabel(sticky.querySelector('[data-sticky-label]') || sticky, stickyText, openTime);
       sticky.disabled = stickyDisabled;
       sticky.setAttribute('aria-disabled', stickyDisabled ? 'true' : 'false');
     }

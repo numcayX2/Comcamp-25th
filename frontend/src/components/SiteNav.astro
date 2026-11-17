@@ -60,7 +60,7 @@ const navLinks = isAdmin ? [] : [
             class:list={['nav-mobile-item', active === 'register' && 'is-active']}
             aria-current={active === 'register' ? 'page' : undefined}
           >
-            <span data-nav-register-label>ลงทะเบียนวันที่ 19 พ.ย. 69</span>
+            <span data-nav-register-label data-nav-label-style="wide">ลงทะเบียนวันที่ 19 พ.ย. 69 (<span class="font-mono tabular-nums" data-nav-open-time>09:00</span> น.)</span>
           </a>
           <a
             data-nav-status
@@ -121,7 +121,7 @@ const navLinks = isAdmin ? [] : [
             disabled
             aria-disabled="true"
             aria-describedby="sticky-mini"
-          >19 พ.ย. 69</button>
+          ><span data-sticky-label>19 พ.ย. <span class="font-mono tabular-nums" data-open-time>09:00</span> น.</span></button>
           <span id="sticky-mini" class="sr-only">กำลังโหลดสถานะ</span>
         </>
       )}
@@ -150,7 +150,7 @@ const navLinks = isAdmin ? [] : [
             href="/register"
             aria-current={active === 'register' ? 'page' : undefined}
           >
-            <span data-nav-register-label>ลงทะเบียนวันที่ 19 พ.ย. 69</span>
+            <span data-nav-register-label data-nav-label-style="compact">ลงทะเบียน 19 พ.ย. <span class="font-mono tabular-nums" data-nav-open-time>09:00</span> น.</span>
           </a>
           <a
             data-nav-status
@@ -1129,7 +1129,7 @@ const navLinks = isAdmin ? [] : [
     'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
   ];
 
-  function getBangkokDateParts(epochMs: number): { day: number; month: number; beYear2: string } {
+  function getBangkokDateParts(epochMs: number): { day: number; month: number; beYear2: string; hour: number; minute: number } {
     const safeMs = Number.isFinite(epochMs) ? epochMs : DEFAULT_OPEN_AT;
     const d = new Date(safeMs);
     try {
@@ -1138,11 +1138,14 @@ const navLinks = isAdmin ? [] : [
         year: 'numeric',
         month: 'numeric',
         day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hourCycle: 'h23',
       });
       const parts = fmt.formatToParts(d);
       const map: Record<string, number> = {};
       for (const part of parts) {
-        if (part.type === 'year' || part.type === 'month' || part.type === 'day') {
+        if (part.type === 'year' || part.type === 'month' || part.type === 'day' || part.type === 'hour' || part.type === 'minute') {
           map[part.type] = Number(part.value);
         }
       }
@@ -1152,6 +1155,8 @@ const navLinks = isAdmin ? [] : [
           day: map.day,
           month: map.month,
           beYear2: String(beYear % 100).padStart(2, '0'),
+          hour: (map.hour || 0) % 24,
+          minute: map.minute || 0,
         };
       }
     } catch {
@@ -1163,7 +1168,19 @@ const navLinks = isAdmin ? [] : [
       day: bkk.getUTCDate(),
       month: bkk.getUTCMonth() + 1,
       beYear2: String(beYear % 100).padStart(2, '0'),
+      hour: bkk.getUTCHours(),
+      minute: bkk.getUTCMinutes(),
     };
+  }
+
+  function formatNavOpenNoYear(epochMs: number): string {
+    const p = getBangkokDateParts(epochMs);
+    return `${p.day} ${THAI_MONTHS_SHORT[p.month - 1]}`;
+  }
+
+  function formatNavOpenTime(epochMs: number): string {
+    const p = getBangkokDateParts(epochMs);
+    return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
   }
 
   function formatNavOpenShort(epochMs: number): string {
@@ -1180,6 +1197,7 @@ const navLinks = isAdmin ? [] : [
     state: RegistrationState,
     seatsLeft: number,
     openAt: number = DEFAULT_OPEN_AT,
+    style: 'wide' | 'compact' = 'wide',
   ): { label: string; href: string; muted: boolean } {
     switch (state) {
       case 'OPEN':
@@ -1191,15 +1209,41 @@ const navLinks = isAdmin ? [] : [
       case 'CLOSED':
         return { label: 'ปิดรับสมัครแล้ว', href: '/status', muted: true };
       default:
-        return { label: `ลงทะเบียนวันที่ ${formatNavOpenShort(openAt)}`, href: '/register', muted: true };
+        // {t} marks the opening time (09:00 Asia/Bangkok); it is rendered in a mono span. Compact = desktop pill.
+        return {
+          label: style === 'compact'
+            ? `ลงทะเบียน ${formatNavOpenNoYear(openAt)} {t} น.`
+            : `ลงทะเบียนวันที่ ${formatNavOpenShort(openAt)} ({t} น.)`,
+          href: '/register',
+          muted: true,
+        };
     }
   }
 
+  function setNavLabel(el: HTMLElement, tpl: string, time: string) {
+    const i = tpl.indexOf('{t}');
+    const plain = tpl.replace('{t}', time);
+    if (i < 0) {
+      if (el.textContent !== plain || el.children.length) el.textContent = plain;
+      return;
+    }
+    if (el.textContent === plain && el.querySelector('[data-nav-open-time]')) return;
+    el.textContent = '';
+    el.append(tpl.slice(0, i));
+    const m = document.createElement('span');
+    m.className = 'font-mono tabular-nums';
+    m.setAttribute('data-nav-open-time', '');
+    m.textContent = time;
+    el.append(m, tpl.slice(i + 3));
+  }
+
   function applyNavRegisterLabel(state: RegistrationState, seatsLeft: number, openAt: number = DEFAULT_OPEN_AT) {
-    const { label, href, muted } = labelForState(state, seatsLeft, openAt);
+    const time = formatNavOpenTime(openAt);
     document.querySelectorAll<HTMLAnchorElement>('[data-nav-register]').forEach((link) => {
-      const text = link.querySelector('[data-nav-register-label]');
-      if (text) text.textContent = label;
+      const text = link.querySelector<HTMLElement>('[data-nav-register-label]');
+      const style = text?.dataset.navLabelStyle === 'compact' ? 'compact' : 'wide';
+      const { label, href, muted } = labelForState(state, seatsLeft, openAt, style);
+      if (text) setNavLabel(text, label, time);
       link.setAttribute('href', href);
       link.classList.toggle('is-pre-open', muted);
     });

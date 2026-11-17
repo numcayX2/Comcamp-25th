@@ -105,7 +105,7 @@ export function describePaymentDue(deadlineMs: number, nowMs: number = Date.now(
   if (diffMs <= 0) {
     return {
       deadlineText,
-      remainingText: `ครบกำหนด ${PAYMENT_WINDOW_DAYS} วัน (${PAYMENT_WINDOW_HOURS} ชั่วโมง) แล้ว`,
+      remainingText: 'ครบกำหนดชำระเงินแล้ว',
       isOverdue: true,
       isUrgent: true,
     };

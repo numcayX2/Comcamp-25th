@@ -193,8 +193,8 @@ test('describeApplicantPaymentDeadline pins the 120h boundary and the 24h grace'
   assert.equal(describeStaffPaymentDeadline(ago(130), ago(130), null, now).isOverdue, true);
 
   const overdue = describeApplicantPaymentDeadline(ago(121), ago(121), now);
-  assert.match(overdue.remainingText, /5 วัน \(120 ชั่วโมง\)/);
-  assert.doesNotMatch(overdue.remainingText, /72|3 วัน/);
+  assert.equal(overdue.remainingText, 'ครบกำหนดชำระเงินแล้ว');
+  assert.doesNotMatch(overdue.remainingText, /72|3 วัน|5 วัน/);
 
   // Registered 19 Nov 2026 09:00 (Bangkok) -> due 24 Nov 2026 09:00 (Bangkok).
   const fresh = describeApplicantPaymentDeadline('2026-11-19T02:00:00Z', '2026-11-19T02:00:00Z', Date.parse('2026-11-19T02:00:00Z'));
