@@ -787,17 +787,20 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
   position:relative; height:var(--mt-length,1400vh); padding:0; background:var(--mt-bg); color:var(--mt-text);
   font-family:var(--mt-font); isolation:isolate;
 }
-.mt__sticky{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;isolation:isolate}
-.mt__sticky::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.85) 100%)}
-.mt__stage{position:absolute;inset:0;z-index:1;perspective:var(--mt-perspective,1000px);perspective-origin:50% 50%;pointer-events:none}
-.mt__card{position:absolute;left:calc(50% - var(--mt-card-w) / 2);top:calc(50% - var(--mt-card-h) / 2);width:var(--mt-card-w);height:var(--mt-card-h);margin:0;border-radius:0;overflow:hidden;background:#111;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);display:none;opacity:0;will-change:transform,opacity;backface-visibility:hidden}
+.mt__sticky{position:-webkit-sticky;position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;isolation:isolate}
+.mt__sticky::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.85) 100%)}
+.mt__stage{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;-webkit-perspective:var(--mt-perspective,1000px);perspective:var(--mt-perspective,1000px);-webkit-perspective-origin:50% 50%;perspective-origin:50% 50%;pointer-events:none}
+.mt__card{position:absolute;left:calc(50% - var(--mt-card-w) / 2);top:calc(50% - var(--mt-card-h) / 2);width:var(--mt-card-w);height:var(--mt-card-h);margin:0;border-radius:0;overflow:hidden;background:#111;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);display:none;opacity:0;will-change:transform,opacity;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 .mt__card.is-active{display:block}
 .mt__card img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .4s ease;user-select:none}
 .mt__card.is-loaded img{opacity:1}
-.mt__intro,.mt__outro{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 clamp(20px,6vw,80px)}
+/* Longhand offsets: `inset` is unsupported before Safari 14.1 / Chrome 87 (old iOS in-app
+   WebViews), which collapsed these layers to 0x0 and pinned the tunnel to the top-left corner. */
+.mt__intro,.mt__outro{position:absolute;top:0;right:0;bottom:0;left:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 clamp(20px,6vw,80px)}
 .mt__intro{will-change:opacity,transform,filter;z-index:5}
 .mt__intro-content{display:flex;flex-direction:column;align-items:center;will-change:transform,filter,opacity}
-.mt__eyebrow{margin:0 0 1.2em;font-size:clamp(11px,1.1vw,14px);letter-spacing:.35em;text-transform:uppercase;color:var(--mt-muted);font-family:'IBM Plex Mono',ui-monospace,monospace;font-weight:500}
+/* Eyebrows are Thai-first now (AGENTS.md 5.3): Thai font, no tracking, no uppercase */
+.mt__eyebrow{margin:0 0 1.2em;font-size:clamp(13px,1.1vw,15px);line-height:1.5;letter-spacing:0;text-transform:none;color:var(--mt-muted);font-family:var(--mt-font);font-weight:600}
 .mt__intro-title{margin:0;font-size:clamp(36px,7vw,96px);font-weight:700;line-height:1.25;white-space:pre-line}
 .mt__intro-sub{margin:1.4em 0 0;font-size:clamp(15px,1.4vw,20px);font-weight:400;line-height:1.7;color:var(--mt-muted);white-space:pre-line}
 .mt__reveal{opacity:0;transform:translateY(24px);transition:opacity 1s ease,transform 1s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--d,0) * 150ms)}
@@ -807,10 +810,10 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 .mt__outro{visibility:hidden;pointer-events:none}
 .mt__outro.is-visible{visibility:visible;pointer-events:auto}
 .mt__outro-eyebrow,.mt__outro-sub,.mt__cta,.mt__outro-line{opacity:0}
-.mt__outro-eyebrow{margin-bottom:2em;letter-spacing:.22em}
-.mt__outro-title{margin:0;font-size:clamp(2.25rem,5.5vw,4.5rem);font-weight:600;line-height:1.2;letter-spacing:-.015em;color:var(--mt-text)}
+.mt__outro-eyebrow{margin-bottom:2em}
+.mt__outro-title{margin:0;font-size:clamp(2.25rem,5.5vw,4.5rem);font-weight:600;line-height:1.25;letter-spacing:0;color:var(--mt-text)}
 .mt__outro-line{display:block;color:inherit}
-.mt__outro-sub{margin:1.5em 0 0;max-width:32em;font-size:clamp(.9375rem,1.2vw,1.0625rem);font-weight:400;line-height:1.8;color:var(--mt-muted)}
+.mt__outro-sub{margin:1.5em 0 0;max-width:32em;font-size:clamp(.9375rem,1.2vw,1.0625rem);font-weight:400;line-height:1.75;color:var(--mt-muted);text-wrap:balance}
 .mt__cta{display:inline-flex;align-items:center;gap:.5em;margin-top:2.25rem;padding:.75em 0 0;border:0;border-top:1px solid rgba(245,245,247,.28);border-radius:0;background:transparent;color:var(--mt-text);font-size:clamp(.9375rem,1.1vw,1rem);font-weight:500;text-decoration:none;transition:color .2s ease,border-color .2s ease}
 .mt__cta:hover{color:#fff;border-top-color:rgba(245,245,247,.55);background:transparent}
 .mt__cta:focus-visible{outline:2px solid rgba(245,245,247,.6);outline-offset:4px}
@@ -823,6 +826,9 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 @keyframes mt-hint{to{top:100%}}
 @keyframes mt-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media(max-width:768px){.mt{--mt-card-w:clamp(140px,46vw,260px)}.mt__outro-title{font-size:clamp(2rem,10vw,3rem)}.mt__cta{margin-top:1.75rem}}
+/* clamp() arrived in Safari 13.1 / Chrome 79; without it the card vars are invalid and cards collapse.
+   Must follow the clamp() rules above so it wins the cascade. */
+@supports not (width:clamp(1px,1vw,2px)){.mt{--mt-card-w:22vw}@media(max-width:768px){.mt{--mt-card-w:46vw}}}
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
 }

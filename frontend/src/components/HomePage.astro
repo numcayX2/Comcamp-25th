@@ -719,8 +719,11 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
   <BackToTop />
 
+<!-- main.js runs first so the Memory Tunnel + registration state never wait on cdnjs
+     (a slow CDN in FB/LINE in-app browsers held every deferred script behind it).
+     GSAP still executes before DOMContentLoaded, where main.js boots the editorial motion. -->
+<script is:inline src="/theme/main.js" defer></script>
 <script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha384-Z3REaz79l2IaAZqJsSABtTbhjgOUYyV3p90XNnAPCSHg3EMTz1fouunq9WZRtj3d" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-<script is:inline src="/theme/main.js" defer></script>
 </body>
 </html>

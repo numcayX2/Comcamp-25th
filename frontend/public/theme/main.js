@@ -699,12 +699,12 @@
       selector: "#gallery",
       text: {
         intro: {
-          eyebrow: "COMCAMP 24 · MEMORIES",
+          eyebrow: "ความทรงจำจาก ComCamp #24",
           title: "ภาพรวม\nบรรยากาศปีที่แล้ว",
           subtitle: "ย้อนดูบรรยากาศจากค่ายปีที่แล้ว\nเลื่อนลงเพื่อเดินทางไปด้วยกัน",
         },
         outro: {
-          eyebrow: "ComCamp 25",
+          eyebrow: "ComCamp #25",
           titleLines: ["แล้วพบกัน"],
           subtitle: "บทต่อไปของความทรงจำ กำลังรอให้คุณมาเขียนร่วมกัน",
           ctaLabel: "ดูข้อมูลการรับสมัคร",
@@ -859,7 +859,8 @@
     };
     TunnelRenderer.prototype.apply = function(i, s) {
       var st = this.cards[i].el.style;
-      st.transform = "translate3d(" + s.x.toFixed(1) + "px, " + s.y.toFixed(1) + "px, " + s.z.toFixed(1) + "px) rotate(" + s.rot.toFixed(2) + "deg)";
+      st.transform = "translate3d(" + s.x.toFixed(1) + "px, " + s.y.toFixed(1) + "px, " + s.z.toFixed(1) + "px) rotate(" + s.rot.toFixed(2) + "deg)" +
+        (s.scale && s.scale !== 1 ? " scale(" + s.scale.toFixed(3) + ")" : "");
       st.opacity = s.opacity.toFixed(3);
     };
 
@@ -881,10 +882,11 @@
         };
       });
     };
-    MotionEngine.prototype.resize = function(vw, vh, isMobile) {
+    MotionEngine.prototype.resize = function(vw, vh, isMobile, cardW, cardH) {
       this.halfW = vw / 2; this.halfH = vh / 2; this.spread = isMobile ? this.m.spreadMobile : this.m.spread;
+      this.layoutReduced(vw, vh, cardW, cardH);
     };
-    MotionEngine.prototype.getState = function(i, t, reduced) {
+    MotionEngine.prototype.getState = function(i, t) {
       var it = this.items[i], local = (t - it.start) / this.duration;
       if (local <= 0 || local >= 1) return null;
       var nx, ny;
@@ -893,12 +895,37 @@
       var m = this.m;
       return {
         x: nx * this.halfW, y: ny * this.halfH,
-        z: reduced ? -300 : lerp(m.zStart, this.zEnd, local),
+        z: lerp(m.zStart, this.zEnd, local),
         rot: it.tilt,
         opacity: Math.min(progressBetween(local, 0, m.fadeIn), 1 - progressBetween(local, 1 - m.fadeOut, 1))
       };
     };
     MotionEngine.prototype.isNear = function(i, t) { return t >= this.items[i].start - this.m.preloadAhead; };
+
+    // Reduced motion: no flight, no depth, no easing. The tunnel becomes a scroll-driven
+    // slideshow — one group (groupSize photos) at a time, fully opaque, side by side
+    // (wide screens) or stacked (tall phones), swapped instantly as the reader scrolls.
+    MotionEngine.prototype.groupCount = function() { return Math.ceil(this.count / this.m.groupSize); };
+    MotionEngine.prototype.reducedGroup = function(t) {
+      if (t <= 0 || t >= 1) return -1;
+      return Math.min(this.groupCount() - 1, Math.floor(t * this.groupCount()));
+    };
+    MotionEngine.prototype.layoutReduced = function(vw, vh, cardW, cardH) {
+      var n = this.m.groupSize, w = cardW || 240, h = cardH || 180, gap = Math.round(w * 0.08);
+      var maxScale = 1.6;
+      var rowScale = Math.min(maxScale, (vw * 0.84) / (n * w + (n - 1) * gap), (vh * 0.62) / h);
+      var colScale = Math.min(maxScale, (vw * 0.88) / w, (vh * 0.74) / (n * h + (n - 1) * gap));
+      this.rl = rowScale >= colScale
+        ? { row: true, scale: rowScale, step: (w + gap) * rowScale }
+        : { row: false, scale: colScale, step: (h + gap) * colScale };
+    };
+    MotionEngine.prototype.getReducedState = function(i, t) {
+      var g = this.reducedGroup(t), size = this.m.groupSize;
+      if (g < 0 || Math.floor(i / size) !== g) return null;
+      var inGroup = Math.min(size, this.count - g * size);
+      var offset = ((i % size) - (inGroup - 1) / 2) * this.rl.step;
+      return { x: this.rl.row ? offset : 0, y: this.rl.row ? 0 : offset, z: 0, rot: 0, scale: this.rl.scale, opacity: 1 };
+    };
 
     function SceneText(root, cfg) {
       this.root = root; this.cfg = cfg;
@@ -969,10 +996,11 @@
       this.cfg = cfg;
       this.root = document.querySelector(cfg.selector);
       if (!this.root) return;
-      this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || REDUCED;
-      this.root._mtReduced = this.reduced;
+      this.reducedMq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+      this.setReduced(REDUCED || !!(this.reducedMq && this.reducedMq.matches));
       var stage = this.root.querySelector('[data-mt="stage"]');
       if (!stage) return;
+      this.stage = stage;
       this.renderer = new TunnelRenderer(stage, images, cfg.images);
       this.engine = new MotionEngine(images, cfg.motion);
       this.text = new SceneText(this.root, cfg);
@@ -981,30 +1009,43 @@
       this.tick = function(now){ self._tick(now); };
       this.onScroll = function(){ self.requestTick(); };
       this.onResize = debounce(function(){ self.measure(); self.requestTick(); }, 150);
+      this.onReducedChange = function(e){ self.setReduced(!!e.matches); self.requestTick(); };
       this.init();
     }
+    MemoryTunnel.prototype.setReduced = function(on) {
+      this.reduced = on;
+      this.root._mtReduced = on;
+    };
     MemoryTunnel.prototype.init = function() {
       this.renderer.build();
       this.root.style.setProperty("--mt-perspective", this.cfg.motion.perspective + "px");
-      this.measure(); this.observe();
+      this.measure();
       window.addEventListener("scroll", this.onScroll, { passive: true });
       window.addEventListener("resize", this.onResize);
+      // Late layout shifts above the gallery (fonts, images) move it without a scroll event.
+      window.addEventListener("load", this.onScroll);
+      if (this.reducedMq) {
+        if (this.reducedMq.addEventListener) this.reducedMq.addEventListener("change", this.onReducedChange);
+        else if (this.reducedMq.addListener) this.reducedMq.addListener(this.onReducedChange);
+      }
       this.requestTick();
+    };
+    MemoryTunnel.prototype.measureCard = function() {
+      // Cards are display:none until active, so size a hidden probe with the same CSS vars.
+      if (!this.probe) {
+        this.probe = document.createElement("div");
+        this.probe.setAttribute("aria-hidden", "true");
+        this.probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;width:var(--mt-card-w);height:var(--mt-card-h)";
+        this.stage.appendChild(this.probe);
+      }
+      return { w: this.probe.offsetWidth, h: this.probe.offsetHeight };
     };
     MemoryTunnel.prototype.measure = function() {
       var mobile = window.matchMedia("(max-width: " + this.cfg.mobileBreakpoint + "px)").matches;
       var length = mobile ? this.cfg.scroll.lengthVhMobile : this.cfg.scroll.lengthVh;
       this.root.style.setProperty("--mt-length", length + "vh");
-      this.engine.resize(window.innerWidth, window.innerHeight, mobile);
-    };
-    MemoryTunnel.prototype.observe = function() {
-      var self = this;
-      if (typeof IntersectionObserver === "undefined") { this.inView = true; return; }
-      this.io = new IntersectionObserver(function(entries){
-        self.inView = entries[entries.length - 1].isIntersecting;
-        if (self.inView) { self.renderer.preloadRange(0, self.cfg.motion.groupSize * 2); self.requestTick(); }
-      }, { rootMargin: "100% 0px" });
-      this.io.observe(this.root);
+      var card = this.measureCard();
+      this.engine.resize(window.innerWidth, window.innerHeight, mobile, card.w, card.h);
     };
     MemoryTunnel.prototype.requestTick = function() {
       if (this.rafId === null) this.rafId = requestAnimationFrame(this.tick);
@@ -1012,6 +1053,12 @@
     MemoryTunnel.prototype._tick = function(now) {
       this.rafId = null;
       var rect = this.root.getBoundingClientRect(), vh = window.innerHeight;
+      // Visibility straight from the rect (one viewport of margin each side). An
+      // IntersectionObserver on this ~1400vh section under-reports in some in-app
+      // WebViews, which left every card requested=false — an empty black tunnel.
+      var inView = rect.bottom > -vh && rect.top < vh * 2;
+      if (inView && !this.inView) this.renderer.preloadRange(0, this.cfg.motion.groupSize * 2);
+      this.inView = inView;
       var distance = this.root.offsetHeight - vh;
       this.target = distance > 0 ? clamp(-rect.top / distance) : 0;
       if (!this.entered && rect.top < vh * 0.6) { this.entered = true; this.root.classList.add("is-entered"); }
@@ -1028,12 +1075,17 @@
       var tl = this.cfg.timeline;
       this.text.updateIntro(p, tl); this.text.updateOutro(p, tl);
       var t = progressBetween(p, tl.tunnelStart, tl.tunnelEnd);
+      if (this.reduced && this.inView) {
+        // Current + next group, so the next instant swap already has its photos.
+        var size = this.cfg.motion.groupSize, g = Math.max(0, this.engine.reducedGroup(t));
+        this.renderer.preloadRange(g * size, (g + 2) * size);
+      }
       for (var i = 0; i < this.engine.count; i++) {
         // Only pull images once the tunnel is actually near the viewport —
         // preloading on init fetched ~7 full-size photos (≈1.2 MB) while the
         // gallery was still thousands of pixels offscreen.
-        if (this.inView && this.engine.isNear(i, t)) this.renderer.preload(i);
-        var state = this.engine.getState(i, t, this.reduced);
+        if (!this.reduced && this.inView && this.engine.isNear(i, t)) this.renderer.preload(i);
+        var state = this.reduced ? this.engine.getReducedState(i, t) : this.engine.getState(i, t);
         if (!state) { this.renderer.setActive(i, false); continue; }
         this.renderer.setActive(i, true); this.renderer.apply(i, state);
       }
@@ -1041,7 +1093,11 @@
     MemoryTunnel.prototype.destroy = function() {
       window.removeEventListener("scroll", this.onScroll);
       window.removeEventListener("resize", this.onResize);
-      if (this.io) this.io.disconnect();
+      window.removeEventListener("load", this.onScroll);
+      if (this.reducedMq) {
+        if (this.reducedMq.removeEventListener) this.reducedMq.removeEventListener("change", this.onReducedChange);
+        else if (this.reducedMq.removeListener) this.reducedMq.removeListener(this.onReducedChange);
+      }
       if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     };
 
