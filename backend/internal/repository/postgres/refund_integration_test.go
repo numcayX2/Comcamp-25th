@@ -193,7 +193,7 @@ func TestPostgres_UpdateStatusWithinCapacity(t *testing.T) {
 
 func profileOfRow(a *domain.Applicant) domain.ProfileFields {
 	return domain.ProfileFields{
-		FirstName: a.FirstName, LastName: a.LastName, Nickname: a.Nickname, NationalID: a.NationalID,
+		FirstName: a.FirstName, LastName: a.LastName, Nickname: a.Nickname,
 		Phone: a.Phone, Email: a.Email, School: a.School, Province: a.Province, Grade: a.Grade,
 		ShirtSize: a.ShirtSize, Motivation: a.Motivation, Allergies: a.Allergies, MedicalConditions: a.MedicalConditions,
 	}
@@ -267,9 +267,8 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 	// Collisions with another live applicant map to ErrDuplicateApplicant and change nothing.
 	before, _ := repo.GetByID(ctx, a.ID)
 	for name, mutate := range map[string]func(*domain.ProfileFields){
-		"national id": func(f *domain.ProfileFields) { f.NationalID = b.NationalID },
-		"phone":       func(f *domain.ProfileFields) { f.Phone = b.Phone },
-		"email":       func(f *domain.ProfileFields) { f.Email = b.Email },
+		"phone": func(f *domain.ProfileFields) { f.Phone = b.Phone },
+		"email": func(f *domain.ProfileFields) { f.Email = b.Email },
 	} {
 		dup := profileOfRow(before)
 		mutate(&dup)
@@ -277,7 +276,7 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 			t.Fatalf("%s collision: want ErrDuplicateApplicant, got %v", name, err)
 		}
 	}
-	if after, _ := repo.GetByID(ctx, a.ID); after.NationalID != before.NationalID || after.Phone != before.Phone || after.Email != before.Email {
+	if after, _ := repo.GetByID(ctx, a.ID); after.Phone != before.Phone || after.Email != before.Email {
 		t.Fatal("a refused edit must not change the row")
 	}
 	// Keeping its own identifiers is not a collision.
@@ -290,7 +289,7 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	take := profileOfRow(before)
-	take.NationalID, take.Phone, take.Email = b.NationalID, b.Phone, b.Email
+	take.Phone, take.Email = b.Phone, b.Email
 	if err := repo.UpdateProfile(ctx, a.ID, take, false, nil); err != nil {
 		t.Fatalf("taking a deleted applicant's identifiers: %v", err)
 	}

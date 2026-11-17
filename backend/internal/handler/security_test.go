@@ -296,12 +296,14 @@ func TestSecurity_DuplicateApplicantIsCleanConflict(t *testing.T) {
 	app := setupTestApp(t)
 	app.submit(t, "0810000020", "d1@example.com")
 
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("0810000021", "d2@example.com"), nil)
+	// Since 000011 the live phone number (and the live non-empty email) identify an applicant:
+	// the same phone with another email is a clean 409 DUPLICATE_APPLICATION, not a 500.
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("0810000020", "d2@example.com"), nil)
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", rec.Code)
+		t.Fatalf("duplicate phone: expected 409, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if e := decodeErr(t, rec.Body.Bytes()); e.Code != response.CodeDuplicateApp {
-		t.Fatalf("expected code %s, got %+v", response.CodeDuplicateApp, e)
+		t.Fatalf("duplicate phone: expected code %s, got %+v", response.CodeDuplicateApp, e)
 	}
 
 	// Email is mandatory: blank email returns 400 validation error.

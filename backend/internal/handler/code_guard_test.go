@@ -138,7 +138,8 @@ func TestCodeGuard_UnknownCodesLockTheClientAcrossEndpoints(t *testing.T) {
 	for i := 0; i < service.CodeClientMaxMisses; i++ {
 		app.guessAt(t, attacker, "confirm", 100+i)
 	}
-	if secs := wantLimited(t, app.confirmWith(t, mine.ID), 2*service.CodeBaseLockout); secs != int(2*service.CodeBaseLockout/time.Second) {
+	second := app.doAs(t, attacker, http.MethodPost, "/api/applications/"+mine.ID+"/confirm", `{"confirmed":true}`)
+	if secs := wantLimited(t, second, 2*service.CodeBaseLockout); secs != int(2*service.CodeBaseLockout/time.Second) {
 		t.Fatalf("second lockout should be %v, got %ds", 2*service.CodeBaseLockout, secs)
 	}
 }
