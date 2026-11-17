@@ -727,6 +727,31 @@
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
+    },
+    "/applications/public": {
+      "get": {
+        "tags": ["Applications"],
+        "summary": "Public Applicants List",
+        "description": "รายชื่อผู้สมัครสาธารณะสำหรับหน้า /applicants เฉพาะใบสมัครที่ยังไม่ถูกลบและมีสถานะ PASSED หรือ CONFIRMED เรียงตามเวลาที่สมัคร (no = ลำดับ เริ่มที่ 1) แต่ละแถวมีเฉพาะ no, fullName, nickname, school, province และ status (ข้อความภาษาไทย: รอชำระเงิน = PASSED, ยืนยันสิทธิ์แล้ว = CONFIRMED) ตามที่แจ้งไว้ในข้อความยินยอม PDPA ตอนสมัคร ไม่มีรหัสใบสมัคร เบอร์โทร อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ แรงบันดาลใจ สลิป หรือ id ใดๆ ก่อนเปิดรับสมัครจะได้รายการว่าง ฝั่งเซิร์ฟเวอร์ cache ผลไว้สูงสุด 5 วินาที (singleflight) และล้าง cache ทันทีเมื่อมีการสมัคร เปลี่ยนสถานะ อนุมัติ/ปฏิเสธสลิป แก้ไขข้อมูล ลบ ยกเลิก หรือตัดสิทธิ์อัตโนมัติ ตอบ Cache-Control: no-store",
+        "responses": {
+          "200": {
+            "description": "รายชื่อผู้สมัคร (อาจเป็นรายการว่าง)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PublicApplicantsResponse" },
+                "example": {
+                  "applicants": [
+                    { "no": 1, "fullName": "สมชาย ใจดี", "nickname": "ชาย", "school": "โรงเรียนแม่โจ้วิทยาคม", "province": "เชียงใหม่", "status": "ยืนยันสิทธิ์แล้ว" },
+                    { "no": 2, "fullName": "สมหญิง รักเรียน", "nickname": "หญิง", "school": "โรงเรียนสันทรายวิทยาคม", "province": "เชียงใหม่", "status": "รอชำระเงิน" }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "description": "เรียกถี่เกินไป (60 ครั้ง/นาที/IP) (code RATE_LIMITED, มี Retry-After)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "ข้อผิดพลาดภายในเซิร์ฟเวอร์ (code INTERNAL_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -950,6 +975,28 @@
           "campFee": { "type": "number", "example": 1200.00 },
           "isManualClosed": { "type": "boolean", "example": false },
           "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublicApplicant": {
+        "type": "object",
+        "description": "หนึ่งแถวของรายชื่อผู้สมัครสาธารณะ มีเฉพาะฟิลด์เหล่านี้เท่านั้น (PDPA allowlist)",
+        "additionalProperties": false,
+        "required": ["no", "fullName", "nickname", "school", "province", "status"],
+        "properties": {
+          "no": { "type": "integer", "minimum": 1, "description": "ลำดับตามเวลาที่สมัคร (เริ่มที่ 1)", "example": 1 },
+          "fullName": { "type": "string", "description": "ชื่อ–นามสกุล (ไม่มีคำนำหน้า)", "example": "สมชาย ใจดี" },
+          "nickname": { "type": "string", "example": "ชาย" },
+          "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
+          "province": { "type": "string", "example": "เชียงใหม่" },
+          "status": { "type": "string", "enum": ["รอชำระเงิน", "ยืนยันสิทธิ์แล้ว"], "example": "รอชำระเงิน" }
+        }
+      },
+      "PublicApplicantsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["applicants"],
+        "properties": {
+          "applicants": { "type": "array", "items": { "$ref": "#/components/schemas/PublicApplicant" } }
         }
       }
     }

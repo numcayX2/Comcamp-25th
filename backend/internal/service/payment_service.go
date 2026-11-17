@@ -67,6 +67,10 @@ type PaymentService struct {
 	verify *VerifyGuard
 	// mailer sends Stage 2 (CONFIRMED) emails asynchronously after slip approval commits.
 	mailer EmailNotifier
+	// onStatusChange is told after a slip verdict commits, because approving (or taking back) a
+	// slip moves the application between PASSED and CONFIRMED. main points it at
+	// ApplicantService.InvalidatePublicList so the public applicants list refreshes.
+	onStatusChange func()
 }
 
 // WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
@@ -81,6 +85,12 @@ func (s *PaymentService) WithVerifyGuard(g *VerifyGuard) *PaymentService {
 // WithMailer configures the asynchronous transactional mailer and returns the service.
 func (s *PaymentService) WithMailer(m EmailNotifier) *PaymentService {
 	s.mailer = m
+	return s
+}
+
+// WithOnStatusChange registers a hook called after a slip verdict commits and returns the service.
+func (s *PaymentService) WithOnStatusChange(fn func()) *PaymentService {
+	s.onStatusChange = fn
 	return s
 }
 
@@ -461,6 +471,9 @@ func (s *PaymentService) VerifySlip(ctx context.Context, applicationNo, paymentI
 			return ErrDuplicateSlip
 		}
 		return err
+	}
+	if s.onStatusChange != nil {
+		s.onStatusChange()
 	}
 	if approved && latestPayment.Status != domain.PaymentApproved && s.mailer != nil && applicant.Email != "" {
 		s.mailer.EnqueueConfirmed(ConfirmedEmailData{
