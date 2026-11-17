@@ -1474,6 +1474,7 @@ export function RegisterSection() {
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
                 รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)
+                และยินยอมให้แสดง ชื่อ–นามสกุล, ชื่อเล่น, โรงเรียน และจังหวัด ของข้าพเจ้าบนหน้ารายชื่อผู้สมัครสาธารณะของเว็บไซต์ (/applicants)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
