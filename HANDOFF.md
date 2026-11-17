@@ -3,20 +3,20 @@
 
 > **Repository:** [https://github.com/numcayX2/Comcamp-25th.git](https://github.com/numcayX2/Comcamp-25th.git)  
 > **Host Organization:** สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (Computer Science Department, Faculty of Science, Maejo University)  
-> **Last Updated (อัปเดตล่าสุด):** 17 พฤศจิกายน 2569 (2026-11-17 · อัปเดตให้ตรงโค้ดจริง ณ commit `e2f92b2`)  
+> **Last Updated (อัปเดตล่าสุด):** 17 พฤศจิกายน 2569 (2026-11-17 · อัปเดตให้ตรงโค้ดจริงหลังนำ `ESP8266` 3D และ IoT Dashboard กลับมา)  
 > **Target Audience:** Frontend Engineers, Go Backend Engineers, Design/Marketing Teams, Camp Organizers (พี่ค่าย)
 
 ---
 
 ## 0. Executive Summary: What We Have Done & What Is Left (สรุปความคืบหน้าและงานที่เหลือ)
 
-> **สถานะล่าสุด ณ `2026-11-17` (commit `e2f92b2`):** ฟีเจอร์ฝั่งแอปพลิเคชันและฐานข้อมูล **พร้อมสำหรับการเปิดรับสมัครครบทั้งระบบแล้ว** ทั้งกำหนดการใหม่ (`18 พ.ย.–18 ธ.ค. 2569`), วันจัดค่าย (`5–7 ก.พ. 2570`), ค่าสมัคร (`1,200 บาท` พร้อมรายการสิทธิประโยชน์ครบ 7 อย่าง), ข้อมูลหอพัก (`เรือนพักสมาคมศิษย์เก่าแม่โจ้`), อาจารย์ผู้รับผิดชอบ (`ดร.ปวีณ เขื่อนแก้ว`), เบอร์ติดต่อพี่ค่าย, อีเมลแจ้งเตือน 2 ขั้นตอนผ่าน SMTP (`mailer.go`), การคืนที่นั่งอัตโนมัติเกิน 72 ชม. (+ 24 ชม. grace window), คอร์ส **Microcontroller (Arduino UNO R3)** ล้วน (ถอด `ESP8266` / `IoT` ออกแล้ว), และข้อความ `เลขบัตรประจำตัว 13 หลัก` ที่รองรับทั้ง **บัตรประชาชน** และ **บัตรชมพู**  
+> **สถานะล่าสุด ณ `2026-11-17`:** ฟีเจอร์ฝั่งแอปพลิเคชันและฐานข้อมูล **พร้อมสำหรับการเปิดรับสมัครครบทั้งระบบแล้ว** ทั้งกำหนดการใหม่ (`18 พ.ย.–18 ธ.ค. 2569`), วันจัดค่าย (`5–7 ก.พ. 2570`), ค่าสมัคร (`1,200 บาท` พร้อมรายการสิทธิประโยชน์ครบ 7 อย่าง), ข้อมูลหอพัก (`เรือนพักสมาคมศิษย์เก่าแม่โจ้`), อาจารย์ผู้รับผิดชอบ (`ดร.ปวีณ เขื่อนแก้ว`), เบอร์ติดต่อพี่ค่าย, อีเมลแจ้งเตือน 2 ขั้นตอนผ่าน SMTP (`mailer.go`), การคืนที่นั่งอัตโนมัติเกิน 72 ชม. (+ 24 ชม. grace window), คอร์ส **Microcontroller (`Arduino UNO R3` & `ESP8266`) with IoT & AI Dashboard**, และข้อความ `เลขบัตรประจำตัว 13 หลัก` ที่รองรับทั้ง **บัตรประชาชน** และ **บัตรชมพู**  
 > เป้าหมาย deploy จริงคือ **rootless Docker ที่พอร์ต 6000** บน `202.28.37.1` โดเมนทดสอบ `https://comcampdev.csmju.com` — รายละเอียดอยู่ใน [`deploy/FACULTY-ROOTLESS.md`](deploy/FACULTY-ROOTLESS.md)
 
-### ✅ สิ่งที่ดำเนินการเสร็จสิ้นแล้ว (COMPLETED — ตรงตามโค้ดจริงถึง `e2f92b2`)
+### ✅ สิ่งที่ดำเนินการเสร็จสิ้นแล้ว (COMPLETED)
 
 1. **หน้าโฮมเพจ Flagship (`HomePage.astro`, `HeroSection.astro`, `SiteNav.astro`, `public/theme/*`)**
-   - **Hero 3D (`HeroSection.astro` + `src/scripts/hero-3d.js`):** แสดงบอร์ด **Arduino UNO R3** ([`ArduinoR3.glb`](frontend/public/models/ArduinoR3.glb)) ใน WebGL canvas (`HERO_3D_CONFIG`) พร้อม self-hosted Draco decoder ([`frontend/public/draco/gltf/`](frontend/public/draco/gltf/draco_decoder.js)), `fitRig()` auto-framing, mouse parallax, drag/touch-to-rotate, keyboard arrow rotation, `IntersectionObserver` หยุด render เมื่อเลื่อนพ้นจอ และ `prefers-reduced-motion` static fallback *(ถอดโมเดล `esp8266.glb` และข้อความที่เกี่ยวกับ ESP8266 / Wi-Fi / Web Dashboard / IoT ออกทั้งหมด เหลือคอร์ส **Microcontroller (Arduino UNO R3)**)*
+   - **Hero 3D (`HeroSection.astro` + `src/scripts/hero-3d.js`):** แสดงบอร์ดคู่ **Arduino UNO R3 + ESP8266** ([`ArduinoR3.glb`](frontend/public/models/ArduinoR3.glb) และ [`esp8266.glb`](frontend/public/models/esp8266.glb)) ใน WebGL canvas (`HERO_3D_CONFIG`) พร้อม self-hosted Draco decoder ([`frontend/public/draco/gltf/`](frontend/public/draco/gltf/draco_decoder.js)), `fitRig()` auto-framing, mouse parallax, drag/touch-to-rotate, keyboard arrow rotation, `IntersectionObserver` หยุด render เมื่อเลื่อนพ้นจอ และ `prefers-reduced-motion` static fallback
    - **Hero Typography, Animations & Zero-CLS:** หัวข้อ `Comcamp 25th` ใช้ **`@fontsource/space-grotesk` (`700`)** พร้อม **ScrambleText** animation และคำบรรยาย `.hero__sub` ใช้ **GSAP `SplitText`** เลื่อนเข้าจากขวาไปซ้าย หลัง `document.fonts.ready`; โลโก้ใช้ `<picture>` เสิร์ฟ WebP ([`comcamp25-logo-sm.webp`](frontend/public/assets/logo/comcamp25-logo-sm.webp)) พร้อม PNG fallback; preloads `.woff2` 5 ไฟล์, defer การโหลด `hero-3d.js` หลัง `load` + `requestIdleCallback`, ล็อกขนาด `.hero__copy` / `.hero__stage-wrap` กัน CLS, และ pre-paint `.veil` bypass (`veil-skip`)
    - **Navbar & Mobile ToC Drawer (`SiteNav.astro` + `main.js`):**
      - บนหน้าแรกใช้ `.site-nav.is-home { position: fixed !important }` สูง `100svh` ที่ `y = 0` และเลื่อนหลบอัตโนมัติเมื่อเข้า `#gallery`
@@ -65,7 +65,7 @@
 
 ## 1. Project Overview (ภาพรวมโครงการ)
 
-**ComCamp #25 (ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25)** เป็นค่ายวิชาการเชิงปฏิบัติการ (Hands-on Workshop & Hackathon) ระยะเวลา **3 วัน 2 คืน** จัดโดยสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ เพื่อเปิดโอกาสให้นักเรียนระดับมัธยมศึกษาตอนปลายและอาชีวศึกษาได้เรียนรู้การเขียนโปรแกรม การต่อวงจรฮาร์ดแวร์ไมโครคอนโทรลเลอร์ (Microcontroller: **Arduino UNO R3**) และการพัฒนาโครงงานระบบอัตโนมัติเชิงปฏิบัติการ โดยมุ่งเน้นการลงมือปฏิบัติจริงโดยไม่จำเป็นต้องมีพื้นฐานมาก่อน
+**ComCamp #25 (ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25)** เป็นค่ายวิชาการเชิงปฏิบัติการ (Hands-on Workshop & Hackathon) ระยะเวลา **3 วัน 2 คืน** จัดโดยสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ เพื่อเปิดโอกาสให้นักเรียนระดับมัธยมศึกษาตอนปลายและอาชีวศึกษาได้เรียนรู้การเขียนโปรแกรม การต่อวงจรฮาร์ดแวร์ไมโครคอนโทรลเลอร์ (**Arduino UNO R3 & ESP8266**) การเชื่อมต่อระบบ **IoT & AI Dashboard** และการพัฒนาโครงงานระบบอัตโนมัติเชิงปฏิบัติการ โดยมุ่งเน้นการลงมือปฏิบัติจริงโดยไม่จำเป็นต้องมีพื้นฐานมาก่อน
 
 *(ดูเอกสารสถาปัตยกรรมระบบร่วมฉบับเต็มได้ที่ [`ComCamp.md`](ComCamp.md) และมาตรฐานวิศวกรรม Frontend/Security ได้ที่ [`AGENTS.md`](AGENTS.md))*
 
@@ -101,8 +101,8 @@ flowchart TD
         D1C --> D1D["4 Project Tracks Ideation<br/>+ Night Lab 1"]
     end
 
-    subgraph Day2["Day 2: Microcontroller & Hackathon Sprint"]
-        D2A["Arduino UNO R3 Sensor Integration<br/>(Ultrasonic, LDR, Buzzer & Actuators)"] --> D2B["Automated Control Logic<br/>& AI-Assisted Coding Workflow"]
+    subgraph Day2["Day 2: IoT Connectivity & Hackathon Sprint"]
+        D2A["ESP8266 Wi-Fi / SoftAP<br/>& Web Dashboard Integration"] --> D2B["Automated Control Logic<br/>& AI-Assisted Coding Workflow"]
         D2B --> D2C["Hackathon Project Sprint 1 & 2<br/>(Building Track Prototype)"]
         D2C --> D2D["Night Lab 2 & Prototype Testing"]
     end
@@ -183,7 +183,7 @@ Comcamp-site/
     │   │   ├── gallery/            # รูปสำรอง g01.jpg–g43.jpg + WebP (Ignored ใน Git, เสิร์ฟหลักจาก CDN)
     │   │   └── logo/               # comcamp25-logo-sm.webp, comcamp25-logo-sm.png, comcamp25-logo.png
     │   ├── draco/gltf/             # Self-hosted Draco decoder (draco_decoder.{js,wasm}, draco_wasm_wrapper.js)
-    │   ├── models/                 # โมเดล 3D: ArduinoR3.glb
+    │   ├── models/                 # โมเดล 3D: ArduinoR3.glb และ esp8266.glb
     │   └── theme/
     │       ├── styles.css          # Master palette tokens, Hero Swiss tokens, Base & Memory Tunnel CSS
     │       ├── page.css            # Section 02 & Intro veil preloader styles
@@ -218,7 +218,7 @@ Comcamp-site/
         │   ├── public-settings-cache.ts # Shared 1.5s burst cache สำหรับ GET /api/settings/public
         │   └── slip-upload.ts      # Client WebP/JPEG shrink (<=1600px), EXIF strip, Error message mapper
         ├── scripts/
-        │   └── hero-3d.js          # Three.js Arduino UNO R3 stage (loaded lazily on idle)
+        │   └── hero-3d.js          # Three.js dual-board stage (Arduino UNO R3 + ESP8266, loaded lazily on idle)
         └── styles/
             ├── fonts.css           # Self-hosted IBM Plex Sans Thai (400/600/700) & IBM Plex Mono (500/600/700)
             ├── global.css          # Tailwind v4 + Warm Alabaster theme tokens + Dark mode select fixes
@@ -231,7 +231,7 @@ Comcamp-site/
 
 | Route | Main Files | Description | Current Status |
 |---|---|---|---|
-| **`/`** | [`index.astro`](frontend/src/pages/index.astro)<br/>[`HomePage.astro`](frontend/src/components/HomePage.astro)<br/>[`HeroSection.astro`](frontend/src/components/HeroSection.astro)<br/>[`SiteNav.astro`](frontend/src/components/SiteNav.astro)<br/>[`public/theme/*`](frontend/public/theme/editorial.css) | **Flagship Homepage, 3D Hero & Memory Tunnel Gallery**<br/>Hero `100svh` พร้อมบอร์ด Arduino UNO R3 (ถอด ESP8266/IoT ออก), Pre-open `/register` gating (`18 พ.ย.–18 ธ.ค.`), วันจัดค่าย `5–7 ก.พ. 2570`, ค่าสมัคร `1,200` บาท, เช็กลิสต์เตรียมตัว (รองรับบัตรประชาชน/บัตรชมพู), อาจารย์ & เบอร์พี่ค่าย, และ Memory Tunnel 43 รูป CDN | 🟢 **Production-Ready** |
+| **`/`** | [`index.astro`](frontend/src/pages/index.astro)<br/>[`HomePage.astro`](frontend/src/components/HomePage.astro)<br/>[`HeroSection.astro`](frontend/src/components/HeroSection.astro)<br/>[`SiteNav.astro`](frontend/src/components/SiteNav.astro)<br/>[`public/theme/*`](frontend/public/theme/editorial.css) | **Flagship Homepage, 3D Hero & Memory Tunnel Gallery**<br/>Hero `100svh` พร้อมบอร์ดคู่ Arduino UNO R3 + ESP8266 และเนื้อหา IoT & Dashboard, Pre-open `/register` gating (`18 พ.ย.–18 ธ.ค.`), วันจัดค่าย `5–7 ก.พ. 2570`, ค่าสมัคร `1,200` บาท, เช็กลิสต์เตรียมตัว (รองรับบัตรประชาชน/บัตรชมพู), อาจารย์ & เบอร์พี่ค่าย, และ Memory Tunnel 43 รูป CDN | 🟢 **Production-Ready** |
 | **`/register`** | [`register.astro`](frontend/src/pages/register.astro)<br/>[`RegisterSection.tsx`](frontend/src/components/RegisterSection.tsx)<br/>[`register/*`](frontend/src/components/register/model.ts) | **Registration Wizard (5 Steps + Receipt)**<br/>Pre-Open Gate, กล่องเตือน 4 ข้อ Step 01, เลขบัตรประจำตัว 13 หลัก (บัตรประชาชน/บัตรชมพู Mod-11), อีเมลบังคับ + ผู้ปกครอง, ไซส์ `SSS–4XL`, quick-options อาหาร (`ไม่ทานหมู`/`ฮาลาล`), ส่งสลิปทันทีใน Step 06 (ไม่ต้องกรอก 4 หลักซ้ำ) + แสดง QR/ปุ่ม LINE OpenChat ทันที | 🟢 **Production-Ready** |
 | **`/status`** | [`status.astro`](frontend/src/pages/status.astro)<br/>[`StatusSection.tsx`](frontend/src/components/StatusSection.tsx)<br/>[`slip/*`](frontend/src/components/slip/SlipUploadPanel.tsx)<br/>[`status.css`](frontend/src/styles/status.css) | **Status Lookup, Self-Edit, Withdraw & Slip Upload**<br/>ค้นหาด้วยเลขบัตรประจำตัว 13 หลัก / เบอร์โทร / `CC25-XXXXXX`, countdown กำหนดโอน 72 ชม., ยืนยันตัวตน 4 ตัวท้าย, ดูหมายเหตุปฏิเสธสลิป (`adminNote`) & ส่งสลิปใหม่ (WebP + EXIF strip), QR LINE OpenChat, แก้ไขข้อมูลทั่วไป และสละสิทธิ์ออนไลน์ | 🟢 **Production-Ready** |
 | **`/admin`** | [`admin.astro`](frontend/src/pages/admin.astro)<br/>[`AdminSection.tsx`](frontend/src/components/AdminSection.tsx)<br/>[`AdminSettingsPanel.tsx`](frontend/src/components/AdminSettingsPanel.tsx)<br/>[`AdminProfileEditor.tsx`](frontend/src/components/AdminProfileEditor.tsx) | **Staff Dashboard (Single-Role `admin` JWT)**<br/>1-click approve / re-verify (`APPROVED <-> REJECTED`) / 2-step reject (`paymentId` pinned), Authorized Blob slip viewer + Lightbox, Detail & Profile Editor (รวมผู้ปกครอง/`allergies`/`medicalConditions`), Settings Panel (`1,200` บาท + วันปิดรับ), และ CSV export | 🟢 **Production-Ready** |

@@ -49,7 +49,7 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 		School:     "โรงเรียนวิทยาการ ๒๕",
 		Grade:      "ม.5",
 		ShirtSize:  "L",
-		Motivation: "อยากเขียนโค้ด Arduino ๑๐๐%",
+		Motivation: "อยากเขียนโค้ด IoT ๑๐๐%",
 	})
 	rec := app.do(t, http.MethodPost, "/api/applications", bytes.NewReader(submitPayload), map[string]string{
 		"X-Idempotency-Key": idempKey,
@@ -72,7 +72,7 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 		School:     "โรงเรียนวิทยาการ ๒๕",
 		Grade:      "ม.5",
 		ShirtSize:  "L",
-		Motivation: "อยากเขียนโค้ด Arduino ๑๐๐%",
+		Motivation: "อยากเขียนโค้ด IoT ๑๐๐%",
 	})
 	replayRec := app.do(t, http.MethodPost, "/api/applications", bytes.NewReader(retryPayload), map[string]string{
 		"X-Idempotency-Key": idempKey,
@@ -92,7 +92,7 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 		School:     "โรงเรียนแม่โจ้",
 		Grade:      "ม.5",
 		ShirtSize:  "M",
-		Motivation: "สนใจ Microcontroller",
+		Motivation: "สนใจ IoT",
 	})
 	conflictRec := app.do(t, http.MethodPost, "/api/applications", bytes.NewReader(conflictPayload), map[string]string{
 		"X-Idempotency-Key": idempKey,
@@ -104,7 +104,7 @@ func TestThaiNumeralNormalization_EndToEnd(t *testing.T) {
 	if stored.NationalID != nidASCII || stored.Phone != phoneASCII {
 		t.Fatalf("stored identifiers = (%q, %q), want (%q, %q)", stored.NationalID, stored.Phone, nidASCII, phoneASCII)
 	}
-	if stored.FullName != "สมชาย รุ่นที่ ๒๕" || stored.School != "โรงเรียนวิทยาการ ๒๕" || stored.Motivation != "อยากเขียนโค้ด Arduino ๑๐๐%" {
+	if stored.FullName != "สมชาย รุ่นที่ ๒๕" || stored.School != "โรงเรียนวิทยาการ ๒๕" || stored.Motivation != "อยากเขียนโค้ด IoT ๑๐๐%" {
 		t.Fatalf("free-text fields were altered: %+v", stored)
 	}
 

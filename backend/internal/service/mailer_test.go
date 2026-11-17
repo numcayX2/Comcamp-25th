@@ -103,7 +103,7 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
 		Grade:      "ม.5",
 		ShirtSize:  "XL",
-		Motivation: "อยากทดลองทำโปรเจกต์ Arduino",
+		Motivation: "อยากทดลองทำโปรเจกต์ IoT",
 	}
 	idemKey := uuid.NewString()
 

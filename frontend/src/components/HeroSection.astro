@@ -44,7 +44,7 @@ const {
       </h1>
 
       <p class="hero__sub">
-        3 วัน 2 คืน ปูพื้นฐานไมโครคอนโทรลเลอร์ (Arduino UNO R3) ลงมือต่อวงจรจริง อ่านค่าเซนเซอร์และควบคุมการทำงานของอุปกรณ์ — เริ่มจากศูนย์ได้ มี AI ช่วยอธิบายและดีบักโค้ด
+        3 วัน 2 คืน ลงมือต่อวงจรจริง อ่านค่าเซนเซอร์ Ultrasonic และ LDR แล้วสร้าง Web Dashboard สั่งงานผ่านสมาร์ตโฟน — เริ่มจากศูนย์ได้ มี AI ช่วยขึ้นโครงและดีบักโค้ด
       </p>
       <p class="hero__fee">
         <span class="hero__fee-amount"><span class="font-mono" data-camp-fee-num>1,200</span> บาท</span>
@@ -84,15 +84,17 @@ const {
           id="heroStageCanvas"
           role="img"
           tabindex="0"
-          aria-label="โมเดล 3 มิติของบอร์ด Arduino UNO R3 ใช้ปุ่มลูกศรซ้ายขวาเพื่อหมุนดูรอบตัว"
+          aria-label="โมเดล 3 มิติของบอร์ด ESP8266 และ Arduino UNO R3 ใช้ปุ่มลูกศรซ้ายขวาเพื่อหมุนดูรอบตัว"
         ></canvas>
 
         <p class="hero-stage__loading" aria-live="polite">Loading 3D…</p>
 
-        <!-- Fallback slot: shown only if WebGL is unavailable or ArduinoR3.glb fails. -->
+        <!-- Fallback slot: shown only if WebGL is unavailable or both .glb files fail. -->
         <p class="hero-stage__fallback">
           <span class="hero-stage__fallback-tag">HARDWARE</span>
           <span class="hero-stage__fallback-name">Arduino UNO R3</span>
+          <span class="hero-stage__fallback-plus" aria-hidden="true">+</span>
+          <span class="hero-stage__fallback-name">ESP8266 NodeMCU</span>
         </p>
       </div>
     </div>

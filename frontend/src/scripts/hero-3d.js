@@ -1,6 +1,6 @@
 /**
  * hero-3d.js — ComCamp #25 hero stage
- * Renders the real ArduinoR3.glb board in one transparent WebGL canvas (#heroStageCanvas).
+ * Renders BOTH real .glb boards in one transparent WebGL canvas (#heroStageCanvas).
  * Decodes Draco-compressed .glb meshes using self-hosted decoders at /draco/gltf/.
  */
 import * as THREE from 'three';
@@ -22,12 +22,20 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
         HERO_3D.config.arduino.rotation.x = 0.8
    ========================================================================== */
 export const HERO_3D_CONFIG = {
+  esp8266: {
+    url: '/models/esp8266.glb',
+    targetSize: 1.85,
+    position: { x: -2.05, y: -0.12, z: 0.35 },
+    rotation: { x: 0.55, y: -0.45, z: -0.62 }, // Steeper downward slope forming left wing of V-shape
+    shadowOffset: { x: -2.05, y: -1.22, z: 0.25, scaleX: 1.35, scaleZ: 0.65 },
+    float: { amp: 0.07, speed: 1.15, phase: 1.8 },
+  },
   arduino: {
     url: '/models/ArduinoR3.glb',
     targetSize: 3.15,
-    position: { x: 0, y: 0.04, z: 0 },
-    rotation: { x: 0.58, y: -0.25, z: 0.08 },
-    shadowOffset: { x: 0, y: -1.15, z: 0, scaleX: 2.3, scaleZ: 1.0 },
+    position: { x: 1.0, y: 0.16, z: 0.0 },
+    rotation: { x: 0.62, y: 0.52, z: 0.56 }, // Steeper upward slope forming right wing of V-shape
+    shadowOffset: { x: 1.0, y: -1.12, z: -0.10, scaleX: 2.2, scaleZ: 0.95 },
     float: { amp: 0.09, speed: 0.85, phase: 0 },
   },
 };
@@ -262,7 +270,7 @@ function init(stage, canvas) {
   });
 
   /* ==========================================================================
-     5. LOAD .glb MODEL
+     5. LOAD BOTH .glb MODELS
      ========================================================================== */
   const loader = new GLTFLoader();
   const draco = new DRACOLoader().setDecoderPath('/draco/gltf/').preload();
@@ -280,7 +288,7 @@ function init(stage, canvas) {
 
   Promise.allSettled(
     [...items.entries()].map(async ([name, it]) => {
-      const gltf = await loadGlb(it.cfg.url); // ← '/models/ArduinoR3.glb'
+      const gltf = await loadGlb(it.cfg.url); // ← '/models/esp8266.glb' and '/models/ArduinoR3.glb'
       const holder = normalizeGlbModel(gltf, it.cfg.targetSize);
       holder.traverse((o) => {
         if (o.isMesh && o.material?.map) o.material.map.anisotropy = maxAniso;
@@ -407,16 +415,16 @@ function init(stage, canvas) {
     if (ready && !raf) renderNow();
   }
 
-  /* Auto-frame: scale + centre the rig so the projected outline of the ArduinoR3.glb board
+  /* Auto-frame: scale + centre the rig so the projected outline of BOTH boards
      (rest pose) sits inside FIT.margin of the canvas. Nothing is ever hard-cropped
-     by the canvas edge, at any stage aspect. Uses the board's oriented bounding
+     by the canvas edge, at any stage aspect. Uses each board's oriented bounding
      box, which is tight for flat PCBs. */
   // margin: fraction of the half-frame the composition may use (headroom for float + parallax).
   // shadowReach: the soft ellipse is visually ~this fraction of its plane, so only that part counts.
   const FIT = { margin: 0.84, maxScale: 1.25, passes: 4, shadowReach: 0.62 };
   const _v = new THREE.Vector3();
 
-  /** Projected NDC bounds of the ArduinoR3.glb board (oriented box) + its floor shadow, in the current pose. */
+  /** Projected NDC bounds of both boards (oriented boxes) + their floor shadows, in the current pose. */
   function measure(live) {
     rig.updateMatrixWorld(true);
     const b = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };

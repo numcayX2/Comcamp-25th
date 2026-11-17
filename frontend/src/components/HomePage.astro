@@ -19,11 +19,11 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ComCamp #25 — ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 · CS MJU</title>
-<meta name="description" content="ComCamp #25 ค่าย Microcontroller (Arduino UNO R3) สำหรับ ม.4–ม.6 และ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
+<meta name="description" content="ComCamp #25 ค่าย Microcontroller (ESP8266 & Arduino UNO R3) with IoT & AI Dashboard สำหรับ ม.4–ม.6 และ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="th_TH">
 <meta property="og:title" content="ComCamp #25 — ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 · CS MJU">
-<meta property="og:description" content="ComCamp #25 ค่าย Microcontroller (Arduino UNO R3) สำหรับ ม.4–ม.6 และ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
+<meta property="og:description" content="ComCamp #25 ค่าย Microcontroller (ESP8266 & Arduino UNO R3) with IoT & AI Dashboard สำหรับ ม.4–ม.6 และ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
 <meta name="theme-color" content="#F9F8F4">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -156,7 +156,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
   <SiteNav active="home" isHome={true} />
 
   <main id="main">
-    <!-- Section 01: Hero — 3D Hardware Stage (Arduino UNO R3) -->
+    <!-- Section 01: Hero — 3D Hardware Stage (Arduino UNO R3 & ESP8266) -->
     <HeroSection titleStyle="pixel" registerHref="/register" statusHref="/status" />
 
     <!-- Section 02: What you'll actually do — editorial chapter list -->
@@ -165,7 +165,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         <header class="exp-intro">
           <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">ประสบการณ์ในค่าย · <span class="ed-en">LAB 01–04</span></span></p>
           <h2 id="experience-title" class="exp-title">สิ่งที่จะได้ทำจริงในค่าย</h2>
-          <p class="exp-lead">เรียนรู้จากการลงมือปฏิบัติจริง ตั้งแต่การจำลองวงจร การเขียนโค้ดภาษา C/C++ ไปจนถึงการต่อและควบคุมฮาร์ดแวร์ด้วยไมโครคอนโทรลเลอร์ Arduino UNO R3</p>
+          <p class="exp-lead">เรียนรู้จากการลงมือปฏิบัติจริง ตั้งแต่การต่อวงจรและควบคุมฮาร์ดแวร์ระดับไมโครคอนโทรลเลอร์ ไปจนถึงการสร้างเว็บอินเทอร์เฟซที่สั่งงานผ่านสมาร์ตโฟนได้โดยตรง</p>
           <p class="ed-aside-meta"><span class="ed-en">HANDS-ON CURRICULUM</span> · เน้นปฏิบัติจริงทุกหัวข้อพร้อมชุดบอร์ดประจำตัว</p>
         </header>
 
@@ -173,9 +173,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <li class="exp-item">
             <span class="exp-num" aria-hidden="true">01</span>
             <div class="exp-body">
-              <h3 class="exp-item-title">พื้นฐานไมโครคอนโทรลเลอร์และการเขียนโค้ด</h3>
-              <p class="exp-item-text">ทำความเข้าใจโครงสร้างบอร์ด Arduino UNO R3 ขาสัญญาณดิจิทัล-แอนะล็อก และเขียนโค้ดควบคุมอุปกรณ์พื้นฐาน (Input/Output)</p>
-              <p class="exp-spec"><span class="exp-key">CORE</span><span class="exp-val">Digital / Analog I/O</span></p>
+              <h3 class="exp-item-title">ปล่อยสัญญาณ Wi-Fi จากบอร์ด</h3>
+              <p class="exp-item-text">ทดลองตั้งค่า ESP8266 ในโหมด Access Point (AP Mode) เพื่อให้สมาร์ตโฟนเกาะสัญญาณและส่งคำสั่งควบคุมอุปกรณ์ได้โดยตรงไม่ต้องพึ่งเราเตอร์</p>
+              <p class="exp-spec"><span class="exp-key">MODE</span><span class="exp-val">SoftAP / 192.168.4.1</span></p>
             </div>
           </li>
 
@@ -191,9 +191,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <li class="exp-item">
             <span class="exp-num" aria-hidden="true">03</span>
             <div class="exp-body">
-              <h3 class="exp-item-title">ประมวลผลและสั่งงานอุปกรณ์อัตโนมัติ</h3>
-              <p class="exp-item-text">นำค่าที่อ่านได้จากเซนเซอร์มาสร้างเงื่อนไขตรรกะและควบคุมการทำงานของอุปกรณ์เอาต์พุตให้ตอบสนองแบบเรียลไทม์</p>
-              <p class="exp-spec"><span class="exp-key">LOGIC</span><span class="exp-val">Control &amp; Automation</span></p>
+              <h3 class="exp-item-title">ควบคุมฮาร์ดแวร์ผ่านหน้าเว็บ</h3>
+              <p class="exp-item-text">เขียนโปรแกรมสร้าง Embedded Web Server บนตัวชิป และเปิดหน้า Mobile Dashboard เพื่อกดสวิตช์สั่งงานฮาร์ดแวร์ผ่านเครือข่ายท้องถิ่นทันที</p>
+              <p class="exp-spec"><span class="exp-key">PROTOCOL</span><span class="exp-val">HTTP Server / Local LAN</span></p>
             </div>
           </li>
 
@@ -201,7 +201,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <span class="exp-num" aria-hidden="true">04</span>
             <div class="exp-body">
               <h3 class="exp-item-title">เริ่มต้นง่ายแม้ไม่มีพื้นฐาน</h3>
-              <p class="exp-item-text">ฝึกจำลองการต่อวงจรบน Autodesk Tinkercad Circuits เพื่อป้องกันการลัดวงจร และเรียนรู้วิธีใช้ AI ช่วยอธิบายโค้ดและดีบักโปรแกรมอย่างเป็นระบบ</p>
+              <p class="exp-item-text">ฝึกจำลองการต่อวงจรบน Autodesk Tinkercad Circuits เพื่อป้องกันการลัดวงจร และเรียนรู้วิธีใช้ AI ช่วยขึ้นโครงสร้าง Web Interface อย่างเป็นระบบ</p>
               <p class="exp-spec"><span class="exp-key">TOOLING</span><span class="exp-val">Tinkercad / Code Assist</span></p>
             </div>
           </li>
@@ -244,7 +244,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="card ed-cell--split">
               <div class="card-top"><span class="bento-tag">02 · SIMULATION &amp; KIT</span></div>
               <h3>อุปกรณ์การเรียนและฝึกปฏิบัติ</h3>
-              <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
+              <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> และ <span class="font-mono tabular-nums">ESP8266</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
@@ -311,7 +311,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                 <div class="ed-bring-col">
                   <h4 class="ed-bring-col__title">3. อุปกรณ์อิเล็กทรอนิกส์</h4>
                   <ul class="ed-bring-list">
-                    <li>สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ติดต่อประสานงานและเปิดดูเอกสารกิจกรรมในค่าย)</li>
+                    <li>สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อม Wi-Fi บอร์ด ESP8266)</li>
                     <li>โน้ตบุ๊กส่วนตัวไม่บังคับ (มีเครื่อง PC ห้องปฏิบัติการและบอร์ดฝึกปฏิบัติครบทุกคน)</li>
                   </ul>
                 </div>
@@ -388,7 +388,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         <div class="section-head">
           <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">เส้นทางเรียนรู้ · <span class="ed-en">JOURNEY</span></span></p>
           <h2 id="journey-title" class="section-title"><span class="font-mono tabular-nums">4</span> ขั้นตอนตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน</h2>
-          <p class="body">จากการจำลองวงจรและพื้นฐาน Input → Process → Output สู่การต่อฮาร์ดแวร์จริงด้วย Arduino UNO R3 และนำเสนอโปรเจกต์บนเวที</p>
+          <p class="body">จากการจำลองวงจรและพื้นฐาน Input → Process → Output สู่การต่อฮาร์ดแวร์จริง เชื่อมต่อ IoT และนำเสนอโปรเจกต์บนเวที</p>
           <p class="ed-aside-meta"><span class="ed-en">STEP 01 → 04</span> · ปูพื้นฐานจนสร้างผลงานจริงพร้อมเกียรติบัตร</p>
         </div>
         <div class="ed-main">
@@ -419,11 +419,11 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="step-big-num" aria-hidden="true">03</div>
               <div class="step-content">
                 <div class="step-meta">
-                  <div class="step-num">Step 03 · Control &amp; Integration</div>
+                  <div class="step-num">Step 03 · Wireless IoT</div>
                   <div class="day">Day 2</div>
                 </div>
-                <h3>ประยุกต์ควบคุมและต่อยอดวงจร</h3>
-                <p>เชื่อมเซนเซอร์หลายตัวเข้ากับตรรกะโปรแกรมบนบอร์ด Arduino UNO R3 เพื่อทดสอบการทำงานก่อนขึ้นสร้างชิ้นงานจริง</p>
+                <h3>เชื่อม ESP8266 และเว็บควบคุม</h3>
+                <p>ตั้งค่า Wi-Fi AP Mode สร้าง Local Web Server บน IP <span class="font-mono tabular-nums">192.168.4.1</span> และออกแบบ Mobile Dashboard เพื่อสั่งงานฮาร์ดแวร์ผ่านสมาร์ตโฟน</p>
               </div>
             </div>
             <div role="listitem" class="step">
@@ -584,7 +584,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">02</span><span class="faq-q">ค่ายใช้บอร์ดและอุปกรณ์อะไรบ้าง</span></span></summary>
-            <div class="faq-body">ใช้บอร์ด Arduino UNO R3 ร่วมกับเซนเซอร์และอุปกรณ์ฝึกปฏิบัติ เช่น Ultrasonic HC-SR04, LDR และ Active Buzzer ตามกิจกรรมในค่าย</div>
+            <div class="faq-body">ใช้ Arduino UNO R3 และ ESP8266 NodeMCU ร่วมกับเซนเซอร์และอุปกรณ์ฝึกปฏิบัติ เช่น Ultrasonic HC-SR04, LDR และ Active Buzzer ตามกิจกรรมในค่าย</div>
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">03</span><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>

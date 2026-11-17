@@ -122,7 +122,7 @@ func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 			t.Fatalf("q=%s: expected 200, got %d", q, rec.Code)
 		}
 		body := rec.Body.String()
-		for _, secret := range []string{e2eNationalID, "0819876543", "somkiat@school.ac.th", "Arduino"} {
+		for _, secret := range []string{e2eNationalID, "0819876543", "somkiat@school.ac.th", "ESP8266"} {
 			if strings.Contains(body, secret) {
 				t.Errorf("q=%s: public response contains %q: %s", q, secret, body)
 			}

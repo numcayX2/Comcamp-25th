@@ -191,7 +191,7 @@ func applicationJSON(nationalID, phone, email string) *bytes.Buffer {
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
 		Grade:      "ม.5",
 		ShirtSize:  "XL",
-		Motivation: "อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด Arduino ทำระบบอัตโนมัติ",
+		Motivation: "อยากเรียนรู้การต่อวงจรเซนเซอร์และบอร์ด ESP8266 ทำ AI Dashboard",
 	})
 	return bytes.NewBuffer(body)
 }

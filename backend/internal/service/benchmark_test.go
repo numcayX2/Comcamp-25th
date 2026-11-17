@@ -30,7 +30,7 @@ func BenchmarkApplicantService_Submit(b *testing.B) {
 			School:     "โรงเรียนแม่โจ้วิทยาคม",
 			Grade:      "ม.5",
 			ShirtSize:  "L",
-			Motivation: "อยากเรียนรู้ Microcontroller และ Arduino",
+			Motivation: "อยากเรียนรู้ IoT และ Arduino",
 		}
 		_, err := svc.Submit(ctx, req)
 		if err != nil && err != service.ErrQuotaExceeded {

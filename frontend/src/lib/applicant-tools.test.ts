@@ -22,7 +22,7 @@ function sampleApplication(overrides: Partial<ApplicantRecord> = {}): ApplicantR
     grade: 'ม.5',
     province: 'เชียงใหม่',
     shirtSize: 'L',
-    motivation: 'อยากเข้าค่าย\nเพราะสนใจไมโครคอนโทรลเลอร์',
+    motivation: 'อยากเข้าค่าย\nเพราะสนใจ IoT',
     allergies: '',
     medicalConditions: '',
     status: 'PENDING',
@@ -59,7 +59,7 @@ test('F-04 sanitizeCsvCell neutralizes dangerous formula prefixes including lead
 });
 
 test('F-04 sanitizeCsvCell & csvField keep safe free-text and multiline Thai text intact', () => {
-  const multiline = 'อยากเข้าค่าย\nเพราะสนใจไมโครคอนโทรลเลอร์';
+  const multiline = 'อยากเข้าค่าย\nเพราะสนใจ IoT';
   assert.equal(sanitizeCsvCell(multiline), multiline);
   assert.equal(csvField(multiline), `"${multiline}"`);
 
@@ -76,7 +76,7 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
       nickname: ' =1+1',
       school: '\t+1+1',
       province: '\u200B@SUM(A1)',
-      motivation: 'อยากเข้าค่าย\nเพราะสนใจไมโครคอนโทรลเลอร์',
+      motivation: 'อยากเข้าค่าย\nเพราะสนใจ IoT',
       allergies: '=cmd|calc',
       medicalConditions: 'หอบหืด\nพกยาพ่น',
     }),
@@ -87,7 +87,7 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
   assert.ok(csv.includes(",' =1+1,"));
   assert.ok(csv.includes(",'\t+1+1,"));
   assert.ok(csv.includes(",'@SUM(A1),"));
-  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจไมโครคอนโทรลเลอร์",\'=cmd|calc,"หอบหืด\nพกยาพ่น"\r\n'));
+  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจ IoT",\'=cmd|calc,"หอบหืด\nพกยาพ่น"\r\n'));
 });
 
 test('F-01 verifyPaymentSlip rejects missing or malformed paymentId before issuing a request', async () => {

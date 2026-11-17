@@ -113,7 +113,7 @@ func TestPostgres_FullIntegration(t *testing.T) {
 	applicantID := uuid.New()
 
 	t.Run("3. Applicant Insert and Query", func(t *testing.T) {
-		mot := "อยากเรียนรู้ Hardware Microcontroller และ Arduino UNO R3"
+		mot := "อยากเรียนรู้ Hardware IoT และ AI Dashboard"
 		applicant := &domain.Applicant{
 			ID:                  applicantID,
 			ApplicationNo:       testAppNo,

@@ -36,7 +36,7 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
 		Grade:      "ม.5",
 		ShirtSize:  "L",
-		Motivation: "อยากเรียนรู้ Microcontroller และเขียนโปรแกรม Arduino",
+		Motivation: "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino",
 	}
 
 	res, err := svc.Submit(context.Background(), req)
