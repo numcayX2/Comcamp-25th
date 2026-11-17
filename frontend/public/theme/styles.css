@@ -394,7 +394,8 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 .bd-cross::before { left: 50%; top: 0; width: 1px; height: 100%; }
 .bd-cross::after  { top: 50%; left: 0; height: 1px; width: 100%; }
 
-.hero-stage { position: absolute; inset: 0; z-index: 2; }
+/* Longhand offsets (not `inset`): iOS <= 14.4 WebViews collapse `inset`-only layers to 0x0. */
+.hero-stage { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2; }
 
 .hero-stage canvas {
   display: block;
@@ -411,7 +412,10 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 /* Loading + fallback states */
 .hero-stage__loading {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: none;
   place-items: center;
   margin: 0;
@@ -426,7 +430,10 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 .hero-stage__fallback {
   display: none;
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
   flex-direction: column;
   align-items: center;
