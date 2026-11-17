@@ -156,9 +156,9 @@
 .veil-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .veil-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--rule)}
 .veil-brand{font-weight:700;font-size:1rem}
-.veil-ed{font-size:.75rem;color:var(--ink-3);letter-spacing:.04em}
+.veil-ed{font-size:.75rem;color:var(--ink-3);letter-spacing:0}
 .veil-center{position:relative;z-index:1;margin:auto 0;padding:32px 0}
-.veil-kicker{margin:0 0 12px;font-size:.75rem;color:var(--ink-3);letter-spacing:.04em;animation:veil-fade .7s ease both}
+.veil-kicker{margin:0 0 12px;font-size:.8125rem;color:var(--ink-3);letter-spacing:0;animation:veil-fade .7s ease both}
 .veil-display{margin:0;font-weight:700;font-size:clamp(3.5rem,15vw,8.5rem);line-height:.92;letter-spacing:-.03em}
 .veil-display .vl{display:block;overflow:hidden}
 .veil-display .vl i{display:block;font-style:normal;animation:veil-rise .9s cubic-bezier(.22,1,.36,1) both}

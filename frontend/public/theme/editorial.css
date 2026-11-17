@@ -1468,3 +1468,26 @@ html[data-theme="dark"] .ed-sec details.faq-item summary::after {
 
 /* Phone numbers never split at their hyphens. */
 a[href^="tel:"] { white-space: nowrap; }
+
+
+/* ==========================================================================
+   Thai-first labels (AGENTS.md 5.3): Thai text must never be mono, uppercase
+   or letter-spaced. Placed last (!important) so it beats the English-era
+   label rules above (.bento-tag, .exp-key, .step-num, ...).
+   ========================================================================== */
+.th-label {
+  font-family: var(--font-thai) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  line-height: 1.5;
+}
+.exp-spec .exp-key.th-label,
+.ed-metric__label.th-label,
+.ed-sec .bento .bento-tag.th-label,
+.ed-sec .step-num.th-label,
+.ed-photo-card__idx.th-label,
+.ed-photo-strip__kicker.th-label,
+.ed-cta-band__eyebrow.th-label,
+.bento-feature__meta.th-label {
+  font-size: 0.8125rem;
+}

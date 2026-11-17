@@ -195,7 +195,7 @@
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'FAILED') {
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
@@ -211,7 +211,7 @@
         secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
         secondary.setAttribute('href', '#retry-status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'OPEN') {
       ctaText = 'สมัครค่าย';
       ctaHref = registerHref;
@@ -227,7 +227,7 @@
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served)';
+      if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์';
     } else if (s === 'ALMOST_FULL') {
       ctaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
       ctaHref = registerHref;
@@ -243,7 +243,7 @@
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'FULL') {
       // /register is locked once the camp is full, so the CTA leads to the status page instead.
       ctaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';

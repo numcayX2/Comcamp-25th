@@ -77,10 +77,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
   <div class="veil" id="veil" aria-hidden="true">
     <div class="veil-top">
       <span class="veil-brand">ComCamp <span class="veil-mono">#25</span></span>
-      <span class="veil-ed veil-mono">25TH EDITION</span>
+      <span class="veil-ed">ครั้งที่ <span class="veil-mono">25</span></span>
     </div>
     <div class="veil-center">
-      <p class="veil-kicker veil-mono">COMPUTER SCIENCE · MAEJO UNIVERSITY</p>
+      <p class="veil-kicker">สาขาวิชาวิทยาการคอมพิวเตอร์ · มหาวิทยาลัยแม่โจ้</p>
       <p class="veil-display"><span class="vl"><i>Comcamp</i></span><span class="vl"><i class="ol">25th</i></span></p>
       <p class="veil-thai">ค่ายยุวชนคอมพิวเตอร์ <span class="nowrap">ครั้งที่ <span class="veil-mono">25</span></span></p>
       <p class="veil-sub"><span class="nowrap">ลงทะเบียนวันที่ <span class="veil-mono" data-open-date-dot>19.11.69</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
@@ -163,10 +163,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section id="experience" class="ed-sec" aria-labelledby="experience-title">
       <div class="wrap exp">
         <header class="exp-intro">
-          <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">ประสบการณ์ในค่าย · <span class="ed-en">LAB 01–04</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">ประสบการณ์ในค่าย · <span class="font-mono tabular-nums">4</span> ปฏิบัติการ</span></p>
           <h2 id="experience-title" class="exp-title">สิ่งที่จะได้ทำจริงในค่าย</h2>
           <p class="exp-lead">เรียนรู้จากการลงมือปฏิบัติจริง ตั้งแต่การต่อวงจรและควบคุมฮาร์ดแวร์ระดับไมโครคอนโทรลเลอร์ ไปจนถึงการสร้างเว็บอินเทอร์เฟซที่สั่งงานผ่านสมาร์ตโฟนได้โดยตรง</p>
-          <p class="ed-aside-meta"><span class="ed-en">HANDS-ON CURRICULUM</span> · เน้นปฏิบัติจริงทุกหัวข้อพร้อมชุดบอร์ดประจำตัว</p>
+          <p class="ed-aside-meta">เน้นปฏิบัติจริงทุกหัวข้อพร้อมชุดบอร์ดประจำตัว</p>
         </header>
 
         <ol class="exp-list">
@@ -175,7 +175,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div class="exp-body">
               <h3 class="exp-item-title">ปล่อยสัญญาณ Wi-Fi จากบอร์ด</h3>
               <p class="exp-item-text">ทดลองตั้งค่า ESP8266 ในโหมด Access Point (AP Mode) เพื่อให้สมาร์ตโฟนเกาะสัญญาณและส่งคำสั่งควบคุมอุปกรณ์ได้โดยตรงไม่ต้องพึ่งเราเตอร์</p>
-              <p class="exp-spec"><span class="exp-key">MODE</span><span class="exp-val">SoftAP / 192.168.4.1</span></p>
+              <p class="exp-spec"><span class="exp-key th-label">โหมด</span><span class="exp-val">SoftAP / 192.168.4.1</span></p>
             </div>
           </li>
 
@@ -184,7 +184,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div class="exp-body">
               <h3 class="exp-item-title">ประกอบวงจรและอ่านค่าเซนเซอร์</h3>
               <p class="exp-item-text">ต่อวงจรจริงบน Breadboard ร่วมกับเซนเซอร์ Ultrasonic HC-SR04, LDR วัดแสง และ Active Buzzer เพื่อเข้าใจกระบวนการ Input, Process และ Output</p>
-              <p class="exp-spec"><span class="exp-key">I/O</span><span class="exp-val">HC-SR04 / LDR / Buzzer</span></p>
+              <p class="exp-spec"><span class="exp-key th-label">อุปกรณ์</span><span class="exp-val">HC-SR04 / LDR / Buzzer</span></p>
             </div>
           </li>
 
@@ -193,7 +193,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div class="exp-body">
               <h3 class="exp-item-title">ควบคุมฮาร์ดแวร์ผ่านหน้าเว็บ</h3>
               <p class="exp-item-text">เขียนโปรแกรมสร้าง Embedded Web Server บนตัวชิป และเปิดหน้า Mobile Dashboard เพื่อกดสวิตช์สั่งงานฮาร์ดแวร์ผ่านเครือข่ายท้องถิ่นทันที</p>
-              <p class="exp-spec"><span class="exp-key">PROTOCOL</span><span class="exp-val">HTTP Server / Local LAN</span></p>
+              <p class="exp-spec"><span class="exp-key th-label">การเชื่อมต่อ</span><span class="exp-val">HTTP Server / Local LAN</span></p>
             </div>
           </li>
 
@@ -202,7 +202,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div class="exp-body">
               <h3 class="exp-item-title">เริ่มต้นง่ายแม้ไม่มีพื้นฐาน</h3>
               <p class="exp-item-text">ฝึกจำลองการต่อวงจรบน Autodesk Tinkercad Circuits เพื่อป้องกันการลัดวงจร และเรียนรู้วิธีใช้ AI ช่วยขึ้นโครงสร้าง Web Interface อย่างเป็นระบบ</p>
-              <p class="exp-spec"><span class="exp-key">TOOLING</span><span class="exp-val">Tinkercad / Code Assist</span></p>
+              <p class="exp-spec"><span class="exp-key th-label">เครื่องมือ</span><span class="exp-val">Tinkercad / Code Assist</span></p>
             </div>
           </li>
         </ol>
@@ -213,49 +213,49 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section id="essentials" class="ed-sec ed-sec--alt" aria-labelledby="essentials-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">03</span><span class="ed-index__label">ข้อมูลก่อนสมัคร · <span class="ed-en">ESSENTIALS</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">03</span><span class="ed-index__label">ข้อมูลก่อนสมัคร</span></p>
           <h2 id="essentials-title" class="section-title">ข้อมูลที่ควรรู้ก่อนสมัคร</h2>
           <p class="body">สรุปคุณสมบัติ อุปกรณ์ จำนวนที่นั่ง สถานที่ และค่าใช้จ่าย เพื่อให้ตัดสินใจและเตรียมตัวได้ครบในหน้าเดียว</p>
-          <p class="ed-aside-meta"><span class="ed-en">SPECIFICATION</span> · ข้อมูลสำคัญสำหรับผู้สมัครและผู้ปกครอง</p>
+          <p class="ed-aside-meta">ข้อมูลสำคัญสำหรับผู้สมัครและผู้ปกครอง</p>
         </div>
         <div class="ed-main">
           <dl class="ed-metrics" aria-label="สรุปภาพรวมค่าย">
             <div class="ed-metric">
-              <dt class="ed-metric__label">DURATION</dt>
+              <dt class="ed-metric__label th-label">ระยะเวลา</dt>
               <dd class="ed-metric__val"><span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน (<span class="font-mono tabular-nums">5–7</span> ก.พ. <span class="font-mono tabular-nums">70</span>)</dd>
             </div>
             <div class="ed-metric">
-              <dt class="ed-metric__label">TARGET LEVEL</dt>
+              <dt class="ed-metric__label th-label">ระดับชั้น</dt>
               <dd class="ed-metric__val">ม.<span class="font-mono tabular-nums">4–6</span> หรือ ปวช.<span class="font-mono tabular-nums">1–3</span></dd>
             </div>
             <div class="ed-metric">
-              <dt class="ed-metric__label">REGISTRATION</dt>
+              <dt class="ed-metric__label th-label">ลงทะเบียน</dt>
               <dd class="ed-metric__val">ลงทะเบียนวันที่ <span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> (<span class="font-mono tabular-nums">09:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · เต็มก่อนปิดก่อนทันที</dd>
             </div>
           </dl>
 
           <div class="bento" role="list">
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">01 · ELIGIBILITY</span></div>
+              <div class="card-top"><span class="bento-tag th-label">01 · ใครสมัครได้</span></div>
               <h3>คุณสมบัติผู้สมัคร</h3>
               <p>ม.<span class="font-mono tabular-nums">4</span>–ม.<span class="font-mono tabular-nums">6</span> หรือ ปวช.<span class="font-mono tabular-nums">1</span>–ปวช.<span class="font-mono tabular-nums">3</span> ทุกสายการเรียน ไม่จำเป็นต้องมีพื้นฐานด้านการเขียนโปรแกรมหรือวงจรไฟฟ้ามาก่อน</p>
               <p><strong>สิทธิพิเศษ:</strong> หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">02 · SIMULATION &amp; KIT</span></div>
+              <div class="card-top"><span class="bento-tag th-label">02 · ชุดอุปกรณ์</span></div>
               <h3>อุปกรณ์การเรียนและฝึกปฏิบัติ</h3>
               <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> และ <span class="font-mono tabular-nums">ESP8266</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">03 · COMPUTER LAB</span></div>
+              <div class="card-top"><span class="bento-tag th-label">03 · ห้องเรียน</span></div>
               <h3>คอมพิวเตอร์ห้องปฏิบัติการ</h3>
               <p>จัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC สำหรับผู้เข้าร่วมทุกคน ไม่บังคับนำโน้ตบุ๊กส่วนตัวมา</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag">04 · VENUE &amp; DORM</span></div>
+              <div class="card-top"><span class="bento-tag th-label">04 · สถานที่</span></div>
               <h3>สถานที่จัดกิจกรรมและที่พัก</h3>
               <p>อบรม ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) และพักค้างคืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกโซนชาย-หญิง)</p>
               <a class="ed-inline-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
@@ -267,19 +267,19 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="card bento-feature">
               <div class="bento-feature__left">
                 <div class="card-top">
-                  <span class="bento-tag"><span class="bento-live-dot" aria-hidden="true"></span>05 · SEATS &amp; CAPACITY</span>
+                  <span class="bento-tag th-label"><span class="bento-live-dot" aria-hidden="true"></span>05 · จำนวนที่นั่ง</span>
                 </div>
                 <div id="bento-seats-num" class="bento-big">30<small>ที่นั่ง</small></div>
               </div>
               <div class="bento-feature__right">
-                <p id="bento-seats-caption">จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</p>
-                <p class="bento-feature__meta">NO ENTRANCE EXAM · FIRST-COME, FIRST-SERVED</p>
+                <p id="bento-seats-caption">จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</p>
+                <p class="bento-feature__meta th-label">ไม่มีการสอบคัดเลือก · รับตามลำดับการสมัคร</p>
               </div>
             </div>
 
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
-                <div class="card-top"><span class="bento-tag">06 · CAMP FEE</span></div>
+                <div class="card-top"><span class="bento-tag th-label">06 · ค่าสมัคร</span></div>
                 <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
                 <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
               </div>
@@ -292,7 +292,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
 
             <div role="listitem" class="card ed-cell--full">
-              <div class="card-top"><span class="bento-tag">07 · WHAT TO BRING</span></div>
+              <div class="card-top"><span class="bento-tag th-label">07 · สิ่งที่ต้องเตรียม</span></div>
               <h3>สิ่งที่ต้องเตรียมมาค่าย (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)</h3>
               <div class="ed-bring-grid">
                 <div class="ed-bring-col">
@@ -322,7 +322,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
           <div class="ed-photo-strip" aria-label="ภาพบรรยากาศการเรียนรู้ในห้องปฏิบัติการ">
             <div class="ed-photo-strip__head">
-              <span class="ed-photo-strip__kicker">ARCHIVE · CS LAB MAEJO UNIVERSITY</span>
+              <span class="ed-photo-strip__kicker th-label">ภาพจากคลังค่าย · ห้องปฏิบัติการ สาขาวิทยาการคอมพิวเตอร์ ม.แม่โจ้</span>
               <span class="ed-photo-strip__note">ภาพบรรยากาศจริงจากค่าย ComCamp รุ่นที่ผ่านมา</span>
             </div>
             <div class="ed-photo-strip__grid">
@@ -339,7 +339,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                     alt="ภาพมุมกว้างของนักเรียนค่ายที่นั่งเรียนและฝึกปฏิบัติบนเครื่องคอมพิวเตอร์ในห้องปฏิบัติการ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้"
                   />
                 </div>
-                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx">FIG. 01</span>ฝึกปฏิบัติการจริงบนเครื่อง PC · CS Lab MJU</figcaption>
+                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx th-label">ภาพที่ 1</span>ฝึกปฏิบัติการจริงบนเครื่อง PC · ห้องปฏิบัติการ ม.แม่โจ้</figcaption>
               </figure>
               <figure class="ed-photo-card">
                 <div class="ed-photo-card__frame">
@@ -354,7 +354,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                     alt="พี่เลี้ยง TA ยืนให้คำแนะนำอย่างใกล้ชิดข้างที่นั่ง ขณะน้องค่ายฝึกเขียนโปรแกรมแบบบล็อกบนหน้าจอคอมพิวเตอร์"
                   />
                 </div>
-                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx">FIG. 02</span>พี่เลี้ยง TA ดูแลใกล้ชิด · ไม่มีพื้นฐานก็เริ่มได้</figcaption>
+                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx th-label">ภาพที่ 2</span>พี่เลี้ยงดูแลใกล้ชิด · ไม่มีพื้นฐานก็เริ่มได้</figcaption>
               </figure>
               <figure class="ed-photo-card">
                 <div class="ed-photo-card__frame">
@@ -369,7 +369,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                     alt="นักเรียนและพี่เลี้ยงร่วมกันวิเคราะห์ผลลัพธ์บนหน้าจอคอมพิวเตอร์เป็นทีมในห้องปฏิบัติการ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้"
                   />
                 </div>
-                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx">FIG. 03</span>เรียนรู้ร่วมกันเป็นทีม · คณะวิทยาศาสตร์ ม.แม่โจ้</figcaption>
+                <figcaption class="ed-photo-card__cap"><span class="ed-photo-card__idx th-label">ภาพที่ 3</span>เรียนรู้ร่วมกันเป็นทีม · คณะวิทยาศาสตร์ ม.แม่โจ้</figcaption>
               </figure>
             </div>
           </div>
@@ -381,10 +381,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section id="journey" class="ed-sec" aria-labelledby="journey-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">เส้นทางเรียนรู้ · <span class="ed-en">JOURNEY</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">04</span><span class="ed-index__label">เส้นทางเรียนรู้</span></p>
           <h2 id="journey-title" class="section-title"><span class="font-mono tabular-nums">4</span> ขั้นตอนตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน</h2>
           <p class="body">จากการจำลองวงจรและพื้นฐาน Input → Process → Output สู่การต่อฮาร์ดแวร์จริง เชื่อมต่อ IoT และนำเสนอโปรเจกต์บนเวที</p>
-          <p class="ed-aside-meta"><span class="ed-en">STEP 01 → 04</span> · ปูพื้นฐานจนสร้างผลงานจริงพร้อมเกียรติบัตร</p>
+          <p class="ed-aside-meta">ปูพื้นฐานจนสร้างผลงานจริงพร้อมเกียรติบัตร</p>
         </div>
         <div class="ed-main">
           <div class="journey journey--typo" role="list">
@@ -392,8 +392,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="step-big-num" aria-hidden="true">01</div>
               <div class="step-content">
                 <div class="step-meta">
-                  <div class="step-num">Step 01 · Sense &amp; Simulate</div>
-                  <div class="day">Day 1</div>
+                  <div class="step-num th-label">ขั้นที่ 1 · รับรู้และจำลอง</div>
+                  <div class="day">วันที่ 1</div>
                 </div>
                 <h3>ปูพื้นฐานและจำลองวงจร</h3>
                 <p>ทำความเข้าใจแนวคิด Input → Process → Output และจำลองวงจรไฟกระพริบกับเซนเซอร์วัดแสง LDR บน Autodesk Tinkercad Circuits</p>
@@ -403,8 +403,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="step-big-num" aria-hidden="true">02</div>
               <div class="step-content">
                 <div class="step-meta">
-                  <div class="step-num">Step 02 · Wired Logic</div>
-                  <div class="day">Day 1</div>
+                  <div class="step-num th-label">ขั้นที่ 2 · ควบคุมด้วยวงจรจริง</div>
+                  <div class="day">วันที่ 1</div>
                 </div>
                 <h3>คุมบอร์ด Arduino UNO R3</h3>
                 <p>ประกอบวงจรจริง อัปโหลดโค้ดภาษา C/C++ สั่งงานเซนเซอร์ Ultrasonic HC-SR04 วัดระยะ และขับเสียงเตือนด้วย Active Buzzer</p>
@@ -414,8 +414,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="step-big-num" aria-hidden="true">03</div>
               <div class="step-content">
                 <div class="step-meta">
-                  <div class="step-num">Step 03 · Wireless IoT</div>
-                  <div class="day">Day 2</div>
+                  <div class="step-num th-label">ขั้นที่ 3 · IoT ไร้สาย</div>
+                  <div class="day">วันที่ 2</div>
                 </div>
                 <h3>เชื่อม ESP8266 และเว็บควบคุม</h3>
                 <p>ตั้งค่า Wi-Fi AP Mode สร้าง Local Web Server บน IP <span class="font-mono tabular-nums">192.168.4.1</span> และออกแบบ Mobile Dashboard เพื่อสั่งงานฮาร์ดแวร์ผ่านสมาร์ตโฟน</p>
@@ -425,8 +425,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="step-big-num" aria-hidden="true">04</div>
               <div class="step-content">
                 <div class="step-meta">
-                  <div class="step-num">Step 04 · Prototype &amp; Pitch</div>
-                  <div class="day">Day 2–3</div>
+                  <div class="step-num th-label">ขั้นที่ 4 · ต้นแบบและนำเสนอ</div>
+                  <div class="day">วันที่ 2–3</div>
                 </div>
                 <h3>พัฒนาโปรเจกต์และนำเสนอ</h3>
                 <p>รวมทีมทำ Hackathon ตามโจทย์ท้าทาย สาธิตผลงานสดบนเวทีทีมละ <span class="font-mono tabular-nums">3</span> นาที และรับมอบเกียรติบัตรเมื่อจบกิจกรรม</p>
@@ -444,15 +444,14 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section id="timeline" class="ed-sec ed-sec--alt" aria-labelledby="timeline-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">05</span><span class="ed-index__label">ไทม์ไลน์และการดูแล · <span class="ed-en">TIMELINE</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">05</span><span class="ed-index__label">ไทม์ไลน์และการดูแล</span></p>
           <h2 id="timeline-title" class="section-title">ไทม์ไลน์การสมัครและการดูแลผู้เข้าร่วม</h2>
-          <p class="body">คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served) พร้อมมาตรการดูแลความปลอดภัยสำหรับผู้ปกครอง</p>
-          <p class="ed-aside-meta"><span class="ed-en">PART A &amp; B</span> · ขั้นตอนสมัครและมาตรฐานความปลอดภัย</p>
+          <p class="body">คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ พร้อมมาตรการดูแลความปลอดภัยสำหรับผู้ปกครอง</p>
+          <p class="ed-aside-meta">ขั้นตอนสมัครและมาตรฐานความปลอดภัย</p>
         </div>
         <div class="ed-main">
           <div class="tm-group-head">
             <p class="tm-group-kicker">
-              <span class="ed-en">PART A · 01–04</span>
               <span>ลำดับขั้นตอนการสมัครและยืนยันสิทธิ์</span>
             </p>
           </div>
@@ -472,7 +471,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
               <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน</h3>
-              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (FCFS) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
+              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (ตามลำดับการสมัคร) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
@@ -496,7 +495,6 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <div class="tm-care-section">
             <div class="tm-group-head tm-group-head--care">
               <p class="tm-group-kicker">
-                <span class="ed-en">PART B · PARENTAL ASSURANCE</span>
                 <span>มาตรการดูแลผู้เข้าร่วมสำหรับผู้ปกครอง</span>
               </p>
             </div>
@@ -507,7 +505,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   <svg class="tm-care-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
                   </svg>
-                  <span class="ed-en">24/7 SUPERVISION</span>
+                  <span class="th-label">ดูแลตลอด 24 ชั่วโมง</span>
                 </div>
                 <h3>การดูแลตลอด <span class="font-mono tabular-nums">24</span> ชั่วโมง</h3>
                 <p>มีอาจารย์และพี่เลี้ยงนักศึกษาประจำกลุ่มดูแลความปลอดภัยตลอดระยะเวลากิจกรรม</p>
@@ -520,7 +518,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                     <path d="M5 9.5V21h14V9.5" />
                     <path d="M9.5 21v-6h5v6" />
                   </svg>
-                  <span class="ed-en">ACCOMMODATION</span>
+                  <span class="th-label">ที่พัก</span>
                 </div>
                 <h3>เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกชาย-หญิง)</h3>
                 <p>เข้าพัก ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ ภายในมหาวิทยาลัยแม่โจ้ แยกโซนหอพักชายและหญิงชัดเจน พร้อมระบบดูแลตลอดคืน</p>
@@ -535,7 +533,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   <svg class="tm-care-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M11 2v6H5v4h6v6h4v-6h6V8h-6V2z" />
                   </svg>
-                  <span class="ed-en">HEALTH &amp; MEALS</span>
+                  <span class="th-label">สุขภาพและอาหาร</span>
                 </div>
                 <h3>สุขภาพและอาหาร</h3>
                 <p>มีมาตรการด้านการพยาบาลเบื้องต้น และการจัดการเมนูอาหารสำหรับผู้ที่มีอาการแพ้อาหารหรือโรคประจำตัวอย่างเคร่งครัด</p>
@@ -546,7 +544,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   <svg class="tm-care-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z" />
                   </svg>
-                  <span class="ed-en">DIRECT CONTACT</span>
+                  <span class="th-label">ติดต่อโดยตรง</span>
                 </div>
                 <h3>ช่องทางติดต่อพี่ค่ายและอาจารย์ผู้รับผิดชอบ</h3>
                 <p>อาจารย์ผู้รับผิดชอบโครงการ: <strong>{PROJECT_ADVISOR}</strong> · สามารถโทรติดต่อพี่ค่ายผู้ประสานงานโครงการได้โดยตรงตลอดระยะเวลาจัดค่าย</p>
@@ -568,7 +566,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section id="faq" class="ed-sec" aria-labelledby="faq-title">
       <div class="wrap">
         <div class="section-head">
-          <p class="ed-index"><span class="ed-index__no">06</span><span class="ed-index__label">คำถามที่พบบ่อย · <span class="ed-en">FAQ</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">06</span><span class="ed-index__label">คำถามที่พบบ่อย</span></p>
           <h2 id="faq-title" class="section-title">คำถามที่พบบ่อย</h2>
           <p class="body">รวบรวมข้อสงสัยเกี่ยวกับพื้นฐานผู้สมัคร อุปกรณ์ การคัดเลือก และขั้นตอนการยืนยันสิทธิ์ผ่านมือถือ</p>
         </div>
@@ -583,7 +581,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">03</span><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>
-            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served</div>
+            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</div>
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">04</span><span class="faq-q">ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span></span></summary>
@@ -605,10 +603,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
     <section class="ed-cta-band" aria-labelledby="pre-gallery-cta-title">
       <div class="wrap ed-cta-band__wrap">
         <div class="ed-cta-band__aside">
-          <p class="ed-index"><span class="ed-index__no">→</span><span class="ed-index__label">สมัครเข้าร่วม · <span class="ed-en">APPLY</span></span></p>
+          <p class="ed-index"><span class="ed-index__no">→</span><span class="ed-index__label">สมัครเข้าร่วม</span></p>
         </div>
         <div class="ed-cta-band__body">
-          <p class="ed-cta-band__eyebrow">COMCAMP #25 · REGISTRATION</p>
+          <p class="ed-cta-band__eyebrow th-label">ComCamp #25 · รับสมัคร</p>
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย ComCamp <span class="font-mono tabular-nums">#25</span> แล้วหรือยัง?</h2>
           <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>30</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
@@ -665,7 +663,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
   <footer class="ed-footer">
     <div class="wrap footer-grid">
       <div>
-        <p class="ed-index"><span class="ed-index__no">©</span><span class="ed-index__label"><span class="ed-en">COLOPHON</span></span></p>
+        <p class="ed-index"><span class="ed-index__no">©</span><span class="ed-index__label"><span class="th-label">ข้อมูลโครงการ</span></span></p>
         <div class="footer-title">ComCamp <span class="font-mono tabular-nums">#25</span> — โครงการค่ายยุวชนคอมพิวเตอร์ ครั้งที่ <span class="font-mono tabular-nums">25</span></div>
         <p class="footer-meta">สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่</p>
       </div>
@@ -682,12 +680,12 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
           <div class="footer-col">
             <p class="footer-col__head">สารบัญหน้าเว็บ</p>
             <ul class="footer-links">
-              <li><a href="#experience"><span class="font-mono tabular-nums">02</span> กิจกรรมในค่าย</a></li>
-              <li><a href="#essentials"><span class="font-mono tabular-nums">03</span> ข้อมูลก่อนสมัคร</a></li>
-              <li><a href="#journey"><span class="font-mono tabular-nums">04</span> เส้นทางเรียนรู้</a></li>
-              <li><a href="#timeline"><span class="font-mono tabular-nums">05</span> ไทม์ไลน์และการดูแล</a></li>
-              <li><a href="#faq"><span class="font-mono tabular-nums">06</span> คำถามที่พบบ่อย</a></li>
-              <li><a href="#gallery"><span class="font-mono tabular-nums">07</span> แกลเลอรีค่าย</a></li>
+              <li><a href="#experience">กิจกรรมในค่าย</a></li>
+              <li><a href="#essentials">ข้อมูลก่อนสมัคร</a></li>
+              <li><a href="#journey">เส้นทางเรียนรู้</a></li>
+              <li><a href="#timeline">ไทม์ไลน์และการดูแล</a></li>
+              <li><a href="#faq">คำถามที่พบบ่อย</a></li>
+              <li><a href="#gallery">แกลเลอรีค่าย</a></li>
             </ul>
           </div>
           <div class="footer-col">
