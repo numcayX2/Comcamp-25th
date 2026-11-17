@@ -152,10 +152,11 @@ type ApplicantRepository interface {
 	// or CONFIRMED at the moment of the write, and ErrNotFound when it is missing or deleted.
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *AuditEntry) error
 	// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE)
-	// created at or before cutoff (now - 72h) whose updated_at and latest REJECTED slip
-	// timestamp (verified_at, falling back to uploaded_at) are at or before the 24h grace cutoff
-	// (cutoff + 48h = now - 24h) and that have no PENDING/APPROVED slip to REJECTED, writing
-	// status and audit logs atomically and returning the expired application_no list.
-	ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error)
+	// created at or before createdCutoff (now - UnpaidExpiryWindow) whose updated_at and latest
+	// REJECTED slip timestamp (verified_at, falling back to uploaded_at) are at or before
+	// graceCutoff (now - UnpaidGraceWindow) and that have no PENDING/APPROVED slip to REJECTED,
+	// writing status and audit logs atomically and returning the expired application_no list.
+	// Both cutoffs come from the service so the repositories never re-derive one from the other.
+	ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error)
 	CountActive(ctx context.Context) (int, error)
 }

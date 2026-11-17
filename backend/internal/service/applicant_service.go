@@ -167,14 +167,16 @@ type ApplicantService struct {
 }
 
 const (
-	// UnpaidExpiryWindow is the deadline (3 days) after registration by which an applicant
+	// UnpaidExpiryWindow is the deadline (5 days) after registration by which an applicant
 	// must upload a payment slip before their seat is automatically released.
-	UnpaidExpiryWindow = 72 * time.Hour
+	UnpaidExpiryWindow = 120 * time.Hour
 	// UnpaidGraceWindow is the minimum 24h window granted after updated_at or a slip rejection
-	// so applicants rejected or restored after 72h are not re-expired before they can re-upload.
+	// so applicants rejected or restored late in (or after) the 5-day window are not re-expired
+	// before they can re-upload. The enforced deadline is
+	// max(created + UnpaidExpiryWindow, updated_at + UnpaidGraceWindow, latest REJECTED slip + UnpaidGraceWindow).
 	UnpaidGraceWindow = 24 * time.Hour
 	// UnpaidExpiryReason is recorded in applicant_status_logs and audit_logs when auto-expired.
-	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน (72 ชั่วโมง) หลังสมัคร"
+	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 5 วัน (120 ชั่วโมง) หลังสมัคร"
 )
 
 // WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
@@ -283,11 +285,13 @@ func NewApplicantService(
 	}
 }
 
-// ExpireOverdueUnpaid transitions unpaid active applications older than UnpaidExpiryWindow (72h)
+// ExpireOverdueUnpaid transitions unpaid active applications older than UnpaidExpiryWindow (120h)
 // without a PENDING or APPROVED slip to REJECTED, invalidating the public settings cache whenever
-// at least one seat is released.
+// at least one seat is released. Both cutoffs are derived here from the two window constants and
+// handed to the repository, so the grace offset can never drift from the expiry window again.
 func (s *ApplicantService) ExpireOverdueUnpaid(ctx context.Context, now time.Time) ([]string, error) {
-	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, now.UTC().Add(-UnpaidExpiryWindow), UnpaidExpiryReason)
+	utcNow := now.UTC()
+	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, utcNow.Add(-UnpaidExpiryWindow), utcNow.Add(-UnpaidGraceWindow), UnpaidExpiryReason)
 	if len(expired) > 0 {
 		s.notifySeatChange()
 	}
@@ -390,7 +394,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		IdempotencyKey:      key,
 	}
 
-	// Free any unpaid seats older than 72h right before checking capacity so overdue slots become
+	// Free any unpaid seats older than 120h right before checking capacity so overdue slots become
 	// available immediately to the incoming applicant.
 	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
 

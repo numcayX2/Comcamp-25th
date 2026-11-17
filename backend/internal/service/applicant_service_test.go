@@ -592,7 +592,7 @@ func TestApplicantService_OfficialShirtSizes(t *testing.T) {
 	}
 }
 
-func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
+func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 	ctx := context.Background()
 	appRepo := memory.NewMemoryApplicantRepo()
 	setRepo := memory.NewMemorySettingRepo()
@@ -647,23 +647,23 @@ func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
 		t.Fatalf("create approved payment: %v", err)
 	}
 
-	// 2. At +48h (< 72h), nobody expires.
-	expired48, err := svc.ExpireOverdueUnpaid(ctx, now.Add(48*time.Hour))
+	// 2. At +119h (< 120h), nobody expires.
+	expired119, err := svc.ExpireOverdueUnpaid(ctx, now.Add(119*time.Hour))
 	if err != nil {
-		t.Fatalf("ExpireOverdueUnpaid at +48h failed: %v", err)
+		t.Fatalf("ExpireOverdueUnpaid at +119h failed: %v", err)
 	}
-	if len(expired48) != 0 {
-		t.Fatalf("expected 0 expired at +48h, got %v", expired48)
+	if len(expired119) != 0 {
+		t.Fatalf("expected 0 expired at +119h, got %v", expired119)
 	}
 
-	// 3. At +73h (> 72h), only the unpaid applicant expires to REJECTED; slip holders stay active.
+	// 3. At +121h (> 120h), only the unpaid applicant expires to REJECTED; slip holders stay active.
 	seatChanges.Store(0)
-	expired73, err := svc.ExpireOverdueUnpaid(ctx, now.Add(73*time.Hour))
+	expired121, err := svc.ExpireOverdueUnpaid(ctx, now.Add(121*time.Hour))
 	if err != nil {
-		t.Fatalf("ExpireOverdueUnpaid at +73h failed: %v", err)
+		t.Fatalf("ExpireOverdueUnpaid at +121h failed: %v", err)
 	}
-	if len(expired73) != 1 || expired73[0] != unpaid.ID {
-		t.Fatalf("expected only %s to expire at +73h, got %v", unpaid.ID, expired73)
+	if len(expired121) != 1 || expired121[0] != unpaid.ID {
+		t.Fatalf("expected only %s to expire at +121h, got %v", unpaid.ID, expired121)
 	}
 	if seatChanges.Load() != 1 {
 		t.Fatalf("expected seat change callback once, got %d", seatChanges.Load())
@@ -709,7 +709,7 @@ func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
 		t.Fatalf("expected audit log %s for %s", domain.AuditPaymentExpired, unpaid.ID)
 	}
 
-	// 4. Full camp (maxCapacity = 1) with an unpaid 73h-old applicant automatically frees their
+	// 4. Full camp (maxCapacity = 1) with an unpaid 121h-old applicant automatically frees their
 	// seat on the next Submit so the newcomer succeeds.
 	capAppRepo := memory.NewMemoryApplicantRepo()
 	capSetRepo := memory.NewMemorySettingRepo()
@@ -736,24 +736,24 @@ func TestApplicantService_ExpireOverdueUnpaid_72Hours(t *testing.T) {
 		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
 		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
 	}); !errors.Is(err, service.ErrQuotaExceeded) {
-		t.Fatalf("expected ErrQuotaExceeded before 72h, got %v", err)
+		t.Fatalf("expected ErrQuotaExceeded before 120h, got %v", err)
 	}
 
-	// Advance clock by 73h -> Submit auto-expires the first unpaid applicant and takes the seat.
-	curNow = curNow.Add(73 * time.Hour)
+	// Advance clock by 121h -> Submit auto-expires the first unpaid applicant and takes the seat.
+	curNow = curNow.Add(121 * time.Hour)
 	second, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
 		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
 		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
 	})
 	if err != nil {
-		t.Fatalf("expected second submit after 73h expiry to succeed, got %v", err)
+		t.Fatalf("expected second submit after 121h expiry to succeed, got %v", err)
 	}
 	if second.Status != domain.StatusPassed {
 		t.Fatalf("expected second applicant PASSED, got %s", second.Status)
 	}
 	firstAfter, _ := capAppRepo.GetByApplicationNo(ctx, first.ID)
 	if firstAfter.Status != domain.StatusRejected {
-		t.Fatalf("expected first applicant auto-rejected after 73h, got %s", firstAfter.Status)
+		t.Fatalf("expected first applicant auto-rejected after 121h, got %s", firstAfter.Status)
 	}
 	if n, _ := capAppRepo.CountActive(ctx); n != 1 {
 		t.Fatalf("expected 1 active seat after swap, got %d", n)
@@ -799,12 +799,12 @@ func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
 	restoredApp := submitSample(3, "0850000003", "g3@test.com")
 	fallbackApp := submitSample(4, "0850000004", "g4@test.com")
 
-	// 1. Overdue unpaid applicant created 73h ago with no slip -> expires immediately.
-	if err := appRepo.SetTimestampsForTest(neverPaid.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+	// 1. Overdue unpaid applicant created 121h ago with no slip -> expires immediately.
+	if err := appRepo.SetTimestampsForTest(neverPaid.ID, now.Add(-121*time.Hour), now.Add(-121*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
-	// 2. Applicant created 73h ago whose slip was just rejected via VerifySlip -> 24h grace period.
+	// 2. Applicant created 121h ago whose slip was just rejected via VerifySlip -> 24h grace period.
 	rejectedPay := &domain.Payment{
 		ID:          uuid.New(),
 		ApplicantID: rejectedSlipApp.ID,
@@ -815,14 +815,14 @@ func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
 	if _, err := payRepo.CreateReplacingPending(ctx, rejectedPay); err != nil {
 		t.Fatal(err)
 	}
-	if err := appRepo.SetTimestampsForTest(rejectedSlipApp.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+	if err := appRepo.SetTimestampsForTest(rejectedSlipApp.ID, now.Add(-121*time.Hour), now.Add(-121*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err := psvc.VerifySlip(ctx, rejectedSlipApp.ApplicationNo, rejectedPay.ID.String(), false, 1, "สลิปไม่ชัด", "127.0.0.1"); err != nil {
 		t.Fatalf("VerifySlip reject failed: %v", err)
 	}
 
-	// 3. Applicant created 73h ago, rejected, then restored to PASSED by staff at `now` -> 24h grace from updated_at.
+	// 3. Applicant created 121h ago, rejected, then restored to PASSED by staff at `now` -> 24h grace from updated_at.
 	adminID := int64(1)
 	if _, err := svc.UpdateStatus(ctx, restoredApp.ApplicationNo, domain.StatusRejected, &adminID, "expired", "127.0.0.1"); err != nil {
 		t.Fatal(err)
@@ -830,11 +830,11 @@ func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
 	if _, err := svc.UpdateStatus(ctx, restoredApp.ApplicationNo, domain.StatusPassed, &adminID, "restored", "127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := appRepo.SetTimestampsForTest(restoredApp.ID, now.Add(-73*time.Hour), now); err != nil {
+	if err := appRepo.SetTimestampsForTest(restoredApp.ID, now.Add(-121*time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
 
-	// 4. Applicant created 73h ago with updated_at=73h ago, but latest REJECTED slip has verified_at=nil and uploaded_at=10h ago.
+	// 4. Applicant created 121h ago with updated_at=121h ago, but latest REJECTED slip has verified_at=nil and uploaded_at=10h ago.
 	fallbackPay := &domain.Payment{
 		ID:          uuid.New(),
 		ApplicantID: fallbackApp.ID,
@@ -848,7 +848,7 @@ func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
 	if err := payRepo.SetPaymentTimestampsForTest(fallbackPay.ID, now.Add(-10*time.Hour), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := appRepo.SetTimestampsForTest(fallbackApp.ID, now.Add(-73*time.Hour), now.Add(-73*time.Hour)); err != nil {
+	if err := appRepo.SetTimestampsForTest(fallbackApp.ID, now.Add(-121*time.Hour), now.Add(-121*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 

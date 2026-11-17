@@ -45,7 +45,12 @@ import {
   matchesApplicantQuery,
   slipLabel,
 } from '../lib/applicant-tools';
-import { describePaymentDeadline, formatNationalId } from './register/model';
+import {
+  PAYMENT_WINDOW_DAYS,
+  describeStaffPaymentDeadline,
+  formatNationalId,
+  type PaymentDeadlineInfo,
+} from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { SlipLightbox } from './slip/SlipLightbox';
@@ -182,26 +187,19 @@ function isAwaitingPayment(a: Application): boolean {
   return (a.slipStatus ?? 'PENDING') === 'REJECTED';
 }
 
-const HOUR_MS = 60 * 60 * 1000;
-
 /**
- * The transfer deadline the server actually enforces (ExpireOverdueUnpaid): 72h after registration,
- * but never earlier than 24h after the last staff change (updatedAt, for example a restored seat) or
- * 24h after a slip was rejected (verifiedAt). Computing it from createdAt alone would flag people the
- * sweep deliberately leaves alone, so staff could reject someone who still has time.
+ * The transfer deadline the server actually enforces (ExpireOverdueUnpaid): 120h (5 days) after
+ * registration, but never earlier than 24h after the last staff change (updatedAt, for example a
+ * restored seat) or 24h after a slip was rejected (verifiedAt). Computing it from createdAt alone
+ * would flag people the sweep deliberately leaves alone, so staff could reject someone who still has time.
  */
-function paymentDeadline(a: Application, nowMs: number): ReturnType<typeof describePaymentDeadline> {
-  const at = (iso?: string | null) => {
-    const t = iso ? Date.parse(iso) : Number.NaN;
-    return Number.isFinite(t) ? t : 0;
-  };
-  const dueMs = Math.max(
-    at(a.createdAt) + 72 * HOUR_MS,
-    at(a.updatedAt) + 24 * HOUR_MS,
-    a.slipStatus === 'REJECTED' ? at(a.verifiedAt) + 24 * HOUR_MS : 0,
+function paymentDeadline(a: Application, nowMs: number): PaymentDeadlineInfo {
+  return describeStaffPaymentDeadline(
+    a.createdAt,
+    a.updatedAt,
+    a.slipStatus === 'REJECTED' ? a.verifiedAt : null,
+    nowMs,
   );
-  // describePaymentDeadline adds its own 72h to the registration time it is given.
-  return describePaymentDeadline(new Date(dueMs - 72 * HOUR_MS).toISOString(), nowMs);
 }
 
 function isPaymentOverdue(a: Application, nowMs: number): boolean {
@@ -293,7 +291,7 @@ function StatusSelect({
   );
 }
 
-/** Time left on the 3-day transfer window, shown only while the applicant still owes a slip. */
+/** Time left on the 5-day transfer window, shown only while the applicant still owes a slip. */
 function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
   if (!isAwaitingPayment(app)) return null;
   const d = paymentDeadline(app, nowMs);
@@ -303,7 +301,7 @@ function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
       style={{ color: d.isOverdue ? DANGER : d.isUrgent ? AMBER_TEXT : INK_3 }}
       title={`ครบกำหนดโอน ${d.deadlineText}`}
     >
-      {d.isOverdue ? 'เกินกำหนดโอน 3 วันแล้ว' : d.remainingText.replace('เหลือเวลาโอนอีก', 'เหลือเวลาโอน')}
+      {d.isOverdue ? `เกินกำหนดโอน ${PAYMENT_WINDOW_DAYS} วันแล้ว` : d.remainingText.replace('เหลือเวลาโอนอีก', 'เหลือเวลาโอน')}
     </span>
   );
 }
@@ -400,7 +398,7 @@ export function AdminSection() {
   const [query, setQuery] = useState('');
   /** Camp fee in baht from the settings panel; used in the note templates. */
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
-  /** Minute clock for the 3-day transfer countdowns. */
+  /** Minute clock for the 5-day transfer countdowns. */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
@@ -1221,7 +1219,9 @@ export function AdminSection() {
                   {awaitingPayCount} คน
                 </p>
                 <p className="mt-0.5 text-xs leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
-                  {overduePayCount > 0 ? `เกินกำหนด 3 วันแล้ว ${overduePayCount} คน` : 'ยังไม่มีใครเกินกำหนด 3 วัน'}
+                  {overduePayCount > 0
+                    ? `เกินกำหนด ${PAYMENT_WINDOW_DAYS} วันแล้ว ${overduePayCount} คน`
+                    : `ยังไม่มีใครเกินกำหนด ${PAYMENT_WINDOW_DAYS} วัน`}
                 </p>
               </button>
             </div>

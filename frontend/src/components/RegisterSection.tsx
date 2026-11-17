@@ -55,6 +55,8 @@ import {
   type FieldErrors,
   type FieldKey,
   type FormState,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
 } from './register/model';
 import { FieldShell, StepHeader, TextField } from './register/parts';
 import { SizeChips } from './register/SizeChips';
@@ -961,7 +963,7 @@ export function RegisterSection() {
                 <div>
                 <strong className="rw-rules__label">ชำระเงิน</strong>
                 <p>
-                  โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังส่งใบสมัคร ·{' '}
+                  โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.) หลังส่งใบสมัคร ·{' '}
                   <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
                 </p>
                 </div>
@@ -1445,9 +1447,9 @@ export function RegisterSection() {
                 <li>
                   <strong>
                     โอนค่าสมัคร (<span className="font-mono tabular-nums">{feeText}</span> บาท) ภายใน{' '}
-                    <span className="font-mono tabular-nums">3</span> วันหลังสมัคร
+                    <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร
                   </strong>
-                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ
                 </li>
                 <li>
                   <strong>แนบสลิป เข้ากลุ่ม LINE OpenChat และรอรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
@@ -1471,7 +1473,7 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
-                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)
+                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}

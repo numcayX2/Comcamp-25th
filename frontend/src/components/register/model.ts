@@ -22,70 +22,19 @@ export const STAFF_CONTACTS = [
   { name: 'นางสาวธมล นวลหมวก (แอมมี่)', phone: '063-784-4515', tel: '0637844515' },
 ] as const;
 
-export const PAYMENT_WINDOW_HOURS = 72;
-export const PAYMENT_WINDOW_MS = PAYMENT_WINDOW_HOURS * 60 * 60 * 1000;
-
-export interface PaymentDeadlineInfo {
-  deadlineText: string;
-  remainingText: string;
-  isOverdue: boolean;
-  isUrgent: boolean;
-}
-
-/**
- * Formats the 72-hour (3-day) transfer/slip deadline after registration in Asia/Bangkok time
- * and computes remaining time so unpaid applicants get a clear warning before auto-expiry.
- */
-export function describePaymentDeadline(createdAtIso?: string | null, nowMs: number = Date.now()): PaymentDeadlineInfo {
-  const parsed = createdAtIso ? Date.parse(createdAtIso) : Number.NaN;
-  const baseMs = Number.isFinite(parsed) ? parsed : nowMs;
-  const deadlineMs = baseMs + PAYMENT_WINDOW_MS;
-  const d = new Date(deadlineMs);
-  const datePart = d.toLocaleDateString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Asia/Bangkok',
-  });
-  const timePart = d.toLocaleTimeString('th-TH', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Bangkok',
-  });
-  const deadlineText = `${datePart} เวลา ${timePart} น.`;
-  const diffMs = deadlineMs - nowMs;
-
-  if (diffMs <= 0) {
-    return {
-      deadlineText,
-      remainingText: 'ครบกำหนด 3 วัน (72 ชั่วโมง) แล้ว',
-      isOverdue: true,
-      isUrgent: true,
-    };
-  }
-
-  const totalMinutes = Math.max(1, Math.ceil(diffMs / 60_000));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const mins = totalMinutes % 60;
-
-  let remainingText: string;
-  if (days > 0) {
-    remainingText = hours > 0 ? `เหลือเวลาโอนอีก ${days} วัน ${hours} ชั่วโมง` : `เหลือเวลาโอนอีก ${days} วัน`;
-  } else if (hours > 0) {
-    remainingText = mins > 0 ? `เหลือเวลาโอนอีก ${hours} ชั่วโมง ${mins} นาที` : `เหลือเวลาโอนอีก ${hours} ชั่วโมง`;
-  } else {
-    remainingText = `เหลือเวลาโอนอีก ${mins} นาที`;
-  }
-
-  return {
-    deadlineText,
-    remainingText,
-    isOverdue: false,
-    isUrgent: diffMs <= 24 * 60 * 60 * 1000,
-  };
-}
+// The transfer deadline rule lives in lib/payment so it can be unit-tested without the browser.
+export {
+  PAYMENT_GRACE_HOURS,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
+  PAYMENT_WINDOW_MS,
+  describeApplicantPaymentDeadline,
+  describePaymentDeadline,
+  describePaymentDue,
+  describeStaffPaymentDeadline,
+  paymentDueMs,
+  type PaymentDeadlineInfo,
+} from '../../lib/payment';
 
 /** Format campFee from PublicSettings into Thai locale text, falling back to FEE_TEXT. */
 export function formatCampFee(fee: number | string | null | undefined): string {
@@ -277,25 +226,6 @@ export const RECEIPT_STEP = STEPS.length; // 5
 export const TOTAL_STEPS = STEPS.length + 1; // 6
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
-
-/**
- * The deadline the server enforces for an unpaid seat: 72h after registration, but never earlier
- * than 24h after the last staff change to the application (updatedAt, e.g. a restored seat).
- * A slip rejected by staff adds a further 24h that is not part of the public response, so for
- * that case the real deadline can be later than shown here, never earlier.
- */
-export function describeApplicantPaymentDeadline(
-  createdAtIso?: string | null,
-  updatedAtIso?: string | null,
-  nowMs: number = Date.now(),
-): PaymentDeadlineInfo {
-  const created = createdAtIso ? Date.parse(createdAtIso) : Number.NaN;
-  if (!Number.isFinite(created)) return describePaymentDeadline(null, nowMs);
-  const updated = updatedAtIso ? Date.parse(updatedAtIso) : Number.NaN;
-  // due = max(created + 72h, updated + 24h)  =>  the base describePaymentDeadline adds 72h to:
-  const base = Number.isFinite(updated) ? Math.max(created, updated - 48 * 60 * 60 * 1000) : created;
-  return describePaymentDeadline(new Date(base).toISOString(), nowMs);
-}
 
 /* ───────────────────────── Validation ───────────────────────── */
 

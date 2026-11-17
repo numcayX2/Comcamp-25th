@@ -444,15 +444,15 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 }
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
-// at or before cutoff (now - 72h) without a PENDING or APPROVED slip to REJECTED, while
-// granting a 24h grace period from applicants.updated_at and from any REJECTED payment's
-// verified_at (or uploaded_at when verified_at is null). Each candidate runs in its own
+// at or before createdCutoff (now - 120h) without a PENDING or APPROVED slip to REJECTED, while
+// granting a grace period up to graceCutoff (now - 24h) from applicants.updated_at and from any
+// REJECTED payment's verified_at (or uploaded_at when verified_at is null). Each candidate runs in its own
 // transaction acquiring lockApplicantSlips before the applicant row lock (matching SoftDelete /
 // CreateReplacingPending lock order) and re-checks both deadlines and payment presence so
 // concurrent slip uploads or parallel sweeps never clash or double-expire.
-func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
-	utcCutoff := cutoff.UTC()
-	graceCutoff := utcCutoff.Add(48 * time.Hour)
+func (r *ApplicantPostgresRepo) ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error) {
+	utcCutoff := createdCutoff.UTC()
+	graceCutoff = graceCutoff.UTC()
 	rows, err := r.pool.Query(ctx, `
 		SELECT id
 		FROM applicants
@@ -565,10 +565,11 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 		TargetType: domain.AuditTargetApplicant,
 		TargetID:   appNo,
 		Details: map[string]any{
-			"oldStatus": oldStatus,
-			"newStatus": domain.StatusRejected,
-			"reason":    reason,
-			"cutoff":    cutoff.Format(time.RFC3339),
+			"oldStatus":   oldStatus,
+			"newStatus":   domain.StatusRejected,
+			"reason":      reason,
+			"cutoff":      cutoff.Format(time.RFC3339),
+			"graceCutoff": graceCutoff.Format(time.RFC3339),
 		},
 	}
 	if err := insertAudit(ctx, tx, audit); err != nil {

@@ -54,6 +54,8 @@ import {
   SHIRT_SIZES,
   SIZE_CHEST,
   SIZE_LENGTH,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
   STAFF_CONTACTS,
   cleanSingleLine,
   describeApplicantPaymentDeadline,
@@ -215,7 +217,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
         icon: CircleX,
         badge: 'ไม่ผ่าน / ตัดสิทธิ์อัตโนมัติ',
         title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือกหรือพ้นกำหนดชำระเงิน',
-        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน',
+        body: `ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน`,
         contact: true,
       };
     case 'RESERVE':
@@ -259,7 +261,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
       icon: TriangleAlert,
       badge: `สลิปไม่ผ่าน · ${dl.remainingText}`,
       title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด 3 วัน)`,
+      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด)`,
       toSlip: true,
       contact: true,
     };
@@ -269,7 +271,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
     icon: Ticket,
     badge: `สมัครทันแล้ว · ${dl.remainingText}`,
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ`,
     toSlip: true,
   };
 }
@@ -1103,7 +1105,7 @@ export function StatusSection() {
                     ) : (
                       <>
                         ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · กรุณาโอนและแนบสลิปภายใน{' '}
-                        <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร
+                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
                       </>
                     )}
                   </p>
@@ -1124,7 +1126,7 @@ export function StatusSection() {
               {!slipApproved && !moneyHeld && app.status !== 'CONFIRMED' && paymentDeadline && (
                 <div
                   role="note"
-                  aria-label={slipRejected ? 'แจ้งเตือนอัปโหลดสลิปใหม่' : 'แจ้งเตือนกำหนดเวลาชำระเงิน 3 วัน'}
+                  aria-label={slipRejected ? 'แจ้งเตือนอัปโหลดสลิปใหม่' : `แจ้งเตือนกำหนดเวลาชำระเงิน ${PAYMENT_WINDOW_DAYS} วัน`}
                   className="st-warning mt-5"
                 >
                   <p className="flex items-start gap-2 text-sm font-bold leading-6" style={{ color: INK }}>
@@ -1149,7 +1151,7 @@ export function StatusSection() {
                     ) : (
                       <>
                         กรุณาโอนเงินและอัปโหลดสลิปภายในวันที่ <strong className="tabular-nums" style={{ color: INK }}>{paymentDeadline.deadlineText}</strong> (ภายใน{' '}
-                        <span className="font-mono tabular-nums">3</span> วัน / <span className="font-mono tabular-nums">72</span> ชั่วโมงหลังสมัคร)
+                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน / <span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมงหลังสมัคร)
                         หากพ้นกำหนดระบบจะตัดสิทธิ์และคืนที่นั่งว่างให้ผู้สมัครคนอื่นโดยอัตโนมัติ
                       </>
                     )}
@@ -1715,7 +1717,7 @@ export function StatusSection() {
               ค่าสมัครและอีเมลแจ้งผล
             </h3>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
-              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร)
+              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร)
               รวม 7 รายการ: ที่พัก 2 คืน · อาหารหลัก 6 มื้อ · อาหารว่าง 5 มื้อ · เสื้อค่าย (SSS–4XL) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร
             </p>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>

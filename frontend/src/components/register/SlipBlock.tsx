@@ -8,7 +8,7 @@ import { Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import type { ApplicationStatus, SlipStatus } from '../../lib/api';
 import { SlipUploadPanel } from '../slip/SlipUploadPanel';
-import { FB_URL, STAFF_CONTACTS } from './model';
+import { FB_URL, PAYMENT_WINDOW_HOURS, STAFF_CONTACTS } from './model';
 
 /** The dot colour carries the state, the label carries the meaning (never colour alone). */
 const SLIP_BADGE: Record<SlipStatus | 'NONE', { dot: string; label: string }> = {
@@ -52,7 +52,7 @@ export function SlipBlock({
         </p>
       </div>
       <p className="rw-slip__steps" aria-label="ขั้นตอนยืนยันสิทธิ์">
-        <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">72</span> ชม.</span>
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.</span>
         <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> {hasDefaultCode ? 'แนบสลิปและกดส่ง' : 'แนบสลิป'}</span>
         {!hasDefaultCode && (
           <span className="rw-slip__step"><b className="font-mono tabular-nums">3</b> กรอกเลข <span className="font-mono tabular-nums">4</span> ตัว</span>

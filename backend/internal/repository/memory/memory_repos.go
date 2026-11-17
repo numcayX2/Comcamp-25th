@@ -395,10 +395,10 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 }
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
-// at or before cutoff (now - 72h) whose updated_at and latest REJECTED slip timestamp are at or
-// before the 24h grace cutoff (cutoff + 48h = now - 24h) and that have no PENDING or APPROVED
-// slip to REJECTED under payments -> applicants lock ordering, writing both status logs and audit entries.
-func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error) {
+// at or before createdCutoff (now - 120h) whose updated_at and latest REJECTED slip timestamp are
+// at or before graceCutoff (now - 24h) and that have no PENDING or APPROVED slip to REJECTED under
+// payments -> applicants lock ordering, writing both status logs and audit entries.
+func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error) {
 	if p := m.payments; p != nil {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -406,8 +406,8 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff ti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	utcCutoff := cutoff.UTC()
-	graceCutoff := utcCutoff.Add(48 * time.Hour)
+	utcCutoff := createdCutoff.UTC()
+	graceCutoff = graceCutoff.UTC()
 	var expired []string
 	for id, a := range m.data {
 		if a.DeletedAt != nil {
@@ -432,10 +432,11 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, cutoff ti
 			TargetType: domain.AuditTargetApplicant,
 			TargetID:   a.ApplicationNo,
 			Details: map[string]any{
-				"oldStatus": oldStatus,
-				"newStatus": domain.StatusRejected,
-				"reason":    reason,
-				"cutoff":    utcCutoff.Format(time.RFC3339),
+				"oldStatus":   oldStatus,
+				"newStatus":   domain.StatusRejected,
+				"reason":      reason,
+				"cutoff":      utcCutoff.Format(time.RFC3339),
+				"graceCutoff": graceCutoff.Format(time.RFC3339),
 			},
 		}
 		if err := m.audit.Log(ctx, entry); err != nil {

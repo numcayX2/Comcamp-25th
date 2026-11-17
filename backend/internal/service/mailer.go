@@ -242,7 +242,7 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		StaffContact:  campStaffContact,
 	}
 
-	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 3 วัน", view.ApplicationNo)
+	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 5 วัน", view.ApplicationNo)
 	raw, err := buildMultipartMIME(m.fromHeader, stripCRLF(data.Email), subject, regTextTmpl, regHTMLTmpl, view)
 	if err != nil {
 		log.Printf("mailer: failed to render registration email (%s): %v", data.ApplicationNo, err)
@@ -561,11 +561,11 @@ var regTextTmpl = texttmpl.Must(texttmpl.New("regText").Parse(`สวัสด�
 รหัสใบสมัคร: {{.ApplicationNo}}
 สถานะปัจจุบัน: จองที่นั่งชั่วคราว (PASSED · รอชำระเงินและตรวจสอบสลิป)
 
-ขั้นตอนสำคัญ (กรุณาดำเนินการภายใน 3 วัน):
+ขั้นตอนสำคัญ (กรุณาดำเนินการภายใน 5 วัน):
 - ยอดค่าสมัคร: {{.CampFee}} บาท (รวมที่พัก 2 คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้, อาหารหลัก 6 มื้อ, เบรก 5 มื้อ, เสื้อค่าย, กระเป๋าพร้อมปั๊มลาย, เอกสารอบรม และเกียรติบัตร)
 - ช่องทางโอนเงิน: {{.BankName}} เลขที่บัญชี {{.BankNumber}}
 - ชื่อบัญชี: {{.BankAccount}}
-- กำหนดโอนและแนบสลิปภายในวันที่: {{.DeadlineText}} (72 ชั่วโมงหลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ)
+- กำหนดโอนและแนบสลิปภายในวันที่: {{.DeadlineText}} (120 ชั่วโมงหลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ)
 
 อัปโหลดสลิปและตรวจสอบสถานะได้ที่: {{.StatusURL}}
 (หลังส่งสลิปบนหน้าเว็บ จะได้รับ QR Code และปุ่มเข้ากลุ่ม LINE OpenChat ทันที)
@@ -585,7 +585,7 @@ var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
   <p style="margin:0 0 6px;"><strong>ค่าสมัคร:</strong> {{.CampFee}} บาท (รวมที่พัก 2 คืน, อาหาร 6 มื้อ + เบรก 5 มื้อ, เสื้อค่าย, กระเป๋าพร้อมปั๊มลาย, เอกสารอบรม, เกียรติบัตร)</p>
   <p style="margin:0 0 6px;"><strong>โอนเข้าบัญชี:</strong> {{.BankName}} · <code>{{.BankNumber}}</code></p>
   <p style="margin:0 0 6px;"><strong>ชื่อบัญชี:</strong> {{.BankAccount}}</p>
-  <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)</p>
+  <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 5 วัน / 120 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)</p>
 </div>
 <p><a href="{{.StatusURL}}" style="display:inline-block;padding:10px 20px;border-radius:9999px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">ไปหน้าตรวจสอบสถานะและแนบสลิป</a></p>
 <p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>

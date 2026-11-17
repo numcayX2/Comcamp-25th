@@ -51,7 +51,7 @@ func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 	control := auditApplicant(t, apps, 1, domain.StatusPassed)
 	confirmer := auditApplicant(t, apps, 2, domain.StatusPassed)
 	editor := auditApplicant(t, apps, 3, domain.StatusPassed)
-	old := time.Now().UTC().Add(-100 * time.Hour)
+	old := time.Now().UTC().Add(-130 * time.Hour)
 	for _, a := range []*domain.Applicant{control, confirmer, editor} {
 		if err := apps.SetTimestampsForTest(a.ID, old, old); err != nil {
 			t.Fatal(err)
@@ -91,7 +91,7 @@ func TestUnpaidExpiry_StaffEditKeepsGrace(t *testing.T) {
 	svc := service.NewApplicantService(apps, memory.NewMemorySettingRepo(), pays).WithAudit(apps.Audit())
 
 	a := auditApplicant(t, apps, 4, domain.StatusPassed)
-	old := time.Now().UTC().Add(-100 * time.Hour)
+	old := time.Now().UTC().Add(-130 * time.Hour)
 	if err := apps.SetTimestampsForTest(a.ID, old, old); err != nil {
 		t.Fatal(err)
 	}
@@ -165,5 +165,83 @@ func TestCreateReplacingPending_RefusesClosedApplication(t *testing.T) {
 	p := &domain.Payment{ID: uuid.New(), ApplicantID: live.ID, SlipURL: "slips/d.jpg", Amount: decimal.NewFromInt(1200), Status: domain.PaymentPending}
 	if _, err := pays.CreateReplacingPending(ctx, p); err != nil {
 		t.Errorf("a PASSED application must still accept its slip: %v", err)
+	}
+}
+
+// The unpaid-expiry rule is due = max(created + 120h, updated_at + 24h, latest REJECTED slip + 24h),
+// and a seat with money on the table (a PENDING or APPROVED slip) or a CONFIRMED seat never expires.
+// The boundaries are pinned to the minute so a drift between the 5-day window and the 24h grace
+// (for example a hard-coded grace offset left at the old 3-day value) fails here.
+func TestUnpaidExpiry_FiveDayWindowBoundaries(t *testing.T) {
+	if service.UnpaidExpiryWindow != 120*time.Hour {
+		t.Fatalf("UnpaidExpiryWindow = %s, want 120h (5 days)", service.UnpaidExpiryWindow)
+	}
+	if service.UnpaidGraceWindow != 24*time.Hour {
+		t.Fatalf("UnpaidGraceWindow = %s, want 24h", service.UnpaidGraceWindow)
+	}
+
+	ctx := context.Background()
+	apps := memory.NewMemoryApplicantRepo()
+	pays := memory.NewMemoryPaymentRepo(apps)
+	svc := service.NewApplicantService(apps, memory.NewMemorySettingRepo(), pays).WithAudit(apps.Audit())
+	now := time.Now().UTC().Truncate(time.Second)
+
+	type tc struct {
+		name       string
+		status     domain.ApplicationStatus
+		created    time.Duration // age at sweep time
+		updated    time.Duration // age at sweep time (0 = same as created)
+		slip       domain.PaymentStatus
+		slipAge    time.Duration // age of the slip's verified_at
+		wantExpire bool
+	}
+	cases := []tc{
+		{name: "created exactly 120h ago", status: domain.StatusPassed, created: 120 * time.Hour, wantExpire: true},
+		{name: "created 119h59m ago", status: domain.StatusPassed, created: 119*time.Hour + 59*time.Minute, wantExpire: false},
+		{name: "created 130h ago, staff update 23h ago", status: domain.StatusPassed, created: 130 * time.Hour, updated: 23 * time.Hour, wantExpire: false},
+		{name: "created 130h ago, staff update 25h ago", status: domain.StatusPassed, created: 130 * time.Hour, updated: 25 * time.Hour, wantExpire: true},
+		{name: "created 130h ago, slip rejected 23h ago", status: domain.StatusPassed, created: 130 * time.Hour, slip: domain.PaymentRejected, slipAge: 23 * time.Hour, wantExpire: false},
+		{name: "created 130h ago, slip rejected 25h ago", status: domain.StatusPassed, created: 130 * time.Hour, slip: domain.PaymentRejected, slipAge: 25 * time.Hour, wantExpire: true},
+		{name: "created 130h ago, PENDING slip", status: domain.StatusPassed, created: 130 * time.Hour, slip: domain.PaymentPending, slipAge: 129 * time.Hour, wantExpire: false},
+		{name: "created 130h ago, APPROVED slip", status: domain.StatusPassed, created: 130 * time.Hour, slip: domain.PaymentApproved, slipAge: 129 * time.Hour, wantExpire: false},
+		{name: "created 130h ago, CONFIRMED", status: domain.StatusConfirmed, created: 130 * time.Hour, wantExpire: false},
+	}
+
+	byNo := map[string]tc{}
+	for i, c := range cases {
+		a := auditApplicant(t, apps, 40+i, c.status)
+		if c.slip != "" {
+			p := &domain.Payment{ID: uuid.New(), ApplicantID: a.ID, SlipURL: fmt.Sprintf("slips/b%d.jpg", i), Amount: decimal.NewFromInt(1200), Status: c.slip}
+			if err := pays.Create(ctx, p); err != nil {
+				t.Fatal(err)
+			}
+			verified := now.Add(-c.slipAge)
+			if err := pays.SetPaymentTimestampsForTest(p.ID, verified.Add(-time.Hour), &verified); err != nil {
+				t.Fatal(err)
+			}
+		}
+		created := now.Add(-c.created)
+		updated := created
+		if c.updated != 0 {
+			updated = now.Add(-c.updated)
+		}
+		if err := apps.SetTimestampsForTest(a.ID, created, updated); err != nil {
+			t.Fatal(err)
+		}
+		byNo[a.ApplicationNo] = c
+	}
+
+	expired, err := svc.ExpireOverdueUnpaid(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, no := range expired {
+		got[no] = true
+	}
+	for no, c := range byNo {
+		if got[no] != c.wantExpire {
+			t.Errorf("%s: expired=%v, want %v", c.name, got[no], c.wantExpire)
+		}
 	}
 }

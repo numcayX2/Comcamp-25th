@@ -3,7 +3,7 @@ import '../styles/fonts.css';
 import SiteNav from './SiteNav.astro';
 import HeroSection from './HeroSection.astro';
 import BackToTop from './BackToTop.astro';
-import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
+import { FB_URL, PAYMENT_WINDOW_DAYS, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
 import thai400 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-400-normal.woff2?url';
 import thai700 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-thai-700-normal.woff2?url';
 import mono500 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2?url';
@@ -281,7 +281,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
               <div class="ed-ledger__info">
                 <div class="card-top"><span class="bento-tag">06 · CAMP FEE</span></div>
                 <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
-                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) ภายใน <span class="font-mono">3</span> วันหลังสมัคร</p>
+                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
@@ -471,8 +471,8 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
-              <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">3</span> วัน</h3>
-              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (FCFS) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">3</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">3</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
+              <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน</h3>
+              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (FCFS) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 

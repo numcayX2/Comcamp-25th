@@ -20,6 +20,8 @@ import {
   FEE_TEXT,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
   RECEIPT_META,
   RECEIPT_STEP,
   STAFF_CONTACTS,
@@ -386,7 +388,7 @@ export function Receipt({
               <ul className="rw-due__rules">
                 <li>
                   โอน <strong className="font-mono tabular-nums">{feeText}</strong> บาท และแนบสลิปภายใน{' '}
-                  <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังสมัคร
+                  <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.) หลังสมัคร
                 </li>
                 <li>
                   <strong className="rw-due__flag">เกินกำหนด ระบบตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
@@ -486,7 +488,7 @@ export function Receipt({
         <h3 id="rw-next-title" className="rw-block__title">ขั้นตอนถัดไป</h3>
         <ol className="rw-steps">
           <li>
-            โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)
+            โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง)
             หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ
           </li>
           <li>
