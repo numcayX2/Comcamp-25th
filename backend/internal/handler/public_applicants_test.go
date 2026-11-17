@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"comcamp25-backend/internal/domain"
 	"comcamp25-backend/internal/handler"
@@ -170,6 +171,10 @@ func TestPublicList_ReflectsCreateAndStatusChangeImmediately(t *testing.T) {
 		t.Fatalf("a new registration must appear immediately, got %v", rows)
 	}
 
+	// The memory repo stamps created_at with time.Now(), whose Windows resolution is coarse (up to
+	// ~15.6ms). Two submits in the same tick tie, and the id tiebreak is a random UUID, so the
+	// "registration order" assertion below flaked. Wait out one tick so the order is well defined.
+	time.Sleep(20 * time.Millisecond)
 	second := app.submit(t, validTestNationalID(777102), "0817771020", "list2@example.com")
 	app.setStatus(t, token, first.ID, domain.StatusConfirmed)
 	_, _, rows = app.getPublicList(t)
