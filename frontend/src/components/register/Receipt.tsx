@@ -1,6 +1,6 @@
 /** Step 06 — receipt + payment instructions, shown after a successful submit. */
-import { useEffect, useId, useRef, useState } from 'react';
-import type { FormEvent, KeyboardEvent, Ref } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent, ReactNode, Ref } from 'react';
 import { ArrowRight, Check, Copy, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
@@ -14,12 +14,15 @@ import {
 import { cleanNationalIdInput, describeVerifyLock } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
 import {
+  DORM_MAPS_URL,
+  DORM_NAME,
   FB_URL,
   FEE_TEXT,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
   RECEIPT_META,
   RECEIPT_STEP,
+  STAFF_CONTACTS,
   describePaymentDeadline,
   isValidThaiNationalID,
 } from './model';
@@ -30,13 +33,33 @@ import { StepHeader } from './parts';
 type CopyState = 'idle' | 'copied' | 'failed';
 
 /** Thai copy for a failed withdrawal, keyed by the backend error code. */
-function describeWithdrawError(err: unknown): string {
+function describeWithdrawError(err: unknown): ReactNode {
   const locked = describeVerifyLock(err);
   if (locked) return locked;
   if (err instanceof ApiHttpError) {
     if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประชาชนไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
     if (err.code === 'RATE_LIMITED') return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
-    if (err.status === 409) return 'ใบสมัครนี้ยกเลิกเองไม่ได้แล้ว (ยืนยันสิทธิ์ ส่งสลิป หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งสละสิทธิ์ (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)';
+    if (err.status === 409) {
+      return (
+        <>
+          ใบสมัครนี้ยกเลิกเองไม่ได้แล้ว (ยืนยันสิทธิ์ ส่งสลิป หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่าน{' '}
+          <a href={FB_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
+            เพจ Facebook ของโครงการ
+          </a>{' '}
+          หรือโทร{' '}
+          {STAFF_CONTACTS.map((c, idx) => (
+            <Fragment key={c.tel}>
+              {idx > 0 && ' / '}
+              <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
+                {c.phone}
+              </a>{' '}
+              ({c.name})
+            </Fragment>
+          ))}{' '}
+          เพื่อแจ้งสละสิทธิ์ (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
+        </>
+      );
+    }
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
     if (err.status === 400) return 'กรุณากรอกเลขบัตรประชาชน 13 หลักของผู้สมัครให้ถูกต้อง';
   }
@@ -55,7 +78,7 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
   const complete = code.length === 13;
   const valid = complete && isValidThaiNationalID(code);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReactNode | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
@@ -477,13 +500,64 @@ export function Receipt({
         </div>
       </section>
 
+      <section className="rw-block" aria-labelledby="rw-camp-title">
+        <h3 id="rw-camp-title" className="rw-block__title">ข้อมูลวันจัดค่ายและช่องทางติดต่อ</h3>
+        <dl className="rw-dl">
+          <div className="rw-dl__row">
+            <dt>วันจัดค่าย</dt>
+            <dd>
+              <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์{' '}
+              <span className="font-mono tabular-nums">2570</span> (<span className="font-mono tabular-nums">3</span> วัน{' '}
+              <span className="font-mono tabular-nums">2</span> คืน) ณ มหาวิทยาลัยแม่โจ้
+            </dd>
+          </div>
+          <div className="rw-dl__row">
+            <dt>ที่พักค่าย</dt>
+            <dd>
+              {DORM_NAME} ·{' '}
+              <a href={DORM_MAPS_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
+                ดูแผนที่เรือนพัก (Google Maps)
+              </a>
+            </dd>
+          </div>
+          <div className="rw-dl__row">
+            <dt>ติดต่อทีมงาน</dt>
+            <dd>
+              <a href={FB_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
+                เพจ Facebook โครงการ
+              </a>
+              {' · '}
+              {STAFF_CONTACTS.map((c, idx) => (
+                <Fragment key={c.tel}>
+                  {idx > 0 && ' / '}
+                  <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
+                    {c.phone}
+                  </a>{' '}
+                  ({c.name})
+                </Fragment>
+              ))}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       <section className="rw-block" aria-label="ยกเลิกใบสมัคร">
         {slipLocksWithdraw ? (
           <p className="rw-slip__note">
             ส่งสลิปหรือยืนยันสิทธิ์แล้ว จึงยกเลิกใบสมัครเองไม่ได้ หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่าน{' '}
-            <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
+            <a href={FB_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
               เพจ Facebook ของโครงการ
             </a>{' '}
+            หรือโทร{' '}
+            {STAFF_CONTACTS.map((c, idx) => (
+              <Fragment key={c.tel}>
+                {idx > 0 && ' / '}
+                <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
+                  {c.phone}
+                </a>{' '}
+                ({c.name})
+              </Fragment>
+            ))}{' '}
             (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
           </p>
         ) : (

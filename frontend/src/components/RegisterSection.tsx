@@ -7,7 +7,7 @@
  * Steps 01–05 are form steps; 06 is the receipt/payment state after submit.
  * All form state lives here, so going back and forth never loses input.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { gsap } from 'gsap';
 import { ArrowLeft, ArrowRight, Check, Clock, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
@@ -26,6 +26,7 @@ import {
   ALLERGIES_MAX,
   DIETARY_QUICK_OPTIONS,
   EMPTY_FORM,
+  FB_URL,
   FEE_TEXT,
   GRADES,
   GRADE_OTHER,
@@ -41,6 +42,7 @@ import {
   SHIRT_SIZES,
   SIZE_CHEST,
   SIZE_LENGTH,
+  STAFF_CONTACTS,
   STEPS,
   TOTAL_STEPS,
   cleanSingleLine,
@@ -146,67 +148,108 @@ const CAPTCHA_FAILED_MESSAGE = 'การยืนยันตัวตนไม
 const CAPTCHA_MISSING_MESSAGE = 'ยังไม่ได้ยืนยันตัวตน กรุณารอให้ช่องยืนยันด้านบนขึ้นเครื่องหมายถูก แล้วกดส่งใบสมัครอีกครั้ง';
 const CAPTCHA_UNAVAILABLE_MESSAGE = 'ระบบยืนยันตัวตนยังไม่พร้อมใช้งาน ใบสมัครจึงยังส่งไม่ได้ กรุณาแจ้งทีมงานค่าย';
 
+type ErrorBannerState = { text: string; withContacts?: boolean };
+
+function ContactLinks({ inline = true }: { inline?: boolean }) {
+  const linkClass = inline ? 'rw-inline-link' : undefined;
+  return (
+    <>
+      <a href={FB_URL} className={linkClass} target="_blank" rel="noopener noreferrer">
+        เพจ Facebook โครงการ
+      </a>
+      {' · '}
+      {STAFF_CONTACTS.map((c, idx) => (
+        <Fragment key={c.tel}>
+          {idx > 0 && ' / '}
+          <a href={`tel:${c.tel}`} className={linkClass ? `${linkClass} font-mono tabular-nums` : 'font-mono tabular-nums'}>
+            {c.phone}
+          </a>{' '}
+          ({c.name})
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 /**
  * Thai copy for a failed submit. A connection failure is always safe to retry: the resend carries
  * the same X-Idempotency-Key, so the server returns the saved application instead of a duplicate.
  */
-function describeSubmitError(err: unknown): string {
+function describeSubmitError(err: unknown): ErrorBannerState {
   if (err instanceof ApiHttpError) {
     switch (err.code) {
       case 'DUPLICATE_APPLICATION':
-        return 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ';
+        return {
+          text: 'เลขบัตรประชาชน เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ',
+        };
       case 'IDEMPOTENCY_KEY_REUSED':
-        return 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประชาชนอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประชาชนให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)';
+        return {
+          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประชาชนอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประชาชนให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
+        };
       case 'RATE_LIMITED': {
         const wait = err.retryAfterSeconds ? ` ${err.retryAfterSeconds} วินาที` : 'สักครู่';
-        return `มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอ${wait}แล้วกดส่งอีกครั้ง`;
+        return { text: `มีการส่งข้อมูลถี่เกินไป ข้อมูลที่กรอกยังอยู่ครบ กรุณารอ${wait}แล้วกดส่งอีกครั้ง` };
       }
       case 'REGISTRATION_CLOSED':
-        return 'ขณะนี้ปิดรับใบสมัครแล้ว ใบสมัครยังไม่ถูกบันทึก หากมีข้อสงสัยติดต่อทีมงานผ่านเพจ Facebook ของโครงการ';
+        return {
+          text: 'ขณะนี้ปิดรับใบสมัครแล้ว ใบสมัครยังไม่ถูกบันทึก หากมีข้อสงสัยติดต่อทีมงาน',
+          withContacts: true,
+        };
       case 'QUOTA_FULL':
-        return 'ที่นั่งเต็มจำนวนพอดีในจังหวะที่ส่ง ใบสมัครจึงยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ หากมีผู้สละสิทธิ์ระบบจะเปิดรับเพิ่มอัตโนมัติ สามารถกดส่งอีกครั้งได้ทันที';
+        return {
+          text: 'ที่นั่งเต็มจำนวนพอดีในจังหวะที่ส่ง ใบสมัครจึงยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ หากมีผู้สละสิทธิ์ระบบจะเปิดรับเพิ่มอัตโนมัติ สามารถกดส่งอีกครั้งได้ทันที',
+        };
       case 'CAPTCHA_FAILED':
-        return CAPTCHA_FAILED_MESSAGE;
+        return { text: CAPTCHA_FAILED_MESSAGE };
       case 'PAYLOAD_TOO_LARGE':
-        return 'ขนาดข้อมูลที่ส่งเกินกว่าที่ระบบกำหนด กรุณาลดความยาวข้อความในช่องความสนใจแล้วลองใหม่อีกครั้ง';
+        return { text: 'ขนาดข้อมูลที่ส่งเกินกว่าที่ระบบกำหนด กรุณาลดความยาวข้อความในช่องความสนใจแล้วลองใหม่อีกครั้ง' };
       case 'SERVICE_UNAVAILABLE':
         // 503: the midnight queue timed out, settings were unreachable, or Cloudflare could not be
         // asked to verify the captcha. Nothing was saved.
-        return 'ระบบยุ่งหรือตรวจสอบการยืนยันตัวตนไม่ได้ชั่วคราว (อาจมีผู้สมัครพร้อมกันจำนวนมาก) ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ';
+        return {
+          text: 'ระบบยุ่งหรือตรวจสอบการยืนยันตัวตนไม่ได้ชั่วคราว (อาจมีผู้สมัครพร้อมกันจำนวนมาก) ใบสมัครยังไม่ถูกบันทึก ข้อมูลที่กรอกยังอยู่ครบ รอสักครู่แล้วกดส่งอีกครั้งได้เลย ระบบจะไม่บันทึกใบสมัครซ้ำ',
+          withContacts: true,
+        };
       case 'VALIDATION_ERROR': {
         const msg = err.message.toLowerCase();
         if (msg.includes('national id') || msg.includes('check digit')) {
-          return 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง';
+          return { text: 'เลขประจำตัวประชาชน 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง' };
         }
         if (msg.includes('parent phone')) {
-          return 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
+          return { text: 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0' };
         }
         if (msg.includes('phone')) {
-          return 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
+          return { text: 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0' };
         }
         if (msg.includes('email')) {
-          return 'รูปแบบอีเมลไม่ถูกต้อง กรุณาตรวจสอบอีเมลอีกครั้ง';
+          return { text: 'รูปแบบอีเมลไม่ถูกต้อง กรุณาตรวจสอบอีเมลอีกครั้ง' };
         }
         if (msg.includes('shirt')) {
-          return 'ขนาดเสื้อไม่ถูกต้อง กรุณาเลือกไซส์ใหม่อีกครั้ง';
+          return { text: 'ขนาดเสื้อไม่ถูกต้อง กรุณาเลือกไซส์ใหม่อีกครั้ง' };
         }
         if (msg.includes('grade')) {
-          return 'ระดับชั้นไม่ถูกต้อง กรุณาตรวจสอบข้อมูลระดับชั้นอีกครั้ง';
+          return { text: 'ระดับชั้นไม่ถูกต้อง กรุณาตรวจสอบข้อมูลระดับชั้นอีกครั้ง' };
         }
         if (msg.includes('idempotency')) {
-          return 'รหัสอ้างอิงคำขอไม่ถูกต้อง กรุณารีเฟรชหน้านี้แล้วลองส่งใหม่อีกครั้ง';
+          return { text: 'รหัสอ้างอิงคำขอไม่ถูกต้อง กรุณารีเฟรชหน้านี้แล้วลองส่งใหม่อีกครั้ง' };
         }
         if (msg.includes('too long') || msg.includes('character')) {
-          return 'ข้อความบางช่องยาวเกินกำหนด กรุณาตรวจสอบความยาวข้อมูลแล้วลองส่งอีกครั้ง';
+          return { text: 'ข้อความบางช่องยาวเกินกำหนด กรุณาตรวจสอบความยาวข้อมูลแล้วลองส่งอีกครั้ง' };
         }
-        return 'ข้อมูลที่กรอกไม่ผ่านการตรวจสอบ กรุณาตรวจทานข้อมูลในแต่ละขั้นตอนแล้วลองส่งอีกครั้ง';
+        return { text: 'ข้อมูลที่กรอกไม่ผ่านการตรวจสอบ กรุณาตรวจทานข้อมูลในแต่ละขั้นตอนแล้วลองส่งอีกครั้ง' };
       }
     }
-    if (err.status === 403) return 'ระบบปิดรับใบสมัครในขณะนี้ ใบสมัครยังไม่ถูกบันทึก';
-    if (err.status >= 400 && err.status < 500)
-      return 'ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจทานข้อมูลแล้วลองส่งใหม่อีกครั้ง';
+    if (err.status === 403) {
+      return { text: 'ระบบปิดรับใบสมัครในขณะนี้ ใบสมัครยังไม่ถูกบันทึก', withContacts: true };
+    }
+    if (err.status >= 400 && err.status < 500) {
+      return { text: 'ระบบไม่รับข้อมูลบางส่วน ใบสมัครยังไม่ถูกบันทึก กรุณาตรวจทานข้อมูลแล้วลองส่งใหม่อีกครั้ง' };
+    }
   }
-  return 'ส่งใบสมัครไม่สำเร็จเนื่องจากการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กรุณากดส่งอีกครั้ง ระบบจะไม่บันทึกใบสมัครซ้ำ';
+  return {
+    text: 'ส่งใบสมัครไม่สำเร็จเนื่องจากการเชื่อมต่อขัดข้อง ข้อมูลที่กรอกยังอยู่ครบ กรุณากดส่งอีกครั้ง ระบบจะไม่บันทึกใบสมัครซ้ำ',
+    withContacts: true,
+  };
 }
 
 const ICON = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const;
@@ -357,7 +400,7 @@ export function RegisterSection() {
   const [returnTo, setReturnTo] = useState<number | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorBannerState | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [gate, setGate] = useState<GateState>('checking');
@@ -447,8 +490,24 @@ export function RegisterSection() {
     const tick = () => setCountdownMs(Math.max(0, opensAtMs - (Date.now() + offsetMs)));
     tick();
     const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, [gate, opensAtMs, offsetMs]);
+    const onWake = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now() + offsetMs;
+      if (now >= opensAtMs) {
+        checkGate(true);
+      } else {
+        tick();
+        window.clearTimeout(openTimer.current);
+        const jitter = 200 + Math.random() * 1800;
+        openTimer.current = window.setTimeout(() => checkGate(true), Math.min(opensAtMs - now + jitter, MAX_TIMER_MS));
+      }
+    };
+    document.addEventListener('visibilitychange', onWake);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onWake);
+    };
+  }, [gate, opensAtMs, offsetMs, checkGate]);
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -525,6 +584,7 @@ export function RegisterSection() {
 
   function show(next: number, focus: { field?: FieldKey; heading?: boolean }) {
     pending.current = focus;
+    setTyping(false);
     setStep(next);
     window.scrollTo({ top: 0 });
   }
@@ -567,10 +627,11 @@ export function RegisterSection() {
     if (gate !== 'open') {
       const msg = 'ยังไม่เปิดรับสมัครในขณะนี้ กรุณาตรวจสอบอีกครั้งเมื่อถึงกำหนดเปิดรับ';
       focusErrorBanner.current = true;
-      setError(msg);
+      setError({ text: msg, withContacts: true });
       announce(msg);
       return;
     }
+    setError(null);
     const errs = validateStep(step, form, consent);
     // The captcha is checked like the consent box: a clear inline message, never a silent no-op.
     const captchaMissing = step === LAST_FORM_STEP && CAPTCHA_MODE !== 'dev-skip' && !turnstileToken;
@@ -580,7 +641,8 @@ export function RegisterSection() {
     if (firstErrorKey(step, errs)) return failAt(step, errs);
     if (captchaMissing) {
       announce(CAPTCHA_MODE === 'missing-key' ? CAPTCHA_UNAVAILABLE_MESSAGE : CAPTCHA_MISSING_MESSAGE);
-      captchaRef.current?.focus();
+      if (captchaRef.current) captchaRef.current.focus();
+      else document.getElementById('captcha-err')?.focus();
       return;
     }
 
@@ -604,6 +666,7 @@ export function RegisterSection() {
   function goBack() {
     if (step === 0) return;
     setReturnTo(null);
+    setError(null);
     setErrors({});
     show(step - 1, { heading: true });
   }
@@ -611,6 +674,7 @@ export function RegisterSection() {
   /** Sidebar jump. Backwards is free; forwards re-validates every step in between. */
   function goTo(target: number) {
     if (appId || gate !== 'open' || target === step || target > furthest) return;
+    setError(null);
     for (let i = step; i < target; i++) {
       const errs = validateStep(i, form, consent);
       if (firstErrorKey(i, errs)) return failAt(i, errs); // blocked: keep returnTo so the user still lands on review
@@ -622,6 +686,7 @@ export function RegisterSection() {
 
   function editFromReview(i: number) {
     setReturnTo(LAST_FORM_STEP);
+    setError(null);
     setErrors({});
     show(i, { heading: true });
   }
@@ -647,6 +712,7 @@ export function RegisterSection() {
       clearIdempotencyKey();
       idemKeyRef.current = '';
       clearDraft();
+      setTyping(false);
       setNotice(null);
       saveReceipt(app.id, src);
       pending.current = { heading: true };
@@ -660,7 +726,7 @@ export function RegisterSection() {
     try {
       const payload: ApplicationPayload = {
         fullName: cleanSingleLine(form.fullName),
-        nickname: form.nickname.trim(),
+        nickname: cleanSingleLine(form.nickname),
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
         nationalId: sanitizeDigits(form.nationalId),
         phone: sanitizeDigits(form.phone),
@@ -668,8 +734,8 @@ export function RegisterSection() {
         parentName: cleanSingleLine(form.parentName),
         parentRelation: cleanSingleLine(form.parentRelation),
         parentPhone: sanitizeDigits(form.parentPhone),
-        school: form.school.trim(),
-        province: form.province.trim(),
+        school: cleanSingleLine(form.school),
+        province: cleanSingleLine(form.province),
         grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
         motivation: stripZeroWidth(form.motivation).trim(),
@@ -702,10 +768,10 @@ export function RegisterSection() {
         announce(CAPTCHA_FAILED_MESSAGE);
         captchaRef.current?.focus();
       } else {
-        const msg = describeSubmitError(err);
+        const nextErr = describeSubmitError(err);
         focusErrorBanner.current = true;
-        setError(msg);
-        announce(msg);
+        setError(nextErr);
+        announce(nextErr.text);
         window.scrollTo({ top: 0 });
       }
     } finally {
@@ -788,10 +854,10 @@ export function RegisterSection() {
   }, [notice, gate]);
 
   /* Phones: while the keyboard is up, let the top bar scroll away so the field keeps the room. */
-  function onFormFocus(ev: FocusEvent<HTMLFormElement>) {
+  function onFormFocus(ev: FocusEvent<HTMLElement>) {
     if (isTextEntry(ev.target)) setTyping(true);
   }
-  function onFormBlur(ev: FocusEvent<HTMLFormElement>) {
+  function onFormBlur(ev: FocusEvent<HTMLElement>) {
     if (!isTextEntry(ev.relatedTarget)) setTyping(false);
   }
 
@@ -925,6 +991,9 @@ export function RegisterSection() {
                 </div>
               </li>
             </ol>
+            <p className="rw-rules__contact">
+              สอบถามเพิ่มเติม: <ContactLinks />
+            </p>
           </aside>
           <div className="rw-draft">
             {confirmClear ? (
@@ -1068,7 +1137,7 @@ export function RegisterSection() {
               digits={10}
               type="tel"
               inputMode="tel"
-              autoComplete="tel"
+              autoComplete="off"
               value={form.parentPhone}
               error={errors.parentPhone}
               onChange={(v) => set('parentPhone', v)}
@@ -1130,13 +1199,13 @@ export function RegisterSection() {
               <TextField
                 id="gradeOther"
                 label="ระบุระดับชั้น"
-                hint={<span className="font-mono">{form.gradeOther.trim().length}/{GRADE_OTHER_MAX}</span>}
+                hint={<span className="font-mono">{cleanSingleLine(form.gradeOther).length}/{GRADE_OTHER_MAX}</span>}
                 span={6}
                 value={form.gradeOther}
                 error={errors.gradeOther}
                 onChange={(v) => set('gradeOther', v)}
                 onBlur={() => blur('gradeOther')}
-                placeholder="เช่น ปวส.1, ม.3, กำลังรอเข้าเรียน"
+                placeholder="เช่น กศน. ม.ปลาย, เทียบเท่า ม.4–ม.6 / ปวช.1–ปวช.3"
               />
             )}
           </div>
@@ -1153,7 +1222,8 @@ export function RegisterSection() {
                 <SizeChips value={form.shirtSize} invalid={Boolean(errors.shirtSize)} onChange={(v) => set('shirtSize', v)} />
                 {errors.shirtSize && (
                   <p id="shirtSize-err" className="rw-err">
-                    {errors.shirtSize}
+                    <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{errors.shirtSize}</span>
                   </p>
                 )}
               </fieldset>
@@ -1309,12 +1379,12 @@ export function RegisterSection() {
                 title="ข้อมูลผู้สมัคร"
                 onEdit={() => editFromReview(0)}
                 rows={[
-                  ['ชื่อ-นามสกุล', form.fullName.trim()],
-                  ['ชื่อเล่น', form.nickname.trim()],
+                  ['ชื่อ-นามสกุล', cleanSingleLine(form.fullName)],
+                  ['ชื่อเล่น', cleanSingleLine(form.nickname)],
                   ['เลขบัตรประชาชน', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],
-                  ['ชื่อผู้ปกครอง', `${form.parentName.trim()} (${form.parentRelation.trim()})`],
+                  ['ชื่อผู้ปกครอง', `${cleanSingleLine(form.parentName)} (${cleanSingleLine(form.parentRelation)})`],
                   ['เบอร์โทรผู้ปกครอง', <span className="font-mono" key="pph">{formatPhone(form.parentPhone)}</span>],
                 ]}
               />
@@ -1322,8 +1392,8 @@ export function RegisterSection() {
                 title="ข้อมูลการศึกษา"
                 onEdit={() => editFromReview(1)}
                 rows={[
-                  ['สถานศึกษา', form.school.trim()],
-                  ['จังหวัด', form.province.trim()],
+                  ['สถานศึกษา', cleanSingleLine(form.school)],
+                  ['จังหวัด', cleanSingleLine(form.province)],
                   ['ระดับชั้น', gradeValue(form)],
                 ]}
               />
@@ -1349,9 +1419,9 @@ export function RegisterSection() {
                 title="แรงบันดาลใจและหมายเหตุสุขภาพ"
                 onEdit={() => editFromReview(3)}
                 rows={[
-                  ['ความสนใจ', form.motivation.trim() ? <span className="rw-pre" key="mo">{form.motivation.trim()}</span> : <Empty key="mo" />],
-                  ['การแพ้อาหาร', form.allergies.trim() ? <span className="rw-pre" key="al">{form.allergies.trim()}</span> : <Empty key="al" />],
-                  ['โรคประจำตัว', form.medicalConditions.trim() ? <span className="rw-pre" key="mc">{form.medicalConditions.trim()}</span> : <Empty key="mc" />],
+                  ['ความสนใจ', stripZeroWidth(form.motivation).trim() ? <span className="rw-pre" key="mo">{stripZeroWidth(form.motivation).trim()}</span> : <Empty key="mo" />],
+                  ['การแพ้อาหาร', stripZeroWidth(form.allergies).trim() ? <span className="rw-pre" key="al">{stripZeroWidth(form.allergies).trim()}</span> : <Empty key="al" />],
+                  ['โรคประจำตัว', stripZeroWidth(form.medicalConditions).trim() ? <span className="rw-pre" key="mc">{stripZeroWidth(form.medicalConditions).trim()}</span> : <Empty key="mc" />],
                 ]}
               />
             </div>
@@ -1385,8 +1455,8 @@ export function RegisterSection() {
                   หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี
                 </li>
                 <li>
-                  <strong>แนบสลิปเพื่อรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
-                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับ หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>) เมื่อทีมงานอนุมัติสลิป ระบบจะส่งอีเมลยืนยันสิทธิ์พร้อมพิกัดที่พักและลิงก์เข้ากลุ่ม LINE OpenChat ให้ทันที
+                  <strong>แนบสลิป เข้ากลุ่ม LINE OpenChat และรอรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
+                  อัปโหลดต่อได้ทันทีในหน้าใบตอบรับ หรือส่งทีหลังที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>) หลังอัปโหลดสลิปแล้ว <strong>QR Code และลิงก์เข้ากลุ่ม LINE OpenChat จะแสดงบนหน้าใบตอบรับและหน้า <span className="font-mono">/status</span> ทันที</strong> และเมื่อทีมงานอนุมัติสลิป ระบบจะส่งอีเมลยืนยันสิทธิ์สมบูรณ์พร้อมพิกัดที่พักและลิงก์เข้ากลุ่มให้อีกครั้ง
                 </li>
               </ol>
             </section>
@@ -1412,7 +1482,8 @@ export function RegisterSection() {
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
             {errors.consent && (
               <p id="consent-err" className="rw-err rw-consent__err">
-                {errors.consent}
+                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                <span>{errors.consent}</span>
               </p>
             )}
 
@@ -1434,8 +1505,11 @@ export function RegisterSection() {
               </p>
             )}
             {CAPTCHA_MODE === 'missing-key' && (
-              <p id="captcha-err" className="rw-err" role="alert">
-                {CAPTCHA_UNAVAILABLE_MESSAGE}
+              <p id="captcha-err" className="rw-err" role="alert" tabIndex={-1}>
+                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                <span>
+                  {CAPTCHA_UNAVAILABLE_MESSAGE} (<ContactLinks />)
+                </span>
               </p>
             )}
           </>
@@ -1476,7 +1550,14 @@ export function RegisterSection() {
     <div ref={errorBannerRef} tabIndex={-1} className="rw-banner" role="alert">
       <p>
         <TriangleAlert {...ICON} />
-        <span>{error}</span>
+        <span>
+          {error.text}
+          {error.withContacts && (
+            <span className="rw-banner__contacts">
+              ติดต่อทีมงาน: <ContactLinks inline={false} />
+            </span>
+          )}
+        </span>
       </p>
       <button type="button" className="rw-textlink rw-textlink--btn" onClick={() => setError(null)}>
         ปิด
@@ -1515,7 +1596,10 @@ export function RegisterSection() {
         </div>
 
         <div className="rw-side__brand">
-          <img className="rw-side__logo" src="/assets/logo/comcamp25-logo-sm.png" alt="" width="42" height="30" decoding="async" />
+          <picture>
+            <source srcSet="/assets/logo/comcamp25-logo-sm.webp" type="image/webp" />
+            <img className="rw-side__logo" src="/assets/logo/comcamp25-logo-sm.png" alt="" width="42" height="30" decoding="async" />
+          </picture>
           <h1 className="rw-side__title">สมัครเข้าร่วมค่าย</h1>
           <p className="rw-side__sub">
             ComCamp <span className="font-mono">#25</span> · <span className="nowrap">มหาวิทยาลัยแม่โจ้</span>
@@ -1599,7 +1683,7 @@ export function RegisterSection() {
           </div>
         </form>
       ) : (
-        <div className="rw-main">
+        <div className="rw-main" onFocus={onFormFocus} onBlur={onFormBlur}>
           <div className="rw-content" id="rw-content" tabIndex={-1}>
             {devBar}
             {noticeBanner}
@@ -1630,6 +1714,11 @@ export function RegisterSection() {
                   <p className="rw-gate__body">
                     เปิดรับสมัครอัตโนมัติในอีก{' '}
                     <span className="font-mono tabular-nums">{formatCountdown(countdownMs)}</span>
+                  </p>
+                )}
+                {(gate === 'closed' || gate === 'full' || gate === 'error') && (
+                  <p className="rw-gate__contact">
+                    ติดต่อทีมงาน: <ContactLinks />
                   </p>
                 )}
                 <div className="rw-actions rw-actions--tight">

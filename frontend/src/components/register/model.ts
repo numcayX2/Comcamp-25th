@@ -2,7 +2,7 @@
  * /register wizard — data model, step definitions and validation.
  * No React in here so the rules stay testable and the component stays thin.
  */
-import type { ApplicationPayload, ShirtSize } from '../../lib/api';
+import { stripZeroWidth, type ApplicationPayload, type ShirtSize } from '../../lib/api';
 
 export const SEATS = 30;
 /**
@@ -174,7 +174,7 @@ export function splitGrade(grade: string): { grade: string; gradeOther: string }
 export function validateGradeFields(grade: string, gradeOther: string): string | undefined {
   if ((GRADES as readonly string[]).includes(grade)) return undefined;
   if (grade !== GRADE_OTHER) return 'กรุณาเลือกระดับชั้น';
-  const text = gradeOther.trim();
+  const text = cleanSingleLine(gradeOther);
   if (text.length < 2) return 'กรุณาระบุระดับชั้นของคุณ (อย่างน้อย 2 ตัวอักษร)';
   if (text.length > GRADE_OTHER_MAX) return `ระบุได้ไม่เกิน ${GRADE_OTHER_MAX} ตัวอักษร`;
   if (text === GRADE_OTHER) return 'กรุณาระบุชื่อระดับชั้นของคุณให้ชัดเจน';
@@ -184,7 +184,7 @@ export function validateGradeFields(grade: string, gradeOther: string): string |
 
 /** The grade string the API receives. */
 export const gradeValue = (f: Pick<FormState, 'grade' | 'gradeOther'>) =>
-  f.grade === GRADE_OTHER ? f.gradeOther.trim() : f.grade;
+  f.grade === GRADE_OTHER ? cleanSingleLine(f.gradeOther) : f.grade;
 
 export const EMPTY_FORM: FormState = {
   fullName: '',
@@ -297,7 +297,7 @@ export function isValidThaiNationalID(id: string): boolean {
 }
 
 export function cleanSingleLine(s: string): string {
-  return s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim().replace(/\s+/g, ' ');
+  return stripZeroWidth(s).trim().replace(/\s+/g, ' ');
 }
 
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
@@ -320,7 +320,7 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       return undefined;
     }
     case 'nickname': {
-      const n = form.nickname.trim();
+      const n = cleanSingleLine(form.nickname);
       if (!n) return 'กรุณากรอกชื่อเล่น';
       return n.length > NICKNAME_MAX ? `ชื่อเล่นต้องยาวไม่เกิน ${NICKNAME_MAX} ตัวอักษร` : undefined;
     }
@@ -338,12 +338,20 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       return /^0\d{9}$/.test(p) ? undefined : 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
     }
     case 'email': {
-      const e = form.email.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').replace(/\s+/g, '');
+      const e = stripZeroWidth(form.email).replace(/\s+/g, '');
       if (!e) return 'กรุณากรอกอีเมลสำหรับรับหลักฐานการสมัครและแจ้งผลยืนยันสิทธิ์';
       if (e.length > EMAIL_MAX) return `อีเมลต้องยาวไม่เกิน ${EMAIL_MAX} ตัวอักษร`;
       const atIdx = e.indexOf('@');
+      const local = atIdx >= 0 ? e.slice(0, atIdx) : '';
       const domain = atIdx >= 0 ? e.slice(atIdx + 1) : '';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || domain.startsWith('.') || domain.endsWith('.')) {
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ||
+        e.includes('..') ||
+        local.startsWith('.') ||
+        local.endsWith('.') ||
+        domain.startsWith('.') ||
+        domain.endsWith('.')
+      ) {
         return 'รูปแบบอีเมลไม่ถูกต้อง เช่น name@example.com';
       }
       return undefined;
@@ -364,12 +372,12 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       return /^0\d{9}$/.test(pp) ? undefined : 'เบอร์โทรผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
     }
     case 'school': {
-      const s = form.school.trim();
+      const s = cleanSingleLine(form.school);
       if (!s) return 'กรุณากรอกชื่อโรงเรียนหรือสถานศึกษา';
       return s.length > SCHOOL_MAX ? `ชื่อโรงเรียนต้องยาวไม่เกิน ${SCHOOL_MAX} ตัวอักษร` : undefined;
     }
     case 'province': {
-      const p = form.province.trim();
+      const p = cleanSingleLine(form.province);
       if (!p) return 'กรุณากรอกจังหวัด';
       return p.length > PROVINCE_MAX ? `ชื่อจังหวัดต้องยาวไม่เกิน ${PROVINCE_MAX} ตัวอักษร` : undefined;
     }
@@ -381,15 +389,15 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     case 'shirtSize':
       return form.shirtSize ? undefined : 'กรุณาเลือกไซส์เสื้อ';
     case 'motivation': {
-      const m = form.motivation.trim();
+      const m = stripZeroWidth(form.motivation).trim();
       return m.length > MOTIVATION_MAX ? `ความยาวต้องไม่เกิน ${MOTIVATION_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
     }
     case 'allergies': {
-      const a = form.allergies.trim();
+      const a = stripZeroWidth(form.allergies).trim();
       return a.length > ALLERGIES_MAX ? `ความยาวต้องไม่เกิน ${ALLERGIES_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
     }
     case 'medicalConditions': {
-      const mc = form.medicalConditions.trim();
+      const mc = stripZeroWidth(form.medicalConditions).trim();
       return mc.length > MEDICAL_CONDITIONS_MAX ? `ความยาวต้องไม่เกิน ${MEDICAL_CONDITIONS_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;
     }
     case 'consent':

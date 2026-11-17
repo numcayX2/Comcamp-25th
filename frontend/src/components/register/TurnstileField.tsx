@@ -124,19 +124,25 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
       (api) => {
         if (cancelled || !boxRef.current) return;
         onTokenRef.current(null);
+        let errored = false;
         widgetId.current = api.render(boxRef.current, {
           sitekey: siteKey,
           theme,
           language: 'th',
           size: 'flexible',
-          callback: (token) => onTokenRef.current(token),
+          callback: (token) => {
+            if (!cancelled) setLoad('ready');
+            onTokenRef.current(token);
+          },
           'expired-callback': () => onTokenRef.current(null),
           'error-callback': () => {
+            errored = true;
             onTokenRef.current(null);
+            if (!cancelled) setLoad('failed');
           },
           'timeout-callback': () => onTokenRef.current(null),
         });
-        setLoad('ready');
+        if (!errored && !cancelled) setLoad('ready');
       },
       () => {
         if (!cancelled) setLoad('failed');

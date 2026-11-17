@@ -403,6 +403,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-chip { position: relative; z-index: 1; display: block; cursor: pointer; }
 .rw-chip input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
+  scroll-margin: 140px 0 120px;
 }
 .rw-chip__face {
   display: flex;
@@ -550,6 +551,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+  scroll-margin: 140px 0 120px;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .rw-consent input::after {
@@ -572,7 +574,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
    field, so a second border would be card-in-card. min-height keeps the page from jumping when the
    widget mounts (the managed widget is 65px tall). */
 .rw-captcha { margin-top: 20px; scroll-margin-bottom: 150px; } /* clears the sticky footer when focused / scrolled to */
-.rw-captcha__box, .rw-captcha .rw-err { scroll-margin-bottom: 150px; }
+.rw-captcha__box, .rw-captcha .rw-err, #captcha-err { scroll-margin-bottom: 150px; }
 .rw-captcha__label { margin: 0 0 10px; font-size: 0.9375rem; font-weight: 600; line-height: 1.6; color: var(--rw-ink); }
 .rw-captcha__box { min-height: 65px; max-width: 100%; outline: none; }
 .rw-captcha__box:focus-visible { outline: 2px solid var(--rw-focus); outline-offset: 3px; border-radius: 12px; }
@@ -662,6 +664,15 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-textlink:hover { text-decoration-color: var(--rw-ink); }
 .rw-textlink--btn { min-width: 44px; justify-content: center; padding: 0 2px; background: none; border: 0; font-family: inherit; cursor: pointer; }
 .rw-textlink--danger { color: var(--rw-danger); text-decoration-color: currentColor; }
+.rw-inline-link {
+  color: var(--rw-ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--rw-line);
+  text-underline-offset: 4px;
+  transition: text-decoration-color 0.15s ease;
+}
+.rw-inline-link:hover { text-decoration-color: var(--rw-ink); }
 
 /* ---------- Draft notice (step 1) ---------- */
 .rw-draft {
@@ -693,6 +704,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-gate { padding-top: clamp(8px, 2vw, 24px); border-top: 1px solid var(--rw-ink); margin-top: 8px; }
 .rw-gate__title { margin-top: 20px; font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.125rem); font-weight: 700; line-height: 1.35; text-wrap: balance; }
 .rw-gate__body { margin: 12px 0 12px; max-width: 56ch; font-size: 1rem; line-height: 1.8; color: var(--rw-ink-2); }
+.rw-gate__contact { margin: 0 0 12px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
 .rw-checking { padding: 24px 0; font-size: 1rem; color: var(--rw-ink-2); }
 .rw-banner {
   display: flex;
@@ -711,6 +723,15 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 }
 .rw-banner p { display: flex; align-items: flex-start; gap: 10px; color: inherit; }
 .rw-banner svg { flex: none; margin-top: 0.3em; color: inherit; }
+.rw-banner a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 3px;
+}
+.rw-banner a:focus-visible { outline-color: currentColor; }
+.rw-banner__contacts { display: block; margin-top: 6px; font-weight: 500; }
 .rw-banner .rw-textlink--btn {
   flex: none;
   color: inherit;
@@ -986,6 +1007,14 @@ html[data-theme="dark"] .rw-rules {
   color: var(--rw-ink-2);
 }
 .rw-rules__flag { font-weight: 600; color: var(--rw-warn-text); }
+.rw-rules__contact {
+  margin: 2px 0 0;
+  padding: 12px 0 4px;
+  border-top: 1px solid color-mix(in srgb, var(--rw-rule) 72%, transparent);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--rw-ink-2);
+}
 
 .rw-diet-chips {
   display: flex;
@@ -1067,7 +1096,6 @@ html[data-theme="dark"] .rw-rules {
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.5;
-  white-space: nowrap;
   color: var(--rw-ink);
 }
 .rw-pill__dot { flex: none; width: 9px; height: 9px; border-radius: 9999px; background: var(--pill, var(--rw-ink-3)); }

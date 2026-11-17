@@ -5,8 +5,9 @@
  *           on successful submit. Not localStorage: on a shared school-lab computer the next
  *           student would find the name and phone number, and the phone number alone opens
  *           /status. A draft left in localStorage by an older build is deleted on load and clear.
- *           Allowlist only: personal + education fields and shirt size. Never stored: the
- *           13-digit national ID (§9.2.1), free-text motivation, health data, the PDPA tick.
+ *           Allowlist only: personal, parent contact, education, shirt size, and motivation. Never
+ *           stored: the 13-digit national ID (§9.2.1), health data (allergies, medicalConditions),
+ *           and the PDPA tick.
  * Idempotency key → sessionStorage (this tab only), §9.2.4: written before POST /applications,
  *           reused by every retry after a timeout / dropped connection / 5xx, and removed only
  *           after a successful response (201, or 200 replay) or when the user starts over.
@@ -28,11 +29,15 @@ const DRAFT_FIELDS = [
   'nickname',
   'phone',
   'email',
+  'parentName',
+  'parentRelation',
+  'parentPhone',
   'school',
   'province',
   'grade',
   'gradeOther',
   'shirtSize',
+  'motivation',
 ] as const satisfies readonly (keyof FormState)[];
 
 type DraftFields = Pick<FormState, (typeof DRAFT_FIELDS)[number]>;

@@ -4,9 +4,11 @@
  * who pay later or whose slip was rejected. This block stays flat on the .rw-block flow: no card
  * inside the receipt card. The upload itself is the shared SlipUploadPanel.
  */
+import { Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import type { ApplicationStatus, SlipStatus } from '../../lib/api';
 import { SlipUploadPanel } from '../slip/SlipUploadPanel';
+import { FB_URL, STAFF_CONTACTS } from './model';
 
 /** The dot colour carries the state, the label carries the meaning (never colour alone). */
 const SLIP_BADGE: Record<SlipStatus | 'NONE', { dot: string; label: string }> = {
@@ -60,7 +62,20 @@ export function SlipBlock({
 
       {closed && (
         <p className="rw-slip__note">
-          ใบสมัครนี้ไม่อยู่ในสถานะที่ส่งสลิปได้แล้ว หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ
+          ใบสมัครนี้ไม่อยู่ในสถานะที่ส่งสลิปได้แล้ว หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่าน{' '}
+          <a href={FB_URL} className="rw-inline-link" target="_blank" rel="noopener noreferrer">
+            เพจ Facebook ของโครงการ
+          </a>{' '}
+          หรือโทร{' '}
+          {STAFF_CONTACTS.map((c, idx) => (
+            <Fragment key={c.tel}>
+              {idx > 0 && ' / '}
+              <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
+                {c.phone}
+              </a>{' '}
+              ({c.name})
+            </Fragment>
+          ))}
         </p>
       )}
 
