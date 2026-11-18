@@ -121,8 +121,17 @@ type codeClient struct {
 	strikeUntil time.Time // strikes are forgotten from here on
 }
 
+// goodRecord reports a client with no misses, strikes or lockout on record. Lookups in flight do not
+// count against it: they are a reservation, not evidence of guessing, so an applicant whose page
+// fires two lookups at once is still treated as clean at the global soft ceiling. The reservations
+// themselves still count toward the client and global budgets in begin.
+func (c *codeClient) goodRecord() bool {
+	return c.misses == 0 && c.strikes == 0 && c.lockedUntil.IsZero()
+}
+
+// clean reports a client that may be forgotten: a good record and nothing in flight.
 func (c *codeClient) clean() bool {
-	return c.misses == 0 && c.pending == 0 && c.strikes == 0 && c.lockedUntil.IsZero()
+	return c.goodRecord() && c.pending == 0
 }
 
 // CodeGuard counts unknown application codes per client and globally. It is safe for concurrent use;
@@ -272,7 +281,7 @@ func (g *CodeGuard) begin(key string, global bool) (_ *codeClient, refused error
 		}
 	}
 
-	clean := c == nil || c.clean()
+	clean := c == nil || c.goodRecord()
 	used := g.globalMisses + g.globalPending
 	ceiling := g.cfg.GlobalHardCeiling
 	if !clean {

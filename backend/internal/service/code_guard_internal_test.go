@@ -445,3 +445,54 @@ func TestCodeGuard_CleanClientWaitsForInFlightLookups(t *testing.T) {
 		t.Fatal("a ceiling reached by misses must refuse without waiting")
 	}
 }
+
+// m1: a lookup in flight is not a miss. A client with no misses that fires two lookups at once (a
+// page that checks the status and the slip together) must still pass the global soft ceiling, while
+// its reservations keep counting toward the global budget.
+func TestCodeGuard_InFlightLookupDoesNotMakeAClientUnclean(t *testing.T) {
+	g, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 3, GlobalHardCeiling: 6, BusyWait: 30 * time.Millisecond})
+	for i := 0; i < 3; i++ {
+		_ = lookup(g, fmt.Sprintf("10.7.0.%d", i), codeMiss)
+	}
+	// The soft ceiling is reached by misses; a client with a miss on record is refused.
+	_ = retryOf(t, lookup(g, "10.7.0.0", codeHit))
+
+	hold := make(chan struct{})
+	holding := make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		first <- lookup(g, "192.0.2.80", func() error { close(holding); <-hold; return nil })
+	}()
+	<-holding
+	if err := lookup(g, "192.0.2.80", codeHit); err != nil {
+		t.Fatalf("a second concurrent lookup from a client with zero misses was refused at the soft ceiling: %v", err)
+	}
+	close(hold)
+	if err := <-first; err != nil {
+		t.Fatalf("first lookup: %v", err)
+	}
+
+	// Reservations still count toward the global budget: with 3 misses + 3 lookups in flight the
+	// hard ceiling (6) is in use and a further clean lookup is refused as busy.
+	release := make(chan struct{})
+	started := make(chan struct{}, 3)
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = lookup(g, "192.0.2.81", func() error { started <- struct{}{}; <-release; return nil })
+		}()
+	}
+	for i := 0; i < 3; i++ {
+		<-started
+	}
+	if retry := retryOf(t, lookup(g, "192.0.2.82", codeHit)); retry != codeBusyRetry {
+		t.Fatalf("budget held by lookups in flight: Retry-After = %v, want %v", retry, codeBusyRetry)
+	}
+	close(release)
+	wg.Wait()
+	if n := g.tracked(); n != 3 {
+		t.Fatalf("clients with nothing on record must be forgotten once idle; tracked %d, want 3 (the missers)", n)
+	}
+}
