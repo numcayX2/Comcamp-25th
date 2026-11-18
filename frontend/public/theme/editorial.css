@@ -1009,70 +1009,6 @@
   margin-top: 2px;
 }
 
-/* "Sale sign" callout under the camp-date tile: solid fern plate, dashed inner edge, ink text (AAA on fern). */
-#timeline .tm-tile p.tm-cert-sign {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  box-sizing: border-box;
-  max-width: none;
-  margin: 10px 0 0;
-  padding: 14px 16px;
-  background: var(--fern-500);
-  color: #121316;
-  border-radius: 12px;
-  box-shadow: var(--shadow-card);
-  outline: 2px dashed #121316;
-  outline-offset: -7px;
-}
-#timeline .tm-cert-sign__tag {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px 4px 10px;
-  background: #121316;
-  color: #F5F4EF;
-  border-radius: 9999px;
-  font-family: var(--font-thai);
-  font-size: 0.875rem;
-  font-weight: 700;
-  line-height: 1.5;
-  letter-spacing: 0;
-}
-#timeline .tm-cert-sign__tag svg {
-  flex: none;
-  display: block;
-}
-#timeline .tm-cert-sign__text {
-  flex: 1 1 14em;
-  min-width: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.55;
-  letter-spacing: 0;
-  color: #121316;
-}
-@media (min-width: 640px) {
-  #timeline .tm-tile p.tm-cert-sign {
-    padding: 16px 20px;
-    transform: rotate(-1deg);
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  #timeline .tm-cert-sign__tag svg {
-    animation: cc-cert-pop 2.8s ease-in-out infinite;
-    transform-origin: 50% 50%;
-  }
-}
-@keyframes cc-cert-pop {
-  0%, 70%, 100% { transform: scale(1); }
-  82% { transform: scale(1.22) rotate(-8deg); }
-  92% { transform: scale(1.08) rotate(4deg); }
-}
-
 /* Part B: one raised panel; its head row and the four care cells are split by hairlines, not boxes. */
 #timeline .tm-care-section {
   margin-top: clamp(48px, 6vw, 88px);
@@ -1490,7 +1426,7 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   font-size: 0.9375rem;

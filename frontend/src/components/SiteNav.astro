@@ -295,11 +295,17 @@ const navLinks = isAdmin ? [] : [
     color: #4A4D55;
     font-size: 0.9375rem;
   }
+  /* Ink plate: the logo's white/pastel strokes vanish on the light canvas, so it always sits on a dark square. */
   .brand-logo {
-    width: 42px;
-    height: 30px;
+    box-sizing: content-box;
+    width: 46px;
+    height: 33px;
+    padding: 4px 6px;
     object-fit: contain;
     flex: none;
+    background: #121316;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0;
   }
   .font-mono {
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -969,8 +975,8 @@ const navLinks = isAdmin ? [] : [
       font-size: 0.9375rem;
     }
     .brand-logo {
-      width: 34px;
-      height: 24px;
+      width: 38px;
+      height: 27px;
     }
     .brand .font-mono {
       font-size: 0.875rem;
