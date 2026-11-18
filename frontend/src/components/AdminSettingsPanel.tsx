@@ -405,7 +405,7 @@ export function AdminSettingsPanel({
   const panelId = 'admin-settings-body';
 
   return (
-    <section className="mt-12 border-y" style={{ borderColor: RULE }} aria-label="ตั้งค่าการรับสมัคร">
+    <section className="mt-5 border-y" style={{ borderColor: RULE }} aria-label="ตั้งค่าการรับสมัคร">
       <button
         type="button"
         aria-expanded={open}

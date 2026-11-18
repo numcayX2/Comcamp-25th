@@ -790,10 +790,10 @@
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "grade": { "type": "string", "description": "ม.4–ม.6, ปวช.1–ปวช.3 หรือระบุเอง 2–20 ตัวอักษร", "example": "ม.5" },
           "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"], "example": "L" },
-          "motivation": { "type": "string", "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
+          "motivation": { "type": "string", "maxLength": 1000, "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
           "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
           "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
-          "province": { "type": "string", "example": "เชียงใหม่" },
+          "province": { "type": "string", "example": "เชียงใหม่", "description": "ชื่อทางการของจังหวัดใดจังหวัดหนึ่งใน 77 จังหวัด (คำนำหน้า จังหวัด / จ. และชื่อย่อ กทม / กรุงเทพฯ / อยุธยา / โคราช ถูกแปลงเป็นชื่อทางการ) ค่าอื่น → 400 VALIDATION_ERROR" },
           "turnstileToken": { "type": "string", "maxLength": 2048, "description": "Cloudflare Turnstile response token (single-use, ได้จาก widget ในหน้า /register). จำเป็นเมื่อเซิร์ฟเวอร์ตั้ง TURNSTILE_SECRET_KEY (production บังคับเสมอ) ไม่ถูกบันทึกลงฐานข้อมูลหรือ log. ถ้าส่งซ้ำด้วย X-Idempotency-Key เดิมที่บันทึกไว้แล้ว ระบบคืนใบสมัครเดิมโดยไม่ตรวจ token อีก" }
         }
       },
@@ -872,17 +872,17 @@
         "description": "ทุกฟิลด์เป็นทางเลือก: ฟิลด์ที่ไม่ส่งคงค่าเดิม ค่าที่รวมกันแล้วต้องผ่านการตรวจสอบเต็มรูปแบบ",
         "properties": {
           "fullName": { "type": "string", "maxLength": 201, "example": "สมชาย ใจดี" },
-          "nickname": { "type": "string", "maxLength": 50, "example": "ชาย" },
+          "nickname": { "type": "string", "maxLength": 20, "example": "ชาย" },
           "phone": { "type": "string", "example": "0812345678" },
           "email": { "type": "string", "format": "email", "description": "อีเมลผู้สมัคร (ห้ามเว้นว่างและห้ามซ้ำกับผู้สมัครอื่นที่ยังอยู่ในระบบ)" },
           "parentName": { "type": "string", "maxLength": 150, "example": "สมศรี ใจดี" },
           "parentRelation": { "type": "string", "maxLength": 50, "example": "มารดา" },
           "parentPhone": { "type": "string", "example": "0898765432" },
           "school": { "type": "string", "maxLength": 150 },
-          "province": { "type": "string", "maxLength": 100 },
+          "province": { "type": "string", "description": "ชื่อทางการของ 77 จังหวัด (กฎเดียวกับตอนสมัคร) ค่าเดิมที่บันทึกไว้ก่อนมีรายชื่อจังหวัดส่งกลับมาโดยไม่แก้ได้" },
           "grade": { "type": "string", "example": "ม.6" },
           "shirtSize": { "type": "string", "enum": ["SSS", "SS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"] },
-          "motivation": { "type": "string", "maxLength": 2000 },
+          "motivation": { "type": "string", "description": "ไม่เกิน 1,000 ตัวอักษร ยกเว้นข้อความเดิมที่บันทึกไว้ก่อนลดเพดาน ซึ่งส่งกลับมาโดยไม่แก้ได้" },
           "allergies": { "type": "string", "maxLength": 500 },
           "medicalConditions": { "type": "string", "maxLength": 500 },
           "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเบอร์โทรผิด" }

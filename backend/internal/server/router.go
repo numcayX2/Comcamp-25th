@@ -49,13 +49,15 @@ type RateLimits struct {
 // cached and identical for everyone, so the limit only stops one client hammering the API: a
 // page load costs one request (plus a manual retry), and 60/min still lets a whole classroom
 // behind one school or carrier NAT open /applicants at the same moment, while capping a scraper
-// at one request a second. Same allowance as the status lookup, in its own bucket.
+// at one request a second. It has its own bucket, separate from the status lookup.
 const PublicListRatePerMinute = 60
 
 func DefaultRateLimits() RateLimits {
 	return RateLimits{
 		Login:       middleware.NewRateLimiter(10, 5*time.Minute),
-		StatusQuery: middleware.NewRateLimiter(60, time.Minute),
+		// 30/min: a student retrying a lookup never gets near it, a small group sharing one school
+		// or carrier IP still fits, and a scraper of phone numbers is slowed to one every 2s.
+		StatusQuery: middleware.NewRateLimiter(30, time.Minute),
 		// Registration is the one endpoint a bot wants; 8/min per IP still fits a school NAT.
 		Submit:   middleware.NewRateLimiter(8, time.Minute),
 		Slip:     middleware.NewRateLimiter(20, time.Minute),

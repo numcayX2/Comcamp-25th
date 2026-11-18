@@ -3,6 +3,7 @@
  * No React in here so the rules stay testable and the component stays thin.
  */
 import { stripZeroWidth, type ApplicationPayload, type ShirtSize } from '../../lib/api';
+import { canonicalProvince } from '../../lib/provinces';
 
 export const SEATS = 40;
 /**
@@ -45,13 +46,12 @@ export function formatCampFee(fee: number | string | null | undefined): string {
 }
 
 export const NAME_PART_MAX = 100;
-export const NICKNAME_MAX = 50;
+export const NICKNAME_MAX = 20;
 export const EMAIL_MAX = 150;
 export const PARENT_NAME_MAX = 150;
 export const PARENT_RELATION_MAX = 50;
 export const SCHOOL_MAX = 150;
-export const PROVINCE_MAX = 100;
-export const MOTIVATION_MAX = 2000;
+export const MOTIVATION_MAX = 1000;
 export const ALLERGIES_MAX = 500;
 export const MEDICAL_CONDITIONS_MAX = 500;
 
@@ -309,8 +309,8 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
     }
     case 'province': {
       const p = cleanSingleLine(form.province);
-      if (!p) return 'กรุณากรอกจังหวัด';
-      return p.length > PROVINCE_MAX ? `ชื่อจังหวัดต้องยาวไม่เกิน ${PROVINCE_MAX} ตัวอักษร` : undefined;
+      if (!p) return 'กรุณาเลือกจังหวัด';
+      return canonicalProvince(p) ? undefined : 'กรุณาเลือกจังหวัดจากรายการ';
     }
     case 'grade':
       return (GRADES as readonly string[]).includes(form.grade) || form.grade === GRADE_OTHER ? undefined : 'กรุณาเลือกระดับชั้น';

@@ -263,6 +263,18 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   .rw-span-4 { grid-column: span 4; }
   .rw-span-6 { grid-column: 1 / -1; }
 }
+/* Fields side by side share label / control / error rows, so a hint that wraps to two lines
+   (or a longer error) never pushes one input lower than its neighbour. */
+@supports (grid-template-rows: subgrid) {
+  @media (min-width: 640px) {
+    .rw-fields > .rw-field {
+      display: grid;
+      grid-template-rows: subgrid;
+      grid-row: span 3;
+    }
+    .rw-fields > .rw-field > .rw-label { align-self: end; align-items: last baseline; }
+  }
+}
 
 .rw-label {
   display: flex;

@@ -22,6 +22,8 @@ import {
   type ApplicationPayload,
   type ShirtSize,
 } from '../lib/api';
+import { canonicalProvince } from '../lib/provinces';
+import { ProvinceCombobox } from './ProvinceCombobox';
 import {
   ALLERGIES_MAX,
   DIETARY_QUICK_OPTIONS,
@@ -36,6 +38,7 @@ import {
   MEDICAL_CONDITIONS_MAX,
   MOCK_FORM,
   MOTIVATION_MAX,
+  NICKNAME_MAX,
   RECEIPT_META,
   RECEIPT_STEP,
   SEATS,
@@ -228,6 +231,9 @@ function describeSubmitError(err: unknown): ErrorBannerState {
         }
         if (msg.includes('grade')) {
           return { text: 'ระดับชั้นไม่ถูกต้อง กรุณาตรวจสอบข้อมูลระดับชั้นอีกครั้ง' };
+        }
+        if (msg.includes('province')) {
+          return { text: 'จังหวัดไม่ถูกต้อง กรุณากลับไปเลือกจังหวัดจากรายการอีกครั้ง' };
         }
         if (msg.includes('idempotency')) {
           return { text: 'รหัสอ้างอิงคำขอไม่ถูกต้อง กรุณารีเฟรชหน้านี้แล้วลองส่งใหม่อีกครั้ง' };
@@ -733,7 +739,7 @@ export function RegisterSection() {
         parentRelation: cleanSingleLine(form.parentRelation),
         parentPhone: sanitizeDigits(form.parentPhone),
         school: cleanSingleLine(form.school),
-        province: cleanSingleLine(form.province),
+        province: canonicalProvince(form.province) ?? cleanSingleLine(form.province),
         grade: gradeValue(form),
         shirtSize: form.shirtSize as ShirtSize,
         motivation: stripZeroWidth(form.motivation).trim(),
@@ -989,6 +995,7 @@ export function RegisterSection() {
               id="nickname"
               required
               label="ชื่อเล่น"
+              hint={<span className="font-mono">{cleanSingleLine(form.nickname).length}/{NICKNAME_MAX}</span>}
               span={2}
               value={form.nickname}
               error={errors.nickname}
@@ -1020,7 +1027,7 @@ export function RegisterSection() {
               required
               label="อีเมล"
               span={3}
-              hint="ใช้รับอีเมลแจ้งรหัสใบสมัครและผลยืนยันสิทธิ์"
+              hint="รับรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -1128,18 +1135,18 @@ export function RegisterSection() {
               onBlur={() => blur('school')}
               placeholder="ชื่อโรงเรียน"
             />
-            <TextField
-              id="province"
-              required
-              label="จังหวัด"
-              span={3}
-              autoComplete="address-level1"
-              value={form.province}
-              error={errors.province}
-              onChange={(v) => set('province', v)}
-              onBlur={() => blur('province')}
-              placeholder="เช่น เชียงใหม่"
-            />
+            <FieldShell id="province" label="จังหวัด" span={3} error={errors.province}>
+              <ProvinceCombobox
+                id="province"
+                required
+                className="rw-input"
+                value={form.province}
+                invalid={Boolean(errors.province)}
+                describedBy={errors.province ? 'province-err' : undefined}
+                onChange={(v) => set('province', v)}
+                onBlur={() => blur('province')}
+              />
+            </FieldShell>
             <FieldShell id="grade" label="ระดับชั้น" span={3} error={errors.grade}>
               <select
                 id="grade"
@@ -1361,7 +1368,7 @@ export function RegisterSection() {
                 onEdit={() => editFromReview(1)}
                 rows={[
                   ['สถานศึกษา', cleanSingleLine(form.school)],
-                  ['จังหวัด', cleanSingleLine(form.province)],
+                  ['จังหวัด', canonicalProvince(form.province) ?? cleanSingleLine(form.province)],
                   ['ระดับชั้น', gradeValue(form)],
                 ]}
               />

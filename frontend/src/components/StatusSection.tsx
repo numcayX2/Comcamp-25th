@@ -544,6 +544,8 @@ export function StatusSection() {
   const [feeText, setFeeText] = useState(FEE_TEXT);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  /** Seconds left before the per-IP lookup limit allows another search (after a short 429). */
+  const [cooldown, setCooldown] = useState(0);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -615,6 +617,9 @@ export function StatusSection() {
         setPhoneResult(null);
         setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยรหัสใบสมัครจากอีเมล หรือดูสถานะโดยย่อด้วยเบอร์โทรศัพท์ได้ด้านล่าง`);
         return;
+      }
+      if (err instanceof ApiHttpError && err.status === 429 && err.retryAfterSeconds && err.retryAfterSeconds <= 60) {
+        setCooldown(err.retryAfterSeconds);
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
       setApp(null);
@@ -688,9 +693,15 @@ export function StatusSection() {
     }
   }, [withdrawBusy]);
 
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = window.setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [cooldown]);
+
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (busy || searchBusyRef.current || !q.trim()) return;
+    if (busy || searchBusyRef.current || cooldown > 0 || !q.trim()) return;
     void runSearch(q).then(() => {
       // On a phone the outcome lands below the fold; bring it up so the tap visibly did something.
       requestAnimationFrame(() => {
@@ -856,12 +867,20 @@ export function StatusSection() {
           </div>
           <button
             type="submit"
-            disabled={busy || !q.trim()}
+            disabled={busy || cooldown > 0 || !q.trim()}
             aria-busy={busy || undefined}
             className={`mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 py-3 text-base font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
             style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
           >
-            {busy ? 'กำลังค้นหา…' : 'ค้นหาข้อมูล'}
+            {busy ? (
+              'กำลังค้นหา…'
+            ) : cooldown > 0 ? (
+              <span>
+                ค้นหาได้อีกครั้งใน <span className="font-mono tabular-nums">{cooldown}</span> วินาที
+              </span>
+            ) : (
+              'ค้นหาข้อมูล'
+            )}
           </button>
         </form>
       </section>

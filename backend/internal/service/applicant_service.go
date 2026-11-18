@@ -44,6 +44,7 @@ var (
 	ErrInvalidStatus         = newValidationError("invalid status")
 	ErrInvalidIdempotencyKey = newValidationError("X-Idempotency-Key must be a UUID")
 	ErrInvalidQuery          = newValidationError("search query must be a phone number (10 digits starting with 0) or an application code (CC25-XXXXXX)")
+	ErrInvalidProvince       = newValidationError("invalid province (choose one of the 77 Thai provinces)")
 	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
 )
 
@@ -51,13 +52,14 @@ var (
 // not a database error.
 const (
 	maxNameRunes              = 100
-	maxNicknameRunes          = 50
+	// A nickname is one short word (ชาย, มิ้นท์, Ploy); 20 leaves room for compound or English ones.
+	maxNicknameRunes          = 20
 	maxParentNameRunes        = 150
 	maxParentRelationRunes    = 50
 	maxSchoolRunes            = 150
-	maxProvinceRunes          = 100
 	maxEmailRunes             = 150
-	maxMotivationRunes        = 2000
+	// The motivation note is a short optional answer, not a column limit.
+	maxMotivationRunes        = 1000
 	maxAllergiesRunes         = 500
 	maxMedicalConditionsRunes = 500
 	maxReasonRunes            = 500
@@ -568,7 +570,7 @@ func normalizeProfile(p profileInput) profileInput {
 	p.ParentPhone = cleanNumber(p.ParentPhone)
 	p.School = cleanText(p.School)
 	p.Grade = cleanText(p.Grade)
-	p.Province = cleanText(p.Province)
+	p.Province = canonicalProvince(cleanText(p.Province))
 	p.Motivation = strings.TrimSpace(stripZeroWidth(p.Motivation))
 	p.Allergies = strings.TrimSpace(stripZeroWidth(p.Allergies))
 	p.MedicalConditions = strings.TrimSpace(stripZeroWidth(p.MedicalConditions))
@@ -628,18 +630,17 @@ func checkEmail(email string) error {
 	return nil
 }
 
-func checkLengths(p profileInput) error {
+// checkLengths enforces the length limits. With a previous profile (staff edit), a nickname or
+// motivation left unchanged is accepted even if it predates a tighter limit.
+func checkLengths(p profileInput, before *profileInput) error {
 	for _, f := range []struct {
 		value string
 		max   int
 		name  string
 	}{
-		{p.Nickname, maxNicknameRunes, "nickname"},
 		{p.ParentName, maxParentNameRunes, "parentName"},
 		{p.ParentRelation, maxParentRelationRunes, "parentRelation"},
 		{p.School, maxSchoolRunes, "school"},
-		{p.Province, maxProvinceRunes, "province"},
-		{p.Motivation, maxMotivationRunes, "motivation"},
 		{p.Allergies, maxAllergiesRunes, "allergies"},
 		{p.MedicalConditions, maxMedicalConditionsRunes, "medicalConditions"},
 	} {
@@ -647,12 +648,31 @@ func checkLengths(p profileInput) error {
 			return newValidationError(fmt.Sprintf("%s is too long (max %d characters)", f.name, f.max))
 		}
 	}
+	var stored profileInput
+	if before != nil {
+		stored = *before
+	}
+	for _, f := range []struct {
+		value, stored string
+		max           int
+		name          string
+	}{
+		{p.Nickname, stored.Nickname, maxNicknameRunes, "nickname"},
+		{p.Motivation, stored.Motivation, maxMotivationRunes, "motivation"},
+	} {
+		unchanged := before != nil && f.value == f.stored
+		if !unchanged && utf8.RuneCountInString(f.value) > f.max {
+			return newValidationError(fmt.Sprintf("%s is too long (max %d characters)", f.name, f.max))
+		}
+	}
 	return nil
 }
 
-// validateProfile checks every field of a normalised profile (registration and staff edit).
+// validateProfile checks every field of a normalised profile. before is nil for a registration and
+// the stored profile for a staff edit: a province, nickname or motivation saved before the official
+// province list and the shorter length limits stays valid as long as it is not changed.
 // Province may be blank here: registration fills in a default for it.
-func validateProfile(p profileInput) error {
+func validateProfile(p profileInput, before *profileInput) error {
 	if err := checkPhone(p.Phone); err != nil {
 		return err
 	}
@@ -670,14 +690,17 @@ func validateProfile(p profileInput) error {
 	if !isValidGrade(p.Grade) {
 		return ErrInvalidGrade
 	}
+	if p.Province != "" && !isThaiProvince(p.Province) && (before == nil || p.Province != before.Province) {
+		return ErrInvalidProvince
+	}
 	if err := checkEmail(p.Email); err != nil {
 		return err
 	}
-	return checkLengths(p)
+	return checkLengths(p, before)
 }
 
 func validateRequest(req ApplicationCreateRequest) error {
-	return validateProfile(profileInputOfRequest(req))
+	return validateProfile(profileInputOfRequest(req), nil)
 }
 
 // Lookup values of the public status answer.
@@ -1128,7 +1151,8 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 		}
 	}
 	after := normalizeProfile(merged)
-	if err := validateProfile(after); err != nil {
+	stored := normalizeProfile(before)
+	if err := validateProfile(after, &stored); err != nil {
 		return nil, err
 	}
 	if after.Province == "" {

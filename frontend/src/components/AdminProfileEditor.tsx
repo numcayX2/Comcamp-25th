@@ -15,6 +15,8 @@ import {
   GRADE_OTHER,
   GRADE_OTHER_MAX,
   MEDICAL_CONDITIONS_MAX,
+  MOTIVATION_MAX,
+  NICKNAME_MAX,
   SHIRT_SIZES,
   SIZE_CHEST,
   SIZE_LENGTH,
@@ -22,6 +24,8 @@ import {
   splitGrade,
   validateGradeFields,
 } from './register/model';
+import { canonicalProvince } from '../lib/provinces';
+import { ProvinceCombobox } from './ProvinceCombobox';
 import {
   BTN_DARK,
   BTN_DARK_TEXT,
@@ -116,8 +120,12 @@ function cleanSingleLine(s: string): string {
   return stripZeroWidth(s).trim().replace(/\s+/g, ' ');
 }
 
-/** Same rules as the backend (shared normalisation and validation), so mistakes show per field. */
-function validate(f: Form): Errors {
+/**
+ * Same rules as the backend (shared normalisation and validation), so mistakes show per field.
+ * `stored` is the record being edited: a province or motivation saved before the official province
+ * list and the 1,000-character limit may stay as it is, like on the server.
+ */
+function validate(f: Form, stored: Form): Errors {
   const e: Errors = {};
   const fullName = cleanSingleLine(f.fullName);
   if (!fullName) {
@@ -133,7 +141,9 @@ function validate(f: Form): Errors {
 
   const nickname = cleanSingleLine(f.nickname);
   if (!nickname) e.nickname = 'กรุณากรอกชื่อเล่น';
-  else if (nickname.length > 50) e.nickname = 'ชื่อเล่นยาวได้ไม่เกิน 50 ตัวอักษร';
+  else if (nickname.length > NICKNAME_MAX && nickname !== cleanSingleLine(stored.nickname)) {
+    e.nickname = `ชื่อเล่นยาวได้ไม่เกิน ${NICKNAME_MAX} ตัวอักษร`;
+  }
 
   if (!/^0\d{9}$/.test(sanitizeDigits(f.phone))) e.phone = 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
   const email = stripZeroWidth(f.email).replace(/\s+/g, '');
@@ -170,13 +180,18 @@ function validate(f: Form): Errors {
   else if (school.length > 150) e.school = 'ชื่อโรงเรียนยาวได้ไม่เกิน 150 ตัวอักษร';
 
   const province = cleanSingleLine(f.province);
-  if (!province) e.province = 'กรุณากรอกจังหวัด';
-  else if (province.length > 100) e.province = 'ชื่อจังหวัดยาวได้ไม่เกิน 100 ตัวอักษร';
+  if (!province) e.province = 'กรุณาเลือกจังหวัด';
+  else if (!canonicalProvince(province) && province !== cleanSingleLine(stored.province)) {
+    e.province = 'กรุณาเลือกจังหวัดจากรายการ';
+  }
 
   const g = validateGradeFields(f.grade, cleanSingleLine(f.gradeOther));
   if (g) e[f.grade === GRADE_OTHER ? 'gradeOther' : 'grade'] = g;
   if (!f.shirtSize) e.shirtSize = 'กรุณาเลือกไซส์เสื้อ';
-  if (stripZeroWidth(f.motivation).trim().length > 2000) e.motivation = 'เหตุผลการสมัครยาวได้ไม่เกิน 2,000 ตัวอักษร';
+  const motivation = stripZeroWidth(f.motivation).trim();
+  if (motivation.length > MOTIVATION_MAX && motivation !== stripZeroWidth(stored.motivation).trim()) {
+    e.motivation = `เหตุผลการสมัครยาวได้ไม่เกิน ${MOTIVATION_MAX.toLocaleString('th-TH')} ตัวอักษร`;
+  }
   if (stripZeroWidth(f.allergies).trim().length > ALLERGIES_MAX) e.allergies = `หมายเหตุการแพ้อาหารยาวได้ไม่เกิน ${ALLERGIES_MAX} ตัวอักษร`;
   if (stripZeroWidth(f.medicalConditions).trim().length > MEDICAL_CONDITIONS_MAX) {
     e.medicalConditions = `หมายเหตุโรคประจำตัวยาวได้ไม่เกิน ${MEDICAL_CONDITIONS_MAX} ตัวอักษร`;
@@ -205,6 +220,7 @@ function describeSaveError(err: unknown): string {
       if (m.includes('email')) return 'รูปแบบอีเมลไม่ถูกต้อง';
       if (m.includes('shirt')) return 'ไซส์เสื้อไม่ถูกต้อง';
       if (m.includes('grade')) return 'ระดับชั้นไม่ถูกต้อง';
+      if (m.includes('province')) return 'จังหวัดไม่ถูกต้อง กรุณาเลือกจากรายการ';
       if (m.includes('required')) return 'กรุณากรอกช่องที่จำเป็นให้ครบ';
       if (m.includes('too long')) return 'มีข้อความยาวเกินกำหนด';
       return 'ข้อมูลที่ส่งไม่ถูกต้องตามเงื่อนไข';
@@ -310,7 +326,7 @@ export function AdminProfileEditor({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (saving || savingRef.current) return;
-    const found = validate(form);
+    const found = validate(form, baseForm);
     setErrors(found);
     setServerError(null);
     const bad = ORDER.find((k) => found[k]);
@@ -328,7 +344,7 @@ export function AdminProfileEditor({
       parentRelation: cleanSingleLine(form.parentRelation),
       parentPhone: sanitizeDigits(form.parentPhone),
       school: cleanSingleLine(form.school),
-      province: cleanSingleLine(form.province),
+      province: canonicalProvince(form.province) ?? cleanSingleLine(form.province),
       grade: gradeValue({ grade: form.grade, gradeOther: cleanSingleLine(form.gradeOther) }),
       shirtSize: form.shirtSize as ShirtSize,
       motivation: stripZeroWidth(form.motivation).trim(),
@@ -451,7 +467,15 @@ export function AdminProfileEditor({
           <input {...input('school')} />
         </Field>
         <Field id={`${pid}-province`} label="จังหวัด" error={errors.province}>
-          <input {...input('province')} />
+          <ProvinceCombobox
+            id={`${pid}-province`}
+            value={form.province}
+            onChange={(v) => set('province', v)}
+            invalid={Boolean(errors.province)}
+            describedBy={errors.province ? `${pid}-province-err` : undefined}
+            className={`${INPUT_BASE} rounded-xl`}
+            style={{ borderColor: errors.province ? DANGER : INPUT_BORDER, color: INK }}
+          />
         </Field>
         <Field id={`${pid}-grade`} label="ระดับชั้น" error={errors.grade}>
           <select {...input('grade', { style: { colorScheme: 'inherit' } })}>
@@ -487,7 +511,7 @@ export function AdminProfileEditor({
         )}
         <div className="md:col-span-2">
           <Field id={`${pid}-motivation`} label="เหตุผลการสมัคร" hint="ไม่บังคับ" error={errors.motivation}>
-            <textarea {...input('motivation', { rows: 3, maxLength: 2000 })} />
+            <textarea {...input('motivation', { rows: 3 })} />
           </Field>
         </div>
         <Field id={`${pid}-allergies`} label="การแพ้อาหาร" hint="ไม่บังคับ" error={errors.allergies}>

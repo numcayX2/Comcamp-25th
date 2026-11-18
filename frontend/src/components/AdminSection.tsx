@@ -7,9 +7,11 @@ import {
   Download,
   Eye,
   EyeOff,
+  LogOut,
   Maximize2,
   Pencil,
   RotateCcw,
+  RotateCw,
   Search,
   Trash2,
   TriangleAlert,
@@ -54,6 +56,7 @@ import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
+  BG_CANVAS,
   BG_CARD,
   BTN_DARK,
   BTN_DARK_TEXT,
@@ -242,12 +245,29 @@ function sortApplications(list: Application[], sortBy: SortKey): Application[] {
   return copy.sort((x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? '') || x.id.localeCompare(y.id));
 }
 
+/** Column template shared by the sticky column header and every application row (lg and up). */
+const ROW_GRID = 'lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_10rem]';
+
+/**
+ * Seat-releasing changes, leaving CONFIRMED, and confirming without a slip review get a warning
+ * (red copy and an outlined confirm) in the status confirmation; the others a plain confirm.
+ */
+function isRiskyTransition(from: ApplicationStatus, to: ApplicationStatus): boolean {
+  const releasesSeat = holdsSeat(from) && !holdsSeat(to);
+  return releasesSeat || (from === 'CONFIRMED') !== (to === 'CONFIRMED');
+}
+
+/** Picking a value only proposes it (`pending`): the change is saved from the confirmation below the row. */
 function StatusSelect({
   app,
+  value,
+  pending,
   disabled,
   onChange,
 }: {
   app: Application;
+  value: ApplicationStatus;
+  pending: boolean;
   disabled: boolean;
   onChange: (status: ApplicationStatus) => void;
 }) {
@@ -256,17 +276,16 @@ function StatusSelect({
       <span className="sr-only">เปลี่ยนสถานะของ {app.id}</span>
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] leading-none"
-        style={{ color: STATUS_DOT[app.status] }}
-      >
-        ●
-      </span>
+        className="pointer-events-none absolute left-3 top-1/2 size-2 -translate-y-1/2 rounded-full"
+        style={{ backgroundColor: STATUS_DOT[value] }}
+      />
       <select
-        value={app.status}
+        id={`status-select-${app.id}`}
+        value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as ApplicationStatus)}
-        className={`min-h-10 w-full cursor-pointer appearance-none rounded-lg border bg-[var(--bg-card)] py-1.5 pl-7 pr-8 text-sm font-medium leading-6 disabled:opacity-50 lg:min-h-9 ${FOCUS}`}
-        style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
+        className={`min-h-11 w-full cursor-pointer appearance-none rounded-xl border bg-[var(--bg-card)] py-1.5 pl-7 pr-8 text-sm font-medium leading-6 disabled:opacity-50 lg:min-h-9 ${FOCUS}`}
+        style={{ borderColor: pending ? TECH : INPUT_BORDER, color: INK, colorScheme: 'inherit', boxShadow: pending ? `0 0 0 1px ${TECH}` : undefined }}
       >
         {!STATUSES.includes(app.status) && (
           <option key={app.status} value={app.status} disabled>
@@ -324,9 +343,7 @@ function SlipBadge({ app, nowMs }: { app: Application; nowMs: number }) {
         className="inline-flex items-center gap-2 rounded-full border px-3 py-0.5 text-xs font-semibold leading-6"
         style={{ borderColor: RULE, color: INK }}
       >
-        <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: SLIP_DOT[s] }}>
-          ●
-        </span>
+        <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: SLIP_DOT[s] }} />
         {SLIP_LABELS[s]}
       </span>
       <PaymentDue app={app} nowMs={nowMs} />
@@ -450,10 +467,11 @@ export function AdminSection() {
   const prevDetailId = useRef<string | null>(null);
   const prevConfirmId = useRef<string | null>(null);
   const prevEditId = useRef<string | null>(null);
+  const prevPendingId = useRef<string | null>(null);
   const focusListAfterDelete = useRef(false);
   const focusSlipPanelAfterAdvance = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
-  const ledgerRef = useRef<HTMLElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const filterGroupRef = useRef<HTMLDivElement>(null);
   const emptyStateRef = useRef<HTMLDivElement>(null);
   const slipPanelRef = useRef<HTMLDivElement>(null);
@@ -587,19 +605,17 @@ export function AdminSection() {
     action();
   }
 
+  /** Proposes a status; it is saved only from the confirmation under the row. Picking the current one cancels. */
   function requestStatusChange(app: Application, to: ApplicationStatus) {
-    if (to === app.status) return;
-    const releasesSeat = holdsSeat(app.status) && !holdsSeat(to);
-    const leavesConfirmed = app.status === 'CONFIRMED' && to !== 'CONFIRMED';
-    const bypassesSlipToConfirm = to === 'CONFIRMED' && app.status !== 'CONFIRMED';
-    if (releasesSeat || leavesConfirmed || bypassesSlipToConfirm) {
-      setConfirmDeleteId(null);
-      setDeleteReason('');
+    if (to === app.status) {
+      setPendingStatus(null);
       setStatusReason('');
-      setPendingStatus({ appId: app.id, from: app.status, to });
       return;
     }
-    void onStatus(app.id, to);
+    setConfirmDeleteId(null);
+    setDeleteReason('');
+    if (pendingStatus?.appId !== app.id) setStatusReason('');
+    setPendingStatus({ appId: app.id, from: app.status, to });
   }
 
   async function onStatus(id: string, status: ApplicationStatus, reason?: string) {
@@ -1040,13 +1056,19 @@ export function AdminSection() {
           setConfirmRejectSlip(false);
           return;
         }
-        if (!verifying) setInspectingId(null);
-        setDetailId(null);
-        if (!deletingId) {
+        // A delete or status confirmation is the innermost layer: Escape cancels just that.
+        if (confirmDeleteId && !deletingId) {
           setConfirmDeleteId(null);
           setDeleteReason('');
+          return;
         }
-        if (!patching) setPendingStatus(null);
+        if (pendingStatus && !patching) {
+          setPendingStatus(null);
+          setStatusReason('');
+          return;
+        }
+        if (!verifying) setInspectingId(null);
+        setDetailId(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1097,6 +1119,40 @@ export function AdminSection() {
     prevEditId.current = editingId;
   }, [inspectingId, detailId, confirmDeleteId, editingId, visible.length]);
 
+  // A saved or cancelled status confirmation unmounts its buttons: put focus back on that row's select.
+  useEffect(() => {
+    const id = pendingStatus?.appId ?? null;
+    if (prevPendingId.current && !id && (document.activeElement === document.body || !document.activeElement)) {
+      document.getElementById(`status-select-${prevPendingId.current}`)?.focus();
+    }
+    prevPendingId.current = id;
+  }, [pendingStatus]);
+
+  // The toolbar sticks under the site nav (md and up). Its offset follows the nav height, and the
+  // page's scroll padding follows nav + toolbar, so rows and panels scrolled into view are not hidden.
+  useEffect(() => {
+    const nav = document.querySelector<HTMLElement>('.site-nav');
+    const bar = toolbarRef.current;
+    if (!token || !bar) return;
+    const md = window.matchMedia('(min-width: 768px)');
+    const root = document.documentElement;
+    const sync = () => {
+      const navH = nav ? nav.getBoundingClientRect().height : 0;
+      bar.style.setProperty('--admin-sticky-top', `${navH}px`);
+      root.style.scrollPaddingTop = md.matches ? `${navH + bar.offsetHeight + 12}px` : `${navH + 12}px`;
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    if (nav) ro.observe(nav);
+    ro.observe(bar);
+    md.addEventListener('change', sync);
+    return () => {
+      ro.disconnect();
+      md.removeEventListener('change', sync);
+      root.style.scrollPaddingTop = '';
+    };
+  }, [token]);
+
   useEffect(() => {
     if (!focusListAfterDelete.current) return;
     focusListAfterDelete.current = false;
@@ -1136,101 +1192,44 @@ export function AdminSection() {
   const approvePresets = approveNoteTemplates(feeBaht);
 
   return (
-    <div className="mx-auto w-full max-w-7xl select-text px-4 pb-28 pt-12 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 sm:pt-20">
+    <div
+      className={`mx-auto w-full max-w-7xl select-text px-4 pb-28 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 ${token ? 'pt-6 sm:pt-8' : 'pt-12 sm:pt-20'}`}
+    >
       {/* ── Masthead ─────────────────────────────────────────── */}
-      <header>
-        <h1
-          className="text-balance text-[2rem] font-bold leading-[1.22] sm:text-[3.25rem]"
-          style={{ color: INK }}
-        >
-          {token ? 'ใบสมัครและสลิป' : 'สำหรับพี่ค่าย'}
-        </h1>
-        {token ? (
-          <>
-            {role && (
-              <p className="mt-3 max-w-[60ch] text-sm leading-7" style={{ color: INK_3 }}>
-                เข้าสู่ระบบในบทบาท <span className="font-mono" style={{ color: INK }}>{role}</span>
-                {' · '}
-                จัดการใบสมัคร ตรวจสลิป แก้ไขข้อมูล ส่งออก CSV และตั้งค่าค่าย
-              </p>
-            )}
-            <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
-                <p className="text-xs leading-5" style={{ color: INK_3 }}>ถือที่นั่งอยู่</p>
-                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {currentCount} คน
-                </p>
-                <p className="mt-0.5 text-xs leading-5" style={{ color: INK_3 }}>
-                  จากทั้งหมด {apps.length} รายการ
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-pressed={filter === 'SLIP_PENDING'}
-                onClick={() => {
-                  setFilter('SLIP_PENDING');
-                  ledgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-                className={`min-h-11 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
-                style={{
-                  borderColor: filter === 'SLIP_PENDING' ? TECH : pendingSlipCount > 0 ? WARNING : RULE,
-                  backgroundColor: filter === 'SLIP_PENDING' ? SURFACE_SUBTLE : BG_CARD,
-                }}
-              >
-                <p className="flex items-center gap-1.5 text-xs font-semibold leading-5" style={{ color: pendingSlipCount > 0 ? WARNING : INK_3 }}>
-                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: pendingSlipCount > 0 ? WARNING : INK_3 }} />
-                  สลิปรอตรวจ
-                </p>
-                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {pendingSlipCount} รายการ
-                </p>
-                <p className="mt-0.5 text-xs leading-5" style={{ color: INK_3 }}>
-                  {pendingSlipCount > 0 ? 'กดเพื่อกรองคิวรอตรวจ' : 'ไม่มีสลิปค้างตรวจ'}
-                </p>
-              </button>
-              <div className="rounded-xl border px-4 py-3" style={{ borderColor: RULE, backgroundColor: BG_CARD }}>
-                <p className="flex items-center gap-1.5 text-xs leading-5" style={{ color: INK_3 }}>
-                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: SUCCESS }} />
-                  ยืนยันสิทธิ์สมบูรณ์
-                </p>
-                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {count('CONFIRMED')} คน
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-pressed={filter === 'AWAITING_PAY'}
-                onClick={() => {
-                  setFilter('AWAITING_PAY');
-                  ledgerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-                className={`min-h-11 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
-                style={{
-                  borderColor: filter === 'AWAITING_PAY' ? TECH : overduePayCount > 0 ? DANGER : RULE,
-                  backgroundColor: filter === 'AWAITING_PAY' ? SURFACE_SUBTLE : BG_CARD,
-                }}
-              >
-                <p className="flex items-center gap-1.5 text-xs font-semibold leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
-                  <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: overduePayCount > 0 ? DANGER : TECH }} />
-                  รอโอน / ส่งสลิป
-                </p>
-                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums" style={{ color: INK }}>
-                  {awaitingPayCount} คน
-                </p>
-                <p className="mt-0.5 text-xs leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
-                  {overduePayCount > 0
-                    ? `เกินกำหนด ${PAYMENT_WINDOW_DAYS} วันแล้ว ${overduePayCount} คน`
-                    : `ยังไม่มีใครเกินกำหนด ${PAYMENT_WINDOW_DAYS} วัน`}
-                </p>
-              </button>
-            </div>
-          </>
-        ) : (
+      {token ? (
+        // A work screen: a one-line title with the session controls, so the queue is in the first view.
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-[1.5rem] font-bold leading-[1.3] sm:text-[1.75rem]" style={{ color: INK }}>
+            ใบสมัครและสลิป
+          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true))}
+              disabled={busy}
+              aria-busy={busy || undefined}
+              className={`gap-2 ${pillGhost}`}
+              style={{ borderColor: RULE, color: INK }}
+            >
+              <RotateCw aria-hidden="true" size={15} strokeWidth={1.5} className={busy ? 'motion-safe:animate-spin' : undefined} />
+              {busy ? 'กำลังโหลด…' : 'รีเฟรช'}
+            </button>
+            <button type="button" onClick={logout} className={`gap-2 ${pillGhost}`} style={{ borderColor: RULE, color: INK_2 }}>
+              <LogOut aria-hidden="true" size={15} strokeWidth={1.5} />
+              ออกจากระบบ
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header>
+          <h1 className="text-balance text-[2rem] font-bold leading-[1.22] sm:text-[3.25rem]" style={{ color: INK }}>
+            สำหรับพี่ค่าย
+          </h1>
           <p className="mt-4 max-w-[46ch] text-base leading-[1.75]" style={{ color: INK_2 }}>
             เข้าสู่ระบบเพื่อตรวจรายชื่อใบสมัคร เปลี่ยนสถานะ และอนุมัติหลักฐานการชำระเงิน
           </p>
-        )}
-      </header>
+        </header>
+      )}
 
       {/* ── Login-screen inline notice (visible immediately above login form on expiry or wrong credentials) ── */}
       {!token && error && (
@@ -1438,33 +1437,36 @@ export function AdminSection() {
           />
 
           {/* ── Ledger ───────────────────────────────────────────── */}
-          <section ref={ledgerRef} className="mt-12" aria-busy={busy}>
-            {/* Filter pills (wrap cleanly on 390px) + refresh / sign out */}
+          <section className="mt-6" aria-busy={busy}>
+            {/* Queue chips, search and the column header stay in reach while scrolling the list (md and up). */}
             <div
-              className="flex flex-col gap-4 border-b pb-4 md:flex-row md:items-start md:justify-between"
-              style={{ borderColor: INK }}
+              ref={toolbarRef}
+              className="z-20 md:sticky"
+              style={{ top: 'var(--admin-sticky-top, 0px)', backgroundColor: BG_CANVAS }}
             >
               <div
                 ref={filterGroupRef}
                 tabIndex={-1}
                 role="group"
                 aria-label="กรองตามสถานะ"
-                className={`flex flex-wrap gap-2 rounded-sm ${FOCUS}`}
+                className={`-mx-4 flex gap-2 overflow-x-auto border-b px-4 py-3 [scrollbar-width:thin] sm:-mx-8 sm:px-8 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 ${FOCUS}`}
+                style={{ borderColor: INK }}
               >
                 {tabs.map((t) => {
                   const active = filter === t.key;
                   const isSlipQueue = t.key === 'SLIP_PENDING';
+                  const overdue = t.key === 'AWAITING_PAY' ? overduePayCount : 0;
                   return (
                     <button
                       key={t.key}
                       type="button"
                       aria-pressed={active}
                       onClick={() => setFilter(t.key)}
-                      className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm transition-colors ${FOCUS}`}
+                      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm transition-colors ${active ? '' : 'hover:bg-[var(--color-btn-ghost-hover)]'} ${FOCUS}`}
                       style={{
                         backgroundColor: active ? BTN_DARK : 'transparent',
                         color: active ? BTN_DARK_TEXT : INK_2,
-                        borderColor: active ? BTN_DARK : isSlipQueue && t.n > 0 ? WARNING : RULE,
+                        borderColor: active ? BTN_DARK : isSlipQueue && t.n > 0 ? WARNING : overdue > 0 ? DANGER : RULE,
                         fontWeight: active ? 600 : 500,
                       }}
                     >
@@ -1476,141 +1478,125 @@ export function AdminSection() {
                         />
                       )}
                       <span>{t.label}</span>
-                      <span
-                        className="font-mono text-xs tabular-nums"
-                        style={{ opacity: active ? 0.9 : 0.75 }}
-                      >
+                      <span className="font-mono text-xs tabular-nums" style={{ opacity: active ? 0.9 : 0.75 }}>
                         {t.n}
                       </span>
+                      {overdue > 0 && (
+                        <span className="text-xs font-semibold" style={{ color: active ? BTN_DARK_TEXT : DANGER }}>
+                          · เกินกำหนด <span className="font-mono tabular-nums">{overdue}</span>
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
 
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!token) return;
-                    guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true));
-                  }}
-                  disabled={busy}
-                  aria-busy={busy || undefined}
-                  className={pillGhost}
-                  style={{ borderColor: RULE, color: INK }}
-                >
-                  {busy ? 'กำลังโหลด…' : 'รีเฟรช'}
-                </button>
-                <button type="button" onClick={logout} className={pillGhost} style={{ borderColor: RULE, color: INK_2 }}>
-                  ออกจากระบบ
-                </button>
-              </div>
-            </div>
+              {/* Search, sort, count and export */}
+              <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:flex-1">
+                  <div className="relative w-full sm:max-w-md">
+                    <label htmlFor="applicant-search" className="sr-only">
+                      ค้นหาผู้สมัคร
+                    </label>
+                    <Search
+                      aria-hidden="true"
+                      strokeWidth={1.5}
+                      size={16}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
+                      style={{ color: INK_3 }}
+                    />
+                    <input
+                      id="applicant-search"
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน จังหวัด"
+                      autoComplete="off"
+                      spellCheck={false}
+                      enterKeyHint="search"
+                      className={`${INPUT_BASE} min-h-11 rounded-full py-2 pl-10 ${searching ? 'pr-12' : 'pr-4'}`}
+                      style={{ borderColor: INPUT_BORDER, color: INK }}
+                    />
+                    {searching && (
+                      <button
+                        type="button"
+                        onClick={() => setQuery('')}
+                        aria-label="ล้างคำค้นหา"
+                        className={`absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full ${FOCUS}`}
+                        style={{ color: INK_2 }}
+                      >
+                        <X aria-hidden="true" strokeWidth={1.5} size={16} />
+                      </button>
+                    )}
+                  </div>
 
-            {/* Search, Sort, Count and Export */}
-            <div
-              className="flex flex-col gap-3 border-b py-4 lg:flex-row lg:items-center lg:justify-between"
-              style={{ borderColor: RULE }}
-            >
-              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:flex-1">
-                <div className="relative w-full sm:max-w-md">
-                  <label htmlFor="applicant-search" className="sr-only">
-                    ค้นหาผู้สมัคร
-                  </label>
-                  <Search
-                    aria-hidden="true"
-                    strokeWidth={1.5}
-                    size={16}
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
-                    style={{ color: INK_3 }}
-                  />
-                  <input
-                    id="applicant-search"
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน ระดับชั้น ไซส์เสื้อ จังหวัด"
-                    autoComplete="off"
-                    spellCheck={false}
-                    enterKeyHint="search"
-                    className={`${INPUT_BASE} rounded-full pl-10 ${searching ? 'pr-12' : 'pr-4'}`}
-                    style={{ borderColor: INPUT_BORDER, color: INK }}
-                  />
-                  {searching && (
+                  <div className="relative w-full sm:w-auto sm:min-w-[14.5rem]">
+                    <label htmlFor="applicant-sort" className="sr-only">
+                      เรียงลำดับรายการ
+                    </label>
+                    <select
+                      id="applicant-sort"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as SortKey)}
+                      className={`min-h-11 w-full cursor-pointer appearance-none rounded-full border bg-[var(--bg-card)] py-2 pl-4 pr-10 text-sm font-medium ${FOCUS}`}
+                      style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
+                    >
+                      <option value="newest">เรียง: สมัครล่าสุดก่อน</option>
+                      <option value="slip_queue">เรียง: ส่งสลิปก่อน–หลัง / คิวตรวจ</option>
+                      <option value="updated_desc">เรียง: อัปเดตล่าสุดก่อน</option>
+                    </select>
+                    <ChevronDown
+                      aria-hidden="true"
+                      strokeWidth={1.5}
+                      size={16}
+                      className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
+                      style={{ color: INK_3 }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-start">
+                  <p role="status" aria-live="polite" className="text-sm tabular-nums" style={{ color: INK_2 }}>
+                    {countLabel}
+                  </p>
+                  {can.exportCsv && (
                     <button
                       type="button"
-                      onClick={() => setQuery('')}
-                      aria-label="ล้างคำค้นหา"
-                      className={`absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-full ${FOCUS}`}
-                      style={{ color: INK_2 }}
+                      onClick={exportCsv}
+                      disabled={visible.length === 0 || exporting}
+                      aria-busy={exporting || undefined}
+                      className={`inline-flex items-center gap-2 ${pillGhost}`}
+                      style={{ borderColor: RULE, color: INK }}
                     >
-                      <X aria-hidden="true" strokeWidth={1.5} size={16} />
+                      <Download aria-hidden="true" strokeWidth={1.5} size={16} />
+                      {exporting ? 'กำลังส่งออก…' : 'ส่งออก CSV'}
                     </button>
                   )}
                 </div>
-
-                <div className="relative w-full sm:w-auto sm:min-w-[14.5rem]">
-                  <label htmlFor="applicant-sort" className="sr-only">
-                    เรียงลำดับรายการ
-                  </label>
-                  <select
-                    id="applicant-sort"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortKey)}
-                    className={`min-h-11 w-full cursor-pointer appearance-none rounded-full border bg-[var(--bg-card)] py-2 pl-4 pr-10 text-sm font-medium ${FOCUS}`}
-                    style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
-                  >
-                    <option value="newest">เรียง: สมัครล่าสุดก่อน</option>
-                    <option value="slip_queue">เรียง: ส่งสลิปก่อน–หลัง / คิวตรวจ</option>
-                    <option value="updated_desc">เรียง: อัปเดตล่าสุดก่อน</option>
-                  </select>
-                  <ChevronDown
-                    aria-hidden="true"
-                    strokeWidth={1.5}
-                    size={16}
-                    className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
-                    style={{ color: INK_3 }}
-                  />
-                </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-start">
-                <p role="status" aria-live="polite" className="text-sm tabular-nums" style={{ color: INK_2 }}>
-                  {countLabel}
-                </p>
-                {can.exportCsv && (
-                  <button
-                    type="button"
-                    onClick={exportCsv}
-                    disabled={visible.length === 0 || exporting}
-                    aria-busy={exporting || undefined}
-                    className={`inline-flex items-center gap-2 ${pillGhost}`}
-                    style={{ borderColor: RULE, color: INK }}
-                  >
-                    <Download aria-hidden="true" strokeWidth={1.5} size={16} />
-                    {exporting ? 'กำลังส่งออก…' : 'ส่งออก CSV'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Structured Data Table */}
-            {visible.length > 0 && (
-              <div
-                className="mt-4 overflow-hidden rounded-2xl border"
-                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
-              >
+              {visible.length > 0 && (
                 <div
-                  className="hidden lg:grid lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_12.5rem] lg:items-center lg:gap-4 border-b px-5 py-3 text-xs font-semibold"
+                  aria-hidden="true"
+                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-4 ${ROW_GRID}`}
                   style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
                 >
                   <span>รหัส / วันที่สมัคร</span>
-                  <span>ผู้สมัคร / ติดต่อ</span>
+                  <span>ผู้สมัคร</span>
                   <span>โรงเรียน / ชั้น / เสื้อ</span>
                   <span>หลักฐานการโอน</span>
                   <span>สถานะใบสมัคร</span>
                   <span>การจัดการ</span>
                 </div>
+              )}
+            </div>
+
+            {/* Applications */}
+            {visible.length > 0 && (
+              <div
+                className="overflow-hidden rounded-2xl border lg:rounded-t-none lg:border-t-0"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
                 <ul ref={listRef} tabIndex={-1} className={`rounded-sm ${FOCUS}`}>
                   {visible.map((a) => {
                     const slip = hasSlip(a);
@@ -1618,6 +1604,7 @@ export function AdminSection() {
                     const detailOpen = detailId === a.id;
                     const editing = editingId === a.id;
                     const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
+                    const risky = pendingChange ? isRiskyTransition(pendingChange.from, pendingChange.to) : false;
                     // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
                     const slipLocked = !holdsSeat(a.status);
                     const slipPending = (a.slipStatus ?? 'PENDING') === 'PENDING';
@@ -1644,7 +1631,7 @@ export function AdminSection() {
 
                     return (
                       <li key={a.id} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
-                        <div className="flex flex-col gap-3 px-5 py-4 lg:grid lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_12.5rem] lg:items-center lg:gap-4">
+                        <div className={`flex flex-col gap-3 px-5 py-3.5 lg:grid lg:items-center lg:gap-4 ${ROW_GRID}`}>
                           {/* Col 1: ID + createdAt */}
                           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
                             <span
@@ -1658,7 +1645,7 @@ export function AdminSection() {
                             </p>
                           </div>
 
-                          {/* Col 2: Name, contact, medical/allergy pills */}
+                          {/* Col 2: Name, phone, health flags (email and parent contact live in the details) */}
                           <div className="min-w-0">
                             <p className="break-words text-sm font-semibold leading-6" style={{ color: INK }}>
                               {a.fullName}
@@ -1669,29 +1656,9 @@ export function AdminSection() {
                                 </span>
                               ) : null}
                             </p>
-                            <p className="mt-0.5 text-xs leading-5" style={{ color: INK_2 }}>
-                              <span className="font-mono tabular-nums">{a.phone}</span>
-                              {a.email ? (
-                                <span className="break-all" style={{ color: INK_3 }}>
-                                  {' '}
-                                  · {a.email}
-                                </span>
-                              ) : null}
+                            <p className="mt-0.5 font-mono text-xs leading-5 tabular-nums" style={{ color: INK_2 }}>
+                              {a.phone}
                             </p>
-                            {(a.parentName || a.parentPhone) && (
-                              <p className="mt-0.5 break-words text-xs leading-5" style={{ color: INK_3 }}>
-                                ผู้ปกครอง: {a.parentName || '—'}
-                                {a.parentRelation ? ` (${a.parentRelation})` : ''}
-                                {a.parentPhone ? (
-                                  <>
-                                    {' · '}
-                                    <span className="font-mono tabular-nums" style={{ color: INK_2 }}>
-                                      {a.parentPhone}
-                                    </span>
-                                  </>
-                                ) : null}
-                              </p>
-                            )}
                             {(allergyText || medicalText) && (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {allergyText && (
@@ -1756,11 +1723,14 @@ export function AdminSection() {
                             )}
                           </div>
 
-                          {/* Col 5: Application status select */}
-                          <div className="min-w-0">
+                          {/* Col 5 + 6: status and row actions share one line on small screens */}
+                          <div className="flex min-w-0 items-center gap-2 lg:contents">
+                          <div className="min-w-0 flex-1">
                             {can.changeStatus ? (
                               <StatusSelect
                                 app={a}
+                                value={pendingChange?.to ?? a.status}
+                                pending={Boolean(pendingChange)}
                                 disabled={patching === a.id || deletingId === a.id}
                                 onChange={(status) => requestStatusChange(a, status)}
                               />
@@ -1769,30 +1739,27 @@ export function AdminSection() {
                                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium leading-6 lg:min-h-9"
                                 style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
                               >
-                                <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>
-                                  ●
-                                </span>
+                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: STATUS_DOT[a.status] }} />
                                 {STATUS_LABELS[a.status]}
                               </p>
                             )}
                           </div>
 
-                          {/* Col 6: Row actions */}
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <div className="flex shrink-0 items-center gap-1.5 lg:flex-wrap">
                             <button
                               id={`detail-btn-${a.id}`}
                               type="button"
                               aria-expanded={detailOpen}
                               onClick={() => toggleDetail(a)}
-                              className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
+                              className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] sm:px-3 lg:min-h-9 ${FOCUS}`}
                               style={{
                                 borderColor: detailOpen ? INK : RULE,
                                 backgroundColor: detailOpen ? SURFACE_SUBTLE : BG_CARD,
                                 color: detailOpen ? INK : INK_2,
                               }}
                             >
-                              <Eye size={13} strokeWidth={1.5} aria-hidden="true" />
-                              {detailOpen ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}
+                              <Eye size={14} strokeWidth={1.5} aria-hidden="true" />
+                              <span className="sr-only sm:not-sr-only">{detailOpen ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}</span>
                             </button>
                             {can.editProfile && (
                               <button
@@ -1800,41 +1767,22 @@ export function AdminSection() {
                                 type="button"
                                 aria-expanded={editing}
                                 onClick={() => toggleEdit(a)}
-                                className={`inline-flex min-h-10 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] lg:min-h-8 ${FOCUS}`}
+                                className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] sm:px-3 lg:min-h-9 ${FOCUS}`}
                                 style={{
                                   borderColor: editing ? TECH : RULE,
                                   backgroundColor: editing ? SURFACE_SUBTLE : BG_CARD,
                                   color: TECH,
                                 }}
                               >
-                                <Pencil size={12} strokeWidth={1.5} aria-hidden="true" />
-                                {editing ? 'ซ่อนการแก้ไข' : 'แก้ไข'}
-                              </button>
-                            )}
-                            {can.deleteApplication && confirmDeleteId !== a.id && (
-                              <button
-                                id={`delete-btn-${a.id}`}
-                                type="button"
-                                disabled={deletingId === a.id}
-                                onClick={() => {
-                                  guardProfileEditSwitch(`ลบใบสมัคร ${a.id}`, () => {
-                                    setPendingStatus(null);
-                                    setDeleteReason('');
-                                    setConfirmDeleteId(a.id);
-                                  });
-                                }}
-                                className={`inline-flex min-h-10 items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium underline-offset-4 transition-colors hover:underline disabled:opacity-50 lg:min-h-8 ${FOCUS}`}
-                                style={{ color: DANGER }}
-                                title={`ลบใบสมัคร ${a.id}`}
-                              >
-                                <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
-                                ลบ
+                                <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+                                <span className="sr-only sm:not-sr-only">{editing ? 'ซ่อนการแก้ไข' : 'แก้ไข'}</span>
                               </button>
                             )}
                           </div>
+                          </div>
                         </div>
 
-                    {/* Confirmation for risky / seat-releasing / slip-bypassing status transition */}
+                    {/* Every status change waits for a confirm: picking a value only proposes it. */}
                     {pendingChange && (
                       <div
                         role="region"
@@ -1843,14 +1791,16 @@ export function AdminSection() {
                         style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
                       >
                         <p className="text-sm font-semibold leading-7" style={{ color: INK }}>
-                          ยืนยันเปลี่ยนสถานะ {a.id} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
+                          เปลี่ยนสถานะ {a.fullName} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
                         </p>
-                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                          {!holdsSeat(pendingChange.to)
-                            ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
-                            : pendingChange.to === 'CONFIRMED'
-                              ? 'การเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ด้วยตนเองจะข้ามขั้นตอนตรวจสลิป (ควรใช้เมื่อตรวจสอบการชำระเงินเรียบร้อยแล้ว)'
-                              : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
+                        <p className="mt-0.5 text-sm leading-7" style={{ color: risky ? DANGER : INK_2 }}>
+                          {!risky
+                            ? 'ระบบจะบันทึกการเปลี่ยนแปลงนี้ในประวัติพร้อมเหตุผล (ถ้ามี)'
+                            : !holdsSeat(pendingChange.to)
+                              ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
+                              : pendingChange.to === 'CONFIRMED'
+                                ? 'การเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ด้วยตนเองจะข้ามขั้นตอนตรวจสลิป (ควรใช้เมื่อตรวจสอบการชำระเงินเรียบร้อยแล้ว)'
+                                : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
                           {a.slipStatus === 'APPROVED' && pendingChange.to === 'REJECTED'
                             ? ' (ผู้สมัครมีสลิปที่อนุมัติแล้ว หากต้องคืนเงินแนะนำให้เลือก “รอคืนเงิน”)'
                             : ''}
@@ -1865,6 +1815,12 @@ export function AdminSection() {
                             maxLength={500}
                             value={statusReason}
                             onChange={(e) => setStatusReason(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && patching !== a.id) {
+                                e.preventDefault();
+                                void onStatus(a.id, pendingChange.to, statusReason.trim() || undefined);
+                              }
+                            }}
                             placeholder="เหตุผลในการเปลี่ยนสถานะ (ไม่บังคับ)"
                             className={`${inputCls} sm:max-w-sm`}
                             style={{ borderColor: INPUT_BORDER, color: INK }}
@@ -1874,9 +1830,9 @@ export function AdminSection() {
                               type="button"
                               disabled={patching === a.id}
                               aria-busy={patching === a.id || undefined}
-                              onClick={() => onStatus(a.id, pendingChange.to, statusReason.trim() || undefined)}
-                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                              style={{ borderColor: DANGER, color: DANGER }}
+                              onClick={() => void onStatus(a.id, pendingChange.to, statusReason.trim() || undefined)}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-[opacity,background-color] disabled:opacity-50 ${risky ? 'hover:bg-[var(--color-btn-ghost-hover)]' : 'hover:opacity-90'} ${FOCUS}`}
+                              style={risky ? { borderColor: DANGER, color: DANGER } : { borderColor: BTN_DARK, backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                             >
                               {patching === a.id ? 'กำลังบันทึก…' : 'ยืนยันเปลี่ยนสถานะ'}
                             </button>
@@ -1886,64 +1842,6 @@ export function AdminSection() {
                               onClick={() => {
                                 setPendingStatus(null);
                                 setStatusReason('');
-                              }}
-                              className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                              style={{ color: INK_2 }}
-                            >
-                              ยกเลิก
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Confirmation for soft delete (with optional reason) */}
-                    {can.deleteApplication && confirmDeleteId === a.id && (
-                      <div
-                        role="region"
-                        aria-label={`ยืนยันการลบ ${a.id}`}
-                        className="border-t px-5 py-4"
-                        style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
-                      >
-                        <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
-                          ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
-                        </p>
-                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                          การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
-                          {(slip || a.status === 'CONFIRMED') &&
-                            ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
-                        </p>
-                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                          <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
-                            เหตุผลการลบ (ไม่บังคับ)
-                          </label>
-                          <input
-                            id={`delete-reason-${a.id}`}
-                            type="text"
-                            maxLength={500}
-                            value={deleteReason}
-                            onChange={(e) => setDeleteReason(e.target.value)}
-                            placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
-                            className={`${inputCls} sm:max-w-sm`}
-                            style={{ borderColor: INPUT_BORDER, color: INK }}
-                          />
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={deletingId === a.id}
-                              aria-busy={deletingId === a.id || undefined}
-                              onClick={() => handleDeleteApp(a.id, a.fullName)}
-                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                              style={{ borderColor: DANGER, color: DANGER }}
-                            >
-                              {deletingId === a.id ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={deletingId === a.id}
-                              onClick={() => {
-                                setConfirmDeleteId(null);
-                                setDeleteReason('');
                               }}
                               className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
                               style={{ color: INK_2 }}
@@ -1982,6 +1880,12 @@ export function AdminSection() {
                                 {savedVerifiedAt ? `ตรวจเมื่อ ${formatBangkokDateTime(savedVerifiedAt)}` : ''}
                               </p>
                             )}
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>อีเมล</p>
+                            <p className="mt-1 break-all text-sm" style={{ color: INK }}>
+                              {a.email || '—'}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้ปกครอง / เบอร์ติดต่อ</p>
@@ -2026,16 +1930,92 @@ export function AdminSection() {
                             </p>
                           </div>
                         </div>
-                        <div className="mt-5">
-                          <button
-                            type="button"
-                            onClick={() => setDetailId(null)}
-                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
-                            style={{ borderColor: RULE, color: INK }}
+                        {can.deleteApplication && confirmDeleteId === a.id ? (
+                          <div
+                            role="region"
+                            aria-label={`ยืนยันการลบ ${a.id}`}
+                            className="mt-6 border-t pt-4"
+                            style={{ borderColor: DANGER }}
                           >
-                            ปิด
-                          </button>
-                        </div>
+                            <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
+                              ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
+                            </p>
+                            <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                              การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
+                              {(slip || a.status === 'CONFIRMED') &&
+                                ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
+                            </p>
+                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
+                                เหตุผลการลบ (ไม่บังคับ)
+                              </label>
+                              <input
+                                id={`delete-reason-${a.id}`}
+                                type="text"
+                                maxLength={500}
+                                value={deleteReason}
+                                onChange={(e) => setDeleteReason(e.target.value)}
+                                placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
+                                className={`${inputCls} sm:max-w-sm`}
+                                style={{ borderColor: INPUT_BORDER, color: INK }}
+                              />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={deletingId === a.id}
+                                  aria-busy={deletingId === a.id || undefined}
+                                  onClick={() => handleDeleteApp(a.id, a.fullName)}
+                                  className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
+                                  style={{ borderColor: DANGER, color: DANGER }}
+                                >
+                                  {deletingId === a.id ? 'กำลังลบ…' : 'ยืนยันลบ'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={deletingId === a.id}
+                                  onClick={() => {
+                                    setConfirmDeleteId(null);
+                                    setDeleteReason('');
+                                  }}
+                                  className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                                  style={{ color: INK_2 }}
+                                >
+                                  ยกเลิก
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setDetailId(null)}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                              style={{ borderColor: RULE, color: INK }}
+                            >
+                              ปิด
+                            </button>
+                            {can.deleteApplication && (
+                              <button
+                                id={`delete-btn-${a.id}`}
+                                type="button"
+                                disabled={deletingId === a.id}
+                                onClick={() => {
+                                  guardProfileEditSwitch(`ลบใบสมัคร ${a.id}`, () => {
+                                    setPendingStatus(null);
+                                    setDeleteReason('');
+                                    setConfirmDeleteId(a.id);
+                                  });
+                                }}
+                                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium underline-offset-4 hover:underline disabled:opacity-50 ${FOCUS}`}
+                                style={{ color: DANGER }}
+                              >
+                                <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
+                                ลบใบสมัครนี้
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2205,7 +2185,7 @@ export function AdminSection() {
                             <div>
                               <dt className="text-xs font-semibold" style={{ color: INK_3 }}>สถานะใบสมัคร / ยืนยันสิทธิ์</dt>
                               <dd className="mt-0.5 flex flex-wrap items-center gap-1.5" style={{ color: INK }}>
-                                <span aria-hidden="true" className="text-[10px] leading-none" style={{ color: STATUS_DOT[a.status] }}>●</span>
+                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: STATUS_DOT[a.status] }} />
                                 <span>{STATUS_LABELS[a.status]}</span>
                                 <span style={{ color: INK_3 }}>·</span>
                                 <span style={{ color: a.attendanceConfirmed ? SUCCESS : INK_2 }}>

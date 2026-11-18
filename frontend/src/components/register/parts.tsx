@@ -66,7 +66,7 @@ export function FieldShell({
         <span>{label}</span>
         {hint && <span className="rw-hint">{hint}</span>}
       </label>
-      {children}
+      <div className="rw-field__control">{children}</div>
       <FieldError id={id} message={error} />
     </div>
   );

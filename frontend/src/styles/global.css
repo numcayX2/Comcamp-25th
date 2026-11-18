@@ -83,7 +83,8 @@ html, body {
   margin: 0;
   padding: 0;
   overflow-x: clip;
-  overflow-y: auto;
+  /* No overflow-y here: the viewport scrolls. A body with overflow-y: auto becomes its own (never
+     scrolling) scroll container and traps position: sticky (site nav, /admin toolbar). */
   scroll-behavior: smooth;
   background-color: var(--bg-canvas);
   color: var(--color-ink);
@@ -136,3 +137,53 @@ html:not(.dark) select option {
 
 /* Phone numbers never split at their hyphens. */
 a[href^="tel:"] { white-space: nowrap; }
+
+/* ============================================================
+   Province picker (ProvinceCombobox: /register, /admin)
+   ============================================================ */
+.pcb { position: relative; }
+.pcb__chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-ink-subtle);
+  pointer-events: none;
+}
+.pcb__list {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  max-height: min(18rem, 45vh);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-card);
+  border-radius: 12px;
+  box-shadow:
+    0 2px 6px rgba(18, 19, 22, 0.04),
+    0 18px 36px -16px rgba(18, 19, 22, 0.12),
+    0 0 0 1px var(--color-border);
+}
+.pcb__list[hidden] { display: none; }
+.pcb__opt,
+.pcb__empty {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--color-ink);
+}
+.pcb__opt { cursor: pointer; }
+.pcb__opt.is-active { background: var(--color-btn-ghost-hover); }
+.pcb__list--up { top: auto; bottom: calc(100% + 6px); }
+.pcb__opt[aria-selected='true'] { font-weight: 600; color: var(--color-tech); }
+.pcb__empty { color: var(--color-ink-subtle); }

@@ -110,7 +110,8 @@ const {
     </style>
     <ClientRouter />
   </head>
-  <body class:list={['min-h-dvh w-full overflow-x-clip overflow-y-auto bg-[var(--bg-canvas)] text-[var(--color-ink)] relative scroll-smooth', bodyClass]}>
+  <!-- No overflow-y on body: with html as the scroller, a scrolling body would trap position: sticky (site nav, admin toolbar). -->
+  <body class:list={['min-h-dvh w-full overflow-x-clip bg-[var(--bg-canvas)] text-[var(--color-ink)] relative scroll-smooth', bodyClass]}>
     <slot />
     {backToTop && <BackToTop />}
   </body>

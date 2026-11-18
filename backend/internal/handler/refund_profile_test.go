@@ -21,8 +21,8 @@ import (
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// setupRelaxedApp raises the public mutation limit: these tests make many PATCH/POST calls from
-// one test IP, which the production limit (20 per minute) would answer with 429.
+// setupRelaxedApp raises the public mutation and status lookup limits: these tests make many
+// PATCH/POST/lookup calls from one test IP, which the production per-minute limits answer with 429.
 func setupRelaxedApp(t *testing.T) *testApp {
 	t.Helper()
 	limits := server.DefaultRateLimits()
@@ -30,6 +30,7 @@ func setupRelaxedApp(t *testing.T) *testApp {
 	limits.Confirm = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Withdraw = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Profile = middleware.NewRateLimiter(10_000, time.Minute)
+	limits.StatusQuery = middleware.NewRateLimiter(10_000, time.Minute)
 	return setupTestAppWith(t, limits)
 }
 

@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000011`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000012`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000011_remove_national_id.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000012_canonical_province.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -329,6 +329,16 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "VACUUM FULL applicants, audit_logs;"
   ```
+
+### Migration `000012` (ชื่อจังหวัดทางการ)
+
+`000012_canonical_province.up.sql` แก้เฉพาะข้อมูล `applicants.province` ให้เป็นชื่อทางการของ 77 จังหวัด (ตัด `จังหวัด` / `จ.` และช่องว่าง, แปลง `กทม` / `กรุงเทพฯ` / `อยุธยา` / `โคราช`) ไม่แตะ `updated_at` จึงไม่เลื่อนกำหนดชำระเงิน ค่าที่จับคู่ไม่ได้คงไว้ตามเดิมให้พี่ค่ายแก้ใน `/admin` ไม่มีการเปลี่ยน schema จึงรันได้ขณะ backend ทำงาน (ก่อนหรือหลัง deploy รุ่นใหม่ก็ได้):
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db   psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000012_canonical_province.up.sql
+# ดูค่าที่ยังไม่ตรงรายชื่อ (ถ้ามี) เพื่อแก้ใน /admin
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT application_no, province FROM applicants WHERE deleted_at IS NULL ORDER BY province;"
+```
 
 ## เฝ้าระวังการเดารหัสใบสมัคร (CodeGuard) และการหยุดตัดสิทธิ์อัตโนมัติ
 
