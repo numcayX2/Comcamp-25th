@@ -23,10 +23,14 @@ scratch/
 */.codex/
 .commandcode/
 */.commandcode/
+.impeccable/
+*/.impeccable/
 .agent-skill-manager.json
 */.agent-skill-manager.json
 AGENTS.md
 */AGENTS.md
+CLAUDE_REVAMP_HANDOFF.md
+fable_report.md
 
 # Gallery images hosted on Cloudflare CDN (keep local fallback out of Git)
 frontend/public/assets/gallery/
