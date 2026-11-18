@@ -48,13 +48,14 @@ import {
   cleanSingleLine,
   firstErrorKey,
   formatCampFee,
-  formatNationalId,
   formatPhone,
   validateField,
   validateStep,
   type FieldErrors,
   type FieldKey,
   type FormState,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
 } from './register/model';
 import { FieldShell, StepHeader, TextField } from './register/parts';
 import { SizeChips } from './register/SizeChips';
@@ -78,7 +79,7 @@ type GateState = 'checking' | 'open' | 'pre_open' | 'full' | 'closed' | 'error';
 
 const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string; body: string }> = {
   pre_open: {
-    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 18 พ.ย. 2569 เวลา 00:00 น.',
+    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 19 พ.ย. 2569 เวลา 09:00 น.',
     body: 'แบบฟอร์มจะเปิดให้กรอกทันทีเมื่อถึงกำหนด ระหว่างนี้สามารถอ่านรายละเอียดค่ายและเตรียมข้อมูลส่วนตัวไว้ล่วงหน้าได้',
   },
   full: {
@@ -164,7 +165,7 @@ function ContactLinks({ inline = true }: { inline?: boolean }) {
           <a href={`tel:${c.tel}`} className={linkClass ? `${linkClass} font-mono tabular-nums` : 'font-mono tabular-nums'}>
             {c.phone}
           </a>{' '}
-          ({c.name})
+          · {c.name}
         </Fragment>
       ))}
     </>
@@ -180,11 +181,12 @@ function describeSubmitError(err: unknown): ErrorBannerState {
     switch (err.code) {
       case 'DUPLICATE_APPLICATION':
         return {
-          text: 'เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ',
+          text: 'เบอร์โทรศัพท์หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะด้วยรหัสใบสมัครจากอีเมล หากจำรหัสไม่ได้ติดต่อทีมงาน',
+          withContacts: true,
         };
       case 'IDEMPOTENCY_KEY_REUSED':
         return {
-          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประจำตัว 13 หลักอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประจำตัวให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
+          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเบอร์โทรศัพท์อื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเบอร์โทรศัพท์ให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
         };
       case 'RATE_LIMITED': {
         const wait = err.retryAfterSeconds ? ` ${err.retryAfterSeconds} วินาที` : 'สักครู่';
@@ -212,9 +214,6 @@ function describeSubmitError(err: unknown): ErrorBannerState {
         };
       case 'VALIDATION_ERROR': {
         const msg = err.message.toLowerCase();
-        if (msg.includes('national id') || msg.includes('check digit')) {
-          return { text: 'เลขบัตรประจำตัว 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง' };
-        }
         if (msg.includes('parent phone')) {
           return { text: 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0' };
         }
@@ -464,7 +463,7 @@ export function RegisterSection() {
         if (opensAt !== null && serverNow < opensAt && !settings.isOpen) {
           setGate('pre_open');
           setCountdownMs(Math.max(0, opensAt - serverNow));
-          // Students wait on this page for 00:00, and the copy promises the form opens by itself:
+          // Students wait on this page for 09:00, and the copy promises the form opens by itself:
           // re-check when the server's opening time arrives. The 200–2000 ms jitter keeps every
           // waiting tab from asking at the same instant (AGENTS.md §8, Midnight Zero Jitter Buffer).
           const jitter = 200 + Math.random() * 1800;
@@ -590,9 +589,9 @@ export function RegisterSection() {
   }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    // The idempotency key belongs to one applicant: the server refuses it for another national ID
-    // (IDEMPOTENCY_KEY_REUSED). After the ID is edited the next send starts a fresh attempt.
-    if (key === 'nationalId' && value !== form.nationalId) {
+    // The idempotency key belongs to one applicant: the server refuses it for another phone number
+    // (IDEMPOTENCY_KEY_REUSED). After the phone is edited the next send starts a fresh attempt.
+    if (key === 'phone' && value !== form.phone) {
       clearIdempotencyKey();
       idemKeyRef.current = '';
     }
@@ -728,7 +727,6 @@ export function RegisterSection() {
         fullName: cleanSingleLine(form.fullName),
         nickname: cleanSingleLine(form.nickname),
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
-        nationalId: sanitizeDigits(form.nationalId),
         phone: sanitizeDigits(form.phone),
         email: stripZeroWidth(form.email).replace(/\s+/g, ''),
         parentName: cleanSingleLine(form.parentName),
@@ -882,8 +880,6 @@ export function RegisterSection() {
     return () => ctx.revert();
   }, [step, wizard]);
 
-  const receiptDigits = sanitizeDigits(form.nationalId);
-  const receiptVerifyCode = receiptDigits.length === 13 ? receiptDigits.slice(-4) : undefined;
   const stepNo = Math.min(step, LAST_FORM_STEP);
   const current = gate === 'open' || appId ? step : -1;
   // One scale everywhere: the sidebar shows 6 steps (5 form steps + payment), so does the phone bar.
@@ -933,7 +929,7 @@ export function RegisterSection() {
           <aside ref={rulesRef} className="rw-rules" aria-labelledby="rw-rules-title">
             <h3 id="rw-rules-title" className="rw-rules__title">
               <TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" />
-              <span>อ่าน <span className="font-mono tabular-nums">4</span> ข้อนี้ก่อนเริ่มกรอก</span>
+              <span>อ่าน <span className="font-mono tabular-nums">3</span> ข้อนี้ก่อนเริ่มกรอก</span>
             </h3>
             <ol className="rw-rules__list">
               <li>
@@ -942,7 +938,7 @@ export function RegisterSection() {
                 <strong className="rw-rules__label">วันจัดค่าย</strong>
                 <p>
                   <span className="font-mono tabular-nums">5–7</span> ก.พ. <span className="font-mono tabular-nums">2570</span> ·{' '}
-                  <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+                  <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)
                 </p>
                 </div>
               </li>
@@ -951,7 +947,7 @@ export function RegisterSection() {
                 <div>
                 <strong className="rw-rules__label">รับ <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง</strong>
                 <p>
-                  เปิดรับ <span className="font-mono tabular-nums">18</span> พ.ย. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
+                  เปิดรับ <span className="font-mono tabular-nums">19</span> พ.ย. <span className="font-mono tabular-nums">09:00</span> น. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
                   <span className="font-mono tabular-nums">2569</span> · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
                 </p>
                 </div>
@@ -961,18 +957,8 @@ export function RegisterSection() {
                 <div>
                 <strong className="rw-rules__label">ชำระเงิน</strong>
                 <p>
-                  โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังส่งใบสมัคร ·{' '}
+                  โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.) หลังส่งใบสมัคร ·{' '}
                   <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
-                </p>
-                </div>
-              </li>
-              <li>
-                <span className="rw-rules__no font-mono" aria-hidden="true">4</span>
-                <div>
-                <strong className="rw-rules__label">สละสิทธิ์</strong>
-                <p>
-                  ค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท ·{' '}
-                  <strong className="rw-rules__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
                 </p>
                 </div>
               </li>
@@ -982,8 +968,7 @@ export function RegisterSection() {
             <p className="rw-draft__text rw-draft__text--restored" role="status">
               <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
               <span>
-                กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.) ·
-                เลขบัตร <span className="font-mono tabular-nums">13</span> หลักไม่ถูกบันทึกตาม PDPA กรุณากรอกใหม่
+                กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.) กรุณาตรวจทานอีกครั้ง
               </span>
             </p>
           )}
@@ -1012,28 +997,6 @@ export function RegisterSection() {
               autoComplete="nickname"
               placeholder="เช่น ชาย"
             />
-            <div className="rw-span-3" style={{ minWidth: 0 }}>
-              <TextField
-                id="nationalId"
-                required
-                label="เลขบัตรประจำตัว 13 หลัก"
-                hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
-                groups={[1, 4, 5, 2, 1]}
-                span={3}
-                mono
-                digits={13}
-                inputMode="numeric"
-                autoComplete="off"
-                value={form.nationalId}
-                error={errors.nationalId}
-                onChange={(v) => set('nationalId', v)}
-                onBlur={() => blur('nationalId')}
-                placeholder="X-XXXX-XXXXX-XX-X"
-              />
-              <p className="rw-withdraw__hint" style={{ marginTop: '6px', marginBottom: 0, fontSize: '0.8125rem' }}>
-                ใช้ได้ทั้งบัตรประชาชนและบัตรชมพู (คนไม่มีสัญชาติไทย)
-              </p>
-            </div>
             <TextField
               id="phone"
               required
@@ -1056,6 +1019,7 @@ export function RegisterSection() {
               id="email"
               required
               label="อีเมล"
+              span={3}
               hint="ใช้รับอีเมลแจ้งรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
               inputMode="email"
@@ -1136,7 +1100,7 @@ export function RegisterSection() {
                 <p className="rw-draft__text">
                   <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
                   <span>
-                  บันทึกร่างไว้เฉพาะแท็บนี้ และหายเมื่อปิดแท็บ · ไม่บันทึกเลขบัตร <span className="font-mono tabular-nums">13</span> หลักและข้อมูลสุขภาพตาม PDPA
+                  บันทึกร่างไว้เฉพาะแท็บนี้ และหายเมื่อปิดแท็บ · ไม่บันทึกข้อมูลสุขภาพตาม PDPA
                   </span>
                 </p>
                 {!formIsEmpty && (
@@ -1261,7 +1225,7 @@ export function RegisterSection() {
                 </tbody>
               </table>
               <p className="rw-slip__note">
-                สามารถกลับมาแก้ไขไซส์เสื้อภายหลังได้ที่หน้า <span className="font-mono">/status</span> จนกว่าจะปิดแก้ไขข้อมูล
+                หากต้องการแก้ไขไซส์เสื้อภายหลัง กรุณาติดต่อทีมงานผ่านเพจ Facebook หรือโทรหาพี่ค่าย (ดูช่องทางติดต่อที่หน้า <span className="font-mono">/status</span>)
               </p>
             </div>
           </div>
@@ -1386,7 +1350,6 @@ export function RegisterSection() {
                 rows={[
                   ['ชื่อ-นามสกุล', cleanSingleLine(form.fullName)],
                   ['ชื่อเล่น', cleanSingleLine(form.nickname)],
-                  ['เลขบัตรประจำตัว 13 หลัก', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],
                   ['ชื่อผู้ปกครอง', `${cleanSingleLine(form.parentName)} (${cleanSingleLine(form.parentRelation)})`],
@@ -1455,9 +1418,9 @@ export function RegisterSection() {
                 <li>
                   <strong>
                     โอนค่าสมัคร (<span className="font-mono tabular-nums">{feeText}</span> บาท) ภายใน{' '}
-                    <span className="font-mono tabular-nums">3</span> วันหลังสมัคร
+                    <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร
                   </strong>
-                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ และหากโอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี
+                  หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ
                 </li>
                 <li>
                   <strong>แนบสลิป เข้ากลุ่ม LINE OpenChat และรอรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>
@@ -1481,7 +1444,8 @@ export function RegisterSection() {
               />
               <span>
                 ข้าพเจ้ายินยอมให้โครงการเก็บและใช้ข้อมูลส่วนบุคคลและข้อมูลสุขภาพข้างต้น เพื่อการคัดเลือก ติดต่อประสานงาน ดูแลความปลอดภัยด้านอาหารและสุขภาพ และดำเนินกิจกรรมค่ายเท่านั้น
-                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ) และเงื่อนไข<strong>โอนเงินแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>
+                รวมถึงรับทราบรายละเอียดค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท, กำหนดโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร (เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)
+                และยินยอมให้แสดง ชื่อ–นามสกุล, ชื่อเล่น, โรงเรียน และจังหวัด ของข้าพเจ้าบนหน้ารายชื่อผู้สมัครสาธารณะของเว็บไซต์ (/applicants)
               </span>
             </label>
             {/* Outside the label so the error isn't folded into the checkbox's accessible name. */}
@@ -1699,7 +1663,6 @@ export function RegisterSection() {
                 feeText={feeText}
                 source={source}
                 showSource={isDev}
-                defaultVerifyCode={receiptVerifyCode}
                 headingRef={headingRef}
                 onWithdrawn={onWithdrawn}
               />

@@ -24,7 +24,7 @@ func addApplicant(t *testing.T, apps *memory.MemoryApplicantRepo, n int, status 
 	t.Helper()
 	a := &domain.Applicant{
 		ApplicationNo: fmt.Sprintf("CC25-M%05d", n), FirstName: "ทดสอบ", LastName: "ระบบ",
-		NationalID: fmt.Sprintf("15099%08d", n), Phone: fmt.Sprintf("08%08d", n), Status: status,
+		Phone: fmt.Sprintf("08%08d", n), Status: status,
 	}
 	if err := apps.Create(context.Background(), a); err != nil {
 		t.Fatal(err)

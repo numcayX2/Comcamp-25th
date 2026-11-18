@@ -1,18 +1,28 @@
 /* ==========================================================================
-   ComCamp #25 — Editorial Minimalism (HomePage sections 02–06 + CTA + footer)
+   ComCamp #25 — Editorial layer (HomePage sections 02–05 + CTA plate + footer)
    Loaded after styles.css / page.css. Gallery (#gallery, .mt*) is untouched.
 
-   Principles
-   - Structure: every section is a 12-col spread (4fr sticky chapter margin /
-     8fr architectural ledger). Hairline 1px rules replace card stacks & shadows.
-   - Surface rhythm: Hero & 02/04/06/CTA/Footer sit on --canvas-0 so transitions
-     from Hero and into .mt-fade have zero seam; 03 (#essentials) & 05 (#timeline)
-     alternate onto Warm Alabaster --canvas-1 (#F2F0E8 light / #121724 dark).
-   - Focal Anchor (Option 2B): #essentials features one full-bleed high-contrast
-     architectural plate for the 30-seat quota, balanced within a precision-ruled
-     2-column spec matrix.
-   - Type: IBM Plex Sans Thai for reading (letter-spacing: 0 strictly), IBM Plex
-     Mono only for English indexes, numerals, and technical specs.
+   One composition per section (CLAUDE_REVAMP_HANDOFF Phase 4.2):
+   - 02 #experience (หลักสูตร): centered masthead over a central spine; step
+     cards alternate left/right of the spine on desktop, hang off a left rail
+     on mobile. Surface: --canvas-1.
+   - 03 #essentials: split masthead (title | stat stack) over a raised bento
+     mosaic (7/5 · 5/7 · 7/5 brick rhythm) and the archive photo strip.
+     Surface: --canvas-0.
+   - 04 #timeline: left masthead, a horizontal registration track (vertical
+     rail on mobile) ending in a raised destination plate, then one raised
+     care panel with hairline cells. Surface: --canvas-1.
+   - 05 #faq: sticky question index beside stacked raised answer cards.
+     Surface: --canvas-0.
+   - CTA band: one centered raised plate. Footer: oversized wordmark colophon.
+
+   Dividers: every .ed-sec opens on a full-bleed 1px ink rule carrying a pill
+   tab (.ed-index) that straddles it, plus a surface change.
+   Depth only from tokens: --shadow-card / --shadow-float, --surface,
+   --canvas-0/1, --rule, radii 9999px / 24px / 28px.
+   Type: IBM Plex Sans Thai for reading (letter-spacing 0), IBM Plex Mono only
+   for English/numerals. Motion lives in initEditorialMotion() (main.js);
+   nothing here hides content (no opacity:0 defaults; --rule-p defaults to 1).
    ========================================================================== */
 
 /* ---------- Veil Preloader Performance & Containment ---------- */
@@ -32,22 +42,25 @@
 .ed-footer {
   --ed-gap: clamp(36px, 6vw, 108px);
   --ed-pad: clamp(76px, 10vw, 140px);
-  --ed-cell-pad-y: clamp(22px, 2.6vw, 32px);
-  --ed-cell-pad-x: clamp(20px, 3vw, 36px);
+  --ed-card-pad: clamp(22px, 2.6vw, 32px);
   --ed-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Text-safe amber: #B45309 only reaches 4.40:1 on --canvas-1 (#F2F0E8).
      This shade holds ≥5.6:1 on both canvas-0 and canvas-1 (WCAG 2.2 AA). */
   --amber-text: #9A4608;
+  --sec-bg: var(--canvas-0);
 }
 
 .ed-sec {
+  position: relative;
   padding: var(--ed-pad) 0;
-  border-top: 1px solid var(--rule);
-  background: var(--canvas-0);
+  border-top: 1px solid var(--ink);
+  background: var(--sec-bg);
+  /* Leave room for the fixed nav plus the divider tab that sits above the section edge. */
+  scroll-margin-top: calc(var(--nav-h, 68px) + 24px);
 }
-
-.ed-sec.ed-sec--alt {
-  background: var(--canvas-1);
+#experience,
+#timeline {
+  --sec-bg: var(--canvas-1);
 }
 
 .ed-sec > .wrap,
@@ -67,7 +80,14 @@
   min-width: 0;
 }
 
-/* ---------- Shared Chapter Index  "03 ── ข้อมูลก่อนสมัคร · ESSENTIALS" ---------- */
+/* Zero-height anchor that keeps old shared #journey links landing on the curriculum steps */
+.ed-anchor {
+  display: block;
+  height: 0;
+  scroll-margin-top: calc(var(--nav-h, 68px) + 24px);
+}
+
+/* ---------- Chapter index ---------- */
 .ed-index {
   display: flex;
   align-items: center;
@@ -88,14 +108,6 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
 }
-/* English-only fragments keep the mono spec voice (never Thai) */
-.ed-en {
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 .ed-index__label::before {
   content: "";
   display: inline-block;
@@ -106,37 +118,56 @@
   background: var(--rule-strong);
 }
 
-/* ---------- 4fr / 8fr Sticky Spread Layout ---------- */
-.ed-sec > .wrap:not(.exp),
-#experience .exp,
-.ed-cta-band > .wrap {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: clamp(32px, 5vw, 56px);
-  align-items: start;
+/* Section divider tab: a pill that straddles the section's top ink rule */
+.ed-sec > .ed-index {
+  position: absolute;
+  top: -17px;
+  left: 20px;
+  left: max(20px, calc((100% - 1240px) / 2));
+  z-index: 2;
+  box-sizing: border-box;
+  height: 34px;
+  margin: 0;
+  padding: 0 16px 0 4px;
+  gap: 10px;
+  border: 1px solid var(--ink);
+  border-radius: 9999px;
+  background: var(--sec-bg);
+  color: var(--ink);
+  white-space: nowrap;
 }
-@media (min-width: 900px) {
-  .ed-sec > .wrap:not(.exp),
-  #experience .exp,
-  .ed-cta-band > .wrap {
-    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
-    column-gap: var(--ed-gap);
+@media (min-width: 768px) {
+  .ed-sec > .ed-index {
+    left: max(24px, calc((100% - 1240px) / 2));
   }
-  .ed-sec .section-head,
-  #experience .exp-intro {
-    position: sticky;
-    top: calc(var(--nav-h, 64px) + 36px);
-  }
+}
+.ed-sec > .ed-index .ed-index__no {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  background: var(--ink);
+  color: var(--canvas-0);
+  letter-spacing: 0.02em;
+}
+.ed-sec > .ed-index .ed-index__label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.ed-sec > .ed-index .ed-index__label::before {
+  content: none;
 }
 
-/* ---------- Left Margin Titles, Lead & Aside Metadata ---------- */
-.ed-sec .section-head,
-#experience .exp-intro {
+/* ---------- Section heads ---------- */
+.ed-sec .section-head {
   margin: 0;
+  min-width: 0;
 }
-.ed-sec .section-title,
-#experience .exp-title {
-  max-width: 14ch;
+.ed-sec .section-title {
+  max-width: 18ch;
   font-size: clamp(1.85rem, 2.5vw + 0.85rem, 2.95rem);
   line-height: 1.25;
   font-weight: 700;
@@ -144,12 +175,11 @@
   text-wrap: balance;
   color: var(--ink);
 }
-.ed-sec .section-head .body,
-#experience .exp-lead {
-  max-width: 34ch;
+.ed-sec .section-head .body {
+  max-width: 40em;
   margin-top: clamp(14px, 1.8vw, 22px);
-  font-size: 0.9375rem;
-  line-height: 1.78;
+  font-size: 1rem;
+  line-height: 1.75;
   letter-spacing: 0;
   color: var(--ink-2);
 }
@@ -165,13 +195,9 @@
     border-top: 1px solid var(--rule);
     font-family: var(--font-thai);
     font-size: 0.8125rem;
-    line-height: 1.65;
+    line-height: 1.7;
     letter-spacing: 0;
     color: var(--ink-3);
-  }
-  .ed-aside-meta .ed-en {
-    font-size: 0.6875rem;
-    color: var(--ink-2);
   }
 }
 
@@ -206,237 +232,417 @@
 }
 
 /* ==========================================================================
-   02. EXPERIENCE — Numbered Lab Chapters + Datasheet Spec Strip
+   02. CURRICULUM (#experience) — Centered Masthead + Central Spine
    ========================================================================== */
-#experience {
-  padding: var(--ed-pad) 0;
+#experience .section-head {
+  max-width: 46rem;
+  margin: 0 auto clamp(44px, 6vw, 80px);
+  text-align: center;
 }
-#experience .exp-list {
-  border-top: 1px solid var(--ink);
+#experience .section-title {
+  max-width: none;
+  margin: 0 auto;
 }
-#experience .exp-item {
-  grid-template-columns: 48px minmax(0, 1fr);
-  column-gap: clamp(12px, 2.2vw, 24px);
-  padding: clamp(24px, 3vw, 36px) 0;
+#experience .section-head .body {
+  max-width: 38em;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The spine is the container's own background line, drawn top → bottom via --rule-p. */
+#experience .journey {
+  --rule-p: 1;
+  position: relative;
+  display: grid;
+  gap: clamp(24px, 3.4vw, 44px);
+  max-width: 1080px;
+  margin: 0 auto;
+  border: 0 !important;
+  background: linear-gradient(var(--border-input), var(--border-input)) 13px 0 / 1px calc(var(--rule-p) * 100%) no-repeat;
+}
+#experience .step {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 12px;
   align-items: start;
+  padding: 0;
+  border: 0 !important;
 }
-@media (min-width: 640px) {
-  #experience .exp-item {
-    grid-template-columns: 60px minmax(0, 1fr);
-  }
+#experience .step-node {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+  display: block;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  background: var(--sec-bg);
+  border: 2px solid var(--border-input);
+  box-shadow: 0 0 0 4px var(--sec-bg);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
-#experience .exp-item:last-child {
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: clamp(24px, 3vw, 36px);
+#experience .step.is-active .step-node {
+  background: var(--blue-600);
+  border-color: var(--blue-600);
 }
-#experience .exp-num {
+#experience .step.is-done .step-node {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+}
+#experience .step-aside {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+#experience .step-big-num {
   font-family: var(--ed-mono);
-  font-size: clamp(0.9375rem, 0.5vw + 0.8rem, 1.125rem);
-  font-weight: 500;
+  font-size: clamp(2.25rem, 4.4vw, 4rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  line-height: 1.5;
-  padding-top: 2px;
-  color: var(--ink-3);
-  transition: color 0.22s ease;
+  color: var(--border-input);
+  user-select: none;
+  will-change: transform;
+  transition: color 0.35s ease;
 }
-#experience .exp-item:hover .exp-num {
+#experience .step.is-active .step-big-num {
   color: var(--blue-600);
 }
-#experience .exp-item-title {
-  font-size: clamp(1.15rem, 0.85vw + 0.95rem, 1.375rem);
+#experience .step.is-done .step-big-num {
+  color: var(--ink-3);
+}
+#experience .step .day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  min-height: 28px;
+  margin: 0;
+  padding: 2px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9999px;
+  background: var(--surface);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+#experience .step-content {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  padding: var(--ed-card-pad);
+  background: var(--surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.35s ease;
+}
+#experience .step.is-active .step-content {
+  box-shadow: var(--shadow-float);
+}
+#experience .step-num {
+  margin: 0 0 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: color 0.3s ease;
+}
+#experience .step.is-active .step-num {
+  color: var(--ink);
+}
+#experience .step h3 {
+  margin: 0 0 8px;
+  font-size: clamp(1.15rem, 0.9vw + 0.95rem, 1.4rem);
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0;
   color: var(--ink);
 }
-#experience .exp-item-text {
-  max-width: 56ch;
-  margin-top: 8px;
+#experience .step p {
+  max-width: 54ch;
+  margin: 0;
   font-size: 0.9375rem;
-  line-height: 1.78;
+  line-height: 1.75;
   letter-spacing: 0;
   color: var(--ink-2);
 }
-#experience .exp-spec {
-  display: inline-flex;
+#experience .step .step-spec {
+  display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin-top: 14px;
-  padding-top: 10px;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 16px 0 0;
+  padding-top: 12px;
   border-top: 1px solid var(--rule);
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  line-height: 1.4;
+  line-height: 1.5;
 }
-#experience .exp-key {
+#experience .step-spec__key {
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
-#experience .exp-key::after {
-  content: "·";
-  margin-left: 12px;
-  color: var(--rule-strong);
-}
-#experience .exp-val {
+#experience .step-spec__val {
+  font-family: var(--ed-mono);
+  font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Spine terminus: certificate sign-off. The spine continues through the top padding
+   down to the end node (node centre = 50% + half the padding on mobile). */
+#experience .ed-journey-signoff {
+  --sig-gap: clamp(24px, 3.4vw, 44px);
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: center;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--sig-gap) 0 0;
+  border: 0;
+  background: linear-gradient(var(--border-input), var(--border-input)) 13px 0 / 1px calc(50% + var(--sig-gap) / 2) no-repeat;
+}
+#experience .step-node--end {
+  grid-column: 1;
+  width: 15px;
+  height: 15px;
+  background: var(--fern-500);
+  border-color: var(--fern-500);
+}
+#experience .ed-signoff-note {
+  font-family: var(--font-thai);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+@media (min-width: 900px) {
+  #experience .journey {
+    background-position: 50% 0;
+  }
+  #experience .step {
+    grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
+    column-gap: 0;
+    row-gap: 0;
+  }
+  #experience .step-node {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin-top: 38px;
+  }
+  #experience .step-aside,
+  #experience .step-content {
+    grid-row: 1;
+  }
+  #experience .step-aside {
+    flex-direction: column;
+    /* Wider than the 18px parallax travel on .step-big-num, so the numeral never rides over the day pill. */
+    gap: 28px;
+    padding-top: 18px;
+  }
+  #experience .step:nth-child(odd) .step-aside {
+    grid-column: 1;
+    align-items: flex-end;
+    padding-right: clamp(20px, 3vw, 40px);
+  }
+  #experience .step:nth-child(odd) .step-content {
+    grid-column: 3;
+  }
+  #experience .step:nth-child(even) .step-aside {
+    grid-column: 3;
+    align-items: flex-start;
+    padding-left: clamp(20px, 3vw, 40px);
+  }
+  #experience .step:nth-child(even) .step-content {
+    grid-column: 1;
+  }
+  #experience .ed-journey-signoff {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    row-gap: 14px;
+    text-align: center;
+    background-position: 50% 0;
+    background-size: 1px var(--sig-gap);
+  }
+  #experience .step-node--end {
+    grid-column: 1;
+  }
 }
 
 /* ==========================================================================
-   03. ESSENTIALS — Framing Strip + 2-Col Ruled Spec Matrix + Option 2B Plate
+   03. ESSENTIALS — Split Masthead + Stat Stack + Raised Bento Mosaic
    ========================================================================== */
+#essentials .ess-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(28px, 4vw, 44px);
+  margin-bottom: clamp(36px, 5vw, 64px);
+}
+@media (min-width: 900px) {
+  #essentials .ess-head {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: var(--ed-gap);
+    align-items: end;
+  }
+}
+
 .ed-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 20px;
-  margin: 0 0 clamp(22px, 2.8vw, 30px);
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
   padding: 0;
+  border-top: 1px solid var(--ink);
 }
-.ed-metric:last-child {
-  grid-column: 1 / -1;
+.ed-metric {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
 }
 @media (min-width: 560px) {
   .ed-metrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px 28px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .ed-metric:last-child {
-    grid-column: auto;
+  .ed-metric {
+    padding: 16px 18px 6px;
+    border-bottom: 0;
+    border-left: 1px solid var(--rule);
   }
-  .ed-metric:not(:first-child) {
-    padding-left: 24px;
-    border-left: 1px solid var(--rule-strong);
+  .ed-metric:first-child {
+    padding-left: 0;
+    border-left: 0;
   }
 }
 .ed-metric__label {
-  font-family: var(--ed-mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.5;
   color: var(--ink-3);
-  line-height: 1.4;
 }
 .ed-metric__val {
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   font-family: var(--font-thai);
   font-size: 1.0625rem;
   font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.45;
+  line-height: 1.55;
   color: var(--ink);
 }
 
-/* Architectural 2-column ruled spec grid */
-.ed-sec .bento {
+/* Mosaic of raised tiles. DOM order (01 → 07) is kept for reading order. */
+#essentials .bento {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  border-top: 1px solid var(--ink);
+  gap: clamp(12px, 1.6vw, 20px);
+  border: 0 !important;
+  background: none;
 }
 @media (min-width: 640px) {
-  .ed-sec .bento {
+  #essentials .bento {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 0;
+  }
+  #essentials .bento .card.bento-feature,
+  #essentials .bento .card.ed-cell--ledger,
+  #essentials .bento .card.ed-cell--full {
+    grid-column: 1 / -1;
   }
 }
+@media (min-width: 1024px) {
+  #essentials .bento {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  #essentials .bento .card:nth-child(1) { grid-column: span 7; }
+  #essentials .bento .card:nth-child(2) { grid-column: span 5; }
+  #essentials .bento .card:nth-child(3) { grid-column: span 5; }
+  #essentials .bento .card:nth-child(4) { grid-column: span 7; }
+  #essentials .bento .card.bento-feature { grid-column: span 7; }
+  #essentials .bento .card.ed-cell--ledger { grid-column: span 5; }
+  #essentials .bento .card.ed-cell--full { grid-column: 1 / -1; }
+}
 
-.ed-sec .bento .card {
+#essentials .bento .card {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  padding: var(--ed-cell-pad-y) 0 !important;
-  background: transparent !important;
+  padding: var(--ed-card-pad) !important;
+  background: var(--surface) !important;
   border: 0 !important;
-  border-bottom: 1px solid var(--rule) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
+  border-radius: 24px !important;
+  box-shadow: var(--shadow-card) !important;
   color: var(--ink);
 }
-
-@media (min-width: 640px) {
-  .ed-sec .bento .card.ed-cell--split:nth-child(odd) {
-    padding-right: var(--ed-cell-pad-x) !important;
-    border-right: 1px solid var(--rule) !important;
-  }
-  .ed-sec .bento .card.ed-cell--split:nth-child(even) {
-    padding-left: var(--ed-cell-pad-x) !important;
-  }
-}
-
-.ed-sec .bento .bento-icon {
-  display: none;
-}
-.ed-sec .bento .card-top {
+#essentials .bento .card-top {
   display: block;
 }
-.ed-sec .bento .bento-tag {
+#essentials .bento .bento-tag {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink-3);
 }
-.ed-sec .bento .card h3 {
+#essentials .bento .card h3 {
   margin: 0 !important;
-  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.275rem);
+  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.3rem);
   font-weight: 600;
   line-height: 1.38;
   letter-spacing: 0;
   color: var(--ink) !important;
 }
-.ed-sec .bento .card p {
-  max-width: 42ch;
+#essentials .bento .card p {
+  max-width: 60ch;
   margin: 0;
   font-size: 0.9375rem;
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--ink-2) !important;
 }
+#essentials .bento .card .ed-inline-link {
+  margin-top: auto;
+  align-self: flex-start;
+}
 
-/* Option 2B: Full-width High-Contrast Focal Anchor Plate for 30 Seats */
-.ed-sec .bento .card.bento-feature {
-  grid-column: 1 / -1;
+/* Seats plate: the one dark, floating tile of the mosaic */
+#essentials .bento .card.bento-feature {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  align-items: center;
-  margin: 0;
-  padding: clamp(24px, 3vw, 34px) clamp(22px, 3.2vw, 36px) !important;
+  align-content: center;
   background: #121316 !important;
-  border: 1px solid #121316 !important;
-  border-radius: 0 !important;
+  box-shadow: var(--shadow-float) !important;
   color: #F9F8F4 !important;
 }
 @media (min-width: 640px) {
-  .ed-sec .bento .card.bento-feature {
+  #essentials .bento .card.bento-feature {
     grid-template-columns: auto minmax(0, 1fr);
-    column-gap: clamp(28px, 4.5vw, 56px);
+    align-items: center;
+    column-gap: clamp(24px, 3.5vw, 44px);
   }
-  .ed-sec .bento .bento-feature__right {
-    padding-left: clamp(24px, 3.5vw, 44px);
+  #essentials .bento .bento-feature__right {
+    padding-left: clamp(20px, 3vw, 36px);
     border-left: 1px solid rgba(249, 248, 244, 0.16);
   }
 }
-.ed-sec .bento .bento-feature__left {
+#essentials .bento .bento-feature__left,
+#essentials .bento .bento-feature__right {
   min-width: 0;
 }
-.ed-sec .bento .bento-feature__right {
+#essentials .bento .bento-feature__right {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 0;
 }
 .bento-live-dot {
   width: 7px;
@@ -445,17 +651,17 @@
   background: #03B800;
   flex: none;
 }
-.ed-sec .bento .card.bento-feature[data-reg-state="ALMOST_FULL"] .bento-live-dot {
+#essentials .bento .card.bento-feature[data-reg-state="ALMOST_FULL"] .bento-live-dot {
   background: #F5A524;
 }
-.ed-sec .bento .card.bento-feature[data-reg-state="FULL"] .bento-live-dot,
-.ed-sec .bento .card.bento-feature[data-reg-state="CLOSED"] .bento-live-dot {
+#essentials .bento .card.bento-feature[data-reg-state="FULL"] .bento-live-dot,
+#essentials .bento .card.bento-feature[data-reg-state="CLOSED"] .bento-live-dot {
   background: rgba(249, 248, 244, 0.45);
 }
-.ed-sec .bento .card.bento-feature .bento-tag {
+#essentials .bento .card.bento-feature .bento-tag {
   color: rgba(249, 248, 244, 0.72);
 }
-.ed-sec .bento .card.bento-feature .bento-big {
+#essentials .bento .card.bento-feature .bento-big {
   margin: 10px 0 0;
   padding: 4px 0;
   display: flex;
@@ -468,7 +674,7 @@
   letter-spacing: -0.04em;
   color: #F9F8F4;
 }
-.ed-sec .bento .card.bento-feature .bento-big small {
+#essentials .bento .card.bento-feature .bento-big small {
   margin: 0;
   font-family: var(--font-thai);
   font-size: 1.0625rem;
@@ -477,60 +683,54 @@
   letter-spacing: 0;
   color: rgba(249, 248, 244, 0.88);
 }
-.ed-sec .bento .card.bento-feature p {
+#essentials .bento .card.bento-feature p {
   max-width: 46ch;
   color: rgba(249, 248, 244, 0.9) !important;
 }
-.ed-sec .bento .card.bento-feature .bento-feature__meta {
-  font-family: var(--ed-mono);
-  font-size: 0.6875rem;
+#essentials .bento .card.bento-feature .bento-feature__meta {
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(249, 248, 244, 0.56) !important;
+  color: rgba(249, 248, 244, 0.7) !important;
 }
 
-/* Full-width bottom Fee & Action Ledger Row */
-.ed-sec .bento .card.ed-cell--ledger {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-@media (min-width: 640px) {
-  .ed-sec .bento .card.ed-cell--ledger {
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-  }
-}
+/* Fee tile: the price is the headline figure */
 .ed-ledger__info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .ed-ledger__price {
-  display: inline-block;
-  margin-left: 8px;
-  padding-left: 12px;
-  border-left: 1px solid var(--rule-strong);
-  font-weight: 600;
+  display: block;
+  margin-top: 6px;
+  font-size: clamp(1.6rem, 1.6vw + 1rem, 2.25rem);
+  font-weight: 700;
+  line-height: 1.25;
   color: var(--ink);
 }
-.ed-sec .bento .card.ed-cell--ledger p,
-.ed-sec .bento .card.ed-cell--full p {
-  max-width: 72ch;
+#essentials .ed-ledger__price .fee-num {
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+#essentials .bento .ed-ledger__note {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  font-family: var(--font-thai);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.72;
+  letter-spacing: 0;
+  color: var(--ink-2) !important;
+}
+#essentials .bento .card .ed-card-action {
+  flex: none;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
-/* Full-width What to Bring checklist row */
-.ed-sec .bento .card.ed-cell--full {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+/* What-to-bring tile: three hairline-separated columns */
 .ed-bring-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -561,50 +761,14 @@
   padding-left: 1.15em;
   display: grid;
   gap: 6px;
-  font-size: 0.9rem;
-  line-height: 1.65;
+  font-size: 0.9375rem;
+  line-height: 1.7;
   color: var(--ink-2);
 }
 
-/* Confirmed fee inclusions note — neutral editorial body style */
-.ed-sec .bento .ed-ledger__note {
-  display: block;
-  margin-top: 2px;
-  padding: 0;
-  font-family: var(--font-thai);
-  font-size: 0.9375rem;
-  font-weight: 400;
-  line-height: 1.72;
-  letter-spacing: 0;
-  color: var(--ink-2) !important;
-}
-
-/* Official "รอประกาศ" notice in text-safe --amber-text per AGENTS.md §12.2 */
-.ed-sec .bento .todo,
-.ed-sec .tm-tile .todo {
-  display: block;
-  margin-top: 2px;
-  padding: 0;
-  font-family: var(--font-thai);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.55;
-  letter-spacing: 0;
-  color: var(--amber-text) !important;
-}
-.ed-sec .tm-tile .todo::before,
-.ed-sec .bento .todo::before {
-  content: "— ";
-}
-.ed-sec .bento .card .ed-card-action {
-  flex: none;
-}
-
-/* Workshop Archive Photo Triptych inside #essentials */
+/* Workshop archive photo strip */
 .ed-photo-strip {
-  margin-top: clamp(32px, 4vw, 48px);
-  padding-top: clamp(22px, 2.8vw, 30px);
-  border-top: 1px solid var(--rule);
+  margin-top: clamp(32px, 4vw, 52px);
 }
 .ed-photo-strip__head {
   display: flex;
@@ -613,13 +777,12 @@
   align-items: baseline;
   gap: 6px 16px;
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
 }
 .ed-photo-strip__kicker {
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink-3);
 }
 .ed-photo-strip__note {
@@ -643,7 +806,7 @@
 @media (min-width: 640px) {
   .ed-photo-strip__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
+    gap: clamp(14px, 1.6vw, 20px);
   }
   .ed-photo-card:first-child {
     grid-column: auto;
@@ -652,8 +815,14 @@
 .ed-photo-card__frame {
   aspect-ratio: 3 / 2;
   overflow: hidden;
-  border: 1px solid var(--rule-strong);
-  background: var(--canvas-0);
+  border-radius: 12px;
+  background: var(--canvas-1);
+  box-shadow: var(--shadow-card);
+}
+@media (min-width: 640px) {
+  .ed-photo-card__frame {
+    border-radius: 24px;
+  }
 }
 .ed-photo-card__frame img {
   display: block;
@@ -668,133 +837,32 @@
   }
 }
 .ed-photo-card__cap {
-  margin-top: 8px;
+  margin-top: 10px;
   font-family: var(--font-thai);
   font-size: 0.8125rem;
-  line-height: 1.58;
+  line-height: 1.7;
   letter-spacing: 0;
   color: var(--ink-2);
 }
 .ed-photo-card__idx {
   display: block;
   margin-bottom: 2px;
-  font-family: var(--ed-mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink-3);
 }
 
 /* ==========================================================================
-   04. JOURNEY — Typographic Parallax Index & Unified Baseline Metadata
+   04. TIMELINE & CARE — Registration Track + Raised Care Panel
    ========================================================================== */
-.ed-sec .journey {
-  border-top: 1px solid var(--ink);
+#timeline .section-head {
+  margin-bottom: clamp(36px, 5vw, 64px);
 }
-.ed-sec .step {
-  display: grid;
-  grid-template-columns: clamp(48px, 7.5vw, 92px) minmax(0, 1fr);
-  align-items: start;
-  gap: 0 clamp(16px, 3vw, 36px);
-  padding: clamp(28px, 3.2vw, 40px) 0;
-  border-bottom: 1px solid var(--rule) !important;
+#timeline .section-title {
+  max-width: 22ch;
 }
-.ed-sec .step:last-child {
-  border-bottom: 0 !important;
-}
-.ed-sec .step-big-num {
-  font-family: var(--ed-mono);
-  font-size: clamp(2rem, 3.6vw, 3.25rem);
-  font-weight: 600;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-  padding-top: 2px;
-  color: var(--rule-strong);
-  user-select: none;
-  will-change: transform;
-  transition: color 0.35s ease;
-}
-.ed-sec .step.is-active .step-big-num {
-  color: var(--blue-600);
-}
-.ed-sec .step.is-done .step-big-num {
-  color: var(--ink-3);
-}
-.ed-sec .step-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 16px;
-  margin-bottom: 8px;
-}
-.ed-sec .step-num {
-  margin: 0;
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.ed-sec .step .day {
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border-radius: 0;
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.ed-sec .step h3 {
-  margin: 0 0 8px;
-  font-size: clamp(1.15rem, 0.9vw + 0.95rem, 1.4rem);
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: 0;
-  color: var(--ink);
-}
-.ed-sec .step p {
-  max-width: 54ch;
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.78;
-  letter-spacing: 0;
-  color: var(--ink-2);
-}
-.ed-journey-signoff {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 20px;
-  border-top: 1px solid var(--rule);
-}
-@media (min-width: 640px) {
-  .ed-journey-signoff {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-  }
-}
-.ed-signoff-note {
-  font-family: var(--font-thai);
-  font-size: 0.875rem;
-  line-height: 1.65;
-  letter-spacing: 0;
-  color: var(--ink-3);
-}
-
-/* ==========================================================================
-   05. TIMELINE & PARENTAL ASSURANCE — Part A Ledger + Part B 2x2 Trust Matrix
-   ========================================================================== */
 .tm-group-head {
-  margin: 0 0 12px;
+  margin: 0 0 clamp(16px, 2vw, 22px);
 }
 .tm-group-kicker {
   display: flex;
@@ -809,92 +877,104 @@
   line-height: 1.5;
   color: var(--ink);
 }
-.tm-group-kicker .ed-en {
-  color: var(--ink-3);
-  font-weight: 500;
-}
 
-.ed-sec .tm-bento {
+/* Part A: the track is the container's own ink line (vertical rail on mobile,
+   horizontal ruler from 1024px), drawn by main.js via --rule-p. */
+#timeline .tm-bento--steps {
+  --rule-p: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  border-top: 1px solid var(--ink);
-}
-@media (min-width: 640px) {
-  .ed-sec .tm-bento {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 0;
-  }
-}
-
-.ed-sec .tm-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: var(--ed-cell-pad-y) 0;
-  background: transparent !important;
+  padding: 0 0 0 32px;
   border: 0 !important;
-  border-bottom: 1px solid var(--rule) !important;
+  background: linear-gradient(var(--ink), var(--ink)) 6px 0 / 1px calc(var(--rule-p) * 100%) no-repeat;
+}
+#timeline .tm-bento--steps .tm-tile {
+  position: relative;
+  grid-column: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 0 clamp(28px, 4vw, 40px);
+  background: transparent;
+  border: 0;
   border-radius: 0;
-  box-shadow: none !important;
+  box-shadow: none;
 }
-
-@media (min-width: 640px) {
-  .ed-sec .tm-tile--01,
-  .ed-sec .tm-tile--04 {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-    column-gap: clamp(24px, 4vw, 48px);
-    align-items: end;
-  }
-  .ed-sec .tm-tile--04 {
-    align-items: center;
-  }
-  .ed-sec .tm-tile--02,
-  .ed-sec .tm-tile--care-a,
-  .ed-sec .tm-tile--care-c {
-    grid-column: span 1;
-    padding-right: var(--ed-cell-pad-x);
-    border-right: 1px solid var(--rule) !important;
-  }
-  .ed-sec .tm-tile--03,
-  .ed-sec .tm-tile--care-b,
-  .ed-sec .tm-tile--care-d {
-    grid-column: span 1;
-    padding-left: var(--ed-cell-pad-x);
-  }
+#timeline .tm-bento--steps .tm-tile::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: -32px;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  background: var(--sec-bg);
+  border: 2px solid var(--ink);
 }
-
-.tm-tile__lead,
-.tm-tile__detail {
+#timeline .tm-bento--steps .tm-tile.tm-tile--feature {
+  padding: var(--ed-card-pad) !important;
+  background: var(--surface) !important;
+  border: 0 !important;
+  border-radius: 24px;
+  box-shadow: var(--shadow-float);
+}
+#timeline .tm-bento--steps .tm-tile.tm-tile--feature::before {
+  top: calc(var(--ed-card-pad) + 5px);
+  background: var(--fern-500);
+  border-color: var(--fern-500);
+}
+#timeline .tm-tile__lead,
+#timeline .tm-tile__detail {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
 }
+@media (min-width: 1024px) {
+  #timeline .tm-bento--steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.3fr);
+    column-gap: clamp(20px, 2.4vw, 32px);
+    padding: 36px 0 0;
+    background-position: 0 6px;
+    background-size: calc(var(--rule-p) * 100%) 1px;
+  }
+  #timeline .tm-bento--steps .tm-tile {
+    padding: 0;
+  }
+  #timeline .tm-bento--steps .tm-tile::before {
+    top: -36px;
+    left: 0;
+  }
+  #timeline .tm-bento--steps .tm-tile.tm-tile--feature::before {
+    top: -36px;
+    left: var(--ed-card-pad);
+  }
+}
 
-.ed-sec .tm-num {
+#timeline .tm-num {
   font-family: var(--font-thai);
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.5;
   letter-spacing: 0;
   color: var(--ink-3);
 }
-.ed-sec .tm-num .font-mono {
+#timeline .tm-num .font-mono {
   font-family: var(--ed-mono);
   letter-spacing: 0.04em;
 }
-.ed-sec .tm-tile h3 {
+#timeline .tm-tile h3 {
   margin: 0;
-  font-size: clamp(1.1rem, 0.8vw + 0.95rem, 1.275rem);
+  font-size: clamp(1.1rem, 0.6vw + 0.98rem, 1.25rem);
   font-weight: 600;
-  line-height: 1.38;
+  line-height: 1.4;
   letter-spacing: 0;
   color: var(--ink);
 }
-.ed-sec .tm-tile p {
+#timeline .tm-tile p {
   max-width: 48ch;
   margin: 0;
   font-size: 0.9375rem;
@@ -902,128 +982,160 @@
   letter-spacing: 0;
   color: var(--ink-2);
 }
-.ed-sec .tm-tile .tm-figure {
-  margin-top: 8px;
-  padding: 4px 0;
-  font-size: clamp(2.05rem, 3.8vw, 3.25rem);
-  font-weight: 600;
-  line-height: 1.24;
+#timeline .tm-tile .tm-figure {
+  display: block;
+  margin: 2px 0 0;
+  padding: 2px 0;
+  font-size: clamp(1.5rem, 1.4vw + 1rem, 2rem);
+  font-weight: 700;
+  line-height: 1.25;
   letter-spacing: 0;
   color: var(--ink);
 }
-.ed-sec .tm-tile .tm-figure small {
-  display: inline-block;
-  margin-left: 6px;
+#timeline .tm-tile .tm-figure small {
+  display: block;
+  margin: 6px 0 0;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.6;
   letter-spacing: 0;
   color: var(--ink-3);
 }
-.ed-sec .tm-tile-link {
+#timeline .tm-tile--feature h3 {
+  font-size: clamp(1.1rem, 0.6vw + 1rem, 1.3rem);
+  line-height: 1.42;
+}
+#timeline .tm-tile-link {
   margin-top: 2px;
 }
-.ed-sec .tm-contact-list {
+
+/* Part B: one raised panel; its head row and the four care cells are split by hairlines, not boxes. */
+#timeline .tm-care-section {
+  margin-top: clamp(48px, 6vw, 88px);
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: var(--shadow-float);
+}
+#timeline .tm-group-head--care {
+  margin: 0;
+  padding: var(--ed-card-pad);
+  border-bottom: 1px solid var(--rule);
+}
+#timeline .tm-group-head--care .tm-group-kicker {
+  font-size: clamp(1.15rem, 0.8vw + 1rem, 1.4rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+#timeline .tm-bento--care {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border: 0 !important;
+  background: none;
+}
+#timeline .tm-bento--care .tm-tile {
+  grid-column: auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  margin-top: 4px;
-}
-
-/* Feature tile 04: transparent ruled row in both light and dark (overrides styles.css dark rule) */
-html .ed-sec .tm-tile.tm-tile--feature,
-html.dark .ed-sec .tm-tile.tm-tile--feature,
-html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
+  gap: 8px;
+  min-width: 0;
+  padding: var(--ed-card-pad) !important;
   background: transparent !important;
-  border-color: var(--rule) !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
 }
-.ed-sec .tm-tile--01 .tm-figure,
-.ed-sec .tm-tile--01 .tm-figure * {
-  color: var(--ink);
+#timeline .tm-bento--care .tm-tile + .tm-tile {
+  border-top: 1px solid var(--rule) !important;
 }
-.ed-sec .tm-tile--01 .tm-figure small {
-  color: var(--ink-3);
-}
-.ed-sec .tm-tile--feature h3 {
-  font-size: clamp(1.2rem, 1.2vw + 0.9rem, 1.65rem);
-  line-height: 1.34;
-  color: var(--ink);
-}
-.ed-sec .tm-tile--feature .tm-num {
-  color: var(--ink-3);
-}
-.ed-sec .tm-tile--feature p {
-  color: var(--ink-2);
-}
-
-/* Group B: Parental Assurance */
-.tm-care-section {
-  margin-top: clamp(40px, 5vw, 60px);
+@media (min-width: 640px) {
+  #timeline .tm-bento--care {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #timeline .tm-bento--care .tm-tile + .tm-tile {
+    border-top: 0 !important;
+  }
+  #timeline .tm-bento--care .tm-tile:nth-child(odd) {
+    border-right: 1px solid var(--rule) !important;
+  }
+  #timeline .tm-bento--care .tm-tile:nth-child(n + 3) {
+    border-top: 1px solid var(--rule) !important;
+  }
 }
 .tm-care-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 2px;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink-3);
 }
 .tm-care-icon {
   flex: none;
   color: var(--ink);
 }
-
-/* Editorial Footnote (unboxed hairline note, amber status accent per AGENTS.md §12.2) */
-.tm-status-note {
+#timeline .tm-contact-list {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  margin: 18px 0 0;
-  padding: 14px 0 0;
-  border: 0;
-  background: transparent;
-  font-family: var(--font-thai);
-  font-size: 0.875rem;
-  line-height: 1.7;
-  letter-spacing: 0;
-  color: var(--ink-2);
-}
-.tm-status-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  margin-top: 0.6em;
-  background: var(--amber);
-}
-.tm-status-tag {
-  font-weight: 600;
-  color: var(--amber-text);
+  gap: 2px;
+  margin-top: 4px;
+  min-width: 0;
 }
 
 /* ==========================================================================
-   06. FAQ — Numbered Editorial Index Accordion
+   05. FAQ — Sticky Question Index + Stacked Raised Answers
    ========================================================================== */
-.ed-sec .faq {
+#faq > .wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(28px, 4vw, 48px);
+  align-items: start;
+}
+@media (min-width: 900px) {
+  #faq > .wrap {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    column-gap: var(--ed-gap);
+  }
+  #faq .section-head {
+    position: -webkit-sticky;
+    position: sticky;
+    top: calc(var(--nav-h, 68px) + 40px);
+  }
+}
+#faq .faq {
+  display: grid;
+  gap: 12px;
   max-width: none;
   margin: 0;
-  border-top: 1px solid var(--ink);
+  border: 0 !important;
+  background: none;
 }
-.ed-sec details.faq-item {
-  border-bottom: 1px solid var(--rule);
+#faq details.faq-item {
+  background: var(--surface);
+  border: 0;
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.25s ease;
 }
-.ed-sec details.faq-item summary {
+#faq details.faq-item[open] {
+  box-shadow: var(--shadow-float);
+}
+#faq details.faq-item summary {
   min-height: 48px;
-  padding: clamp(20px, 2.4vw, 28px) 0;
-  font-size: clamp(1.05rem, 0.6vw + 0.95rem, 1.225rem);
+  padding: clamp(18px, 2vw, 24px) clamp(18px, 2.4vw, 28px);
+  border-radius: 24px;
+  font-size: clamp(1.02rem, 0.5vw + 0.94rem, 1.15rem);
   font-weight: 600;
-  line-height: 1.48;
+  line-height: 1.5;
   letter-spacing: 0;
   color: var(--ink);
   transition: color 0.18s ease;
 }
 .faq-head {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: baseline;
   column-gap: 12px;
   min-width: 0;
@@ -1031,8 +1143,8 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
 }
 @media (min-width: 640px) {
   .faq-head {
-    grid-template-columns: 42px minmax(0, 1fr);
-    column-gap: 16px;
+    grid-template-columns: 38px minmax(0, 1fr);
+    column-gap: 14px;
   }
 }
 .faq-idx {
@@ -1048,84 +1160,87 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
   letter-spacing: 0;
   min-width: 0;
 }
-.ed-sec details.faq-item summary:hover,
-.ed-sec details.faq-item[open] summary .faq-idx,
-.ed-sec details.faq-item summary:hover .faq-idx {
+#faq details.faq-item summary:hover,
+#faq details.faq-item[open] summary .faq-idx,
+#faq details.faq-item summary:hover .faq-idx {
   color: var(--blue-600);
 }
-.ed-sec details.faq-item summary:focus-visible {
+#faq details.faq-item summary:focus-visible {
   outline: 2px solid var(--blue-600);
-  outline-offset: 4px;
+  outline-offset: 2px;
 }
-.ed-sec details.faq-item summary::after {
+#faq details.faq-item summary::after {
   font-size: 1.25rem;
   color: var(--ink);
 }
-.ed-sec .faq-body {
-  max-width: 60ch;
-  padding: 0 0 clamp(22px, 2.6vw, 32px) 46px;
+#faq .faq-body {
+  max-width: 62ch;
+  padding: 0 clamp(18px, 2.4vw, 28px) clamp(20px, 2.4vw, 28px) calc(clamp(18px, 2.4vw, 28px) + 42px);
   font-size: 0.9375rem;
-  line-height: 1.8;
+  line-height: 1.78;
   letter-spacing: 0;
   color: var(--ink-2);
 }
 @media (min-width: 640px) {
-  .ed-sec .faq-body {
-    padding-left: 58px;
+  #faq .faq-body {
+    padding-left: calc(clamp(18px, 2.4vw, 28px) + 52px);
   }
 }
 @media (max-width: 399px) {
-  .ed-sec .faq-body {
-    padding-left: 0;
+  #faq .faq-body {
+    padding-left: clamp(18px, 2.4vw, 28px);
   }
 }
-.ed-sec .faq-body a {
+#faq .faq-body a {
   color: var(--ink);
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
 }
-.ed-sec .faq-body a:hover {
+#faq .faq-body a:hover {
   color: var(--blue-600);
   text-decoration-color: var(--blue-600);
 }
 
 /* ==========================================================================
-   Pre-Gallery Closing Manifesto CTA Band
+   Pre-Gallery CTA — One Centered Raised Plate
    ========================================================================== */
 .ed-cta-band {
   --rule-p: 1;
-  padding: clamp(64px, 8.5vw, 112px) 0;
+  padding: clamp(56px, 8vw, 112px) 0;
   border-top: 0;
   background:
     linear-gradient(var(--ink), var(--ink)) 0 0 / calc(var(--rule-p) * 100%) 1px no-repeat,
     var(--canvas-0);
 }
-.ed-cta-band__aside .ed-index {
-  margin-bottom: 0;
+.ed-cta-band__body {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: clamp(36px, 6vw, 80px) clamp(22px, 5vw, 72px);
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: var(--shadow-float);
+  text-align: center;
 }
 .ed-cta-band__eyebrow {
-  margin: 0 0 10px;
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink-3);
 }
 .ed-cta-band__title {
-  margin: 0;
+  margin: 0 auto;
   max-width: 20ch;
-  font-size: clamp(1.65rem, 2.5vw + 0.75rem, 2.6rem);
+  font-size: clamp(1.75rem, 2.8vw + 0.8rem, 3rem);
   font-weight: 700;
-  line-height: 1.26;
+  line-height: 1.25;
   letter-spacing: 0;
   color: var(--ink);
   text-wrap: balance;
 }
 .ed-cta-band__sub {
-  margin: 12px 0 0;
+  margin: 14px auto 0;
   max-width: 54ch;
   font-size: 1rem;
   line-height: 1.75;
@@ -1136,8 +1251,9 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  margin-top: 26px;
+  margin-top: 28px;
 }
 .ed-pill {
   display: inline-flex;
@@ -1202,14 +1318,15 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
 @media (max-width: 459px) {
   .ed-cta-band__actions .ed-pill {
     width: 100%;
+    white-space: normal;
   }
 }
 
 /* ==========================================================================
-   08. FOOTER / COLOPHON
+   07. FOOTER — Oversized Wordmark Colophon
    ========================================================================== */
 .ed-footer {
-  padding: clamp(56px, 8vw, 104px) 0 calc(72px + env(safe-area-inset-bottom));
+  padding: clamp(48px, 7vw, 96px) 0 calc(72px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--ink);
   background: var(--canvas-0);
 }
@@ -1217,6 +1334,26 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
   .ed-footer {
     padding-bottom: calc(40px + env(safe-area-inset-bottom));
   }
+}
+/* Decorative (aria-hidden); Space Grotesk 700 is already loaded for the hero title. */
+.ed-footer .footer-mark {
+  display: block;
+  overflow: hidden;
+  margin-bottom: clamp(32px, 5vw, 56px);
+  padding-bottom: clamp(20px, 3.5vw, 40px);
+  border-bottom: 1px solid var(--ink);
+  font-family: 'Space Grotesk', var(--font-thai);
+  font-size: clamp(2.5rem, 12.5vw, 11.5rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  color: var(--ink);
+  user-select: none;
+}
+.ed-footer .footer-mark span:last-child {
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ink);
 }
 .ed-footer .footer-grid {
   display: grid;
@@ -1231,9 +1368,9 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
 }
 .ed-footer .footer-title {
   max-width: 24ch;
-  font-size: clamp(1.25rem, 1.2vw + 1rem, 1.7rem);
+  font-size: clamp(1.2rem, 1vw + 1rem, 1.5rem);
   font-weight: 600;
-  line-height: 1.36;
+  line-height: 1.4;
   letter-spacing: 0;
   color: var(--ink);
 }
@@ -1257,6 +1394,10 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 24px;
   }
+  .ed-footer .footer-col:not(:first-child) {
+    padding-left: 20px;
+    border-left: 1px solid var(--rule);
+  }
 }
 .ed-footer .footer-col__head {
   margin: 0 0 10px;
@@ -1271,13 +1412,23 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
+.ed-footer .footer-links > li {
+  min-width: 0;
+}
+/* inline-flex sized to max-content and tel: links are nowrap globally, so long
+   staff/Facebook labels overflowed the 240px contact column. Let the label wrap;
+   only the phone number itself stays unbroken. */
 .ed-footer .footer-links a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   min-height: 36px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
   font-size: 0.9375rem;
   letter-spacing: 0;
   color: var(--ink-2);
@@ -1297,6 +1448,28 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
 .ed-footer .footer-col__note {
   margin: 10px 0 0;
   font-size: 0.8125rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+/* Facebook page QR: always dark-on-light (white plate) so phones can scan it in Dark Mode too. */
+.ed-footer .fb-qr {
+  margin: 14px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ed-footer .fb-qr__img {
+  flex: none;
+  width: 120px;
+  height: 120px;
+  padding: 8px;
+  background: #FFFFFF;
+  border: 1px solid var(--rule);
+  box-sizing: content-box;
+}
+.ed-footer .fb-qr__cap {
+  font-size: 0.8125rem;
   line-height: 1.6;
   letter-spacing: 0;
   color: var(--ink-3);
@@ -1312,21 +1485,9 @@ html[data-theme="dark"] .ed-sec .tm-tile.tm-tile--feature {
    Motion & Dark Theme Layer (driven by initEditorialMotion() in main.js)
    ========================================================================== */
 
-/* Top rules draw in via --rule-p (0 → 1). Defaults to 1 so no-JS / reduced motion is fully drawn. */
-#experience .exp-list,
-.ed-sec .bento,
-.ed-sec .journey,
-.ed-sec .tm-bento,
-.ed-sec .faq {
-  --rule-p: 1;
-  border-top: 0 !important;
-  background: linear-gradient(var(--ink), var(--ink)) 0 0 / calc(var(--rule-p) * 100%) 1px no-repeat;
-}
-
-/* Fee numeral */
+/* Fee numerals */
 .ed-sec .fee-num {
   font-weight: 600;
-  font-size: 1.1875rem;
   color: var(--ink);
 }
 
@@ -1354,43 +1515,43 @@ html[data-theme="dark"] .ed-footer {
   --fern-600: #22D31E;
 }
 
-/* Dark theme Option 2B focal plate on #essentials Seats block */
-html.dark .ed-sec .bento .card.bento-feature,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature {
+/* Dark theme seats plate */
+html.dark #essentials .bento .card.bento-feature,
+html[data-theme="dark"] #essentials .bento .card.bento-feature {
   background: #182032 !important;
-  border: 1px solid rgba(127, 168, 255, 0.38) !important;
+  box-shadow: var(--shadow-float), inset 0 0 0 1px rgba(127, 168, 255, 0.38) !important;
   color: #F5F4EF !important;
 }
 @media (min-width: 640px) {
-  html.dark .ed-sec .bento .bento-feature__right,
-  html[data-theme="dark"] .ed-sec .bento .bento-feature__right {
+  html.dark #essentials .bento .bento-feature__right,
+  html[data-theme="dark"] #essentials .bento .bento-feature__right {
     border-left-color: rgba(213, 220, 240, 0.16);
   }
 }
-html.dark .ed-sec .bento .card.bento-feature .bento-tag,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-tag {
+html.dark #essentials .bento .card.bento-feature .bento-tag,
+html[data-theme="dark"] #essentials .bento .card.bento-feature .bento-tag {
   color: #A9C2FF;
 }
-html.dark .ed-sec .bento .card.bento-feature .bento-big,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-big {
+html.dark #essentials .bento .card.bento-feature .bento-big,
+html[data-theme="dark"] #essentials .bento .card.bento-feature .bento-big {
   color: #F5F4EF;
 }
-html.dark .ed-sec .bento .card.bento-feature .bento-big small,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-big small {
+html.dark #essentials .bento .card.bento-feature .bento-big small,
+html[data-theme="dark"] #essentials .bento .card.bento-feature .bento-big small {
   color: #D5DCF0;
 }
-html.dark .ed-sec .bento .card.bento-feature p,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature p {
+html.dark #essentials .bento .card.bento-feature p,
+html[data-theme="dark"] #essentials .bento .card.bento-feature p {
   color: #DCE3F5 !important;
 }
-html.dark .ed-sec .bento .card.bento-feature .bento-feature__meta,
-html[data-theme="dark"] .ed-sec .bento .card.bento-feature .bento-feature__meta {
-  color: rgba(213, 220, 240, 0.62) !important;
+html.dark #essentials .bento .card.bento-feature .bento-feature__meta,
+html[data-theme="dark"] #essentials .bento .card.bento-feature .bento-feature__meta {
+  color: rgba(213, 220, 240, 0.72) !important;
 }
 
-/* Dark theme FAQ chevron & summary contrast */
-html.dark .ed-sec details.faq-item summary::after,
-html[data-theme="dark"] .ed-sec details.faq-item summary::after {
+/* Dark theme FAQ chevron */
+html.dark #faq details.faq-item summary::after,
+html[data-theme="dark"] #faq details.faq-item summary::after {
   color: var(--ink);
 }
 
@@ -1407,38 +1568,17 @@ html[data-theme="dark"] .ed-sec details.faq-item summary::after {
   mix-blend-mode: difference;
 }
 
-/* Active step nudges forward */
-.ed-sec .step h3,
-.ed-sec .step .step-num {
-  transition: transform 0.5s var(--ease-out), color 0.3s ease;
-}
-.ed-sec .step.is-active h3,
-.ed-sec .step.is-active .step-num {
-  transform: translateX(8px);
-}
-.ed-sec .step.is-active .step-num {
-  color: var(--ink);
-}
-
-/* Experience rows: title glides subtly on hover */
-#experience .exp-item-title {
-  transition: transform 0.35s var(--ease-out);
-}
-#experience .exp-item:hover .exp-item-title {
-  transform: translateX(5px);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ed-progress { display: none; }
-  .ed-sec details.faq-item summary,
+  #faq details.faq-item,
+  #faq details.faq-item summary,
   .ed-inline-link,
   .ed-pill,
   .ed-photo-card__frame img,
-  #experience .exp-num,
-  .ed-sec .step-big-num,
-  .ed-sec .step h3,
-  .ed-sec .step .step-num,
-  #experience .exp-item-title {
+  #experience .step-node,
+  #experience .step-big-num,
+  #experience .step-content,
+  #experience .step-num {
     transition: none !important;
     transform: none !important;
   }
@@ -1446,3 +1586,34 @@ html[data-theme="dark"] .ed-sec details.faq-item summary::after {
 
 /* Phone numbers never split at their hyphens. */
 a[href^="tel:"] { white-space: nowrap; }
+.ed-footer .footer-links a[href^="tel:"],
+#timeline .tm-contact-list a[href^="tel:"] { white-space: normal; max-width: 100%; }
+.ed-footer .footer-links a[href^="tel:"] .font-mono,
+#timeline .tm-contact-list a[href^="tel:"] .font-mono { white-space: nowrap; }
+.ed-nw { white-space: nowrap; }
+
+
+/* ==========================================================================
+   Thai-first labels (AGENTS.md 5.3): Thai text must never be mono, uppercase
+   or letter-spaced. Placed last (!important) so it beats any English-era
+   label rule (.bento-tag, .step-num, .day, ...).
+   ========================================================================== */
+.th-label {
+  font-family: var(--font-thai) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  line-height: 1.5;
+}
+
+/* "รอประกาศ" / TODO(content) markers (AGENTS.md §12.2): text-safe amber, not the icon amber
+   that styles.css gives .todo (#B45309 is only 4.40:1 on --canvas-1). Also covers the
+   feature tile, which styles.css paints #F3C08B for a dark tile it no longer has here. Outside
+   the editorial bands --amber-text is unset and the theme-aware --amber applies. */
+.todo,
+.ed-sec .todo,
+.ed-cta-band .todo,
+.ed-footer .todo,
+#timeline .tm-tile .todo,
+#timeline .tm-tile--feature .todo {
+  color: var(--amber-text, var(--amber));
+}

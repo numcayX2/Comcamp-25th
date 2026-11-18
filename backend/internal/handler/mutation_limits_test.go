@@ -2,7 +2,6 @@ package handler_test
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -59,11 +58,11 @@ func TestMutationRateLimits_AreIndependentPerEndpoint(t *testing.T) {
 // allowance, and a classmate at the same address could no longer confirm attendance.
 func TestMutationRateLimits_ProfileFloodDoesNotBlockConfirm(t *testing.T) {
 	app := setupTestApp(t)
-	mine := app.submit(t, validTestNationalID(301), "0810000301", "nat1@example.com")
-	friend := app.submit(t, validTestNationalID(302), "0810000302", "nat2@example.com")
+	mine := app.submit(t, "0810000301", "nat1@example.com")
+	friend := app.submit(t, "0810000302", "nat2@example.com")
 
 	// 20 profile edits and 20 slip uploads from the same address, then the limit is reached.
-	body := fmt.Sprintf(`{"verifyCode":%q,"nickname":"a","school":"b","province":"c","grade":"ม.6","shirtSize":"M"}`, app.verifyCodes[mine.ID])
+	body := `{"nickname":"a","school":"b","province":"c","grade":"ม.6","shirtSize":"M"}`
 	var profileLimited bool
 	for i := 0; i < 25; i++ {
 		rec := app.do(t, http.MethodPatch, "/api/applications/"+mine.ID+"/profile", strings.NewReader(body), nil)
@@ -75,10 +74,10 @@ func TestMutationRateLimits_ProfileFloodDoesNotBlockConfirm(t *testing.T) {
 		t.Fatal("25 profile edits within a minute must hit the profile limiter")
 	}
 	for i := 0; i < 22; i++ {
-		app.uploadSlipWithCode(t, mine.ID, "0000", "slip.png", []byte("not an image"))
+		app.uploadSlip(t, mine.ID, "slip.png", []byte("not an image"))
 	}
 
-	rec := app.confirmWith(t, friend.ID, app.verifyCodes[friend.ID])
+	rec := app.confirmWith(t, friend.ID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a classmate behind the same address must still be able to confirm, got %d (%s)", rec.Code, rec.Body.String())
 	}

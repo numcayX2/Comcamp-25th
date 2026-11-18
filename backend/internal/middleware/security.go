@@ -3,6 +3,8 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -44,14 +46,42 @@ func APIHeaders(next http.Handler) http.Handler {
 }
 
 // AccessLog logs one line per request without the query string: GET /api/applications/status
-// carries a national ID or phone number in ?q=, which must not end up in server logs (PDPA).
+// carries a national ID or phone number in ?q=, which must not end up in server logs (PDPA). The
+// application code in the path (/api/applications/CC25-XXXXXX/slip) is a credential for the
+// code-keyed endpoints, so it is masked too (see MaskLogPath).
 func AccessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		ww := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r)
 		log.Printf("[%s] %s %s %s -> %d %dB in %s",
-			chimiddleware.GetReqID(r.Context()), RemoteIP(r), r.Method, r.URL.Path,
+			chimiddleware.GetReqID(r.Context()), RemoteIP(r), r.Method, MaskLogPath(r.URL.Path),
 			ww.Status(), ww.BytesWritten(), time.Since(start).Round(time.Millisecond))
 	})
+}
+
+// maskedCode replaces an application code in a logged path.
+const maskedCode = "CC25-******"
+
+// staticApplicationSegments are the fixed words that follow /applications/ in the routes; any other
+// segment there is an {id} (an application code in any form the service accepts) and is masked.
+var staticApplicationSegments = map[string]bool{"status": true, "public": true, "export-audit": true}
+
+// looseCodeRe catches a code anywhere else in a path: any case, with or without the hyphen (or a
+// space / Unicode dash), with Thai digits allowed.
+var looseCodeRe = regexp.MustCompile(`(?i)CC[2\x{0E52}][5\x{0E55}][-\s\x{2010}-\x{2015}\x{2212}]?[0-9A-F\x{0E50}-\x{0E59}]{6}`)
+
+// MaskLogPath returns path with every application code replaced by CC25-******. The whole segment
+// after /applications/ is masked (unless it is a fixed route word), whatever its spelling, because
+// the service normalizes many spellings (lowercase, no hyphen, Thai digits, zero-width characters)
+// to the same code.
+func MaskLogPath(path string) string {
+	parts := strings.Split(path, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if strings.EqualFold(parts[i], "applications") && parts[i+1] != "" &&
+			!staticApplicationSegments[strings.ToLower(parts[i+1])] {
+			parts[i+1] = maskedCode
+		}
+	}
+	return looseCodeRe.ReplaceAllString(strings.Join(parts, "/"), maskedCode)
 }

@@ -44,7 +44,6 @@ func (s ApplicationStatus) IsActive() bool {
 type Applicant struct {
 	ID                  uuid.UUID         `db:"id" json:"id"`
 	ApplicationNo       string            `db:"application_no" json:"applicationNo"`
-	NationalID          string            `db:"national_id" json:"nationalId"`
 	Prefix              string            `db:"prefix" json:"prefix"`
 	FirstName           string            `db:"first_name" json:"firstName"`
 	LastName            string            `db:"last_name" json:"lastName"`
@@ -89,12 +88,24 @@ func (a *Applicant) FullName() string {
 	return a.FirstName + " " + a.LastName
 }
 
+// PublicApplicant is the allowlisted projection behind the public applicants list
+// (GET /api/applications/public). It deliberately carries only what the registration consent
+// discloses (name, nickname, school, province) plus the status, so no query that fills it can
+// ever read an identifier, contact or health column (PDPA, CLAUDE_REVAMP_HANDOFF.md 5.4).
+type PublicApplicant struct {
+	FirstName string
+	LastName  string
+	Nickname  string
+	School    string
+	Province  string
+	Status    ApplicationStatus
+}
+
 // ProfileFields are the applicant columns that can be edited after registration.
 type ProfileFields struct {
 	FirstName         string
 	LastName          string
 	Nickname          string
-	NationalID        string
 	Phone             string
 	Email             string
 	School            string
@@ -130,8 +141,9 @@ type ApplicantRepository interface {
 	GetByIdempotencyKey(ctx context.Context, key uuid.UUID) (*Applicant, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Applicant, error)
 	GetByApplicationNo(ctx context.Context, appNo string) (*Applicant, error)
-	GetByNationalID(ctx context.Context, nationalID string) (*Applicant, error)
-	FindByQuery(ctx context.Context, query string) (*Applicant, error)
+	// GetByPhone returns the live application registered with this phone number (the phone is
+	// unique among live rows, uq_applicants_phone_live).
+	GetByPhone(ctx context.Context, phone string) (*Applicant, error)
 	ListAll(ctx context.Context, status *ApplicationStatus) ([]*Applicant, error)
 	// UpdateStatus changes the status and writes applicant_status_logs plus the audit entry
 	// (when non-nil) in one transaction.
@@ -152,10 +164,14 @@ type ApplicantRepository interface {
 	// or CONFIRMED at the moment of the write, and ErrNotFound when it is missing or deleted.
 	UpdateAttendance(ctx context.Context, id uuid.UUID, confirmed bool, audit *AuditEntry) error
 	// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE)
-	// created at or before cutoff (now - 72h) whose updated_at and latest REJECTED slip
-	// timestamp (verified_at, falling back to uploaded_at) are at or before the 24h grace cutoff
-	// (cutoff + 48h = now - 24h) and that have no PENDING/APPROVED slip to REJECTED, writing
-	// status and audit logs atomically and returning the expired application_no list.
-	ExpireOverdueUnpaid(ctx context.Context, cutoff time.Time, reason string) ([]string, error)
+	// created at or before createdCutoff (now - UnpaidExpiryWindow) whose updated_at and latest
+	// REJECTED slip timestamp (verified_at, falling back to uploaded_at) are at or before
+	// graceCutoff (now - UnpaidGraceWindow) and that have no PENDING/APPROVED slip to REJECTED,
+	// writing status and audit logs atomically and returning the expired application_no list.
+	// Both cutoffs come from the service so the repositories never re-derive one from the other.
+	ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error)
 	CountActive(ctx context.Context) (int, error)
+	// ListPublic returns the public-list projection of every live (non-deleted) application whose
+	// status is PASSED or CONFIRMED, oldest first (created_at ascending, id as tiebreak).
+	ListPublic(ctx context.Context) ([]PublicApplicant, error)
 }

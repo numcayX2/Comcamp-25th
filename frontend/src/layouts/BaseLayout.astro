@@ -13,14 +13,17 @@ interface Props {
   bodyClass?: string;
   /** Browser UI colour on mobile; match whatever sits at the top edge of the page. */
   themeColor?: string;
+  /** Keep the page out of search indexes (e.g. /applicants lists minors' names). */
+  noindex?: boolean;
 }
 
 const {
   title = 'ComCamp #25 // ค่ายวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้',
-  description = 'เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (เปิดรับ 18 พ.ย. 2569)',
+  description = 'เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (เปิดรับ 19 พ.ย. 2569 เวลา 09:00 น.)',
   backToTop = true,
   bodyClass,
   themeColor = '#F9F8F4',
+  noindex = false,
 } = Astro.props;
 ---
 
@@ -39,6 +42,7 @@ const {
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="th_TH" />
     <meta property="og:title" content={title} />

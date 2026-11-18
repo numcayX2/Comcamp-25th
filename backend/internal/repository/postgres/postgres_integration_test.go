@@ -70,8 +70,9 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		if settings.CampName != "ComCamp 25th" {
 			t.Errorf("expected camp name 'ComCamp 25th', got '%s'", settings.CampName)
 		}
-		if settings.MaxCapacity != 30 {
-			t.Errorf("expected max capacity 30, got %d", settings.MaxCapacity)
+		// Migration 000011 sets the owner-confirmed quota of 40 seats.
+		if settings.MaxCapacity != 40 {
+			t.Errorf("expected max capacity 40, got %d", settings.MaxCapacity)
 		}
 	})
 
@@ -107,7 +108,6 @@ func TestPostgres_FullIntegration(t *testing.T) {
 	})
 
 	// 3. Test Applicant Lifecycle
-	testNationalID := "15099" + uuid.New().String()[:8]
 	testPhone := "08" + uuid.New().String()[:8]
 	testAppNo := "CC25-" + uuid.New().String()[:6]
 	applicantID := uuid.New()
@@ -117,7 +117,6 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		applicant := &domain.Applicant{
 			ID:                  applicantID,
 			ApplicationNo:       testAppNo,
-			NationalID:          testNationalID,
 			Prefix:              "นาย",
 			FirstName:           "ณัฐนนท์",
 			LastName:            "ปัญญารักษ์",
@@ -148,17 +147,27 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to query applicant by ID: %v", err)
 		}
-		if byID.NationalID != testNationalID {
-			t.Errorf("expected national ID %s, got %s", testNationalID, byID.NationalID)
+		if byID.Phone != testPhone || byID.ApplicationNo != testAppNo {
+			t.Errorf("expected phone %s / code %s, got %s / %s", testPhone, testAppNo, byID.Phone, byID.ApplicationNo)
 		}
 
-		// Query by Search Query
-		byQuery, err := appRepo.FindByQuery(ctx, testAppNo)
+		// Query by application code (the applicant's proof since 000011) and by phone.
+		byCode, err := appRepo.GetByApplicationNo(ctx, testAppNo)
 		if err != nil {
 			t.Fatalf("failed to query applicant by appNo: %v", err)
 		}
-		if byQuery.ID != applicantID {
-			t.Errorf("expected ID %v, got %v", applicantID, byQuery.ID)
+		if byCode.ID != applicantID {
+			t.Errorf("by code: expected ID %v, got %v", applicantID, byCode.ID)
+		}
+		byPhone, err := appRepo.GetByPhone(ctx, testPhone)
+		if err != nil {
+			t.Fatalf("failed to query applicant by phone: %v", err)
+		}
+		if byPhone.ID != applicantID {
+			t.Errorf("by phone: expected ID %v, got %v", applicantID, byPhone.ID)
+		}
+		if _, err := appRepo.GetByPhone(ctx, "0000000000"); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("unknown phone: expected ErrNotFound, got %v", err)
 		}
 
 		// Attendance cannot be recorded while the application is still PENDING

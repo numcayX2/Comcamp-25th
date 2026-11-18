@@ -1,6 +1,6 @@
 /**
  * Slip upload on the receipt (Step 06). It only ever renders after a successful submit, so nobody
- * can pay before the seat is secured (30-seat race). The same upload exists on /status for people
+ * can pay before the seat is secured (40-seat race). The same upload exists on /status for people
  * who pay later or whose slip was rejected. This block stays flat on the .rw-block flow: no card
  * inside the receipt card. The upload itself is the shared SlipUploadPanel.
  */
@@ -8,7 +8,7 @@ import { Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import type { ApplicationStatus, SlipStatus } from '../../lib/api';
 import { SlipUploadPanel } from '../slip/SlipUploadPanel';
-import { FB_URL, STAFF_CONTACTS } from './model';
+import { FB_URL, PAYMENT_WINDOW_HOURS, STAFF_CONTACTS } from './model';
 
 /** The dot colour carries the state, the label carries the meaning (never colour alone). */
 const SLIP_BADGE: Record<SlipStatus | 'NONE', { dot: string; label: string }> = {
@@ -23,7 +23,6 @@ export function SlipBlock({
   slip,
   appStatus,
   synced,
-  defaultVerifyCode,
   onUploaded,
 }: {
   appId: string;
@@ -31,13 +30,10 @@ export function SlipBlock({
   appStatus: ApplicationStatus | null;
   /** False until the first status sync finished (the badge shows a neutral "checking" label). */
   synced: boolean;
-  /** In-memory 4-digit verify code passed from the register wizard (never persisted). */
-  defaultVerifyCode?: string;
   onUploaded: (status: SlipStatus) => void;
 }) {
   // Backend PaymentService.UploadSlip only allows PASSED and CONFIRMED.
   const closed = appStatus !== null && appStatus !== 'PASSED' && appStatus !== 'CONFIRMED';
-  const hasDefaultCode = Boolean(defaultVerifyCode && /^\d{4}$/.test(defaultVerifyCode));
   const badge = SLIP_BADGE[slip ?? 'NONE'];
 
   return (
@@ -52,11 +48,8 @@ export function SlipBlock({
         </p>
       </div>
       <p className="rw-slip__steps" aria-label="ขั้นตอนยืนยันสิทธิ์">
-        <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">72</span> ชม.</span>
-        <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> {hasDefaultCode ? 'แนบสลิปและกดส่ง' : 'แนบสลิป'}</span>
-        {!hasDefaultCode && (
-          <span className="rw-slip__step"><b className="font-mono tabular-nums">3</b> กรอกเลข <span className="font-mono tabular-nums">4</span> ตัว</span>
-        )}
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">1</b> โอนภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.</span>
+        <span className="rw-slip__step"><b className="font-mono tabular-nums">2</b> แนบสลิปและกดส่ง</span>
       </p>
       <p className="rw-slip__privacy">รูปสลิปเปิดดูได้เฉพาะทีมงานในระบบของโครงการ</p>
 
@@ -73,7 +66,7 @@ export function SlipBlock({
               <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                 {c.phone}
               </a>{' '}
-              ({c.name})
+              · {c.name}
             </Fragment>
           ))}
         </p>
@@ -84,9 +77,8 @@ export function SlipBlock({
           appId={appId}
           slip={slip}
           disabled={closed}
-          defaultVerifyCode={defaultVerifyCode}
           onUploaded={(status) => onUploaded(status)}
-          deferLink={{ href: `/status?id=${encodeURIComponent(appId)}`, label: 'ยังไม่สะดวกตอนนี้? ส่งสลิปทีหลังที่หน้าตรวจสอบสถานะ' }}
+          deferLink={{ href: '/status', label: 'ยังไม่สะดวกตอนนี้? ส่งสลิปทีหลังที่หน้าตรวจสอบสถานะ' }}
         />
       </div>
     </section>

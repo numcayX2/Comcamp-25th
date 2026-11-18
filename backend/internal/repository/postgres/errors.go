@@ -36,8 +36,8 @@ func mapPgError(err error) error {
 		return domain.ErrDuplicateIdempotencyKey
 	case "applicants_application_no_key":
 		return domain.ErrDuplicateApplicationNo
-	case "applicants_national_id_key", "applicants_phone_key", "applicants_email_key", "uq_applicants_email",
-		"uq_applicants_national_id_live", "uq_applicants_phone_live":
+	case "applicants_phone_key", "applicants_email_key", "uq_applicants_email", "uq_applicants_phone_live":
+		// Live phone / non-empty email (000003). national_id and its index are gone since 000011.
 		return domain.ErrDuplicateApplicant
 	case "uq_payments_slip_hash":
 		return domain.ErrDuplicateSlipHash

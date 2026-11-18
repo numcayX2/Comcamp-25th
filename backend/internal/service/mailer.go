@@ -30,11 +30,11 @@ const (
 	campLineOpenChatURL = "https://line.me/ti/g2/SqThbtY8Q_FiT7AA61RNn5LrFsjz9bHjYvmcIQ?utm_source=invitation&utm_medium=QR_code&utm_campaign=default"
 	campDormName        = "เรือนพักสมาคมศิษย์เก่าแม่โจ้ (ภายใน ม.แม่โจ้ แยกโซนชาย-หญิง)"
 	campDormMapsURL     = "https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7"
-	campBankName        = "ธนาคารกรุงเทพ"
+	campBankName        = "ธนาคารกรุงเทพ สาขาแม่โจ้"
 	campBankNumber      = "587-0-84106-0"
-	campBankAccountName = "ชมรมคอมพิวเตอร์ (นายภานุวัฒน์ นายอรรถวิท นายปวีณ)"
+	campBankAccountName = "ชมรมคอมพิวเตอร์ (นาย ภานุวัฒน์ เมฆะ และ นาย อรรถวิท ชังคมานนท์ และ นาย ปวีณ เขื่อนแก้ว)"
 	campFBPageURL       = "https://www.facebook.com/CCCSMJU"
-	campStaffContact    = "080-993-8214 (นายบูรพา มหัทธีรนางกูร) / 063-784-4515 (นางสาวธมล นวลหมวก)"
+	campStaffContact    = "080-993-8214 นายบูรพา มหัทธีรนางกูร (พูล) / 063-784-4515 นางสาวธมล นวลหมวก (แอมมี่)"
 )
 
 var bangkokZone = time.FixedZone("Asia/Bangkok", 7*60*60)
@@ -242,7 +242,7 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		StaffContact:  campStaffContact,
 	}
 
-	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 3 วัน", view.ApplicationNo)
+	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 5 วัน", view.ApplicationNo)
 	raw, err := buildMultipartMIME(m.fromHeader, stripCRLF(data.Email), subject, regTextTmpl, regHTMLTmpl, view)
 	if err != nil {
 		log.Printf("mailer: failed to render registration email (%s): %v", data.ApplicationNo, err)
@@ -561,19 +561,21 @@ var regTextTmpl = texttmpl.Must(texttmpl.New("regText").Parse(`สวัสด�
 รหัสใบสมัคร: {{.ApplicationNo}}
 สถานะปัจจุบัน: จองที่นั่งชั่วคราว (PASSED · รอชำระเงินและตรวจสอบสลิป)
 
-ขั้นตอนสำคัญ (กรุณาดำเนินการภายใน 3 วัน):
+โปรดเก็บรหัสใบสมัครนี้ไว้ให้ดีและไม่ส่งต่อให้ผู้อื่น รหัสนี้คือกุญแจส่วนตัวของคุณบนหน้าตรวจสอบสถานะ ใช้สำหรับแนบสลิปและจัดการใบสมัคร
+(การค้นหาด้วยเบอร์โทรจะแสดงเพียงสถานะโดยย่อ หากลืมรหัส ติดต่อพี่ค่ายตามช่องทางด้านล่าง)
+
+ขั้นตอนสำคัญ (กรุณาดำเนินการภายใน 5 วัน):
 - ยอดค่าสมัคร: {{.CampFee}} บาท (รวมที่พัก 2 คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้, อาหารหลัก 6 มื้อ, เบรก 5 มื้อ, เสื้อค่าย, กระเป๋าพร้อมปั๊มลาย, เอกสารอบรม และเกียรติบัตร)
 - ช่องทางโอนเงิน: {{.BankName}} เลขที่บัญชี {{.BankNumber}}
 - ชื่อบัญชี: {{.BankAccount}}
-- กำหนดโอนและแนบสลิปภายในวันที่: {{.DeadlineText}} (72 ชั่วโมงหลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ)
-- เงื่อนไข: หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี
+- กำหนดโอนและแนบสลิปภายในวันที่: {{.DeadlineText}} (120 ชั่วโมงหลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ)
 
 อัปโหลดสลิปและตรวจสอบสถานะได้ที่: {{.StatusURL}}
 (หลังส่งสลิปบนหน้าเว็บ จะได้รับ QR Code และปุ่มเข้ากลุ่ม LINE OpenChat ทันที)
 
 ติดต่อสอบถาม: {{.FBPageURL}}
 โทรพี่ค่าย: {{.StaffContact}}
-อาจารย์ผู้รับผิดชอบโครงการ: ดร.ปวีณ เขื่อนแก้ว · สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
+อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
 `))
 
 var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
@@ -583,13 +585,14 @@ var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
 <p>ระบบบันทึกใบสมัครและจองที่นั่งชั่วคราวให้เรียบร้อยแล้ว (<strong>ยังไม่ใช่สถานะยืนยันสิทธิ์สมบูรณ์</strong> จนกว่าจะชำระเงินและทีมงานตรวจสลิปอนุมัติ)</p>
 <div style="border:1px solid #d4d4d8;padding:14px 16px;margin:16px 0;background:#f9f8f4;">
   <p style="margin:0 0 6px;"><strong>รหัสใบสมัคร:</strong> <code style="font-size:1.1em;">{{.ApplicationNo}}</code></p>
+  <p style="margin:0 0 10px;font-size:0.95em;color:#4a4d55;">โปรดเก็บรหัสใบสมัครนี้ไว้ให้ดีและไม่ส่งต่อให้ผู้อื่น รหัสนี้คือกุญแจส่วนตัวของคุณบนหน้าตรวจสอบสถานะ ใช้สำหรับแนบสลิปและจัดการใบสมัคร (การค้นหาด้วยเบอร์โทรจะแสดงเพียงสถานะโดยย่อ หากลืมรหัส ติดต่อพี่ค่ายตามช่องทางด้านล่าง)</p>
   <p style="margin:0 0 6px;"><strong>ค่าสมัคร:</strong> {{.CampFee}} บาท (รวมที่พัก 2 คืน, อาหาร 6 มื้อ + เบรก 5 มื้อ, เสื้อค่าย, กระเป๋าพร้อมปั๊มลาย, เอกสารอบรม, เกียรติบัตร)</p>
   <p style="margin:0 0 6px;"><strong>โอนเข้าบัญชี:</strong> {{.BankName}} · <code>{{.BankNumber}}</code></p>
   <p style="margin:0 0 6px;"><strong>ชื่อบัญชี:</strong> {{.BankAccount}}</p>
-  <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ · โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)</p>
+  <p style="margin:0;color:#9a4608;"><strong>กำหนดโอนและแนบสลิปภายใน:</strong> {{.DeadlineText}} (ภายใน 5 วัน / 120 ชั่วโมงหลังสมัคร เกินกำหนดคืนที่นั่งว่างอัตโนมัติ)</p>
 </div>
 <p><a href="{{.StatusURL}}" style="display:inline-block;padding:10px 20px;border-radius:9999px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">ไปหน้าตรวจสอบสถานะและแนบสลิป</a></p>
-<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>อาจารย์ผู้รับผิดชอบโครงการ: ดร.ปวีณ เขื่อนแก้ว · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> (นายบูรพา มหัทธีรนางกูร) / <a href="tel:0637844515">063-784-4515</a> (นางสาวธมล นวลหมวก)</p>
+<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>
 </body></html>`))
 
 var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสดีน้อง {{.Nickname}} ({{.FullName}})
@@ -598,7 +601,8 @@ var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสด
 สถานะปัจจุบัน: ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์ (CONFIRMED)
 
 ข้อมูลสำคัญก่อนเข้าค่าย ComCamp #25:
-- วันจัดค่าย: 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) ณ สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
+- วันจัดค่าย: 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)
+- สิทธิพิเศษ: หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้
 - ที่พัก: {{.DormName}}
 - แผนที่ที่พัก (Google Maps): {{.DormMapsURL}}
 - ไซส์เสื้อที่บันทึกไว้: {{.ShirtSize}}
@@ -612,7 +616,7 @@ var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสด
 ตรวจสอบสถานะและรายละเอียดเพิ่มเติม: {{.StatusURL}}
 สอบถามเพิ่มเติม: {{.FBPageURL}}
 โทรพี่ค่าย: {{.StaffContact}}
-อาจารย์ผู้รับผิดชอบโครงการ: ดร.ปวีณ เขื่อนแก้ว · สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
+อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้
 `))
 
 var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
@@ -621,7 +625,8 @@ var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
 <p>สวัสดีน้อง <strong>{{.Nickname}}</strong> ({{.FullName}})</p>
 <p>ทีมงานตรวจสอบสลิปของใบสมัคร <strong>{{.ApplicationNo}}</strong> เรียบร้อยแล้ว ที่นั่งของคุณได้รับการยืนยันสมบูรณ์ (<code>CONFIRMED</code>)</p>
 <div style="border:1px solid #d4d4d8;padding:14px 16px;margin:16px 0;background:#f9f8f4;">
-  <p style="margin:0 0 6px;"><strong>วันจัดค่าย:</strong> 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) · CS คณะวิทยาศาสตร์ ม.แม่โจ้</p>
+  <p style="margin:0 0 6px;"><strong>วันจัดค่าย:</strong> 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) · อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)</p>
+  <p style="margin:0 0 6px;"><strong>สิทธิพิเศษ:</strong> หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</p>
   <p style="margin:0 0 6px;"><strong>สถานที่พัก:</strong> {{.DormName}} (<a href="{{.DormMapsURL}}">ดูแผนที่ Google Maps</a>)</p>
   <p style="margin:0;"><strong>ไซส์เสื้อค่าย:</strong> {{.ShirtSize}}</p>
 </div>
@@ -632,5 +637,5 @@ var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
   <li><strong>เครื่องแต่งกายและของใช้ส่วนตัว (3 วัน 2 คืน):</strong> ชุดลำลองสุภาพ (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ), ชุดนอน, เสื้อกันหนาว, ผ้าเช็ดตัวและของใช้ส่วนตัว (มีเสื้อค่ายแจกให้)</li>
   <li><strong>อุปกรณ์อิเล็กทรอนิกส์:</strong> สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อมบอร์ด ESP8266; โน้ตบุ๊กส่วนตัวไม่บังคับ)</li>
 </ul>
-<p style="font-size:0.9em;color:#4a4d55;">ดูข้อมูลใบสมัครได้ที่ <a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> · อาจารย์ผู้รับผิดชอบโครงการ: ดร.ปวีณ เขื่อนแก้ว<br/>สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> (นายบูรพา มหัทธีรนางกูร) / <a href="tel:0637844515">063-784-4515</a> (นางสาวธมล นวลหมวก)</p>
+<p style="font-size:0.9em;color:#4a4d55;">ดูข้อมูลใบสมัครได้ที่ <a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> · อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว<br/>สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>
 </body></html>`))

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ApiHttpError, verifyPaymentSlip, type ApplicantRecord } from './api.ts';
+import {
+  ApiHttpError,
+  isApplicationCodeQuery,
+  isPhoneQuery,
+  normalizeLookupQuery,
+  verifyPaymentSlip,
+  type ApplicantRecord,
+} from './api.ts';
 import {
   CSV_HEADERS,
   buildApplicantsCsv,
@@ -9,13 +16,21 @@ import {
   matchesApplicantQuery,
   sanitizeCsvCell,
 } from './applicant-tools.ts';
+import {
+  PAYMENT_GRACE_HOURS,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
+  PAYMENT_WINDOW_MS,
+  describeApplicantPaymentDeadline,
+  describeStaffPaymentDeadline,
+  paymentDueMs,
+} from './payment.ts';
 
 function sampleApplication(overrides: Partial<ApplicantRecord> = {}): ApplicantRecord {
   return {
     id: 'CC25-TEST01',
     fullName: 'สมชาย ใจดี',
     nickname: 'ชาย',
-    nationalId: '1100500000018',
     phone: '0812345678',
     email: 'test@example.com',
     school: 'โรงเรียนแม่โจ้',
@@ -143,4 +158,92 @@ test('parent contact fields work in matchesApplicantQuery and buildApplicantsCsv
   assert.ok(csv.includes('อีเมล,ชื่อผู้ปกครอง,ความสัมพันธ์ผู้ปกครอง,เบอร์โทรผู้ปกครอง,โรงเรียน'));
   assert.ok(csv.includes(',test@example.com,สมศรี ใจดี,มารดา,"=""0898765432""",โรงเรียนแม่โจ้,'));
   assert.ok(csv.includes(',test@example.com,"\'=SUM(1,1)",บิดา,,โรงเรียนแม่โจ้,'));
+});
+
+test('Phase 5.1: no national ID column in the CSV; staff search by phone, code or name still works', () => {
+  assert.deepEqual(CSV_HEADERS.slice(0, 5), ['รหัสใบสมัคร', 'ชื่อ-นามสกุล', 'ชื่อเล่น', 'เบอร์โทรศัพท์', 'อีเมล']);
+  assert.ok(!CSV_HEADERS.some((h) => /ประชาชน|บัตร/.test(h)), 'no national ID header');
+
+  const app = sampleApplication();
+  const csv = buildApplicantsCsv([app]);
+  const [header, row] = csv.replace(/^\uFEFF/, '').split('\r\n');
+  assert.equal(header.split(',').length, CSV_HEADERS.length);
+  assert.ok(row.startsWith('CC25-TEST01,สมชาย ใจดี,ชาย,"=""0812345678""",test@example.com,'));
+
+  assert.equal(matchesApplicantQuery(app, 'cc25-test01'), true);
+  assert.equal(matchesApplicantQuery(app, 'CC25-TEST01'), true);
+  assert.equal(matchesApplicantQuery(app, '081-234-5678'), true);
+  assert.equal(matchesApplicantQuery(app, '๐๘๑๒๓๔'), true);
+  assert.equal(matchesApplicantQuery(app, 'สมชาย'), true);
+  assert.equal(matchesApplicantQuery(app, 'ชาย'), true);
+  assert.equal(matchesApplicantQuery(app, '1100500000018'), false);
+});
+
+test('normalizeLookupQuery canonicalizes CC25 codes like the backend and keeps phones digit-only', () => {
+  const cases: Array<[string, string]> = [
+    ['CC25-1A2B3C', 'CC25-1A2B3C'],
+    ['cc25-1a2b3c', 'CC25-1A2B3C'],
+    ['CC25 1A2B3C', 'CC25-1A2B3C'],
+    ['cc251a2b3c', 'CC25-1A2B3C'],
+    [' CC25\u20101A2B3C ', 'CC25-1A2B3C'],
+    ['CC25\u22121A2B3C', 'CC25-1A2B3C'],
+    ['\u200BCC25-1A2B3C', 'CC25-1A2B3C'],
+    ['CC25-๑A๒B๓C', 'CC25-1A2B3C'],
+    ['081-234-5678', '0812345678'],
+    ['๐๘๑ ๒๓๔ ๕๖๗๘', '0812345678'],
+  ];
+  for (const [raw, want] of cases) assert.equal(normalizeLookupQuery(raw), want, JSON.stringify(raw));
+  assert.equal(isApplicationCodeQuery(normalizeLookupQuery('cc251a2b3c')), true);
+  assert.equal(isPhoneQuery(normalizeLookupQuery('081 234 5678')), true);
+  assert.equal(isPhoneQuery(normalizeLookupQuery('1100500000018')), false);
+  assert.equal(isApplicationCodeQuery(normalizeLookupQuery('CC25-1A2B3')), false);
+});
+
+const HOUR = 60 * 60 * 1000;
+
+test('payment window is 5 days (120h) with a 24h grace, matching the server sweep', () => {
+  assert.equal(PAYMENT_WINDOW_HOURS, 120);
+  assert.equal(PAYMENT_WINDOW_DAYS, 5);
+  assert.equal(PAYMENT_GRACE_HOURS, 24);
+  assert.equal(PAYMENT_WINDOW_MS, 120 * HOUR);
+});
+
+test('paymentDueMs = max(created + 120h, updated + 24h, rejected slip + 24h)', () => {
+  const created = Date.parse('2026-11-19T02:00:00Z'); // 09:00 Asia/Bangkok, registration opening
+  const iso = (ms: number) => new Date(ms).toISOString();
+  assert.equal(paymentDueMs(iso(created)), created + 120 * HOUR);
+  assert.equal(paymentDueMs(iso(created), iso(created)), created + 120 * HOUR);
+  // A staff change at +90h ends its 24h grace before the 5-day window does: no shift.
+  assert.equal(paymentDueMs(iso(created), iso(created + 90 * HOUR)), created + 120 * HOUR);
+  // A staff change at +100h pushes the deadline to +124h.
+  assert.equal(paymentDueMs(iso(created), iso(created + 100 * HOUR)), created + 124 * HOUR);
+  // A slip rejected at +110h pushes it to +134h; a later updatedAt still wins when it is later.
+  assert.equal(paymentDueMs(iso(created), iso(created), iso(created + 110 * HOUR)), created + 134 * HOUR);
+  assert.equal(paymentDueMs(iso(created), iso(created + 115 * HOUR), iso(created + 110 * HOUR)), created + 139 * HOUR);
+  assert.ok(Number.isNaN(paymentDueMs('not a date')));
+});
+
+test('describeApplicantPaymentDeadline pins the 120h boundary and the 24h grace', () => {
+  const now = Date.parse('2026-12-01T05:00:00Z');
+  const ago = (h: number) => new Date(now - h * HOUR).toISOString();
+
+  assert.equal(describeApplicantPaymentDeadline(ago(120), ago(120), now).isOverdue, true);
+  assert.equal(describeApplicantPaymentDeadline(ago(119 + 59 / 60), ago(119 + 59 / 60), now).isOverdue, false);
+  assert.equal(describeApplicantPaymentDeadline(ago(130), ago(23), now).isOverdue, false);
+  assert.equal(describeApplicantPaymentDeadline(ago(130), ago(25), now).isOverdue, true);
+
+  // Same rule for staff, who also see the 24h grace after a rejected slip.
+  assert.equal(describeStaffPaymentDeadline(ago(130), ago(130), ago(23), now).isOverdue, false);
+  assert.equal(describeStaffPaymentDeadline(ago(130), ago(130), ago(25), now).isOverdue, true);
+  assert.equal(describeStaffPaymentDeadline(ago(130), ago(130), null, now).isOverdue, true);
+
+  const overdue = describeApplicantPaymentDeadline(ago(121), ago(121), now);
+  assert.equal(overdue.remainingText, 'ครบกำหนดชำระเงินแล้ว');
+  assert.doesNotMatch(overdue.remainingText, /72|3 วัน|5 วัน/);
+
+  // Registered 19 Nov 2026 09:00 (Bangkok) -> due 24 Nov 2026 09:00 (Bangkok).
+  const fresh = describeApplicantPaymentDeadline('2026-11-19T02:00:00Z', '2026-11-19T02:00:00Z', Date.parse('2026-11-19T02:00:00Z'));
+  assert.match(fresh.deadlineText, /24/);
+  assert.match(fresh.deadlineText, /09:00/);
+  assert.equal(fresh.remainingText, 'เหลือเวลาโอนอีก 5 วัน');
 });

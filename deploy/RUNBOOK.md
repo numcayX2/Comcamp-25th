@@ -24,7 +24,7 @@ Internet / Campus HTTPS (Host Nginx / Caddy / Cloudflare Tunnel)
 
 ## ขั้นตอนที่ 1: ตรวจสอบเวลาและพื้นที่ของเซิร์ฟเวอร์
 
-ระบบกำหนดเวลาเปิด-ปิดรับสมัครอัตโนมัติที่ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07:00` ถึง `2026-12-18 23:59:59+07:00`) ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
+ระบบกำหนดเวลาเปิด-ปิดรับสมัครอัตโนมัติที่ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07:00` ถึง `2026-12-18 23:59:59+07:00`) ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
 
 ```bash
 timedatectl status
@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000010`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000011`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000010_update_camp_fee_1200.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07` ถึง `2026-12-18 23:59:59+07`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`)
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000011_remove_national_id.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -165,8 +165,22 @@ server {
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f backend edge-proxy
 ```
 
-1. เข้าหน้าเว็บจาก **เครื่องที่ 1 (Wi-Fi มหาวิทยาลัย)** และ **เครื่องที่ 2 (เน็ตมือถือ 4G/5G)**
-2. ยืนยันว่าใน Log ของ `backend` / `edge-proxy` แสดง IP สาธารณะของทั้งสองเครื่องแยกกันชัดเจน (ไม่ใช่ `172.28.0.x` หรือ `127.0.0.1` ซ้ำกัน)
+1. ในแต่ละเครื่องทดสอบ เปิดเว็บ "what is my IP" (เช่น `https://ifconfig.me` หรือ `https://api.ipify.org`) แล้ว **จด IP สาธารณะจริงของเครื่องนั้นไว้**
+2. เข้าหน้าเว็บ (เช่น `/status` แล้วกดค้นหา) จาก **เครื่องที่ 1 (Wi-Fi มหาวิทยาลัย)** และ **เครื่องที่ 2 (เน็ตมือถือ 4G/5G)**
+3. ยืนยันว่า IP ใน Log ของ `backend` **ตรงกับ IP สาธารณะที่จดไว้ของแต่ละเครื่องทุกตัว** — ไม่ใช่แค่ "ต่างกัน" (ต้องไม่ใช่ `172.28.0.x`, `127.0.0.1`, IP ของ Proxy คณะ หรือ IP ของ Cloudflare)
+4. **ทดสอบการปลอม `X-Forwarded-For`** (ต้องผ่านก่อนเปิดรับสมัคร):
+   ```bash
+   curl -sS -H 'X-Forwarded-For: 203.0.113.9' https://<โดเมนจริง>/api/health
+   docker compose -f docker-compose.prod.yml --env-file .env.prod logs --since 2m backend | grep '/api/health'
+   ```
+   บรรทัดของคำขอนี้ใน Log ของ `backend` **ต้องไม่แสดง `203.0.113.9`** แต่ต้องเป็น IP จริงของเครื่องที่รัน `curl` ถ้าเห็น `203.0.113.9` แปลว่าผู้โจมตีเลือก IP ที่ระบบเห็นเองได้ — **ห้ามเปิดรับสมัครจนกว่าจะแก้**
+5. **ตรวจ Proxy ชั้นหน้า edge (Host Nginx / Traefik / NPM ฯลฯ):** ต้องตั้ง `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (ต่อท้าย IP ที่ต่อเข้ามาจริง) หรือถ้าเป็น **hop แรกที่รับจากอินเทอร์เน็ตโดยตรง** ให้ **เขียนทับ** ด้วย `proxy_set_header X-Forwarded-For $remote_addr;` ห้ามส่งต่อ header ที่ client ส่งมาตรงๆ (เช่น `$http_x_forwarded_for`) และห้ามไม่ตั้งค่าเลยในกรณีที่ Proxy นั้นส่ง header เดิมผ่านไปโดยอัตโนมัติ
+6. **ถ้าเว็บอยู่หลัง Cloudflare (Proxy สีส้ม / Tunnel):** IP ที่ต่อเข้าเครื่องเราเป็น IP ของ Cloudflare ให้ทำอย่างใดอย่างหนึ่ง:
+   - ที่ Host Nginx: `set_real_ip_from` ทุกช่วงใน <https://www.cloudflare.com/ips-v4> และ <https://www.cloudflare.com/ips-v6>, `real_ip_header CF-Connecting-IP;` แล้ว `proxy_set_header X-Forwarded-For $remote_addr;` (เขียนทับด้วย IP จริงที่แกะแล้ว) **หรือ**
+   - ใส่ช่วง IP ที่ Cloudflare ประกาศทั้งหมดเพิ่มใน `TRUSTED_PROXIES` ของ `.env.prod` (คั่นด้วยลูกน้ำ) เพื่อให้ backend ข้าม hop ของ Cloudflare ไปหา IP จริง
+   - ช่วง IP ของ Cloudflare เปลี่ยนได้ ให้ตรวจหน้าดังกล่าวอีกครั้งก่อนเปิดรับสมัคร แล้วทำข้อ 3–4 ซ้ำ
+
+> **ทำไมต้องเข้มงวด:** backend เชื่อ `X-Forwarded-For` เมื่อคำขอมาจาก `TRUSTED_PROXIES` เท่านั้น และใช้ IP ขวาสุดที่ไม่ใช่ Proxy ที่เชื่อถือ ค่าเริ่มต้น `172.28.0.0/24` **รวม Gateway ของ Docker Bridge (`172.28.0.1`)** ซึ่งเป็น IP ที่ `edge-proxy` เห็นเมื่อ Host Proxy ต่อเข้า `127.0.0.1:8080` ดังนั้นถ้า Proxy ชั้นหน้าส่ง `X-Forwarded-For` ที่ client ปลอมมาผ่านไปตรงๆ backend จะเชื่อ IP ปลอมนั้น ผู้โจมตีจะ (1) **หลบ Rate Limit / การล็อกการเดารหัส** ได้โดยเปลี่ยน IP ปลอมทุกคำขอ และ (2) **ทำให้ IP ของผู้สมัครคนอื่นถูกล็อก** (เช่น IP ของโรงเรียนหรือเครือข่ายมือถือ) โดยการเดารหัสผิดในนาม IP นั้น
 
 ---
 
@@ -267,3 +281,84 @@ cd /path/to/Comcamp-site
 git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
+
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อก Phase 5 ด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+
+### Phase 5 deploy (migration `000011`)
+
+`000011_remove_national_id.up.sql` ลบคอลัมน์ `applicants.national_id`, ลบเลขบัตรประชาชนที่ค้างอยู่ใน `audit_logs.details` และย้าย `settings` เป็น `19 พ.ย. 2569 09:00 น.` / `40` ที่นั่ง (เฉพาะเมื่อแถวยังเป็นค่าเก่า) **ต้องทำตามลำดับนี้เท่านั้น:**
+
+```bash
+cd /path/to/Comcamp-site
+git pull origin main
+set -a; . ./.env.prod; set +a   # ให้ $DB_USER / $DB_NAME ใช้ได้ใน shell นี้
+
+# 1. หยุด backend ตัวเก่าก่อน (frontend / edge-proxy / db ทำงานต่อได้ ระหว่างนี้ /api ตอบ 502 ชั่วคราว)
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop backend
+
+# 2. รัน 000011 up ด้วย psql ภายในคอนเทนเนอร์ db (ไฟล์เป็น BEGIN/COMMIT เดียว ล้มเหลว = ไม่มีอะไรเปลี่ยน)
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db   psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000011_remove_national_id.up.sql
+
+# 3. ตรวจผล: ต้องได้ 0 แถว (ไม่มีคอลัมน์ national_id) และ 0 (ไม่มีเลขบัตรใน audit_logs)
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'applicants' AND column_name = 'national_id';"
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT count(*) FROM audit_logs WHERE details ? 'nationalId' OR details->'changes' ? 'nationalId';"
+
+# 4. Build และเปิด backend ตัวใหม่
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+**ทำไมต้องเรียงแบบนี้:**
+- **Build ใหม่บน Schema เก่า:** backend ใหม่ไม่เขียน `national_id` แล้ว แต่คอลัมน์ยังเป็น `NOT NULL` ทุก `POST /api/applications` จะล้มเหลว — ตัว backend ใหม่จึงตรวจ `information_schema.columns` ตอนสตาร์ต ถ้ายังพบ `applicants.national_id` ใน `APP_ENV=production` จะ **ปฏิเสธการสตาร์ต** (log `Refusing to start: applicants.national_id still exists …`) ให้กลับไปทำข้อ 2
+- **Build เก่าบน Schema ใหม่:** backend เก่ายังอ่าน/เขียน `national_id` จะพังทุก Query ที่แตะ `applicants` จึงต้องหยุด backend เก่า **ก่อน** รัน Migration
+- ห้ามรัน `000011` ระหว่างที่ backend เก่ายังรับสมัครอยู่ และควรทำก่อนเปิดรับสมัคร `19 พ.ย. 2569 09:00 น.`
+
+**หลังรัน `000011` — ล้างเลขบัตรประชาชนที่ยังค้างนอกตาราง (PDPA):**
+- **ไฟล์ backup เก่า:** ไฟล์ `pg_dump` รายชั่วโมงใน `/opt/cc25-backups/db/` (หรือ `$HOME/cc25-backups/db/`) ที่สร้าง **ก่อน** รัน `000011` ยังมีคอลัมน์ `national_id` และเลขบัตรใน `audit_logs` อยู่ หลังตรวจข้อ 3 ผ่านและ backup รอบถัดไป (หลัง migration) สร้างสำเร็จแล้ว ให้ลบไฟล์ที่เก่ากว่าเวลารัน migration ทิ้ง:
+  ```bash
+  # แทน 2026-11-18 20:00 ด้วยเวลาที่รัน 000011 จริง; ดูรายการก่อนลบด้วยคำสั่งแรก
+  find /opt/cc25-backups/db -name 'cc25_db_*.dump' ! -newermt '2026-11-18 20:00' -print
+  find /opt/cc25-backups/db -name 'cc25_db_*.dump' ! -newermt '2026-11-18 20:00' -delete
+  ```
+  ถ้าต้องการเก็บไว้เผื่อย้อนกลับ ให้ปล่อยให้สคริปต์ backup ลบเองเมื่อครบ 14 วัน (ข้อ 3 ของ `backup.sh`) แต่ต้องรู้ว่าระหว่างนั้นยังมีเลขบัตรอยู่ในไฟล์ และอย่าคัดลอกไฟล์เหล่านั้นออกนอกเครื่อง
+- **Log ของ nginx เก่า:** log ของ `edge-proxy` และ `frontend` ก่อนรุ่นนี้ใช้รูปแบบเริ่มต้นที่บันทึก query string (`/api/applications/status?q=<เลข 13 หลัก>` และ `/status?q=CC25-…`) ให้สร้างคอนเทนเนอร์ใหม่ตอน deploy เพื่อทิ้ง log เก่า (log ของ Docker ถูกลบพร้อมคอนเทนเนอร์) และให้ใช้ `log_format cc25_private` ที่ไม่บันทึก query string:
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build --force-recreate edge-proxy frontend
+  ```
+  (ข้อความใน `error_log` ของ nginx อาจยังมีบรรทัดคำขอเต็มเมื่อเกิด error เช่น backend ล่ม ซึ่งถูกทิ้งไปพร้อมคอนเทนเนอร์เช่นกัน)
+- **(ไม่บังคับ) เขียนหน้า heap ใหม่:** `DROP COLUMN` และ `UPDATE` ไม่ลบข้อมูลเก่าออกจากไฟล์ของ PostgreSQL ทันที ถ้าต้องการให้ข้อมูลเก่าหายจากดิสก์ ให้รันในช่วงที่ไม่มีคนใช้ (ล็อกตารางระหว่างรัน ใช้เวลาไม่นานที่ขนาดนี้):
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "VACUUM FULL applicants, audit_logs;"
+  ```
+
+## เฝ้าระวังการเดารหัสใบสมัคร (CodeGuard) และการหยุดตัดสิทธิ์อัตโนมัติ
+
+รหัสใบสมัคร `CC25-XXXXXX` คือหลักฐานของผู้สมัครบนหน้า `/status` (ค้นด้วยรหัส, ส่งสลิป, ยืนยันสิทธิ์) ส่วนการยกเลิกเองต้องใช้รหัสคู่กับเบอร์โทรที่ใช้สมัคร ระบบนับรหัสที่ไม่มีอยู่จริง (และเบอร์ที่ไม่ตรงตอนยกเลิก) ต่อ IP และรวมทั้งระบบ ถ้าครบเพดานรวม 10 ครั้งใน 5 นาที ทุกคำขอที่ใช้รหัสจะถูกตอบ `429` จนจบช่วง 5 นาทีนั้น
+
+- **เฝ้าดู:** แถว `application.code.ceiling` ใน `audit_logs` (โดยเฉพาะ `"level": "hard"`) ถ้าขึ้นต่อเนื่องหลายช่วง แปลว่ามีคนพยายามเดารหัสหรือก่อกวน
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, details FROM audit_logs WHERE action = 'application.code.ceiling' ORDER BY created_at DESC LIMIT 20;"
+  ```
+- **ระหว่างนั้นระบบหยุดตัดสิทธิ์เอง:** ถ้าเพดานรวมทำงานภายใน 24 ชั่วโมงล่าสุด ระบบจะ **ไม่** ตัดสิทธิ์ใบสมัครที่ค้างชำระอัตโนมัติ เพราะผู้สมัครอาจส่งสลิปไม่ได้ในช่วงที่ถูกก่อกวน เมื่อหยุดเกิน 24 ชั่วโมง การตัดสิทธิ์จะกลับมาทำงานเอง (การค้นด้วยเบอร์โทรที่ไม่พบนับต่อ IP เท่านั้น ไม่ทำให้เกิดการหยุดนี้)
+  - **รู้ได้อย่างไรว่ากำลังหยุดอยู่:** มีแถว `application.code.ceiling` ที่ `"level": "hard"` ภายใน 24 ชั่วโมงล่าสุด (คำสั่งด้านบน) และ log ของ backend มีบรรทัด `unpaid expiry paused: application-code guess ceiling reached at …` (บันทึก **ครั้งเดียว** ต่อเวลาที่เพดานทำงาน ไม่ใช่ทุกนาที ถ้าเห็นบรรทัดใหม่ แปลว่ามีการโจมตีรอบใหม่ และนับ 24 ชั่วโมงใหม่จากเวลานั้น)
+    ```bash
+    docker compose -f docker-compose.prod.yml --env-file .env.prod logs backend | grep "unpaid expiry paused"
+    ```
+  - **สิ่งที่พี่ค่ายต้องทำระหว่างหยุด:** ที่นั่งของผู้ที่ค้างชำระเกินกำหนดจะไม่ถูกคืนเอง ให้ตรวจรายชื่อค้างชำระเองอย่างน้อยวันละครั้ง (ไม่มีสลิปที่รอตรวจหรืออนุมัติแล้ว และเลยกำหนด = `max(สมัคร + 120 ชม., แก้ไขล่าสุด + 24 ชม., สลิปที่ถูกปฏิเสธล่าสุด + 24 ชม.)`) แล้วเปลี่ยนสถานะเป็น `REJECTED` ใน `/admin` ทีละราย ควรติดต่อผู้สมัครก่อน เพราะเขาอาจส่งสลิปไม่ได้เพราะการก่อกวน (ถ้าต้องการขยายเวลาให้ ดูข้อถัดไป) คำสั่งนี้แสดงรายชื่อที่เข้าเงื่อนไขเดียวกับที่ระบบใช้ตัดสิทธิ์อัตโนมัติ:
+    ```bash
+    docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT application_no, status, created_at, updated_at FROM applicants a WHERE deleted_at IS NULL AND status IN ('PENDING','PASSED','RESERVE') AND created_at <= now() - interval '120 hours' AND updated_at <= now() - interval '24 hours' AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.applicant_id = a.id AND NOT p.applicant_deleted AND (p.status IN ('PENDING','APPROVED') OR (p.status = 'REJECTED' AND COALESCE(p.verified_at, p.uploaded_at) > now() - interval '24 hours'))) ORDER BY created_at;"
+    ```
+- **ถ้าต้องการขยายเวลาให้ผู้สมัครรายใดเพิ่ม:** พี่ค่ายแก้ไขข้อมูลผู้สมัครคนนั้นใน `/admin` (แก้โปรไฟล์ พร้อมใส่เหตุผล) การบันทึกจะอัปเดต `updated_at` ทำให้กำหนดชำระขยายออกไปอย่างน้อย 24 ชั่วโมงนับจากเวลาที่แก้
+- ถ้ามีการโจมตีต่อเนื่อง ให้ตรวจ IP ใน `application.code.lockout` และพิจารณาบล็อกที่ reverse proxy
+
+**ข้อควรรู้เพิ่มเติม (ต้องอ่าน):**
+- **(a) สถานะ CodeGuard อยู่ในหน่วยความจำของ backend เท่านั้น:** การรีสตาร์ต backend (รวมถึง `up -d --build`) จะล้างการล็อก IP ทั้งหมดและเวลาที่เพดานรวมทำงานล่าสุด (`lastHard`) ทำให้ **การหยุดตัดสิทธิ์อัตโนมัติสิ้นสุดก่อนครบ 24 ชั่วโมงทันที** และระบบจะคืนที่นั่งค้างชำระที่เลยกำหนดในรอบถัดไป (ภายใน 1 นาที) ถ้ากำลังอยู่ในช่วงหยุด ให้ตรวจรายชื่อค้างชำระ (คำสั่งด้านบน) และขยายเวลาให้ผู้ที่ควรได้รับก่อนรีสตาร์ต
+- **(b) รหัสของใบสมัครที่ถูกลบหรือยกเลิกแล้วนับเป็นการเดาผิด:** ผู้ที่เปิดใบตอบรับเก่าหรือลิงก์ในอีเมลเดิมหลังยกเลิกจะถูกนับเป็น miss เหมือนรหัสที่ไม่มีอยู่จริง ไม่เป็นปัญหาที่ขนาด 40 ที่นั่ง แต่ถ้าเห็น lockout จาก IP ของผู้สมัครที่เพิ่งยกเลิก ให้ถือว่าเป็นกรณีนี้
+- **(c) ผู้ก่อกวนทำให้การหยุดตัดสิทธิ์อยู่ต่อได้ง่าย:** ใช้การเดาผิดเพียงราว 10 ครั้งต่อ 24 ชั่วโมงก็ทำให้การหยุดไม่สิ้นสุด ดังนั้นตลอดเวลาที่การหยุดยังทำงาน **พี่ค่ายต้องตรวจรายชื่อค้างชำระเกินกำหนดและเปลี่ยนเป็น `REJECTED` ด้วยตนเองทุกวัน** (ขั้นตอนด้านบน) ห้ามรอให้ระบบตัดสิทธิ์เอง
+- **(d) เฝ้าดูการไล่เดาเบอร์โทร:** แถว `application.code.lockout` ที่ `details->>'endpoint' = 'status-phone'` แปลว่ามี IP ค้นด้วยเบอร์ที่ไม่พบซ้ำๆ (อาจกำลังไล่หาเบอร์ของผู้สมัคร) ให้ตรวจ IP และพิจารณาบล็อกที่ reverse proxy
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, ip_address, details FROM audit_logs WHERE action = 'application.code.lockout' AND details->>'endpoint' = 'status-phone' ORDER BY created_at DESC LIMIT 20;"
+  ```
+
+**ความเสี่ยงที่ยอมรับแล้ว (Known accepted risks):**
+- **การโจมตีเพดานรวมของการเดารหัส (R23 ยอมรับแล้ว):** ผู้ก่อกวนที่ใช้หลาย IP เดารหัสผิดให้ครบเพดานรวมได้ ระหว่างที่การโจมตียังดำเนินอยู่ ทุกคำขอที่ใช้รหัสใบสมัครจะถูกตอบ `429` ได้แก่ **การส่งสลิป, การค้นสถานะด้วยรหัส, การยืนยันสิทธิ์ และการยกเลิกใบสมัคร** (การค้นด้วยเบอร์โทรยังใช้ได้) เป็นข้อแลกเปลี่ยนที่ยอมรับเพื่อไม่ให้เดารหัสได้ทีละมากๆ
+  - **พี่ค่ายต้องทำ:** เฝ้าดูแถว `application.code.ceiling` (คำสั่งด้านบน) ถ้าเห็น `"level": "hard"` ต่อเนื่อง ให้ประกาศใน LINE OpenChat / เพจ Facebook ว่าระหว่างนี้ **ส่งสลิปทาง LINE หรือส่งให้พี่ค่ายโดยตรงได้** แล้วพี่ค่ายตรวจและเปลี่ยนสถานะใน `/admin` เอง พร้อมตรวจรายชื่อค้างชำระด้วยมือตามข้อ (c) และพิจารณาบล็อก IP ต้นทางที่ reverse proxy

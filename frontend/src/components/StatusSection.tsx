@@ -13,7 +13,6 @@ import {
   Info,
   ListOrdered,
   MapPin,
-  Pencil,
   Phone,
   Receipt,
   RotateCcw,
@@ -26,48 +25,39 @@ import {
   ApiHttpError,
   fetchPublicSettings,
   getApplicationStatus,
-  updateOwnProfile,
   withdrawApplication,
   hasSlip,
   holdsSeat,
+  isApplicationCodeQuery,
+  isPhoneLookup,
+  isPhoneQuery,
   normalizeLookupQuery,
   type Application,
   type ApplicationStatus,
   type ApiSource,
-  type ShirtSize,
+  type PhoneLookupResult,
 } from '../lib/api';
 import {
   DORM_MAPS_URL,
   DORM_NAME,
   FB_URL,
   FEE_TEXT,
-  GRADES,
-  GRADE_OTHER,
-  GRADE_OTHER_MAX,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
-  NICKNAME_MAX,
   PROJECT_ADVISOR,
-  PROVINCE_MAX,
-  SCHOOL_MAX,
   SEATS,
-  SHIRT_SIZES,
   SIZE_CHEST,
   SIZE_LENGTH,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
   STAFF_CONTACTS,
-  cleanSingleLine,
   describeApplicantPaymentDeadline,
   formatCampFee,
-  gradeValue,
-  isValidThaiNationalID,
-  splitGrade,
-  validateGradeFields,
 } from './register/model';
 import { clearReceipt, loadReceipt } from './register/storage';
-import { cleanNationalIdInput, describeApiError as describeError, describeVerifyLock } from '../lib/slip-upload';
+import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeError } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
-import { VerifyCodeField } from './slip/VerifyCodeField';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
 const STATUS_DOT: Record<ApplicationStatus, string> = {
@@ -95,7 +85,6 @@ const INK_MUTED = 'var(--color-ink-muted)';
 const INK_SUBTLE = 'var(--color-ink-subtle)';
 const RULE = 'var(--color-border)';
 const SURFACE = 'var(--bg-card)';
-const SURFACE_SUBTLE = 'var(--bg-surface)';
 const BORDER_INPUT = 'var(--color-border-input)';
 const BTN_DARK = 'var(--color-btn-dark)';
 const BTN_DARK_TEXT = 'var(--color-btn-dark-text)';
@@ -215,7 +204,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
         icon: CircleX,
         badge: 'ไม่ผ่าน / ตัดสิทธิ์อัตโนมัติ',
         title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือกหรือพ้นกำหนดชำระเงิน',
-        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน',
+        body: `ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน`,
         contact: true,
       };
     case 'RESERVE':
@@ -259,7 +248,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
       icon: TriangleAlert,
       badge: `สลิปไม่ผ่าน · ${dl.remainingText}`,
       title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด 3 วัน)`,
+      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด)`,
       toSlip: true,
       contact: true,
     };
@@ -269,7 +258,7 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
     icon: Ticket,
     badge: `สมัครทันแล้ว · ${dl.remainingText}`,
     title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน 3 วัน / 72 ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)`,
+    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ`,
     toSlip: true,
   };
 }
@@ -280,7 +269,7 @@ function confirmedHighlight(): Highlight {
     icon: CircleCheck,
     badge: 'สลิปค่าสมัครผ่านการตรวจสอบแล้ว',
     title: 'สลิปผ่านการตรวจสอบ / ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์แล้ว',
-    body: `น้องมีที่นั่งในค่าย ComCamp #25 วันที่ 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) ณ สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ และเข้าพักที่${DORM_NAME}เรียบร้อยแล้ว — กดเข้ากลุ่ม LINE OpenChat ด้านล่างเพื่อรับข่าวสารและกำหนดการวันเข้าค่ายจากพี่ค่ายได้เลย`,
+    body: `น้องมีที่นั่งในค่าย ComCamp #25 วันที่ 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) และเข้าพักที่${DORM_NAME}เรียบร้อยแล้ว — กดเข้ากลุ่ม LINE OpenChat ด้านล่างเพื่อรับข่าวสารและกำหนดการวันเข้าค่ายจากพี่ค่ายได้เลย`,
     toLine: true,
     showCampDetails: true,
   };
@@ -348,7 +337,7 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                 <strong style={{ color: INK }}>อาจารย์ผู้รับผิดชอบ:</strong> {PROJECT_ADVISOR}
               </p>
               <p className="sm:col-span-2">
-                <strong style={{ color: INK }}>สถานที่อบรมและที่พัก:</strong> สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ ม.แม่โจ้ · ที่พัก {DORM_NAME} (แยกโซนชาย-หญิง){' '}
+                <strong style={{ color: INK }}>สถานที่อบรมและที่พัก:</strong> อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) · ที่พัก {DORM_NAME} (แยกโซนชาย-หญิง){' '}
                 <a
                   href={DORM_MAPS_URL}
                   target="_blank"
@@ -399,12 +388,17 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                     <a
                       key={c.tel}
                       href={`tel:${c.tel}`}
-                      className={`inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+                      className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
                       style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                     >
                       <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                      <span className="font-mono tabular-nums">{c.phone}</span>
-                      <span className="font-normal" style={{ color: INK_MUTED }}>({c.name})</span>
+                      <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                        <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                        <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                          <span aria-hidden="true" className="hidden sm:inline">· </span>
+                          {c.name}
+                        </span>
+                      </span>
                     </a>
                   ))}
                 </>
@@ -416,149 +410,164 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
   );
 }
 
-const INPUT_CLS =
-  'w-full rounded-xl border bg-[var(--bg-card)] px-3.5 py-2.5 text-base leading-7 outline-none transition-colors placeholder:text-[var(--color-ink-subtle)] focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30';
+const PHONE_SLIP_LABEL: Record<'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED', string> = {
+  NONE: 'ยังไม่ได้ส่งสลิป',
+  PENDING: 'ได้รับสลิปแล้ว รอทีมงานตรวจสอบ',
+  APPROVED: 'สลิปผ่านการตรวจสอบแล้ว',
+  REJECTED: 'สลิปไม่ผ่านการตรวจสอบ ส่งใหม่ได้ด้วยรหัสใบสมัคร',
+};
 
-function EditField({
-  id,
-  label,
-  error,
-  children,
+/**
+ * Answer to a search by phone number. A phone number is easy to know, so the server sends only a
+ * short masked status and never the application code; this card therefore offers NO write action
+ * (no slip upload, no withdraw, no copy-code). It points the applicant to the code in their email.
+ */
+function PhoneLookupCard({
+  result,
+  source,
+  nowMs,
+  onSearchByCode,
 }: {
-  id: string;
-  label: string;
-  error?: string;
-  children: React.ReactNode;
+  result: PhoneLookupResult;
+  source: ApiSource | null;
+  nowMs: number;
+  onSearchByCode: () => void;
 }) {
+  const slip = result.hasSlip ? (result.slipStatus ?? 'PENDING') : null;
+  const showDeadline = result.status === 'PASSED' && (slip === null || slip === 'REJECTED');
+  const dl = showDeadline ? describeApplicantPaymentDeadline(result.createdAt, result.updatedAt, nowMs) : null;
+  const rows: { k: string; v: string; mono: boolean }[] = [
+    { k: 'เบอร์โทรศัพท์ติดต่อ', v: result.phone, mono: true },
+    ...(result.email ? [{ k: 'อีเมล', v: result.email, mono: false }] : []),
+    { k: 'สลิปค่าสมัคร', v: PHONE_SLIP_LABEL[slip ?? 'NONE'], mono: false },
+    ...(dl ? [{ k: 'กำหนดโอนและแนบสลิป', v: `ภายใน ${dl.deadlineText} (${dl.remainingText})`, mono: false }] : []),
+  ];
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-semibold" style={{ color: INK }}>
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p id={`${id}-err`} className="mt-1.5 flex items-start gap-1.5 text-sm leading-6" style={{ color: 'var(--color-danger)' }}>
-          <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" />
-          <span>{error}</span>
+    <section className="st-card" aria-labelledby="phone-result-title" data-lookup="phone">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
+        <div className="min-w-0">
+          <h2 id="phone-result-title" className="text-sm font-bold leading-6" style={{ color: INK_SUBTLE }}>
+            สถานะโดยย่อ (ค้นหาด้วยเบอร์โทรศัพท์)
+          </h2>
+          <p className="mt-1 break-words text-2xl font-semibold leading-9" style={{ color: INK }}>
+            {result.fullName}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusTag status={result.status} />
+          {import.meta.env.DEV && source && (
+            <span className="rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold" style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}>
+              {source}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.k} className="min-w-0 border-b py-2.5 sm:py-3" style={{ borderColor: RULE }}>
+            <dt className="text-xs font-semibold leading-5" style={{ color: INK_SUBTLE }}>{row.k}</dt>
+            <dd className={`mt-0.5 break-words [overflow-wrap:anywhere] text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
+              {row.v}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div role="note" className="st-notice mt-6">
+        <p className="flex items-start gap-2.5 text-base font-semibold leading-7" style={{ color: INK }}>
+          <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
+          <span>
+            ส่งสลิปหรือจัดการใบสมัคร ต้องค้นหาด้วยรหัสใบสมัคร{' '}
+            <span className="whitespace-nowrap font-mono tabular-nums">CC25-XXXXXX</span>
+          </span>
         </p>
-      )}
-    </div>
+        <p className="mt-1.5 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+          รหัสใบสมัครอยู่ในอีเมลที่ได้รับหลังสมัคร (และบนหน้าใบตอบรับหลังกดส่ง) เพื่อความปลอดภัย
+          การค้นหาด้วยเบอร์โทรจึงแสดงเพียงสถานะโดยย่อ หากหารหัสไม่พบ กรุณาติดต่อทีมงาน
+        </p>
+        <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+          ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / จดหมายขยะ หรือแท็บ Promotions (Gmail)
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onSearchByCode}
+            className={`inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
+            style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
+          >
+            ค้นหาด้วยรหัสใบสมัคร
+          </button>
+          <a
+            href={FB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+            style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+          >
+            ติดต่อทีมงานทาง Facebook
+          </a>
+          {STAFF_CONTACTS.map((c) => (
+            <a
+              key={c.tel}
+              href={`tel:${c.tel}`}
+              className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
+              style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+            >
+              <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
+              <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                  <span aria-hidden="true" className="hidden sm:inline">· </span>
+                  {c.name}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
-interface EditForm {
-  nickname: string;
-  school: string;
-  province: string;
-  grade: string;
-  gradeOther: string;
-  shirtSize: ShirtSize | '';
-}
-
-type EditErrors = Partial<Record<keyof EditForm, string>>;
-
-function formFromApp(app: Application): EditForm {
-  return {
-    nickname: app.nickname ?? '',
-    school: app.school,
-    province: app.province ?? '',
-    ...splitGrade(app.grade),
-    shirtSize: app.shirtSize,
-  };
-}
-
-function validateEdit(f: EditForm): EditErrors {
-  const e: EditErrors = {};
-  const nickname = cleanSingleLine(f.nickname);
-  const school = cleanSingleLine(f.school);
-  const province = cleanSingleLine(f.province);
-  if (!nickname) e.nickname = 'กรุณากรอกชื่อเล่น';
-  else if (nickname.length > NICKNAME_MAX) e.nickname = `ชื่อเล่นต้องไม่เกิน ${NICKNAME_MAX} ตัวอักษร`;
-  if (!school) e.school = 'กรุณากรอกชื่อโรงเรียนหรือสถานศึกษา';
-  else if (school.length > SCHOOL_MAX) e.school = `ชื่อสถานศึกษาต้องไม่เกิน ${SCHOOL_MAX} ตัวอักษร`;
-  if (!province) e.province = 'กรุณากรอกจังหวัด';
-  else if (province.length > PROVINCE_MAX) e.province = `ชื่อจังหวัดต้องไม่เกิน ${PROVINCE_MAX} ตัวอักษร`;
-  const g = validateGradeFields(f.grade, cleanSingleLine(f.gradeOther));
-  if (g) e[f.grade === GRADE_OTHER ? 'gradeOther' : 'grade'] = g;
-  if (!f.shirtSize) e.shirtSize = 'กรุณาเลือกไซส์เสื้อ';
-  return e;
-}
-
-function VerifyCodePrompt({ onFocusCode, action }: { onFocusCode: () => void; action: string }) {
-  return (
-    <div
-      role="note"
-      className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-sm leading-6"
-      style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_MUTED }}
-    >
-      <span>กรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักด้านบนก่อนจึงจะ{action}ได้</span>
-      <button
-        type="button"
-        onClick={onFocusCode}
-        className={`inline-flex min-h-11 items-center rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
-        style={{ borderColor: BORDER_INPUT, color: INK, backgroundColor: SURFACE }}
-      >
-        ไปกรอกรหัส 4 ตัวท้ายด้านบน
-      </button>
-    </div>
-  );
-}
+/** Copy for a query that is neither a 10-digit phone nor a CC25 code; it is never sent. */
+const BAD_QUERY_COPY = 'ค้นหาได้ด้วยเบอร์โทรศัพท์ 10 หลัก (ขึ้นต้นด้วย 0) หรือรหัสใบสมัคร CC25-XXXXXX เท่านั้น กรุณาตรวจสอบอีกครั้ง';
 
 export function StatusSection() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [app, setApp] = useState<Application | null>(null);
+  /** Answer to a phone search: masked, without the code, and never enables a write action. */
+  const [phoneResult, setPhoneResult] = useState<PhoneLookupResult | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
-  /** A wrong verify code reported by the slip upload or profile edit, shown beneath #verify-code. */
-  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const acctCopyTimer = useRef<number | undefined>(undefined);
   const idCopyTimer = useRef<number | undefined>(undefined);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
-  const [verifyCode, setVerifyCode] = useState('');
-  const [autoVerifiedById, setAutoVerifiedById] = useState(false);
-  const [showManualVerifyCode, setShowManualVerifyCode] = useState(false);
-  const manualCodeFocusRef = useRef(false);
-  const codeReady = verifyCode.length === 4;
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
-  /**
-   * The applicant's full 13-digit national ID, typed to confirm a withdrawal (4 digits are not
-   * enough to give a seat away, AGENTS.md §13.5). Component state only: never written to
-   * localStorage / sessionStorage (§9.2), cleared on close, on a new search and on success.
-   */
-  const [withdrawNid, setWithdrawNid] = useState('');
   const [withdrawErr, setWithdrawErr] = useState<string | null>(null);
-  const withdrawNidComplete = withdrawNid.length === 13;
-  const withdrawNidValid = withdrawNidComplete && isValidThaiNationalID(withdrawNid);
+  /** The full registered phone, the second factor for self-withdraw (R24). State only, never stored. */
+  const [withdrawPhone, setWithdrawPhone] = useState('');
+  const withdrawPhoneReady = /^0\d{9}$/.test(withdrawPhone);
   /** Set after a successful withdrawal; the record is cleared and this notice replaces it. */
   const [withdrawnId, setWithdrawnId] = useState<string | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editBusy, setEditBusy] = useState(false);
-  const [edit, setEdit] = useState<EditForm>({ nickname: '', school: '', province: '', grade: '', gradeOther: '', shirtSize: '' });
-  const [editErrors, setEditErrors] = useState<EditErrors>({});
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editLiveSummary, setEditLiveSummary] = useState('');
-  const [editSaved, setEditSaved] = useState(false);
-  const editToggleRef = useRef<HTMLButtonElement>(null);
-  const editNicknameRef = useRef<HTMLInputElement>(null);
-  const editRestore = useRef(false);
   const withdrawToggleRef = useRef<HTMLButtonElement>(null);
   const withdrawConfirmRef = useRef<HTMLButtonElement>(null);
-  const withdrawNidRef = useRef<HTMLInputElement>(null);
+  const withdrawPhoneRef = useRef<HTMLInputElement>(null);
+  /** After a failed attempt the phone field is refocused once it is enabled again. */
+  const withdrawRefocus = useRef(false);
   const withdrawnRef = useRef<HTMLDivElement>(null);
   /** Focus goes back to the toggle only when the panel was closed by the user. */
   const withdrawRestore = useRef(false);
   const searchRun = useRef(0);
   const searchBusyRef = useRef(false);
-  const editBusyRef = useRef(false);
   const withdrawBusyRef = useRef(false);
 
   const resultAnchorRef = useRef<HTMLDivElement>(null);
@@ -566,45 +575,50 @@ export function StatusSection() {
     // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
     const query = normalizeLookupQuery(rawQuery);
     if (!query) return;
-    const digitsOnly = /^\d+$/.test(query) ? query : '';
-    const isNationalIdLookup = !opts?.fromStoredReceipt && digitsOnly.length === 13;
     const run = ++searchRun.current;
+    setStoredNotice(null);
+    setWithdrawOpen(false);
+    setWithdrawErr(null);
+    setWithdrawPhone('');
+    setWithdrawnId(null);
+    // Only a 10-digit phone or a CC25 code ever leaves the browser: anything else (for example a
+    // 13-digit national ID typed out of habit) is answered here and never sent.
+    if (!isPhoneQuery(query) && !isApplicationCodeQuery(query)) {
+      searchBusyRef.current = false;
+      setBusy(false);
+      setApp(null);
+      setPhoneResult(null);
+      setError(BAD_QUERY_COPY);
+      return;
+    }
     searchBusyRef.current = true;
     setBusy(true);
     setError(null);
-    setStoredNotice(null);
-    setVerifyError(null);
-    setShowManualVerifyCode(false);
-    setVerifyCode(isNationalIdLookup ? digitsOnly.slice(-4) : '');
-    setAutoVerifiedById(isNationalIdLookup);
-    setWithdrawOpen(false);
-    setWithdrawNid('');
-    setWithdrawErr(null);
-    setWithdrawnId(null);
-    setEditOpen(false);
-    setEditSaved(false);
-    setEditError(null);
-    setEditErrors({});
-    setEditLiveSummary('');
     try {
       const res = await getApplicationStatus(query);
       if (run !== searchRun.current) return;
-      setApp(res.data);
+      const data = res.data;
+      if (isPhoneLookup(data)) {
+        setApp(null);
+        setPhoneResult(data);
+      } else {
+        setPhoneResult(null);
+        setApp(data);
+      }
       setSource(res.source);
     } catch (err) {
       if (run !== searchRun.current) return;
-      setAutoVerifiedById(false);
-      setVerifyCode('');
-      setShowManualVerifyCode(false);
       if (opts?.fromStoredReceipt && err instanceof ApiHttpError && err.status === 404) {
         clearReceipt();
         setQ('');
         setApp(null);
-        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยเบอร์โทรศัพท์หรือเลขบัตรประจำตัว 13 หลักได้ด้านล่าง`);
+        setPhoneResult(null);
+        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยรหัสใบสมัครจากอีเมล หรือดูสถานะโดยย่อด้วยเบอร์โทรศัพท์ได้ด้านล่าง`);
         return;
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
       setApp(null);
+      setPhoneResult(null);
     } finally {
       if (run === searchRun.current) {
         searchBusyRef.current = false;
@@ -628,6 +642,16 @@ export function StatusSection() {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = (params.get('q') ?? params.get('id') ?? '').trim();
     if (urlQuery) {
+      // The email link carries the code (/status?q=CC25-…). Read it once, then drop it from the
+      // address bar so it is not left in the visible URL, a screenshot or a shared link.
+      params.delete('q');
+      params.delete('id');
+      const rest = params.toString();
+      try {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+      } catch {
+        /* some in-app browsers refuse replaceState; the search still runs */
+      }
       setQ(urlQuery);
       void runSearch(urlQuery);
     } else {
@@ -647,7 +671,7 @@ export function StatusSection() {
   }, [runSearch]);
 
   useEffect(() => {
-    if (withdrawOpen) withdrawNidRef.current?.focus();
+    if (withdrawOpen) withdrawPhoneRef.current?.focus();
     else if (withdrawRestore.current) {
       withdrawRestore.current = false;
       withdrawToggleRef.current?.focus();
@@ -657,22 +681,12 @@ export function StatusSection() {
     if (withdrawnId) withdrawnRef.current?.focus();
   }, [withdrawnId]);
   useEffect(() => {
-    if (editOpen) editNicknameRef.current?.focus();
-    else if (editRestore.current) {
-      editRestore.current = false;
-      editToggleRef.current?.focus();
+    if (!withdrawBusy && withdrawRefocus.current) {
+      withdrawRefocus.current = false;
+      withdrawPhoneRef.current?.focus();
+      withdrawPhoneRef.current?.select();
     }
-  }, [editOpen]);
-  useEffect(() => {
-    if (showManualVerifyCode && manualCodeFocusRef.current) {
-      manualCodeFocusRef.current = false;
-      const el = document.getElementById('verify-code');
-      if (el instanceof HTMLInputElement) {
-        el.focus();
-        el.select();
-      }
-    }
-  }, [showManualVerifyCode]);
+  }, [withdrawBusy]);
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -688,155 +702,65 @@ export function StatusSection() {
     });
   }
 
-  function openEdit() {
-    if (!app) return;
-    setEdit(formFromApp(app));
-    setEditErrors({});
-    setEditError(null);
-    setEditLiveSummary('');
-    setEditSaved(false);
-    setEditOpen(true);
-  }
-
-  function closeEdit() {
-    if (editBusy) return;
-    editRestore.current = true;
-    setEditLiveSummary('');
-    setEditOpen(false);
-  }
-
-  function setEditField<K extends keyof EditForm>(key: K, value: EditForm[K]) {
-    setEdit((f) => ({ ...f, [key]: value }));
-    // Clear the message of the field being fixed; the others stay until the next save.
-    setEditErrors((e) => {
-      if (!e[key]) return e;
-      const next = { ...e, [key]: undefined };
-      if (!Object.values(next).some(Boolean)) setEditLiveSummary('');
-      return next;
-    });
-  }
-
-  async function onSaveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!app || editBusy || editBusyRef.current) return;
-    const errors = validateEdit(edit);
-    setEditErrors(errors);
-    setEditError(null);
-    const errCount = Object.values(errors).filter(Boolean).length;
-    const firstBad = (['nickname', 'school', 'province', 'grade', 'gradeOther', 'shirtSize'] as const).find((k) => errors[k]);
-    if (firstBad) {
-      const msg = `ข้อมูลยังไม่ครบหรือไม่ถูกต้อง ${errCount} ช่อง กรุณาตรวจสอบช่องที่มีข้อความแจ้งเตือน`;
-      setEditLiveSummary((prev) => (prev === msg ? `${msg} ` : msg));
-      document.getElementById(`edit-${firstBad}`)?.focus();
-      return;
-    }
-    setEditLiveSummary('');
-    if (!codeReady) return;
-    editBusyRef.current = true;
-    setEditBusy(true);
-    try {
-      const res = await updateOwnProfile(app.id, verifyCode, {
-        nickname: cleanSingleLine(edit.nickname),
-        school: cleanSingleLine(edit.school),
-        province: cleanSingleLine(edit.province),
-        grade: gradeValue({ grade: edit.grade, gradeOther: cleanSingleLine(edit.gradeOther) }),
-        shirtSize: edit.shirtSize as ShirtSize,
-      });
-      setApp(res.data);
-      setSource(res.source);
-      setEditSaved(true);
-      editRestore.current = true;
-      setEditOpen(false);
-    } catch (err) {
-      const locked = describeVerifyLock(err);
-      if (locked) {
-        setEditError(locked);
-        setVerifyError(locked);
-        setShowManualVerifyCode(true);
-      } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
-        const msg = describeError(err, 'รหัสยืนยัน 4 หลักไม่ถูกต้อง');
-        setEditError(msg);
-        setVerifyError(msg);
-        manualCodeFocusRef.current = true;
-        setShowManualVerifyCode(true);
-      } else if (err instanceof ApiHttpError && err.status === 409) {
-        setEditError('ใบสมัครนี้อยู่ในสถานะที่แก้ไขเองไม่ได้ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ');
-      } else if (err instanceof ApiHttpError && err.code === 'VALIDATION_ERROR') {
-        setEditError('ข้อมูลที่กรอกยังไม่ถูกต้อง กรุณาตรวจสอบทุกช่องแล้วลองอีกครั้ง');
-      } else {
-        setEditError(describeError(err, 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง'));
-      }
-    } finally {
-      editBusyRef.current = false;
-      setEditBusy(false);
-    }
+  /** From the phone-lookup card: put the cursor in the search box for the CC25 code. */
+  function focusCodeSearch() {
+    setQ('');
+    const el = searchInputRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+    el.focus({ preventScroll: true });
   }
 
   function closeWithdraw() {
     if (withdrawBusy || withdrawBusyRef.current) return;
     withdrawRestore.current = true;
     setWithdrawOpen(false);
-    setWithdrawNid('');
+    setWithdrawPhone('');
     setWithdrawErr(null);
   }
 
   async function onWithdraw() {
-    if (!app || !withdrawNidValid || withdrawBusy || withdrawBusyRef.current) return;
+    if (!app || !withdrawPhoneReady || withdrawBusy || withdrawBusyRef.current) return;
     withdrawBusyRef.current = true;
     setWithdrawBusy(true);
     setError(null);
     setWithdrawErr(null);
     try {
-      await withdrawApplication(app.id, withdrawNid);
+      await withdrawApplication(app.id, withdrawPhone);
       const id = app.id;
       if (loadReceipt()?.id === id) clearReceipt();
       setApp(null);
       setSource(null);
-      setVerifyCode('');
-      setAutoVerifiedById(false);
-      setShowManualVerifyCode(false);
-      setWithdrawNid('');
+      setWithdrawPhone('');
       setWithdrawOpen(false);
-      setVerifyError(null);
       setWithdrawnId(id);
     } catch (err) {
-      // Problems with the typed ID (wrong, malformed, locked) are shown next to the field.
-      const locked = describeVerifyLock(err);
-      if (locked) {
-        setWithdrawErr(locked);
-      } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
-        setWithdrawErr('เลขบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง');
-      } else if (err instanceof ApiHttpError && err.status === 400) {
-        setWithdrawErr('กรุณากรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครให้ถูกต้อง');
-      } else if (err instanceof ApiHttpError && err.status === 429) {
+      if (err instanceof ApiHttpError && err.status === 429) {
         setWithdrawErr(describeError(err, 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่'));
+        withdrawRefocus.current = true;
+      } else if (err instanceof ApiHttpError && err.status === 404) {
+        // An unknown code and a wrong phone are the same 404 on purpose: never say which part was
+        // wrong, and keep the stored receipt (the code itself may be fine).
+        setWithdrawErr(WITHDRAW_MISMATCH_COPY);
+        withdrawRefocus.current = true;
       } else if (err instanceof ApiHttpError && err.status === 409) {
         setWithdrawOpen(false);
-        setWithdrawNid('');
-        setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อขอยกเลิกและคืนเงิน');
+        setWithdrawPhone('');
+        setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งยกเลิก');
         getApplicationStatus(app.id)
           .then((res) => {
+            if (isPhoneLookup(res.data)) return;
             setApp(res.data);
             setSource(res.source);
           })
           .catch(() => {});
-      } else if (err instanceof ApiHttpError && err.status === 404) {
-        if (loadReceipt()?.id === app.id) clearReceipt();
-        setError('ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ลองค้นหาอีกครั้ง');
       } else {
         setError(describeError(err, 'ยกเลิกใบสมัครไม่สำเร็จ'));
       }
     } finally {
       withdrawBusyRef.current = false;
       setWithdrawBusy(false);
-    }
-  }
-
-  function focusVerifyCode() {
-    const el = document.getElementById('verify-code');
-    if (el instanceof HTMLInputElement) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.focus({ preventScroll: true });
     }
   }
 
@@ -876,61 +800,6 @@ export function StatusSection() {
   const canWithdraw = Boolean(app && seatHeld && app.status !== 'CONFIRMED' && !moneyHeld);
   // Cancelling is staff-only: say so, with the way to reach them.
   const mustAskStaffToCancel = seatHeld && !canWithdraw;
-  // Secondary fields stay editable while the application holds a seat (also once CONFIRMED).
-  const canEditProfile = seatHeld;
-  // The code is asked for only while there is something left to do on this application.
-  const needsVerifyCode = Boolean(isEligibleForPayment && !slipApproved) || canEditProfile;
-  const verifyHint = !app
-    ? ''
-    : slipApproved
-      ? 'ใช้ยืนยันตัวตนก่อนแก้ไขข้อมูล'
-      : isEligibleForPayment
-        ? 'ใช้ยืนยันตัวตนก่อนส่งสลิปหรือแก้ไขข้อมูล'
-        : 'ใช้ยืนยันตัวตนก่อนแก้ไขข้อมูล';
-
-  // Identity check sits right above the action that needs it: payment while a slip is still due,
-  // otherwise the record (self-service edit).
-  const verifyFirst = Boolean(isEligibleForPayment && !slipApproved);
-  /* Second factor (AGENTS.md §13.5): an application ID or a phone number alone is not enough to
-     edit profile or send a slip. The phone's digits are not accepted on purpose: the record shows
-     them. Searching by full 13-digit national ID already proves identity. */
-  const verifyCard = (
-    <section aria-label="ยืนยันตัวตน" className="st-card st-card--compact">
-              {autoVerifiedById && !showManualVerifyCode ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm leading-6">
-                  <p className="inline-flex items-center gap-2 font-medium" style={{ color: INK }}>
-                    <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} className="shrink-0" style={{ color: 'var(--color-success)' }} />
-                    <span>ยืนยันตัวตนด้วยเลขบัตรประจำตัว 13 หลักแล้ว (ส่งสลิป / แก้ไขข้อมูลได้ทันที)</span>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      manualCodeFocusRef.current = true;
-                      setShowManualVerifyCode(true);
-                    }}
-                    className={`inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 transition-opacity hover:opacity-80 ${FOCUS_RING}`}
-                    style={{ color: INK_MUTED }}
-                  >
-                    เปลี่ยนรหัส
-                  </button>
-                </div>
-              ) : (
-                <VerifyCodeField
-                  id="verify-code"
-                  value={verifyCode}
-                  onChange={(v) => {
-                    setVerifyCode(v);
-                    if (verifyError) setVerifyError(null);
-                  }}
-                  error={verifyError}
-                  notPhone
-                  hintId="verify-code-hint"
-                  hint={verifyHint}
-                />
-              )}
-            </section>
-  );
-
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
       {/* ── Masthead + search: the search field is in the first phone screen ── */}
@@ -939,7 +808,7 @@ export function StatusSection() {
           ตรวจสอบสถานะใบสมัคร
         </h1>
         <p className="mt-3 max-w-[52ch] text-base leading-7" style={{ color: INK_MUTED }}>
-          ดูผลการสมัคร ส่งสลิปโอนเงิน และแก้ไขข้อมูลได้ในหน้านี้ โดยไม่ต้องสมัครใหม่
+          ดูผลการสมัครและส่งสลิปโอนเงินได้ในหน้านี้ โดยไม่ต้องสมัครใหม่
         </p>
       </header>
 
@@ -949,14 +818,14 @@ export function StatusSection() {
             ค้นหาใบสมัครของน้อง
           </h2>
           <p className="mt-2 max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            ใช้ข้อมูลอย่างใดอย่างหนึ่ง: เลขบัตรประจำตัว <span className="font-mono tabular-nums">13</span> หลัก
-            เบอร์โทรศัพท์ที่ใช้สมัคร หรือรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>
+            ค้นหาด้วยรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>{' '}
+            จากอีเมลหรือหน้าใบตอบรับ เพื่อดูรายละเอียดและส่งสลิป หรือใช้เบอร์โทรศัพท์ที่ใช้สมัครเพื่อดูสถานะโดยย่อ
           </p>
         </div>
 
         <form onSubmit={onSearch} className="st-card md:col-span-7">
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
-            เลขบัตร 13 หลัก เบอร์โทร หรือรหัสใบสมัคร
+            รหัสใบสมัคร หรือเบอร์โทรศัพท์
           </label>
           <div className="relative flex items-center">
             <input
@@ -964,7 +833,7 @@ export function StatusSection() {
               id="status-q"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="เช่น 0812345678 หรือ CC25-XXXXXX"
+              placeholder="เช่น CC25-1A2B3C หรือ 0812345678"
               autoComplete="off"
               spellCheck={false}
               className="min-h-11 w-full rounded-none border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
@@ -1070,11 +939,15 @@ export function StatusSection() {
         </div>
       )}
 
+      {phoneResult && !app && (
+        <div className="mt-8 space-y-8">
+          <PhoneLookupCard result={phoneResult} source={source} nowMs={nowMs} onSearchByCode={focusCodeSearch} />
+        </div>
+      )}
+
       {app && (
         <div className="mt-8 space-y-8">
           <StatusHighlight app={app} seats={seats} feeText={feeText} nowMs={nowMs} />
-
-          {needsVerifyCode && verifyFirst && verifyCard}
 
           {/* ── Payment: the next task for a PASSED applicant, so it comes before the record ── */}
           {isEligibleForPayment && (
@@ -1090,20 +963,20 @@ export function StatusSection() {
                   <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
                     {slipApproved ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ชำระเงินและตรวจสอบสลิปเรียบร้อยแล้ว (หากสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ชำระเงินและตรวจสอบสลิปเรียบร้อยแล้ว
                       </>
                     ) : slipState === 'PENDING' ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ได้รับสลิปแล้ว อยู่ระหว่างรอทีมงานตรวจสอบ (หากสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ได้รับสลิปแล้ว อยู่ระหว่างรอทีมงานตรวจสอบ
                       </>
                     ) : app.status === 'CONFIRMED' ? (
                       <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · สถานะยืนยันสิทธิ์แล้ว (หากยังไม่ได้แนบสลิป สามารถอัปโหลดด้านล่าง · โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · สถานะยืนยันสิทธิ์แล้ว (หากยังไม่ได้แนบสลิป สามารถอัปโหลดด้านล่าง)
                       </>
                     ) : (
                       <>
                         ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · กรุณาโอนและแนบสลิปภายใน{' '}
-                        <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง) หลังสมัคร (โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี)
+                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
                       </>
                     )}
                   </p>
@@ -1124,7 +997,7 @@ export function StatusSection() {
               {!slipApproved && !moneyHeld && app.status !== 'CONFIRMED' && paymentDeadline && (
                 <div
                   role="note"
-                  aria-label={slipRejected ? 'แจ้งเตือนอัปโหลดสลิปใหม่' : 'แจ้งเตือนกำหนดเวลาชำระเงิน 3 วัน'}
+                  aria-label={slipRejected ? 'แจ้งเตือนอัปโหลดสลิปใหม่' : `แจ้งเตือนกำหนดเวลาชำระเงิน ${PAYMENT_WINDOW_DAYS} วัน`}
                   className="st-warning mt-5"
                 >
                   <p className="flex items-start gap-2 text-sm font-bold leading-6" style={{ color: INK }}>
@@ -1149,7 +1022,7 @@ export function StatusSection() {
                     ) : (
                       <>
                         กรุณาโอนเงินและอัปโหลดสลิปภายในวันที่ <strong className="tabular-nums" style={{ color: INK }}>{paymentDeadline.deadlineText}</strong> (ภายใน{' '}
-                        <span className="font-mono tabular-nums">3</span> วัน / <span className="font-mono tabular-nums">72</span> ชั่วโมงหลังสมัคร)
+                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน / <span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมงหลังสมัคร)
                         หากพ้นกำหนดระบบจะตัดสิทธิ์และคืนที่นั่งว่างให้ผู้สมัครคนอื่นโดยอัตโนมัติ
                       </>
                     )}
@@ -1230,17 +1103,10 @@ export function StatusSection() {
                   key={app.id}
                   appId={app.id}
                   slip={slipApproved ? 'APPROVED' : slipState}
-                  verifyCode={verifyCode}
-                  codeInputId="verify-code"
-                  onCodeInvalid={(msg) => {
-                    setVerifyError(msg);
-                    if (msg) setShowManualVerifyCode(true);
-                  }}
                   submitLabel="ยืนยันและส่งหลักฐานสลิป"
                   onUploaded={(status, _message, src) => {
                     setSource(src);
                     setError(null);
-                    setVerifyError(null);
                     setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
                   }}
                 />
@@ -1288,9 +1154,8 @@ export function StatusSection() {
               )}
             </section>
           )}
-          {needsVerifyCode && !verifyFirst && verifyCard}
 
-          {/* ── Application record: details, self-service edit, withdrawal ── */}
+          {/* ── Application record: details, how to ask staff for a correction, withdrawal ── */}
           <section className="st-card">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
               <div className="min-w-0">
@@ -1313,7 +1178,6 @@ export function StatusSection() {
               {[
                 { k: 'ชื่อ – นามสกุล', v: app.fullName, mono: false },
                 { k: 'ชื่อเล่น', v: app.nickname || '–', mono: false },
-                { k: 'เลขบัตรประจำตัว', v: app.nationalId, mono: true },
                 { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
                 { k: 'โรงเรียน', v: app.school, mono: false },
                 {
@@ -1336,204 +1200,53 @@ export function StatusSection() {
               ))}
             </dl>
 
-            {/* Self-service edit of the secondary fields (identity fields are staff-only). */}
-            {canEditProfile && (
-              <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
-                {editOpen ? (
-                  <form
-                    onSubmit={onSaveProfile}
-                    noValidate
-                    aria-labelledby="edit-title"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        closeEdit();
-                      }
-                    }}
+            {/* Corrections are staff-only: the applicant self-edit was switched off (the QR code lives in the contacts column below). */}
+            <div id="status-correction" className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
+              <h3 className="text-base font-bold leading-7" style={{ color: INK }}>
+                ต้องการแก้ไขข้อมูล?
+              </h3>
+              <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+                หากต้องการแก้ไขข้อมูล (เช่น ชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ) กรุณาติดต่อทีมงาน พร้อมแจ้งรหัสใบสมัคร{' '}
+                <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  href={FB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+                  style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+                >
+                  ติดต่อทีมงานทาง Facebook
+                </a>
+                {STAFF_CONTACTS.map((c) => (
+                  <a
+                    key={c.tel}
+                    href={`tel:${c.tel}`}
+                    className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
+                    style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                   >
-                    <h3 id="edit-title" className="text-base font-bold leading-7" style={{ color: INK }}>
-                      แก้ไขข้อมูลทั่วไป
-                    </h3>
-                    <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                      แก้ไขได้เฉพาะชื่อเล่น โรงเรียน จังหวัด ระดับชั้น และไซส์เสื้อ หากต้องการแก้ไขชื่อ-นามสกุล เลขบัตรประจำตัว เบอร์โทรศัพท์ อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ/การแพ้อาหาร หรือเหตุผลการสมัคร
-                      กรุณา{' '}
-                      <a href={FB_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-4" style={{ color: INK }}>
-                        ติดต่อทีมงานทางเพจ Facebook
-                      </a>{' '}
-                      หรือโทร{' '}
-                      {STAFF_CONTACTS.map((c, idx) => (
-                        <span key={c.tel}>
-                          {idx > 0 ? ' / ' : ''}
-                          <a href={`tel:${c.tel}`} className="font-mono font-semibold tabular-nums underline underline-offset-4" style={{ color: INK }}>
-                            {c.phone}
-                          </a>
-                        </span>
-                      ))}
-                    </p>
-
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <EditField id="edit-nickname" label="ชื่อเล่น" error={editErrors.nickname}>
-                        <input
-                          id="edit-nickname"
-                          ref={editNicknameRef}
-                          value={edit.nickname}
-                          onChange={(e) => setEditField('nickname', e.target.value)}
-                          autoComplete="nickname"
-                          aria-invalid={editErrors.nickname ? true : undefined}
-                          aria-describedby={editErrors.nickname ? 'edit-nickname-err' : undefined}
-                          className={INPUT_CLS}
-                          style={{ borderColor: BORDER_INPUT, color: INK }}
-                        />
-                      </EditField>
-                      <EditField id="edit-province" label="จังหวัด" error={editErrors.province}>
-                        <input
-                          id="edit-province"
-                          value={edit.province}
-                          onChange={(e) => setEditField('province', e.target.value)}
-                          autoComplete="address-level1"
-                          aria-invalid={editErrors.province ? true : undefined}
-                          aria-describedby={editErrors.province ? 'edit-province-err' : undefined}
-                          className={INPUT_CLS}
-                          style={{ borderColor: BORDER_INPUT, color: INK }}
-                        />
-                      </EditField>
-                      <div className="sm:col-span-2">
-                        <EditField id="edit-school" label="โรงเรียน / สถานศึกษา" error={editErrors.school}>
-                          <input
-                            id="edit-school"
-                            value={edit.school}
-                            onChange={(e) => setEditField('school', e.target.value)}
-                            aria-invalid={editErrors.school ? true : undefined}
-                            aria-describedby={editErrors.school ? 'edit-school-err' : undefined}
-                            className={INPUT_CLS}
-                            style={{ borderColor: BORDER_INPUT, color: INK }}
-                          />
-                        </EditField>
-                      </div>
-                      <EditField id="edit-grade" label="ระดับชั้น" error={editErrors.grade}>
-                        <select
-                          id="edit-grade"
-                          value={edit.grade}
-                          onChange={(e) => setEditField('grade', e.target.value)}
-                          aria-invalid={editErrors.grade ? true : undefined}
-                          aria-describedby={editErrors.grade ? 'edit-grade-err' : undefined}
-                          className={INPUT_CLS}
-                          style={{ borderColor: BORDER_INPUT, color: INK }}
-                        >
-                          <option value="" disabled>
-                            เลือกระดับชั้น
-                          </option>
-                          {GRADES.map((g) => (
-                            <option key={g} value={g}>
-                              {g}
-                            </option>
-                          ))}
-                          <option value={GRADE_OTHER}>{GRADE_OTHER} (ระบุเอง)</option>
-                        </select>
-                      </EditField>
-                      <EditField id="edit-shirtSize" label="ไซส์เสื้อค่าย" error={editErrors.shirtSize}>
-                        <select
-                          id="edit-shirtSize"
-                          value={edit.shirtSize}
-                          onChange={(e) => setEditField('shirtSize', e.target.value as ShirtSize)}
-                          aria-invalid={editErrors.shirtSize ? true : undefined}
-                          aria-describedby={editErrors.shirtSize ? 'edit-shirtSize-err' : undefined}
-                          className={INPUT_CLS}
-                          style={{ borderColor: BORDER_INPUT, color: INK }}
-                        >
-                          <option value="" disabled>
-                            เลือกไซส์เสื้อ
-                          </option>
-                          {SHIRT_SIZES.map((size) => (
-                            <option key={size} value={size}>
-                              {size} · รอบอก {SIZE_CHEST[size]}&quot; · ยาว {SIZE_LENGTH[size]}&quot;
-                            </option>
-                          ))}
-                        </select>
-                      </EditField>
-                      {edit.grade === GRADE_OTHER && (
-                        <div className="sm:col-span-2">
-                          <EditField id="edit-gradeOther" label="ระบุระดับชั้น" error={editErrors.gradeOther}>
-                            <input
-                              id="edit-gradeOther"
-                              value={edit.gradeOther}
-                              onChange={(e) => setEditField('gradeOther', e.target.value)}
-                              maxLength={GRADE_OTHER_MAX + 10}
-                              placeholder="เช่น เทียบเท่า ม.4–ม.6"
-                              aria-invalid={editErrors.gradeOther ? true : undefined}
-                              aria-describedby={editErrors.gradeOther ? 'edit-gradeOther-err' : undefined}
-                              className={INPUT_CLS}
-                              style={{ borderColor: BORDER_INPUT, color: INK }}
-                            />
-                          </EditField>
-                        </div>
-                      )}
-                    </div>
-
-                    <p
-                      role="status"
-                      aria-live="polite"
-                      className={editLiveSummary.trim() ? 'mt-3 text-sm font-semibold leading-7' : 'sr-only'}
-                      style={{ color: 'var(--color-danger)' }}
-                    >
-                      {editLiveSummary}
-                    </p>
-                    {!codeReady && (
-                      <VerifyCodePrompt onFocusCode={focusVerifyCode} action="บันทึกการแก้ไข" />
-                    )}
-                    {editError && (
-                      <p role="alert" className="mt-3 flex items-start gap-1.5 text-sm leading-7" style={{ color: INK }}>
-                        <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1.5 shrink-0" style={{ color: 'var(--color-danger)' }} />
-                        <span>{editError}</span>
-                      </p>
-                    )}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="submit"
-                        disabled={editBusy || !codeReady}
-                        aria-busy={editBusy || undefined}
-                        aria-describedby={codeReady ? undefined : 'verify-code-hint'}
-                        className={`inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50 ${FOCUS_RING}`}
-                        style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-                      >
-                        {editBusy ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={closeEdit}
-                        disabled={editBusy}
-                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
-                        style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                      >
-                        ยกเลิก
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <button
-                      ref={editToggleRef}
-                      type="button"
-                      onClick={openEdit}
-                      aria-expanded={editOpen}
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
-                      style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                    >
-                      <Pencil aria-hidden="true" size={16} strokeWidth={1.5} />
-                      แก้ไขข้อมูลทั่วไป
-                    </button>
-                    {editSaved && (
-                      <p role="status" className="inline-flex items-center gap-1.5 text-sm leading-7" style={{ color: INK }}>
-                        <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} style={{ color: 'var(--color-success)' }} />
-                        <span>บันทึกข้อมูลเรียบร้อยแล้ว</span>
-                      </p>
-                    )}
-                  </div>
-                )}
+                    <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
+                    <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                      <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                      <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                        <span aria-hidden="true" className="hidden sm:inline">· </span>
+                        {c.name}
+                      </span>
+                    </span>
+                  </a>
+                ))}
               </div>
-            )}
+              <p className="mt-2 text-sm leading-7" style={{ color: INK_MUTED }}>
+                สแกน QR เพจ Facebook ได้ที่หัวข้อ{' '}
+                <a href="#status-info-title" className={`font-semibold underline underline-offset-4 ${FOCUS_RING}`} style={{ color: INK }}>
+                  ข้อมูลค่ายและช่องทางติดต่อ
+                </a>{' '}
+                ด้านล่างของหน้านี้
+              </p>
+            </div>
 
-            {/* Self-service withdrawal: frees the seat; asks for the full national ID (not the 4-digit code above). */}
+            {/* Self-service withdrawal: frees the seat. Needs the code this record was found by AND the full registered phone (R24). */}
             {canWithdraw && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
                 {withdrawOpen ? (
@@ -1555,16 +1268,16 @@ export function StatusSection() {
                       {slipUploaded && ' หากโอนเงินไปแล้ว กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ'}
                     </p>
                     <div className="mt-3 max-w-[22rem]">
-                      <label htmlFor="withdraw-nid" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
-                        กรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครเพื่อยืนยัน
+                      <label htmlFor="withdraw-phone" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
+                        เบอร์โทรที่ใช้สมัคร
                       </label>
                       <input
-                        id="withdraw-nid"
-                        ref={withdrawNidRef}
-                        value={withdrawNid}
-                        // Digits only, max 13: drops dashes and zero-width characters pasted from LINE (§9.2.2).
+                        id="withdraw-phone"
+                        ref={withdrawPhoneRef}
+                        value={withdrawPhone}
+                        // Digits only, max 10: Thai digits become 0-9; dashes, spaces and zero-width characters go (§9.2.2).
                         onChange={(e) => {
-                          setWithdrawNid(cleanNationalIdInput(e.target.value));
+                          setWithdrawPhone(cleanPhoneInput(e.target.value));
                           if (withdrawErr) setWithdrawErr(null);
                         }}
                         onKeyDown={(e) => {
@@ -1573,43 +1286,34 @@ export function StatusSection() {
                             void onWithdraw();
                           }
                         }}
-                        inputMode="numeric"
+                        type="tel"
+                        inputMode="tel"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder="1234567890123"
+                        placeholder="08XXXXXXXX"
                         disabled={withdrawBusy}
-                        aria-invalid={withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? true : undefined}
-                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-nid-hint withdraw-nid-err' : 'withdraw-warn withdraw-nid-hint'}
-                        className={`${INPUT_CLS} mt-1 font-mono tabular-nums disabled:opacity-60`}
-                        style={{
-                          borderColor: withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? 'var(--color-danger)' : BORDER_INPUT,
-                          color: INK,
-                        }}
+                        aria-invalid={withdrawErr ? true : undefined}
+                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-phone-hint withdraw-err' : 'withdraw-warn withdraw-phone-hint'}
+                        className={`mt-1 w-full rounded-xl border bg-[var(--bg-card)] px-3.5 py-2.5 font-mono text-base leading-7 tabular-nums outline-none transition-colors placeholder:text-[var(--color-ink-subtle)] focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30 disabled:opacity-60`}
+                        style={{ borderColor: withdrawErr ? 'var(--color-danger)' : BORDER_INPUT, color: INK }}
                       />
-                      <p id="withdraw-nid-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                        {withdrawNidComplete && !withdrawNidValid ? (
-                          'เลขบัตรประจำตัว 13 หลักนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
-                        ) : (
-                          <>
-                            ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{withdrawNid.length}/13</span> หลัก)
-                            ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง
-                          </>
-                        )}
+                      <p id="withdraw-phone-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
+                        กรอกเบอร์โทรศัพท์ <span className="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร แล้วกดยืนยันเพื่อยกเลิกใบสมัครนี้ ระบบไม่บันทึกเบอร์นี้ไว้ในเครื่อง
                       </p>
-                      {withdrawErr && (
-                        <p id="withdraw-nid-err" role="alert" className="mt-1 text-sm font-semibold leading-7" style={{ color: 'var(--color-danger)' }}>
-                          {withdrawErr}
-                        </p>
-                      )}
                     </div>
+                    {withdrawErr && (
+                      <p id="withdraw-err" role="alert" className="mt-1 max-w-[60ch] text-sm font-semibold leading-7" style={{ color: 'var(--color-danger)' }}>
+                        {withdrawErr}
+                      </p>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         ref={withdrawConfirmRef}
                         type="button"
                         onClick={onWithdraw}
-                        disabled={withdrawBusy || !withdrawNidValid}
+                        disabled={withdrawBusy || !withdrawPhoneReady}
                         aria-busy={withdrawBusy || undefined}
-                        aria-describedby="withdraw-warn withdraw-nid-hint"
+                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-err' : 'withdraw-warn'}
                         className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)', backgroundColor: SURFACE }}
                       >
@@ -1650,7 +1354,7 @@ export function StatusSection() {
                     ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'
                     : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'}{' '}
                   หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ หรือโทรติดต่อพี่ค่าย พร้อมแจ้งรหัสใบสมัคร{' '}
-                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
+                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (กรณีโอนเงินแล้วหรือยืนยันสิทธิ์แล้ว กรุณาติดต่อคุยกับทีมงานโดยตรง)
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a
@@ -1692,7 +1396,7 @@ export function StatusSection() {
             </h3>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
               ค่ายจัดวันที่ <strong className="tabular-nums" style={{ color: INK }}>5–7 กุมภาพันธ์ 2570</strong> (<span className="tabular-nums">3</span> วัน <span className="tabular-nums">2</span> คืน)
-              ณ อาคารเรียนสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ · พักค้างคืนที่ {DORM_NAME} (แยกโซนชาย-หญิง)
+              ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) · พักค้างคืนที่ {DORM_NAME} (แยกโซนชาย-หญิง)
             </p>
             <a
               href={DORM_MAPS_URL}
@@ -1705,6 +1409,9 @@ export function StatusSection() {
               <span>ดูแผนที่เรือนพัก (Google Maps)</span>
               <ArrowUpRight aria-hidden="true" size={15} strokeWidth={1.75} />
             </a>
+            <p className="mt-3 text-sm leading-7" style={{ color: INK_MUTED }}>
+              <strong style={{ color: INK }}>สิทธิพิเศษ:</strong> หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้
+            </p>
           </div>
 
           <div className="min-w-0">
@@ -1712,7 +1419,7 @@ export function StatusSection() {
               ค่าสมัครและอีเมลแจ้งผล
             </h3>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
-              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">3</span> วันหลังสมัคร · สละสิทธิ์ไม่คืนเงินทุกกรณี)
+              ค่าสมัคร <strong className="font-mono tabular-nums" style={{ color: INK }}>{feeText}</strong> บาท (โอนภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร)
               รวม 7 รายการ: ที่พัก 2 คืน · อาหารหลัก 6 มื้อ · อาหารว่าง 5 มื้อ · เสื้อค่าย (SSS–4XL) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร
             </p>
             <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
@@ -1754,6 +1461,21 @@ export function StatusSection() {
                 </li>
               ))}
             </ul>
+            <figure className="mt-3 flex items-center gap-3">
+              <img
+                src="/assets/facebook-page-qr.svg"
+                width={120}
+                height={120}
+                loading="lazy"
+                decoding="async"
+                alt="QR Code เพจ Facebook ComCamp (CCCSMJU)"
+                className="shrink-0 rounded-xl border p-2"
+                style={{ backgroundColor: '#FFFFFF', borderColor: RULE }}
+              />
+              <figcaption className="text-sm leading-7" style={{ color: INK_MUTED }}>
+                สแกนเพื่อเข้าเพจ Facebook
+              </figcaption>
+            </figure>
           </div>
         </div>
       </section>

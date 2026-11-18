@@ -28,17 +28,17 @@ PUBLIC_API_URL=http://localhost:8000/api
 | หน้าจอใน Frontend | HTTP Method & Endpoint | วัตถุประสงค์ & หน้าที่ |
 |---|---|---|
 | **`/` (Countdown Hero)** | `GET /api/settings/public` | ซิงค์เวลา Server กับตัวนับถอยหลัง ป้องกัน Clock Tampering และเช็คว่าเปิดรับสมัครหรือยัง |
-| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ตรวจเลขบัตร 13 หลัก, เบอร์ 10 หลัก, คุมโควตาตาม `maxCapacity` ค่าเริ่มต้น 30 ที่นั่ง แอดมินปรับได้ที่ `PATCH /api/admin/settings`) |
-| **`/status` (ตรวจสถานะ)** | `GET /api/applications/status?q={query}` | ค้นหาใบสมัครด้วยเลขบัตรประชาชน 13 หลัก, เบอร์โทร, หรือรหัสใบสมัคร (`CC25-xxxxxx`) |
-| **`/status` (ยืนยันสิทธิ์)** | `POST /api/applications/:id/confirm` | กดยืนยันการเข้าร่วมค่าย (ทำได้เมื่อสถานะเป็น `PASSED` หรือ `CONFIRMED`) body `{ "confirmed": true, "verifyCode": "<เลข 4 ตัวท้ายบัตรประชาชน>" }` |
-| **`/status` (แนบสลิป)** | `POST /api/applications/:id/slip` | อัปโหลดรูปภาพสลิปโอนเงิน (multipart: `verifyCode` + `slip`, จำกัด 5MB และ 4096×4096 px พร้อมระบบตรวจจับสลิปซ้ำผ่าน SHA-256) |
+| **`/register` (ฟอร์มสมัคร)** | `POST /api/applications` | ส่งใบสมัครใหม่ (ไม่เก็บเลขบัตรประชาชนแล้ว; ตรวจเบอร์ 10 หลัก, เบอร์/อีเมลซ้ำกับใบสมัครที่ยังอยู่ → `409 DUPLICATE_APPLICATION`, คุมโควตาตาม `maxCapacity` ค่าเริ่มต้น 40 ที่นั่ง แอดมินปรับได้ที่ `PATCH /api/admin/settings`) |
+| **`/status` (ตรวจสถานะ)** | `GET /api/applications/status?q={query}` | ค้นด้วยรหัสใบสมัคร (`CC25-xxxxxx`) → ข้อมูล masked เต็ม (`lookup: "code"`); ค้นด้วยเบอร์โทร 10 หลัก → สถานะโดยย่อแบบ masked ไม่มีรหัสใบสมัคร (`lookup: "phone"`, `codeRequired: true`); อย่างอื่น (เช่นเลข 13 หลัก) → `400` |
+| **`/status` (ยืนยันสิทธิ์)** | `POST /api/applications/:id/confirm` | กดยืนยันการเข้าร่วมค่าย (ทำได้เมื่อสถานะเป็น `PASSED` หรือ `CONFIRMED`) body `{ "confirmed": true }` — รหัสใบสมัครใน path คือหลักฐานของผู้สมัคร |
+| **`/status` (แนบสลิป)** | `POST /api/applications/:id/slip` | อัปโหลดรูปภาพสลิปโอนเงิน (multipart: `slip`, จำกัด 5MB และ 4096×4096 px พร้อมระบบตรวจจับสลิปซ้ำผ่าน SHA-256) รหัสใบสมัครใน path คือหลักฐาน |
 | **`/admin` (เข้าสู่ระบบ)** | `POST /api/auth/login` | รับ JWT Bearer Token สำหรับเข้าใช้งานระบบหลังบ้าน |
 | **`/admin` (รายชื่อผู้สมัคร)** | `GET /api/admin/applications` | ดึงรายชื่อผู้สมัครทั้งหมดแบบข้อมูลเต็ม พร้อมสถานะสลิป (`Bearer <token>`) |
 | **`/admin` (ปรับสถานะ)** | `PATCH /api/admin/applications/:id` | ประกาศผลผู้ผ่านการคัดเลือก เช่น ปรับเป็น `PASSED` หรือ `RESERVE` |
 | **`/admin` (ตรวจสลิป)** | `PATCH /api/admin/applications/:id/verify-slip` | พี่ค่ายกดอนุมัติสลิปโอนเงิน เพื่อเปลี่ยนสถานะเป็น `CONFIRMED` สมบูรณ์ |
 | **`/admin` (ดูรูปสลิป)** | `GET /api/admin/applications/:id/slip` | ส่งรูปสลิปล่าสุดให้พี่ค่ายที่ login แล้วเท่านั้น (`Bearer <token>`) หน้าบ้านโหลดเป็น blob ไม่มี URL สาธารณะของสลิป |
 | **`/admin` (ดูการตั้งค่าค่าย)** | `GET /api/admin/settings` | ดึงข้อมูลกำหนดการ, โควตารับสมัคร (maxCapacity), ค่าค่าย และสถานะระบบ (`Bearer <token>`) |
-| **`/admin` (ปรับแก้โควตา/เวลา)** | `PATCH /api/admin/settings` | แก้ไขโควตาจำนวนรับ (`maxCapacity` ค่าเริ่มต้น 30 ระบบปฏิเสธใบสมัครเมื่อเต็ม `409 QUOTA_FULL`), วันเปิด-ปิดรับสมัคร, วันประกาศผล (`Bearer <token>`) |
+| **`/admin` (ปรับแก้โควตา/เวลา)** | `PATCH /api/admin/settings` | แก้ไขโควตาจำนวนรับ (`maxCapacity` ค่าเริ่มต้น 40 ระบบปฏิเสธใบสมัครเมื่อเต็ม `409 QUOTA_FULL`), วันเปิด-ปิดรับสมัคร, วันประกาศผล (`Bearer <token>`) |
 
 ---
 
@@ -76,7 +76,7 @@ backend/
 │   ├── 000001_init_schema.down.sql # Rollback Schema
 │   ├── 000002_security_hardening.up.sql   # audit_logs, idempotency_key, unique slip_hash
 │   ├── 000002_security_hardening.down.sql
-│   ├── 000003_soft_delete_identity.up.sql # national ID / phone / email unique among live rows only
+│   ├── 000003_soft_delete_identity.up.sql # phone / email unique among live rows only (national ID เดิม ถูกลบใน 000011)
 │   ├── 000003_soft_delete_identity.down.sql
 │   ├── 000004_refund_statuses.up.sql      # สถานะ REFUND_PENDING / REFUNDED และค่าเริ่มต้นสถานะเป็น PASSED (First-Come, First-Served)
 │   ├── 000004_refund_statuses.down.sql
@@ -190,25 +190,24 @@ Security regression tests อยู่ที่ `internal/handler/security_test.
 | **ตรวจไฟล์จาก Magic Bytes** | รับเฉพาะ JPEG / PNG / WebP ไม่สนนามสกุลจากผู้ใช้ |
 | **กัน Image Bomb** | อ่านเฉพาะ header ของภาพ (`image.DecodeConfig` สำหรับ JPEG/PNG, parser RIFF `VP8 `/`VP8L`/`VP8X` สำหรับ WebP ไม่ใช้ cgo) กว้างหรือสูงเกิน 4096 px → `400 INVALID_IMAGE_DIMENSIONS` ก่อนคำนวณ hash หรือเขียนดิสก์ |
 | **เขียนไฟล์สองจังหวะ** | เขียนไฟล์ + `Sync()` ให้เสร็จก่อนบันทึกแถว `payments` ถ้าบันทึกฐานข้อมูลไม่สำเร็จจะ `os.Remove()` ไฟล์ทิ้งทันที |
-| **ยืนยันตัวตนที่ `/status`** | `POST /:id/confirm` (JSON `verifyCode`), `POST /:id/slip` (multipart `verifyCode`) และ `PATCH /:id/profile` ต้องส่งเลข 4 ตัวท้ายของบัตรประชาชน ไม่ส่ง → `400`, ไม่ตรง → `403 INVALID_VERIFY_CODE` ไม่รับเลขท้ายเบอร์โทร เพราะหน้าสถานะแสดงเลขนั้นอยู่แล้ว `POST /:id/withdraw` ต้องส่ง `nationalId` เต็ม 13 หลัก (เทียบแบบ constant-time) เพราะคนที่รู้แค่เบอร์โทรก็ค้นเจอใบสมัครได้ |
-| **ล็อกเมื่อเดาเลขยืนยัน** | นับการตอบผิดต่อใบสมัคร รวมทุก endpoint ข้างบน ผิด 5 ครั้งใน 15 นาที ล็อกการยืนยันตัวตนของใบสมัครนั้น 15 นาที (แม้ส่งค่าที่ถูก) → `429 RATE_LIMITED` + `Retry-After` ตอบถูกแล้วตัวนับเริ่มใหม่ บันทึก `application.verify.failure` (ตั้งแต่ครั้งที่ 2) และ `application.verify.lockout` ใน `audit_logs` ตัวนับอยู่ในหน่วยความจำของ process จึงทำงานเหมือนกันทั้ง In-Memory และ PostgreSQL (ถ้ารัน API หลาย replica ต้องย้ายไปเก็บที่ส่วนกลาง) |
-| **ทำความสะอาดข้อมูลที่ก๊อปจากแชต** | ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่างออกจากเลขบัตร/เบอร์ทั้งตอนสมัครและตอนค้นสถานะ รหัสใบสมัครพิมพ์ตัวเล็กหรือไม่มีขีดก็ค้นเจอ |
+| **รหัสใบสมัครคือหลักฐาน** | `POST /:id/confirm`, `POST /:id/slip`, `POST /:id/withdraw` และ `GET /applications/status?q=CC25-…` ใช้รหัส `CC25-XXXXXX` (สุ่มด้วย `crypto/rand`, ส่งให้ผู้สมัครทางหน้าใบตอบรับและอีเมลเท่านั้น) เป็นหลักฐาน การยกเลิกเอง (`/withdraw`) ต้องส่งเบอร์โทรเต็มที่ใช้สมัครด้วย `{ phone, reason? }` (เทียบแบบ constant-time เบอร์ไม่ส่ง/ไม่ตรงได้ 404 เหมือนรหัสที่ไม่มีอยู่และนับเป็น miss) ไม่มี `verifyCode` / เลขบัตรอีกแล้ว ฟิลด์เก่าที่ client รุ่นก่อนส่งมาจะถูกละทิ้ง การค้นด้วยเบอร์โทรไม่คืนรหัสใบสมัคร และหน้าเว็บปิดทุกปุ่มที่เขียนข้อมูล |
+| **กันเดารหัสใบสมัคร (CodeGuard)** | นับ "miss" = รหัสรูปแบบถูกแต่ไม่พบ ข้ามทุก endpoint ข้างบน ต่อ client (IP หรือ IPv6 /64): miss 5 ครั้งใน 15 นาที ล็อก 15 นาที แล้วเพิ่มเท่าตัวต่อ strike สูงสุด 1 ชม. (IP เดียวกันมักมีนักเรียนหลายคนผ่าน CGNAT / Wi-Fi โรงเรียน; ผู้เดาจาก IP เดียวได้ราว 120 ครั้งต่อวัน); ทั้งระบบ (หน้าต่าง 5 นาที): miss 5 ครั้ง ปฏิเสธ client ที่เคย miss, 10 ครั้ง ปฏิเสธทุกคนจนจบหน้าต่าง (≤ 5 นาที) → `429 RATE_LIMITED` + `Retry-After` ก่อนแตะฐานข้อมูล บันทึก `application.code.lockout` / `application.code.ceiling` ใน `audit_logs` (ไม่บันทึกรหัสที่พิมพ์) ถ้าเพดานรวมทำงานภายใน 24 ชม. ล่าสุด ระบบหยุดตัดสิทธิ์ใบสมัครค้างชำระอัตโนมัติ (`ExpiryPauseAfterCodeCeiling`) การค้นด้วยเบอร์โทรที่ไม่พบนับเป็น miss ต่อ client (ล็อกร่วมกับรหัส) แต่ไม่นับในเพดานรวม จึงไม่ทำให้หยุดตัดสิทธิ์ สถานะอยู่ในหน่วยความจำของ process (ถ้ารันหลาย replica ต้องย้ายไปเก็บที่ส่วนกลาง) |
+| **ทำความสะอาดข้อมูลที่ก๊อปจากแชต** | ตัดอักขระล่องหน (U+200B–U+200D, U+2060, U+FEFF) ขีดคั่น และช่องว่างออกจากเบอร์ทั้งตอนสมัครและตอนค้นสถานะ รหัสใบสมัครพิมพ์ตัวเล็ก เลขไทย หรือขีดแบบ Unicode ก็ค้นเจอ |
 | **สลิปซ้ำ** | SHA-256 + unique index `uq_payments_slip_hash` (กันกรณีอัปโหลดพร้อมกัน) → `409 DUPLICATE_SLIP` นับเฉพาะสลิปที่ยัง `PENDING` หรือ `APPROVED` ของใบสมัครที่ยังไม่ถูกลบ (migration 000005, 000006) สลิปที่ถูกปฏิเสธไม่กันรูปของตัวเอง ถ้าพี่ค่ายปฏิเสธสลิปจริงโดยไม่ตั้งใจ ผู้สมัครส่งรูปเดิมซ้ำได้ และเมื่อใบสมัครถูกลบหรือยกเลิก สลิปของใบนั้นเก็บสถานะและ hash ไว้ในบัญชีเหมือนเดิม (`payments.applicant_deleted = true`) แต่ไม่กันรูปอีก นักเรียนที่สมัครใหม่ส่งสลิปใบเดิมได้ |
-| **ล็อกก่อนตัดสินสถานะ** | ยกเลิกใบสมัครเอง (`/withdraw`) ตรวจซ้ำใต้ row lock ว่ายังไม่ `CONFIRMED` และไม่มีสลิป `PENDING`/`APPROVED` โดยถือ advisory lock เดียวกับการอัปโหลดสลิป จึงไม่มีสลิปตกค้างบนใบสมัครที่ยกเลิกแล้ว ตรวจสลิปของใบสมัครที่ถูกลบตอบ `409` และเปลี่ยนสถานะที่ทำให้ได้ที่นั่งคืน (เช่นอีกคนเพิ่งตั้ง `REJECTED`) ทำใต้ quota lock เสมอ ไม่เกิน 30 ที่นั่ง |
+| **ล็อกก่อนตัดสินสถานะ** | ยกเลิกใบสมัครเอง (`/withdraw`) ตรวจซ้ำใต้ row lock ว่ายังไม่ `CONFIRMED` และไม่มีสลิป `PENDING`/`APPROVED` โดยถือ advisory lock เดียวกับการอัปโหลดสลิป จึงไม่มีสลิปตกค้างบนใบสมัครที่ยกเลิกแล้ว ตรวจสลิปของใบสมัครที่ถูกลบตอบ `409` และเปลี่ยนสถานะที่ทำให้ได้ที่นั่งคืน (เช่นอีกคนเพิ่งตั้ง `REJECTED`) ทำใต้ quota lock เสมอ ไม่เกิน 40 ที่นั่ง |
 | **สลิปรอตรวจใบเดียวต่อผู้สมัคร** | อัปโหลดใหม่ขณะมีสลิป `PENDING` อยู่จะแทนที่ใบเดิม (ลบแถวและไฟล์เก่าใน transaction เดียว บันทึก `payment.slip.superseded`) ส่งสลิปซ้ำๆ จึงไม่ทำให้ดิสก์เต็มด้วยไฟล์ 5 MB สลิปที่ถูกปฏิเสธเก็บเป็นประวัติ สลิปที่อนุมัติแล้วแทนที่ไม่ได้ |
 | **กันสลับสลิปตอนตรวจ** | รายชื่อแอดมินมี `slipPaymentId` และ `GET .../slip` ส่ง header `X-Slip-Payment-Id` พี่ค่ายต้องส่งค่านี้กลับเป็น `paymentId` (UUID, บังคับ) ใน `PATCH .../verify-slip` หากไม่ส่งหรือผิดรูปแบบ → `400 VALIDATION_ERROR` และถ้าผู้สมัครเพิ่งอัปโหลดใบใหม่ → `409 SLIP_CHANGED` โดยไม่เปลี่ยนอะไร |
-| **โควตา 30 ที่นั่ง** | นับและบันทึกใน transaction เดียวกับ `pg_advisory_xact_lock` ช่วงคนแห่สมัครตอนเที่ยงคืนจึงไม่เกินโควตา รอ lock ได้ไม่เกิน `lock_timeout = '3s'` ถ้าเกินตอบ `503` + `Retry-After` (ยังไม่บันทึก ส่งซ้ำด้วย key เดิมได้) Connection pool: สูงสุด 40, เปิดค้างไว้ 20 |
+| **โควตา 40 ที่นั่ง** | นับและบันทึกใน transaction เดียวกับ `pg_advisory_xact_lock` ช่วงคนแห่สมัครตอนเที่ยงคืนจึงไม่เกินโควตา รอ lock ได้ไม่เกิน `lock_timeout = '3s'` ถ้าเกินตอบ `503` + `Retry-After` (ยังไม่บันทึก ส่งซ้ำด้วย key เดิมได้) Connection pool: สูงสุด 40, เปิดค้างไว้ 20 |
 | **อนุมัติสลิปชนกัน** | `SELECT … FOR UPDATE` + `UPDATE … WHERE status = 'PENDING'` ตรวจ `RowsAffected() == 1` พี่ค่ายสองคนกดพร้อมกัน สำเร็จได้คนเดียว อีกคนได้ `409 ALREADY_VERIFIED` |
 | **Idempotency** | `X-Idempotency-Key` (UUID) ส่งซ้ำได้ปลอดภัย: ครั้งแรก `201`, ส่งซ้ำได้ `200` + `Idempotent-Replayed: true` |
-| **Masking** | `/applications/status`, `/confirm` และผลการสมัคร ส่งเลขบัตร `1-5099-XXXXX-XX-X`, เบอร์ `XXX-XXX-5678`, อีเมล `s***@…` เท่านั้น ข้อมูลเต็มอยู่ใน `/api/admin/*` |
+| **Masking** | `/applications/status`, `/confirm` และผลการสมัคร ส่งเบอร์เฉพาะ 2 หลักท้าย `XXX-XXX-XX78`, อีเมล `s***@…` เท่านั้น (ค้นด้วยเบอร์ ชื่อถูก mask เป็น `ส*** ใ***`) ข้อมูลเต็มอยู่ใน `/api/admin/*` |
 | **บัญชีแอดมิน** | ตรวจ `is_active` ทุก request (ระงับบัญชีแล้ว token ใช้ไม่ได้ทันที), token อายุ 8 ชม., login ผิดทุกกรณีตอบข้อความเดียวกัน |
 | **สิทธิ์ตามบทบาท (RBAC)** | ทุก route ใต้ `/api/admin/*` ใช้บทบาทเดียวคือ `admin` (`middleware.RequireAdmin` / `middleware.RequireRoles`) และอ่านบทบาทจากฐานข้อมูลทุก request หากไม่ใช่ `admin` → `403 FORBIDDEN` |
 | **Rate limit (ต่อ IP)** | login 10 ครั้ง/5 นาที, ค้นสถานะ 60/นาที, ส่งใบสมัคร 20/นาที, ยืนยันสิทธิ์ อัปโหลดสลิป แก้โปรไฟล์ และยกเลิกใบสมัคร อย่างละ 20/นาที (นับแยกรายเอนด์พอยต์ นักเรียนหลายคนหลัง NAT เดียวกันอัปโหลดสลิปแล้วจะไม่บล็อกเพื่อนที่กดยืนยันสิทธิ์) → `429` + `Retry-After` IPv6 นับรวมทั้ง prefix `/64` (หมุนที่อยู่ในบล็อกเดียวกันเพื่อเลี่ยงลิมิตไม่ได้) และตารางตัวนับมีเพดาน 50,000 รายการ เต็มแล้วตัดรายการเก่าสุดออก หน่วยความจำจึงไม่โตตามจำนวนบอท |
-| **เลขบัตรในรายชื่อแอดมิน** | `GET /api/admin/applications` ให้เลขเต็ม 13 หลักแก่บัญชีบทบาท `admin` เท่านั้น |
-| **Turnstile ตรวจหลังกำหนดการ** | `POST /api/applications` ตรวจช่วงเปิดรับสมัครก่อนเรียก Cloudflare ช่วงที่ยังปิดไม่มีการเรียกและไม่ใช้ token (บอทเตรียม token ล่วงหน้าไว้ยิงตอนเที่ยงคืนไม่ได้) และ idempotency key ที่ส่งให้ Cloudflare ผูกกับเลขบัตรของใบสมัคร จึงเอา token+key ที่ใช้แล้วไปใช้กับเลขบัตรอื่นไม่ได้ |
+| **Turnstile ตรวจหลังกำหนดการ** | `POST /api/applications` ตรวจช่วงเปิดรับสมัครก่อนเรียก Cloudflare ช่วงที่ยังปิดไม่มีการเรียกและไม่ใช้ token (บอทเตรียม token ล่วงหน้าไว้ยิงตอนเที่ยงคืนไม่ได้) และ idempotency key ที่ส่งให้ Cloudflare ผูกกับเบอร์โทรของใบสมัคร (`SHA1(idempotencyKey, phone)`) จึงเอา token+key ที่ใช้แล้วไปใช้กับเบอร์อื่นไม่ได้ |
 | **IP จริงของผู้ใช้** | เชื่อ `X-Forwarded-For` เฉพาะจาก `TRUSTED_PROXIES` เท่านั้น (ปลอม IP เพื่อหลบ rate limit หรือ audit log ไม่ได้) |
 | **Audit log** | ตาราง `audit_logs` (`admin_id`, `action`, `details`, `ip_address`, `created_at`) บันทึกใน transaction เดียวกับการเปลี่ยนสถานะ/อนุมัติสลิป รวมถึง login สำเร็จ/ล้มเหลว และการเปิดดูสลิป |
-| **Log ไม่มีข้อมูลส่วนบุคคล** | access log ไม่บันทึก query string (`?q=` อาจเป็นเลขบัตรประชาชน) และ error ภายในตอบ `500 internal server error` เท่านั้น |
+| **Log ไม่มีข้อมูลส่วนบุคคล** | access log ไม่บันทึก query string (`?q=` อาจเป็นเบอร์โทรหรือรหัสใบสมัคร) และ error ภายในตอบ `500 internal server error` เท่านั้น |
 | **Header** | `/api/*` ส่ง `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, CSP; CORS อนุญาตเฉพาะ `FRONTEND_URL` |
 
 ### Environment Variables สำหรับ Production

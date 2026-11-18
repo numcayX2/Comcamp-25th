@@ -24,7 +24,6 @@ func BenchmarkApplicantService_Submit(b *testing.B) {
 		req := service.ApplicationCreateRequest{
 			FullName:   fmt.Sprintf("นักเรียน %d", i),
 			Nickname:   "นนท์",
-			NationalID: validTestNationalID(i),
 			Phone:      fmt.Sprintf("08%08d", i),
 			Email:      fmt.Sprintf("student%d@school.ac.th", i),
 			School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -50,14 +49,13 @@ func BenchmarkApplicantService_QueryStatus(b *testing.B) {
 	var testAppNo string
 	for i := 0; i < 30; i++ {
 		res, _ := svc.Submit(ctx, service.ApplicationCreateRequest{
-			FullName:   fmt.Sprintf("นักเรียน %d", i),
-			Nickname:   "นนท์",
-			NationalID: validTestNationalID(i),
-			Phone:      fmt.Sprintf("08%08d", i),
-			Email:      fmt.Sprintf("student%d@school.ac.th", i),
-			School:     "โรงเรียนแม่โจ้วิทยาคม",
-			Grade:      "ม.5",
-			ShirtSize:  "L",
+			FullName:  fmt.Sprintf("นักเรียน %d", i),
+			Nickname:  "นนท์",
+			Phone:     fmt.Sprintf("08%08d", i),
+			Email:     fmt.Sprintf("student%d@school.ac.th", i),
+			School:    "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:     "ม.5",
+			ShirtSize: "L",
 		})
 		if i == 15 && res != nil {
 			testAppNo = res.ID

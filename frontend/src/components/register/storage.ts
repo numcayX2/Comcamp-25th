@@ -3,11 +3,10 @@
  *
  * Draft   → sessionStorage (this tab only, gone when the tab closes), one key, 24h TTL, cleared
  *           on successful submit. Not localStorage: on a shared school-lab computer the next
- *           student would find the name and phone number, and the phone number alone opens
- *           /status. A draft left in localStorage by an older build is deleted on load and clear.
+ *           student would find the name and phone number. A draft left in localStorage by an older build is deleted on load and clear.
  *           Allowlist only: personal, parent contact, education, shirt size, and motivation. Never
- *           stored: the 13-digit national ID (§9.2.1), health data (allergies, medicalConditions),
- *           and the PDPA tick.
+ *           stored: health data (allergies, medicalConditions) and the PDPA tick. The national
+ *           ID is no longer collected at all (Phase 5.1).
  * Idempotency key → sessionStorage (this tab only), §9.2.4: written before POST /applications,
  *           reused by every retry after a timeout / dropped connection / 5xx, and removed only
  *           after a successful response (201, or 200 replay) or when the user starts over.

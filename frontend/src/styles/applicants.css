@@ -1,0 +1,91 @@
+/* ==========================================================================
+   /applicants — flat on phones (hairlines and whitespace, no card shells),
+   a ruled table from 1024px. Only global.css tokens; no new colours or radii.
+   ========================================================================== */
+
+/* The search field draws its own clear button; hide the WebKit one so there is only one. */
+.ap-input::-webkit-search-cancel-button,
+.ap-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ap-summary {
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}
+
+.ap-state {
+  border-top: 1px solid var(--color-border);
+  padding: 20px 0 0;
+}
+
+.ap-alert {
+  border-top: 2px solid var(--color-danger);
+  padding: 14px 0 0;
+}
+@media (min-width: 640px) {
+  .ap-alert {
+    border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+    border-top: 2px solid var(--color-danger);
+    padding: 16px 20px;
+    background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-card));
+  }
+}
+
+/* Stacked rows (phones / tablets). */
+.ap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--color-ink);
+}
+.ap-row {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.ap-row__no {
+  padding-top: 4px;
+  line-height: 1.5;
+}
+.ap-row p {
+  overflow-wrap: anywhere;
+}
+
+/* Desktop table. */
+.ap-table {
+  border-collapse: collapse;
+  border-top: 1px solid var(--color-ink);
+}
+.ap-table th {
+  padding: 12px 16px 12px 0;
+  border-bottom: 1px solid var(--color-ink);
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: bottom;
+}
+.ap-table td {
+  padding: 14px 16px 14px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 1rem;
+  line-height: 1.7;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.ap-table th:last-child,
+.ap-table td:last-child {
+  padding-right: 0;
+}
+.ap-table tbody tr:hover td {
+  background: var(--color-btn-ghost-hover);
+}
+
+.ap-note {
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}

@@ -1,11 +1,13 @@
 package handler_test
 
-// AGENTS.md v2.4 hardening: image-bomb guard, /status second factor and copy-paste cleanup.
+// AGENTS.md v2.4 hardening: image-bomb guard, the application code as the /status proof, and
+// copy-paste cleanup.
 
 import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"hash/crc32"
 	"net/http"
 	"net/http/httptest"
@@ -49,6 +51,7 @@ func webpVP8XHeader(w, h int) []byte {
 	return b.Bytes()
 }
 
+// status looks an application up by its code (the full masked record).
 func (a *testApp) status(t *testing.T, q string) service.ApplicationResponse {
 	t.Helper()
 	rec := a.do(t, http.MethodGet, "/api/applications/status?q="+url.QueryEscape(q), nil, nil)
@@ -60,11 +63,26 @@ func (a *testApp) status(t *testing.T, q string) service.ApplicationResponse {
 	return res
 }
 
+// phoneStatus looks an application up by phone number (masked data, never the code).
+func (a *testApp) phoneStatus(t *testing.T, q string) service.PhoneLookupResponse {
+	t.Helper()
+	rec := a.do(t, http.MethodGet, "/api/applications/status?q="+url.QueryEscape(q), nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %q: expected 200, got %d (%s)", q, rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "CC25-") {
+		t.Fatalf("status %q: a phone lookup revealed an application code: %s", q, rec.Body.String())
+	}
+	var res service.PhoneLookupResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	return res
+}
+
 // §13.4 image bomb / pixel flood: the header is checked before the file is hashed or stored.
 func TestSecurity_SlipDimensionsLimited(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(50), "0810000050", "dim@example.com")
+	created := app.submit(t, "0810000050", "dim@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
 	rejected := map[string][]byte{
@@ -106,64 +124,50 @@ func TestSecurity_SlipDimensionsLimited(t *testing.T) {
 	}
 }
 
-// §13.5 anti-impersonation: confirm and slip upload need the last 4 digits of the national ID.
-// The phone's last 4 digits are deliberately not accepted — the public status shows them.
-func TestSecurity_StatusActionsRequireVerifyCode(t *testing.T) {
+// §13.5 since migration 000011: the application code in the path is the proof for confirm and slip
+// upload. A verifyCode sent by an outdated page is ignored, an unknown code is 404 and stores
+// nothing, and a phone number in place of the code is not an application code at all.
+func TestSecurity_StatusActionsNeedTheApplicationCode(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	nid := validTestNationalID(40)
-	created := app.submit(t, nid, "0810004321", "vc@example.com")
+	created := app.submit(t, "0810004321", "vc@example.com")
 	app.setStatus(t, token, created.ID, domain.StatusPassed)
 
-	confirm := func(code string) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(map[string]any{"confirmed": true, "verifyCode": code})
-		return app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm", bytes.NewBuffer(body), nil)
+	confirm := func(id, body string) *httptest.ResponseRecorder {
+		return app.do(t, http.MethodPost, "/api/applications/"+url.PathEscape(id)+"/confirm", bytes.NewBufferString(body), nil)
 	}
 
-	if rec := confirm(""); rec.Code != http.StatusBadRequest {
-		t.Fatalf("confirm without verifyCode: expected 400, got %d", rec.Code)
+	for _, id := range []string{"CC25-000000", "0810004321"} {
+		wantErrCode(t, confirm(id, `{"confirmed":true}`), http.StatusNotFound, response.CodeNotFound)
+		wantErrCode(t, app.uploadSlip(t, url.PathEscape(id), "slip.jpg", jpegBytes), http.StatusNotFound, response.CodeNotFound)
 	}
-	for _, code := range []string{"1234", "4321" /* the phone's last 4 */, "1509"} {
-		rec := confirm(code)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("confirm with %s: expected 403, got %d (%s)", code, rec.Code, rec.Body.String())
-		}
-		if e := decodeErr(t, rec.Body.Bytes()); e.Code != response.CodeInvalidVerifyCode {
-			t.Fatalf("confirm with %s: expected code %s, got %+v", code, response.CodeInvalidVerifyCode, e)
-		}
-	}
-	if res := app.status(t, created.ID); res.AttendanceConfirmed {
-		t.Fatal("attendance was confirmed with a wrong verifyCode")
+	if res := app.status(t, created.ID); res.AttendanceConfirmed || res.HasSlip {
+		t.Fatalf("nothing may change through an unknown code: %+v", res)
 	}
 
-	// Copied from a LINE chat: a zero-width space must not break the right code.
-	if rec := confirm("\u200B" + nid[9:]); rec.Code != http.StatusOK {
-		t.Fatalf("confirm with the right code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	// The code as a student pastes it (lower case, zero-width space) works, and a verifyCode field
+	// from an outdated page is ignored.
+	pasted := "\u200b" + strings.ToLower(created.ID)
+	if rec := confirm(pasted, `{"confirmed":true,"verifyCode":"0000"}`); rec.Code != http.StatusOK {
+		t.Fatalf("confirm with the code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
-
-	for code, want := range map[string]int{"": http.StatusBadRequest, "1234": http.StatusForbidden, "4321": http.StatusForbidden} {
-		if rec := app.uploadSlipWithCode(t, created.ID, code, "slip.jpg", jpegBytes); rec.Code != want {
-			t.Fatalf("slip with verifyCode %q: expected %d, got %d (%s)", code, want, rec.Code, rec.Body.String())
-		}
+	body, headers := slipForm(t, "slip.jpg", jpegBytes)
+	if rec := app.do(t, http.MethodPost, "/api/applications/"+url.PathEscape(pasted)+"/slip", body, headers); rec.Code != http.StatusOK {
+		t.Fatalf("slip with the code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if res := app.status(t, created.ID); res.HasSlip {
-		t.Fatal("a slip was stored with a wrong verifyCode")
-	}
-	if rec := app.uploadSlipWithCode(t, created.ID, nid[9:], "slip.jpg", jpegBytes); rec.Code != http.StatusOK {
-		t.Fatalf("slip with the right code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	if res := app.status(t, created.ID); !res.AttendanceConfirmed || !res.HasSlip {
+		t.Fatalf("expected the confirmation and the slip to be stored: %+v", res)
 	}
 }
 
-// §9.2.2: IDs and phone numbers pasted from chat apps (zero-width characters, hyphens, spaces)
-// are cleaned on submit and on lookup.
+// §9.2.2: phone numbers, emails and codes pasted from chat apps (zero-width characters, hyphens,
+// spaces, Thai digits) are cleaned on submit and on lookup.
 func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	app := setupTestApp(t)
-	nid60 := validTestNationalID(60)
 	body, _ := json.Marshal(service.ApplicationCreateRequest{
 		FullName: "ทดสอบ คัดลอก", Nickname: "ก็อป", School: "โรงเรียนทดสอบ", Grade: "ม.4", ShirtSize: "M",
-		Email:      "\u200Bcopy60@example.com\uFEFF",
-		NationalID: "\uFEFF" + nid60[:1] + "-" + nid60[1:5] + "-" + nid60[5:10] + "-" + nid60[10:12] + "-" + nid60[12:] + "\u200B",
-		Phone:      "081\u200C-000\u200D-0060",
+		Email: "\u200Bcopy60@example.com\uFEFF",
+		Phone: "081\u200C-000\u200D-0060",
 	})
 	rec := app.do(t, http.MethodPost, "/api/applications", bytes.NewBuffer(body), nil)
 	if rec.Code != http.StatusCreated {
@@ -176,14 +180,19 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.NationalID != nid60 || stored.Phone != "0810000060" || stored.Email != "copy60@example.com" {
-		t.Fatalf("stored identifiers not cleaned: %q / %q / %q", stored.NationalID, stored.Phone, stored.Email)
+	if stored.Phone != "0810000060" || stored.Email != "copy60@example.com" {
+		t.Fatalf("stored identifiers not cleaned: %q / %q", stored.Phone, stored.Email)
 	}
 
+	for _, q := range []string{"081 000 0060", "\u200B0810000060", "๐๘๑-๐๐๐-๐๐๖๐"} {
+		if res := app.phoneStatus(t, q); res.Lookup != service.LookupPhone || !res.CodeRequired || res.Phone != "XXX-XXX-XX60" {
+			t.Errorf("phone lookup %q: unexpected answer %+v", q, res)
+		}
+	}
 	noHyphen := strings.ToLower(strings.Replace(created.ID, "-", "", 1))
-	for _, q := range []string{nid60[:1] + "-" + nid60[1:5] + "-" + nid60[5:10] + "-" + nid60[10:12] + "-" + nid60[12:], "081 000 0060", "\u200B0810000060", "\u200B" + created.ID, noHyphen} {
+	for _, q := range []string{"\u200B" + created.ID, noHyphen, strings.Replace(created.ID, "-", " ", 1)} {
 		if res := app.status(t, q); res.ID != created.ID {
-			t.Errorf("lookup %q: expected %s, got %q", q, created.ID, res.ID)
+			t.Errorf("code lookup %q: expected %s, got %q", q, created.ID, res.ID)
 		}
 	}
 }
@@ -204,8 +213,8 @@ func TestSecurity_AdminSettingsQuota(t *testing.T) {
 	pub := app.do(t, http.MethodGet, "/api/settings/public", nil, nil)
 	var before domain.PublicSettingsResponse
 	_ = json.Unmarshal(pub.Body.Bytes(), &before)
-	if before.MaxCapacity != 30 {
-		t.Fatalf("default capacity: expected 30, got %d", before.MaxCapacity)
+	if before.MaxCapacity != 40 {
+		t.Fatalf("default capacity: expected 40, got %d", before.MaxCapacity)
 	}
 
 	for name, body := range map[string]string{
@@ -228,12 +237,70 @@ func TestSecurity_AdminSettingsQuota(t *testing.T) {
 		t.Error("expected a settings.update audit entry")
 	}
 
-	app.submit(t, validTestNationalID(70), "0810000070", "q70@example.com")
-	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON(validTestNationalID(71), "0810000071", "q71@example.com"), nil)
+	app.submit(t, "0810000070", "q70@example.com")
+	rec := app.do(t, http.MethodPost, "/api/applications", applicationJSON("0810000071", "q71@example.com"), nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("capacity 1 full: expected 409, got %d", rec.Code)
 	}
 	if e := decodeErr(t, rec.Body.Bytes()); e.Code != response.CodeQuotaFull {
 		t.Fatalf("expected %s, got %+v", response.CodeQuotaFull, e)
+	}
+}
+
+// Since migration 000011 there is no national ID. A registration from an outdated form that still
+// carries "nationalId" is accepted (so a student whose tab was opened before the deploy is not
+// turned away at 09:00) and the value is dropped: it is not stored, echoed or logged anywhere.
+func TestSubmit_LegacyNationalIDFieldIsIgnored(t *testing.T) {
+	app := setupTestApp(t)
+	token := app.login(t)
+	const nid = "1509900112233"
+	body := `{"fullName":"สมชาย ใจดี","nickname":"ชาย","nationalId":"` + nid + `","phone":"0810000901","email":"legacy@example.com","school":"โรงเรียนแม่โจ้","grade":"ม.5","shirtSize":"M"}`
+	rec := app.do(t, http.MethodPost, "/api/applications", bytes.NewBufferString(body), nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var created service.ApplicationResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	for name, got := range map[string]string{
+		"submit response": rec.Body.String(),
+		"admin list":      app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token)).Body.String(),
+		"code lookup":     app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil).Body.String(),
+	} {
+		if strings.Contains(got, nid) || strings.Contains(got, "nationalId") {
+			t.Fatalf("%s carries the dropped national ID: %s", name, got)
+		}
+	}
+	for _, e := range app.appRepo.Audit().Entries() {
+		if strings.Contains(fmt.Sprint(e.Details), nid) {
+			t.Fatalf("an audit row carries the dropped national ID: %+v", e)
+		}
+	}
+	// It is not a lookup key either.
+	if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+nid, nil, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a national ID is not a lookup key: expected 400, got %d", rec.Code)
+	}
+}
+
+// Live phone and live non-empty email are unique (migration 000003, kept by 000011): a second
+// registration with either is DUPLICATE_APPLICATION, and a withdrawn application frees both.
+func TestSubmit_DuplicateLivePhoneOrEmailIsRejected(t *testing.T) {
+	app := setupTestApp(t)
+	first := app.submit(t, "0810000911", "dup@example.com")
+	for name, body := range map[string]*bytes.Buffer{
+		"same phone":         applicationJSON("0810000911", "other@example.com"),
+		"same phone, pasted": applicationJSON("081-000-0911", "other2@example.com"),
+		"same email":         applicationJSON("0810000912", "dup@example.com"),
+		"same email, cased":  applicationJSON("0810000913", "DUP@Example.com"),
+	} {
+		rec := app.do(t, http.MethodPost, "/api/applications", body, nil)
+		wantErrCode(t, rec, http.StatusConflict, response.CodeDuplicateApp)
+		if strings.Contains(rec.Body.String(), first.ID) {
+			t.Fatalf("%s: a duplicate answer must not reveal the existing code: %s", name, rec.Body.String())
+		}
+	}
+	wantErrCode(t, app.withdrawRec(t, first.ID), http.StatusOK, "")
+	again := app.submit(t, "0810000911", "dup@example.com")
+	if again.ID == first.ID {
+		t.Fatal("re-registering must create a new application")
 	}
 }

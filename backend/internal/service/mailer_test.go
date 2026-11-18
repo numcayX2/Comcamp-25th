@@ -3,11 +3,13 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -97,7 +99,6 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 	req := service.ApplicationCreateRequest{
 		FullName:   "สมชาย ใจดี",
 		Nickname:   "ชาย",
-		NationalID: validTestNationalID(901),
 		Phone:      "0812345678",
 		Email:      "somchai@example.com",
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -144,8 +145,54 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 			t.Errorf("registration email missing %q", want)
 		}
 	}
+	// Since 000011 the code is the applicant's only key on /status: both parts say to keep it.
+	if cnt := strings.Count(decoded, "กุญแจส่วนตัวของคุณบนหน้าตรวจสอบสถานะ"); cnt != 2 {
+		t.Errorf("expected the keep-your-code notice in both text and HTML parts (count=%d)", cnt)
+	}
+	for _, gone := range []string{"เลขบัตร", "4 ตัวท้าย", "verifyCode", "nationalId"} {
+		if strings.Contains(decoded, gone) {
+			t.Errorf("registration email still mentions %q", gone)
+		}
+	}
+	// Thai never sits inside <code> (IBM Plex Mono has no Thai glyphs); only codes/numbers do.
+	if loc := regexp.MustCompile(`<code[^>]*>[^<]*\p{Thai}`).FindStringIndex(decoded); loc != nil {
+		t.Errorf("Thai text inside <code>: %q", decoded[loc[0]:loc[1]])
+	}
 	if cnt := strings.Count(decoded, "กระเป๋าพร้อมปั๊มลาย"); cnt != 2 {
 		t.Errorf("expected 'กระเป๋าพร้อมปั๊มลาย' in both text and HTML parts (count=%d)", cnt)
+	}
+
+	// The transfer window is 5 days (120h) after registration: the stated deadline and every
+	// mention of the window must match the rule the expiry sweep enforces.
+	app, err := appRepo.GetByApplicationNo(ctx, res.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bkk := time.FixedZone("Asia/Bangkok", 7*60*60)
+	due := app.CreatedAt.Add(120 * time.Hour).In(bkk)
+	thaiMonths := []string{"", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."}
+	dueText := fmt.Sprintf("%d %s %d เวลา %02d:%02d น.", due.Day(), thaiMonths[int(due.Month())], due.Year()+543, due.Hour(), due.Minute())
+	if cnt := strings.Count(decoded, dueText); cnt != 2 {
+		t.Errorf("expected the 120h deadline %q in both text and HTML parts (count=%d)", dueText, cnt)
+	}
+	if cnt := strings.Count(decoded, "120 ชั่วโมง"); cnt < 2 {
+		t.Errorf("expected '120 ชั่วโมง' in both text and HTML parts (count=%d)", cnt)
+	}
+	for _, stale := range []string{"72 ชั่วโมง", "ภายใน 3 วัน"} {
+		if strings.Contains(decoded, stale) {
+			t.Errorf("registration email still mentions the old window %q", stale)
+		}
+	}
+	msg, err := mail.ReadMessage(strings.NewReader(m.raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(subject, "ภายใน 5 วัน") {
+		t.Errorf("registration subject = %q, want it to say 'ภายใน 5 วัน'", subject)
 	}
 
 	entries := appRepo.Audit().Entries()
@@ -191,7 +238,6 @@ func TestAsyncMailer_ConfirmedStageAndSkipOnRejectOrDuplicateNoteEdit(t *testing
 	a := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: "CC25-900902",
-		NationalID:    validTestNationalID(902),
 		FirstName:     "มานี",
 		LastName:      "มีใจ",
 		Nickname:      "นี",

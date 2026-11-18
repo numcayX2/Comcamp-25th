@@ -1,9 +1,9 @@
 (function(){
   'use strict';
   var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var OPEN_AT = '2026-11-18T00:00:00+07:00';
+  var OPEN_AT = '2026-11-19T09:00:00+07:00';
   var CLOSE_AT = '2026-12-18T23:59:59+07:00';
-  var MAX = 30;
+  var MAX = 40;
   var API_BASE = (typeof window !== 'undefined' && window.__CC25_API_BASE_URL__) || 'http://localhost:8000/api';
   var GALLERY_BASE = (typeof window !== 'undefined' && window.__CC25_GALLERY_BASE_URL__) || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
   if (GALLERY_BASE && GALLERY_BASE.slice(-1) !== '/') GALLERY_BASE += '/';
@@ -24,7 +24,10 @@
           timeZone: 'Asia/Bangkok',
           year: 'numeric',
           month: 'numeric',
-          day: 'numeric'
+          day: 'numeric',
+          hour: 'numeric',
+          minute: 'numeric',
+          hourCycle: 'h23'
         });
         if (fmt.formatToParts) {
           var parts = fmt.formatToParts(d);
@@ -39,7 +42,9 @@
               month: map.month,
               year: map.year,
               beYear: beYear,
-              beYear2: ('0' + (beYear % 100)).slice(-2)
+              beYear2: ('0' + (beYear % 100)).slice(-2),
+              hour: (map.hour || 0) % 24,
+              minute: map.minute || 0
             };
           }
         }
@@ -55,8 +60,37 @@
       month: month,
       year: year,
       beYear: beYearFallback,
-      beYear2: ('0' + (beYearFallback % 100)).slice(-2)
+      beYear2: ('0' + (beYearFallback % 100)).slice(-2),
+      hour: bkk.getUTCHours(),
+      minute: bkk.getUTCMinutes()
     };
+  }
+
+  // Opening time of day in Asia/Bangkok ("09:00"), derived from the same registrationOpenAt as the date.
+  function formatOpenTime(isoStr){
+    var p = getBangkokDateParts(isoStr);
+    return ('0' + p.hour).slice(-2) + ':' + ('0' + p.minute).slice(-2);
+  }
+
+  // Sets a label whose template may contain one {t} placeholder. The time goes into a mono span
+  // (Thai stays outside it, AGENTS §5.3); the resulting text equals the server-rendered default exactly.
+  function setRichLabel(el, tpl, time){
+    if (!el) return;
+    var i = tpl.indexOf('{t}');
+    var plain = tpl.replace('{t}', time);
+    if (i < 0) {
+      if (el.textContent !== plain || el.children.length) el.textContent = plain;
+      return;
+    }
+    if (el.textContent === plain && el.querySelector('[data-open-time]')) return;
+    el.textContent = '';
+    el.appendChild(document.createTextNode(tpl.slice(0, i)));
+    var m = document.createElement('span');
+    m.className = 'font-mono tabular-nums';
+    m.setAttribute('data-open-time', '');
+    m.textContent = time;
+    el.appendChild(m);
+    el.appendChild(document.createTextNode(tpl.slice(i + 3)));
   }
 
   function formatOpenDateNoYear(isoStr){
@@ -92,7 +126,7 @@
     failed: false,
     loading: true,
     explicitClosed: false,
-    syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at 00:00:00
+    syncedPreOpen: false // last sync said "before opening" → re-fetch once (jittered) at open time (09:00:00)
   };
 
   function formatCampFeeText(raw){
@@ -149,9 +183,13 @@
     var openDateShort = formatOpenDateShort(openAtStr);
     var openDateFull = formatOpenDateFull(openAtStr);
     var openDateDot = formatOpenDateDot(openAtStr);
-    var ctaText = 'เปิดรับสมัคร ' + openDateNoYear, ctaHref = '#essentials', miniLabel = 'เปิดรับ ' + openDateShort, stickyDisabled = true;
-    var regCtaText = 'เปิดรับ ' + openDateShort, regCtaHref = registerHref, regCtaMuted = true;
-    var mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล', mtHref = '#timeline';
+    var openTime = formatOpenTime(openAtStr);
+    // Pre-open labels always carry the opening time (the site opens at 09:00, not midnight). {t} = mono time span.
+    var preOpenWide = 'ลงทะเบียนวันที่ ' + openDateShort + ' ({t} น.)';
+    var preOpenSticky = openDateNoYear + ' {t} น.';
+    var ctaText = preOpenWide, ctaHref = '#essentials', miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' เวลา ' + openTime + ' น.', stickyText = preOpenSticky, stickyDisabled = true;
+    var regCtaText = preOpenWide, regCtaHref = registerHref, regCtaMuted = true;
+    var mtLabel = preOpenWide + ' · ดูข้อมูล', mtHref = '#timeline';
 
     if (seatsBig) {
       seatsBig.innerHTML = maxCap + '<small>ที่นั่ง</small>';
@@ -175,27 +213,30 @@
     document.querySelectorAll('[data-open-date-dot]').forEach(function(el){
       if (el.textContent !== openDateDot) el.textContent = openDateDot;
     });
+    document.querySelectorAll('[data-open-time]').forEach(function(el){
+      if (el.textContent !== openTime) el.textContent = openTime;
+    });
     var maxCapStr = String(maxCap);
     document.querySelectorAll('[data-max-capacity]').forEach(function(el){
       if (el.textContent !== maxCapStr) el.textContent = maxCapStr;
     });
 
     if (s === 'LOADING' || s === 'PRE_OPEN') {
-      ctaText = 'เปิดรับสมัคร ' + openDateNoYear;
+      ctaText = preOpenWide;
       ctaHref = '#essentials';
-      regCtaText = 'เปิดรับ ' + openDateShort;
+      regCtaText = preOpenWide;
       regCtaHref = registerHref;
       regCtaMuted = true;
-      mtLabel = 'เปิดรับสมัคร ' + openDateShort + ' · ดูข้อมูล';
+      mtLabel = preOpenWide + ' · ดูข้อมูล';
       mtHref = '#timeline';
-      miniLabel = 'เปิดรับ ' + openDateShort;
+      miniLabel = 'ลงทะเบียนวันที่ ' + openDateShort + ' เวลา ' + openTime + ' น.';
+      stickyText = preOpenSticky;
       stickyDisabled = true;
-      if (sticky) sticky.textContent = openDateShort;
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'FAILED') {
       ctaText = 'ดูรายละเอียดค่าย';
       ctaHref = '#experience';
@@ -206,12 +247,12 @@
       mtHref = '#experience';
       miniLabel = 'เชื่อมต่อไม่สำเร็จ';
       stickyDisabled = true;
-      if (sticky) sticky.textContent = 'ตรวจสอบ';
+      stickyText = 'ตรวจสอบ';
       if (secondary) {
         secondary.textContent = 'ลองเชื่อมต่อใหม่ →';
         secondary.setAttribute('href', '#retry-status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'OPEN') {
       ctaText = 'สมัครค่าย';
       ctaHref = registerHref;
@@ -222,12 +263,12 @@
       mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + '/' + maxCap + ' ที่นั่ง';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'สมัครค่าย';
+      stickyText = 'สมัครค่าย';
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์ (First-Come, First-Served)';
+      if (seatsCaption) seatsCaption.textContent = 'ขณะนี้เหลือที่นั่งว่าง ' + seatsLeft + ' จาก ' + maxCap + ' ที่นั่ง คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์';
     } else if (s === 'ALMOST_FULL') {
       ctaText = 'สมัครค่าย (เหลือ ' + seatsLeft + ' ที่นั่ง)';
       ctaHref = registerHref;
@@ -238,12 +279,12 @@
       mtHref = registerHref;
       miniLabel = 'เหลือ ' + seatsLeft + ' ที่นั่ง';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'สมัคร';
+      stickyText = 'สมัคร';
       if (secondary) {
         secondary.textContent = 'ตรวจสอบสถานะใบสมัคร →';
         secondary.setAttribute('href', '/status');
       }
-      if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบ First-Come, First-Served';
+      if (seatsCaption) seatsCaption.textContent = 'ใกล้เต็มแล้ว! เหลือเพียง ' + seatsLeft + ' ที่นั่งสุดท้าย คัดเลือกแบบใครสมัครก่อนได้สิทธิ์ก่อน';
     } else if (s === 'FULL') {
       // /register is locked once the camp is full, so the CTA leads to the status page instead.
       ctaText = 'ที่นั่งเต็มแล้ว · ตรวจสอบสถานะ';
@@ -255,7 +296,7 @@
       mtHref = '/status';
       miniLabel = 'ที่นั่งเต็มแล้ว';
       stickyDisabled = false;
-      if (sticky) sticky.textContent = 'ตรวจสถานะ';
+      stickyText = 'ตรวจสถานะ';
       // The primary CTA already leads to /status, so the secondary link points at the camp details.
       if (secondary) {
         secondary.textContent = 'ดูรายละเอียดค่าย →';
@@ -272,7 +313,7 @@
       mtHref = '/status';
       miniLabel = 'ปิดรับสมัครแล้ว';
       stickyDisabled = true;
-      if (sticky) sticky.textContent = 'ปิดแล้ว';
+      stickyText = 'ปิดแล้ว';
       if (secondary) {
         secondary.textContent = 'ดูรายละเอียดค่าย →';
         secondary.setAttribute('href', '#experience');
@@ -282,22 +323,14 @@
 
     if (primary) {
       var primarySpan = primary.querySelector('span');
-      if (primarySpan) {
-        primarySpan.textContent = ctaText;
-      } else {
-        primary.textContent = ctaText;
-      }
+      setRichLabel(primarySpan || primary, ctaText, openTime);
       primary.setAttribute('href', ctaHref);
     }
 
     if (extraCtas.length) {
       extraCtas.forEach(function(el){
         var target = el.querySelector('[data-register-cta-label]') || el.querySelector('span');
-        if (target) {
-          target.textContent = regCtaText;
-        } else {
-          el.textContent = regCtaText;
-        }
+        setRichLabel(target || el, regCtaText, openTime);
         el.setAttribute('href', regCtaHref);
         el.setAttribute('data-reg-state', s);
         el.classList.toggle('is-pre-open', regCtaMuted);
@@ -307,17 +340,18 @@
     var mtCta = document.querySelector('[data-mt="cta"]');
     var mtCtaLabel = document.querySelector('[data-mt="cta-label"]');
     if (mtCta) mtCta.setAttribute('href', mtHref);
-    if (mtCtaLabel) mtCtaLabel.textContent = mtLabel;
+    if (mtCtaLabel) setRichLabel(mtCtaLabel, mtLabel, openTime);
 
     if (mini) mini.textContent = miniLabel;
     if (sticky) {
+      setRichLabel(sticky.querySelector('[data-sticky-label]') || sticky, stickyText, openTime);
       sticky.disabled = stickyDisabled;
       sticky.setAttribute('aria-disabled', stickyDisabled ? 'true' : 'false');
     }
     checkMidnightResync();
   }
 
-  // Midnight Zero Jitter Buffer (AGENTS.md §8): when a pre-open countdown reaches 00:00:00, every
+  // Midnight Zero Jitter Buffer (AGENTS.md §8): when a pre-open countdown reaches the open time (09:00:00), every
   // open tab would re-fetch /api/settings/public in the same instant (thundering herd). Each tab
   // waits a random 200–2000 ms instead, and schedules at most one such re-fetch per pre-open sync.
   var midnightResyncScheduled = false;
@@ -462,7 +496,7 @@
   }
 
 
-  // Editorial immersive motion (sections 02–06 + footer + hero exit + page progress).
+  // Editorial immersive motion (sections 02–05 + CTA + footer + hero exit + page progress).
   // Enhance-only: no CSS hides content, everything is created inside matchMedia(no-preference),
   // so reduced-motion users and no-JS users see the final static layout.
   function initEditorialMotion(){
@@ -481,7 +515,7 @@
       gsap.to(bar, { scaleX: 1, ease: 'none',
         scrollTrigger: { trigger: document.documentElement, start: 'top top', end: 'bottom bottom', scrub: 0.2 } });
 
-      // 2) Hero exit: copy lifts, stage drifts and softens as you scroll into 02
+      // 2) Hero exit: copy lifts, stage drifts and softens as you scroll into 02 (curriculum)
       var hero = document.querySelector('.hero');
       if (hero) {
         var heroTl = gsap.timeline({ defaults: { ease: 'none' },
@@ -494,8 +528,8 @@
       // 3) Per-section choreography
       gsap.utils.toArray('.ed-sec').forEach(function(sec){
         var idx = sec.querySelector('.ed-index');
-        var title = sec.querySelector('.section-title, .exp-title');
-        var lead = sec.querySelector('.section-head .body, .exp-lead');
+        var title = sec.querySelector('.section-title');
+        var lead = sec.querySelector('.section-head .body');
         var tl = gsap.timeline({ defaults: { ease: ease },
           scrollTrigger: { trigger: sec, start: 'top 92%', once: true, fastScrollEnd: true } });
         if (idx) tl.from(idx, { x: -16, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, 0);
@@ -503,14 +537,14 @@
         if (lead) tl.from(lead, { y: 12, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' }, 0.12);
         revealTimelines.push({ el: sec, tl: tl });
 
-        // Hairline draws left → right (container top rules use --rule-p)
-        sec.querySelectorAll('.exp-list, .bento, .journey, .tm-bento, .faq').forEach(function(box){
+        // Line draws (CSS defaults --rule-p: 1): curriculum spine top → bottom, registration track along its axis
+        sec.querySelectorAll('.journey, .tm-bento--steps').forEach(function(box){
           gsap.fromTo(box, { '--rule-p': 0 }, { '--rule-p': 1, duration: 0.95, ease: 'expo.out',
             scrollTrigger: { trigger: box, start: 'top 94%', once: true, fastScrollEnd: true } });
         });
 
-        // Section 04 Journey (Option C): scrubbed numeral parallax, staged reveal, and contiguous active step spy
-        if (sec.id === 'journey') {
+        // Curriculum spine (#experience, formerly #journey): scrubbed numeral parallax, staged reveal, and contiguous active step spy
+        if (sec.querySelector('.journey')) {
           var jSteps = gsap.utils.toArray('.journey .step', sec);
           var setActiveStep = function(activeIdx){
             jSteps.forEach(function(s, i){
@@ -555,8 +589,8 @@
         }
       });
 
-      // 4) Row reveals: batched so rows entering together cascade (Section 04 handled with Option C choreography)
-      var rowEls = gsap.utils.toArray('.exp-item, .bento .card, .tm-tile, .faq-item');
+      // 4) Row reveals: batched so rows entering together cascade (curriculum steps use the spine choreography above)
+      var rowEls = gsap.utils.toArray('.bento .card, .tm-tile, .faq-item');
       var revealRows = function(els){
         var pending = els.filter(function(el){ return el.dataset.ccRevealed !== '1'; });
         if (!pending.length) return;
@@ -699,12 +733,12 @@
       selector: "#gallery",
       text: {
         intro: {
-          eyebrow: "COMCAMP 24 · MEMORIES",
+          eyebrow: "ความทรงจำจาก ComCamp #24",
           title: "ภาพรวม\nบรรยากาศปีที่แล้ว",
           subtitle: "ย้อนดูบรรยากาศจากค่ายปีที่แล้ว\nเลื่อนลงเพื่อเดินทางไปด้วยกัน",
         },
         outro: {
-          eyebrow: "ComCamp 25",
+          eyebrow: "ComCamp #25",
           titleLines: ["แล้วพบกัน"],
           subtitle: "บทต่อไปของความทรงจำ กำลังรอให้คุณมาเขียนร่วมกัน",
           ctaLabel: "ดูข้อมูลการรับสมัคร",
@@ -859,7 +893,8 @@
     };
     TunnelRenderer.prototype.apply = function(i, s) {
       var st = this.cards[i].el.style;
-      st.transform = "translate3d(" + s.x.toFixed(1) + "px, " + s.y.toFixed(1) + "px, " + s.z.toFixed(1) + "px) rotate(" + s.rot.toFixed(2) + "deg)";
+      st.transform = "translate3d(" + s.x.toFixed(1) + "px, " + s.y.toFixed(1) + "px, " + s.z.toFixed(1) + "px) rotate(" + s.rot.toFixed(2) + "deg)" +
+        (s.scale && s.scale !== 1 ? " scale(" + s.scale.toFixed(3) + ")" : "");
       st.opacity = s.opacity.toFixed(3);
     };
 
@@ -881,10 +916,11 @@
         };
       });
     };
-    MotionEngine.prototype.resize = function(vw, vh, isMobile) {
+    MotionEngine.prototype.resize = function(vw, vh, isMobile, cardW, cardH) {
       this.halfW = vw / 2; this.halfH = vh / 2; this.spread = isMobile ? this.m.spreadMobile : this.m.spread;
+      this.layoutReduced(vw, vh, cardW, cardH);
     };
-    MotionEngine.prototype.getState = function(i, t, reduced) {
+    MotionEngine.prototype.getState = function(i, t) {
       var it = this.items[i], local = (t - it.start) / this.duration;
       if (local <= 0 || local >= 1) return null;
       var nx, ny;
@@ -893,12 +929,37 @@
       var m = this.m;
       return {
         x: nx * this.halfW, y: ny * this.halfH,
-        z: reduced ? -300 : lerp(m.zStart, this.zEnd, local),
+        z: lerp(m.zStart, this.zEnd, local),
         rot: it.tilt,
         opacity: Math.min(progressBetween(local, 0, m.fadeIn), 1 - progressBetween(local, 1 - m.fadeOut, 1))
       };
     };
     MotionEngine.prototype.isNear = function(i, t) { return t >= this.items[i].start - this.m.preloadAhead; };
+
+    // Reduced motion: no flight, no depth, no easing. The tunnel becomes a scroll-driven
+    // slideshow — one group (groupSize photos) at a time, fully opaque, side by side
+    // (wide screens) or stacked (tall phones), swapped instantly as the reader scrolls.
+    MotionEngine.prototype.groupCount = function() { return Math.ceil(this.count / this.m.groupSize); };
+    MotionEngine.prototype.reducedGroup = function(t) {
+      if (t <= 0 || t >= 1) return -1;
+      return Math.min(this.groupCount() - 1, Math.floor(t * this.groupCount()));
+    };
+    MotionEngine.prototype.layoutReduced = function(vw, vh, cardW, cardH) {
+      var n = this.m.groupSize, w = cardW || 240, h = cardH || 180, gap = Math.round(w * 0.08);
+      var maxScale = 1.6;
+      var rowScale = Math.min(maxScale, (vw * 0.84) / (n * w + (n - 1) * gap), (vh * 0.62) / h);
+      var colScale = Math.min(maxScale, (vw * 0.88) / w, (vh * 0.74) / (n * h + (n - 1) * gap));
+      this.rl = rowScale >= colScale
+        ? { row: true, scale: rowScale, step: (w + gap) * rowScale }
+        : { row: false, scale: colScale, step: (h + gap) * colScale };
+    };
+    MotionEngine.prototype.getReducedState = function(i, t) {
+      var g = this.reducedGroup(t), size = this.m.groupSize;
+      if (g < 0 || Math.floor(i / size) !== g) return null;
+      var inGroup = Math.min(size, this.count - g * size);
+      var offset = ((i % size) - (inGroup - 1) / 2) * this.rl.step;
+      return { x: this.rl.row ? offset : 0, y: this.rl.row ? 0 : offset, z: 0, rot: 0, scale: this.rl.scale, opacity: 1 };
+    };
 
     function SceneText(root, cfg) {
       this.root = root; this.cfg = cfg;
@@ -969,10 +1030,11 @@
       this.cfg = cfg;
       this.root = document.querySelector(cfg.selector);
       if (!this.root) return;
-      this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || REDUCED;
-      this.root._mtReduced = this.reduced;
+      this.reducedMq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+      this.setReduced(REDUCED || !!(this.reducedMq && this.reducedMq.matches));
       var stage = this.root.querySelector('[data-mt="stage"]');
       if (!stage) return;
+      this.stage = stage;
       this.renderer = new TunnelRenderer(stage, images, cfg.images);
       this.engine = new MotionEngine(images, cfg.motion);
       this.text = new SceneText(this.root, cfg);
@@ -981,30 +1043,43 @@
       this.tick = function(now){ self._tick(now); };
       this.onScroll = function(){ self.requestTick(); };
       this.onResize = debounce(function(){ self.measure(); self.requestTick(); }, 150);
+      this.onReducedChange = function(e){ self.setReduced(!!e.matches); self.requestTick(); };
       this.init();
     }
+    MemoryTunnel.prototype.setReduced = function(on) {
+      this.reduced = on;
+      this.root._mtReduced = on;
+    };
     MemoryTunnel.prototype.init = function() {
       this.renderer.build();
       this.root.style.setProperty("--mt-perspective", this.cfg.motion.perspective + "px");
-      this.measure(); this.observe();
+      this.measure();
       window.addEventListener("scroll", this.onScroll, { passive: true });
       window.addEventListener("resize", this.onResize);
+      // Late layout shifts above the gallery (fonts, images) move it without a scroll event.
+      window.addEventListener("load", this.onScroll);
+      if (this.reducedMq) {
+        if (this.reducedMq.addEventListener) this.reducedMq.addEventListener("change", this.onReducedChange);
+        else if (this.reducedMq.addListener) this.reducedMq.addListener(this.onReducedChange);
+      }
       this.requestTick();
+    };
+    MemoryTunnel.prototype.measureCard = function() {
+      // Cards are display:none until active, so size a hidden probe with the same CSS vars.
+      if (!this.probe) {
+        this.probe = document.createElement("div");
+        this.probe.setAttribute("aria-hidden", "true");
+        this.probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;width:var(--mt-card-w);height:var(--mt-card-h)";
+        this.stage.appendChild(this.probe);
+      }
+      return { w: this.probe.offsetWidth, h: this.probe.offsetHeight };
     };
     MemoryTunnel.prototype.measure = function() {
       var mobile = window.matchMedia("(max-width: " + this.cfg.mobileBreakpoint + "px)").matches;
       var length = mobile ? this.cfg.scroll.lengthVhMobile : this.cfg.scroll.lengthVh;
       this.root.style.setProperty("--mt-length", length + "vh");
-      this.engine.resize(window.innerWidth, window.innerHeight, mobile);
-    };
-    MemoryTunnel.prototype.observe = function() {
-      var self = this;
-      if (typeof IntersectionObserver === "undefined") { this.inView = true; return; }
-      this.io = new IntersectionObserver(function(entries){
-        self.inView = entries[entries.length - 1].isIntersecting;
-        if (self.inView) { self.renderer.preloadRange(0, self.cfg.motion.groupSize * 2); self.requestTick(); }
-      }, { rootMargin: "100% 0px" });
-      this.io.observe(this.root);
+      var card = this.measureCard();
+      this.engine.resize(window.innerWidth, window.innerHeight, mobile, card.w, card.h);
     };
     MemoryTunnel.prototype.requestTick = function() {
       if (this.rafId === null) this.rafId = requestAnimationFrame(this.tick);
@@ -1012,6 +1087,12 @@
     MemoryTunnel.prototype._tick = function(now) {
       this.rafId = null;
       var rect = this.root.getBoundingClientRect(), vh = window.innerHeight;
+      // Visibility straight from the rect (one viewport of margin each side). An
+      // IntersectionObserver on this ~1400vh section under-reports in some in-app
+      // WebViews, which left every card requested=false — an empty black tunnel.
+      var inView = rect.bottom > -vh && rect.top < vh * 2;
+      if (inView && !this.inView) this.renderer.preloadRange(0, this.cfg.motion.groupSize * 2);
+      this.inView = inView;
       var distance = this.root.offsetHeight - vh;
       this.target = distance > 0 ? clamp(-rect.top / distance) : 0;
       if (!this.entered && rect.top < vh * 0.6) { this.entered = true; this.root.classList.add("is-entered"); }
@@ -1028,12 +1109,17 @@
       var tl = this.cfg.timeline;
       this.text.updateIntro(p, tl); this.text.updateOutro(p, tl);
       var t = progressBetween(p, tl.tunnelStart, tl.tunnelEnd);
+      if (this.reduced && this.inView) {
+        // Current + next group, so the next instant swap already has its photos.
+        var size = this.cfg.motion.groupSize, g = Math.max(0, this.engine.reducedGroup(t));
+        this.renderer.preloadRange(g * size, (g + 2) * size);
+      }
       for (var i = 0; i < this.engine.count; i++) {
         // Only pull images once the tunnel is actually near the viewport —
         // preloading on init fetched ~7 full-size photos (≈1.2 MB) while the
         // gallery was still thousands of pixels offscreen.
-        if (this.inView && this.engine.isNear(i, t)) this.renderer.preload(i);
-        var state = this.engine.getState(i, t, this.reduced);
+        if (!this.reduced && this.inView && this.engine.isNear(i, t)) this.renderer.preload(i);
+        var state = this.reduced ? this.engine.getReducedState(i, t) : this.engine.getState(i, t);
         if (!state) { this.renderer.setActive(i, false); continue; }
         this.renderer.setActive(i, true); this.renderer.apply(i, state);
       }
@@ -1041,7 +1127,11 @@
     MemoryTunnel.prototype.destroy = function() {
       window.removeEventListener("scroll", this.onScroll);
       window.removeEventListener("resize", this.onResize);
-      if (this.io) this.io.disconnect();
+      window.removeEventListener("load", this.onScroll);
+      if (this.reducedMq) {
+        if (this.reducedMq.removeEventListener) this.reducedMq.removeEventListener("change", this.onReducedChange);
+        else if (this.reducedMq.removeListener) this.reducedMq.removeListener(this.onReducedChange);
+      }
       if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     };
 

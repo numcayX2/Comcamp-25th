@@ -6,12 +6,13 @@ import {
   ApiHttpError,
   getApplicationStatus,
   hasSlip,
+  isPhoneLookup,
   withdrawApplication,
   type ApiSource,
   type ApplicationStatus,
   type SlipStatus,
 } from '../../lib/api';
-import { cleanNationalIdInput, describeVerifyLock } from '../../lib/slip-upload';
+import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeRateLimit } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
 import {
   DORM_MAPS_URL,
@@ -20,11 +21,12 @@ import {
   FEE_TEXT,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
   RECEIPT_META,
   RECEIPT_STEP,
   STAFF_CONTACTS,
   describeApplicantPaymentDeadline,
-  isValidThaiNationalID,
 } from './model';
 import { clearReceipt } from './storage';
 import { SlipBlock } from './SlipBlock';
@@ -34,11 +36,8 @@ type CopyState = 'idle' | 'copied' | 'failed';
 
 /** Thai copy for a failed withdrawal, keyed by the backend error code. */
 function describeWithdrawError(err: unknown): ReactNode {
-  const locked = describeVerifyLock(err);
-  if (locked) return locked;
   if (err instanceof ApiHttpError) {
-    if (err.code === 'INVALID_VERIFY_CODE') return 'เลขบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
-    if (err.code === 'RATE_LIMITED') return 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่';
+    if (err.code === 'RATE_LIMITED' || err.status === 429) return describeRateLimit(err);
     if (err.status === 409) {
       return (
         <>
@@ -53,50 +52,52 @@ function describeWithdrawError(err: unknown): ReactNode {
               <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                 {c.phone}
               </a>{' '}
-              ({c.name})
+              · {c.name}
             </Fragment>
           ))}{' '}
-          เพื่อแจ้งสละสิทธิ์ (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
+          เพื่อแจ้งสละสิทธิ์
         </>
       );
     }
-    if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
-    if (err.status === 400) return 'กรุณากรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครให้ถูกต้อง';
+    // An unknown code and a wrong phone are the same 404 on purpose: never say which part was wrong.
+    if (err.status === 404) return WITHDRAW_MISMATCH_COPY;
+    if (err.status >= 500) return 'ระบบขัดข้องชั่วคราว กรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
   }
   return 'ยกเลิกใบสมัครไม่สำเร็จ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง';
 }
 
 /**
- * Self-service withdrawal. Collapsed to one quiet link; opening it asks for the applicant's full
- * 13-digit national ID, because cancelling gives the seat away for good (AGENTS.md §13.5). The ID
- * lives in this component's state only: never written to localStorage / sessionStorage (§9.2),
- * and cleared on close, on success and when the block unmounts.
+ * Self-service withdrawal. Collapsed to one quiet link; opening it asks for the full phone number
+ * used to register (owner ruling R24: code + phone), because cancelling gives the seat away for
+ * good. The phone lives in this component's state only (never in browser storage) and is cleared on
+ * close and on success. A failure never says which part was wrong.
  */
 function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [code, setCode] = useState('');
-  const complete = code.length === 13;
-  const valid = complete && isValidThaiNationalID(code);
+  const [phone, setPhone] = useState('');
+  const phoneReady = /^0\d{9}$/.test(phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef(false);
   const busyRef = useRef(false);
   const uid = useId();
-  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, input: `${uid}-code`, hint: `${uid}-hint`, err: `${uid}-err` };
+  const ids = { panel: `${uid}-panel`, title: `${uid}-title`, warn: `${uid}-warn`, phone: `${uid}-phone`, hint: `${uid}-hint`, err: `${uid}-err` };
 
-  // A disabled input cannot take focus: after a failed attempt, refocus once busy has cleared.
-  const refocusInput = useRef(false);
+  // A disabled input cannot keep focus: after a failed attempt, refocus the phone once busy has cleared.
+  const refocusPhone = useRef(false);
   useEffect(() => {
-    if (!busy && refocusInput.current) {
-      refocusInput.current = false;
-      inputRef.current?.focus();
+    if (!busy && refocusPhone.current) {
+      refocusPhone.current = false;
+      phoneRef.current?.focus();
+      phoneRef.current?.select();
     }
   }, [busy]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) phoneRef.current?.focus();
     else if (restoreFocus.current) {
       restoreFocus.current = false;
       toggleRef.current?.focus();
@@ -107,24 +108,24 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
     if (busy || busyRef.current) return;
     restoreFocus.current = true;
     setOpen(false);
-    setCode('');
+    setPhone('');
     setError(null);
   }
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
-    if (busyRef.current || busy || !valid) return;
+    if (busyRef.current || busy || !phoneReady) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      await withdrawApplication(appId, code);
+      await withdrawApplication(appId, phone);
       busyRef.current = false;
-      setCode('');
+      setPhone('');
       onWithdrawn(appId);
     } catch (err) {
       setError(describeWithdrawError(err));
-      refocusInput.current = true;
+      refocusPhone.current = true;
       busyRef.current = false;
       setBusy(false);
     }
@@ -170,37 +171,43 @@ function WithdrawBlock({ appId, onWithdrawn }: { appId: string; onWithdrawn: (id
         หากยกเลิก ใบสมัคร <span className="font-mono tabular-nums whitespace-nowrap select-all">{appId}</span> จะถูกนำออกจากระบบและคืนที่นั่งว่างทันที
         ยกเลิกแล้วกู้คืนไม่ได้ แต่สมัครใหม่ได้หากยังมีที่นั่งว่าง
       </p>
-      <label className="rw-label" htmlFor={ids.input}>
-        กรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครเพื่อยืนยัน
+      <label className="rw-label" htmlFor={ids.phone}>
+        เบอร์โทรที่ใช้สมัคร
       </label>
       <input
-        ref={inputRef}
-        id={ids.input}
-        className="rw-input rw-input--mono rw-withdraw__code"
-        value={code}
-        // Digits only, max 13: also drops dashes and zero-width characters pasted from LINE (§9.2.2).
+        ref={phoneRef}
+        id={ids.phone}
+        className="rw-input rw-input--mono rw-withdraw__phone"
+        value={phone}
+        // Digits only, max 10: Thai digits become 0-9; dashes, spaces and zero-width characters go (§9.2.2).
         onChange={(e) => {
-          setCode(cleanNationalIdInput(e.target.value));
+          setPhone(cleanPhoneInput(e.target.value));
           if (error) setError(null);
         }}
-        inputMode="numeric"
+        type="tel"
+        inputMode="tel"
         autoComplete="off"
         spellCheck={false}
-        placeholder="1234567890123"
-        aria-invalid={error || (complete && !valid) ? true : undefined}
+        placeholder="08XXXXXXXX"
+        aria-invalid={error ? true : undefined}
         aria-describedby={[ids.warn, ids.hint, error ? ids.err : ''].filter(Boolean).join(' ')}
         disabled={busy}
       />
       <p id={ids.hint} className="rw-withdraw__hint">
-        {complete && !valid
-          ? 'เลขบัตรประจำตัว 13 หลักนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
-          : <>ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{code.length}/13</span> หลัก) ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง</>}
+        กรอกเบอร์โทรศัพท์ <span className="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร แล้วกดยืนยันเพื่อยกเลิกใบสมัครนี้ ระบบไม่บันทึกเบอร์นี้ไว้ในเครื่อง
       </p>
       <p id={ids.err} className="rw-withdraw__err" role="alert">
         {error}
       </p>
       <div className="rw-actions rw-actions--tight">
-        <button type="submit" className="rw-btn rw-btn--danger rw-btn--sm" disabled={busy || !valid} aria-busy={busy || undefined}>
+        <button
+          ref={confirmRef}
+          type="submit"
+          className="rw-btn rw-btn--danger rw-btn--sm"
+          disabled={busy || !phoneReady}
+          aria-busy={busy || undefined}
+          aria-describedby={[ids.warn, error ? ids.err : ''].filter(Boolean).join(' ')}
+        >
           {busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิกใบสมัคร'}
         </button>
         <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={close} disabled={busy}>
@@ -216,7 +223,6 @@ export function Receipt({
   source,
   showSource,
   feeText = FEE_TEXT,
-  defaultVerifyCode,
   headingRef,
   onWithdrawn,
 }: {
@@ -224,8 +230,6 @@ export function Receipt({
   source: ApiSource | null;
   showSource: boolean;
   feeText?: string;
-  /** Last 4 digits of the national ID kept in React memory from /register step 01 (never stored). */
-  defaultVerifyCode?: string;
   headingRef: Ref<HTMLHeadingElement>;
   onWithdrawn: (id: string, missing?: boolean) => void;
 }) {
@@ -251,10 +255,12 @@ export function Receipt({
     getApplicationStatus(appId)
       .then((res) => {
         if (!alive) return;
-        setAppStatus(res.data.status);
-        setSlip(hasSlip(res.data) ? (res.data.slipStatus ?? 'PENDING') : null);
-        if (res.data.createdAt) setCreatedAt(res.data.createdAt);
-        setUpdatedAt(res.data.updatedAt);
+        const d = res.data;
+        if (isPhoneLookup(d)) return; // never happens for a code query; keeps the types honest
+        setAppStatus(d.status);
+        setSlip(hasSlip(d) ? (d.slipStatus ?? 'PENDING') : null);
+        if (d.createdAt) setCreatedAt(d.createdAt);
+        setUpdatedAt(d.updatedAt);
       })
       .catch((err) => {
         if (!alive) return;
@@ -356,6 +362,13 @@ export function Receipt({
             {copy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่รหัสแล้วเลือกคัดลอก'}
           </p>
         </div>
+        <p className="rw-keep">
+          <strong>เก็บรหัสใบสมัครนี้ไว้ให้ดีและอย่าส่งต่อให้ผู้อื่น</strong> รหัส{' '}
+          <span className="font-mono tabular-nums whitespace-nowrap">{appId}</span>{' '}
+          คือกุญแจส่วนตัวของน้องสำหรับหน้าตรวจสอบสถานะ ใช้ส่งสลิปและจัดการใบสมัคร แนะนำให้คัดลอกหรือแคปหน้าจอเก็บไว้
+          ระบบส่งรหัสนี้ไปทางอีเมลด้วย ส่วนการค้นหาด้วยเบอร์โทรจะแสดงเพียงสถานะโดยย่อเท่านั้น
+        </p>
+        <p className="rw-keep rw-keep--quiet">ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / จดหมายขยะ หรือแท็บ Promotions (Gmail)</p>
       </section>
 
       <section className="rw-block" aria-labelledby="rw-pay-title">
@@ -386,13 +399,10 @@ export function Receipt({
               <ul className="rw-due__rules">
                 <li>
                   โอน <strong className="font-mono tabular-nums">{feeText}</strong> บาท และแนบสลิปภายใน{' '}
-                  <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชม.) หลังสมัคร
+                  <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.) หลังสมัคร
                 </li>
                 <li>
                   <strong className="rw-due__flag">เกินกำหนด ระบบตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
-                </li>
-                <li>
-                  <strong className="rw-due__flag">โอนแล้วสละสิทธิ์ ไม่คืนเงินทุกกรณี</strong>
                 </li>
               </ul>
               <a className="rw-due__jump" href="#rw-slip-title">
@@ -458,7 +468,7 @@ export function Receipt({
         </article>
       </section>
 
-      <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} defaultVerifyCode={defaultVerifyCode} onUploaded={setSlip} />
+      <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} onUploaded={setSlip} />
 
       {slipLocksWithdraw && (
         <section className="rw-block" aria-labelledby="rw-line-title">
@@ -489,13 +499,13 @@ export function Receipt({
         <h3 id="rw-next-title" className="rw-block__title">ขั้นตอนถัดไป</h3>
         <ol className="rw-steps">
           <li>
-            โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">3</span> วัน (<span className="font-mono tabular-nums">72</span> ชั่วโมง)
-            หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ (<strong>โอนแล้วสละสิทธิ์ไม่คืนเงินทุกกรณี</strong>)
+            โอนเงินและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง)
+            หลังสมัคร เกินกำหนดระบบคืนที่นั่งว่างอัตโนมัติ
           </li>
           <li>
-            แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร เลขบัตรประจำตัว 13 หลัก หรือเบอร์โทรศัพท์
-            (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป แต่สามารถใช้เบอร์โทรหรือเลขบัตรประจำตัว 13 หลักค้นหาใบสมัครที่ส่งแล้วได้ที่หน้า{' '}
-            <span className="font-mono">/status</span>)
+            แนบสลิปในหน้านี้ได้ทันที หรือส่งทีหลังที่หน้าตรวจสอบสถานะ โดยค้นหาด้วยรหัสใบสมัคร
+            (หากเปิดจาก LINE / Facebook แล้วสลับไปใช้ Chrome หรือ Safari ข้อมูลชั่วคราวในแท็บเดิมอาจหายไป ให้ใช้รหัสใบสมัครจากหน้านี้หรือจากอีเมลค้นหาที่หน้า{' '}
+            <span className="font-mono">/status</span> ส่วนเบอร์โทรใช้ดูสถานะโดยย่อได้อย่างเดียว)
           </li>
           <li>
             <strong>ระบบส่งอีเมลแจ้งยืนยันให้อัตโนมัติ <span className="font-mono tabular-nums">2</span> ช่วง</strong>{' '}
@@ -508,7 +518,7 @@ export function Receipt({
           </li>
         </ol>
         <div className="rw-actions">
-          <a href={`/status?id=${encodeURIComponent(appId)}`} className="rw-btn rw-btn--ghost">
+          <a href="/status" className="rw-btn rw-btn--ghost">
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
@@ -528,8 +538,14 @@ export function Receipt({
                 <span className="font-mono tabular-nums">5–7</span> กุมภาพันธ์ <span className="font-mono tabular-nums">2570</span>
               </strong>
               <span className="rw-dl__sub">
-                <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ มหาวิทยาลัยแม่โจ้
+                <span className="font-mono tabular-nums">3</span> วัน <span className="font-mono tabular-nums">2</span> คืน ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้)
               </span>
+            </dd>
+          </div>
+          <div className="rw-dl__row">
+            <dt>สิทธิพิเศษ</dt>
+            <dd>
+              <span className="rw-dl__sub">หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</span>
             </dd>
           </div>
           <div className="rw-dl__row">
@@ -582,10 +598,9 @@ export function Receipt({
                 <a href={`tel:${c.tel}`} className="rw-inline-link font-mono tabular-nums">
                   {c.phone}
                 </a>{' '}
-                ({c.name})
+                · {c.name}
               </Fragment>
             ))}{' '}
-            (ทั้งนี้ หากโอนเงินค่าสมัครแล้ว สงวนสิทธิ์ไม่คืนเงินทุกกรณี)
           </p>
         ) : (
           <WithdrawBlock appId={appId} onWithdrawn={onWithdrawn} />

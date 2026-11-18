@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log"
 	"net/mail"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -33,7 +35,6 @@ var (
 	ErrRegistrationBusy      = errors.New("registration is very busy right now, please try again")
 	ErrDuplicateApplicant    = domain.ErrDuplicateApplicant
 	ErrIdempotencyKeyReused  = errors.New("this idempotency key was already used for a different application")
-	ErrInvalidNationalID     = newValidationError("invalid national ID (must be 13 digits with a valid check digit)")
 	ErrInvalidPhone          = newValidationError("invalid phone number (must be 10 digits starting with 0)")
 	ErrInvalidParentPhone    = newValidationError("invalid parent phone number (must be 10 digits starting with 0)")
 	ErrInvalidShirtSize      = newValidationError("invalid shirt size (choose SSS, SS, S, M, L, XL, 2XL, 3XL, 4XL)")
@@ -42,12 +43,8 @@ var (
 	ErrRequiredFields        = newValidationError("required fields cannot be blank")
 	ErrInvalidStatus         = newValidationError("invalid status")
 	ErrInvalidIdempotencyKey = newValidationError("X-Idempotency-Key must be a UUID")
-	ErrInvalidQuery          = newValidationError("search query must be a national ID, phone number or application ID")
-	ErrVerifyCodeRequired    = newValidationError("verifyCode must be the last 4 digits of the applicant's national ID")
-	ErrInvalidVerifyCode     = errors.New("verification code does not match this application")
+	ErrInvalidQuery          = newValidationError("search query must be a phone number (10 digits starting with 0) or an application code (CC25-XXXXXX)")
 	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
-	ErrProfileLocked         = errors.New("this application can no longer be edited, please contact staff")
-	ErrIdentityLocked        = newValidationError("full name, national ID, phone, email, motivation and health notes cannot be changed here, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
@@ -92,7 +89,6 @@ func isValidGrade(g string) bool {
 type ApplicationCreateRequest struct {
 	FullName          string `json:"fullName"`
 	Nickname          string `json:"nickname"`
-	NationalID        string `json:"nationalId"`
 	Phone             string `json:"phone"`
 	Email             string `json:"email"`
 	ParentName        string `json:"parentName,omitempty"`
@@ -108,16 +104,23 @@ type ApplicationCreateRequest struct {
 	// TurnstileToken is the single-use Cloudflare Turnstile response. It is verified, never
 	// stored, and never logged.
 	TurnstileToken string `json:"turnstileToken,omitempty"`
+	// There is no national ID field (migration 000011). A body from an outdated form that still
+	// carries "nationalId" is accepted and the value is dropped by the JSON decoder: it is never
+	// read, stored, logged or echoed.
 }
 
-// ApplicationResponse is the applicant DTO. Public endpoints return the masked view (see
-// toPublic); only /api/admin/* returns full values, parent contact details, free-text notes
-// (motivation, allergies, medicalConditions) and the slip URL.
+// ApplicationResponse is the applicant DTO. ID is the application code (CC25-XXXXXX), which is the
+// applicant's proof on /status, so a public response carries it only to someone who already holds
+// it (the receipt after submit, a lookup by code, confirm). Public endpoints return the masked view
+// (see toPublic); only /api/admin/* returns full values, parent contact details, free-text notes
+// (motivation, allergies, medicalConditions) and the slip URL. A lookup by phone gets
+// PhoneLookupResponse instead, which never carries the code.
 type ApplicationResponse struct {
-	ID                  string                   `json:"id"`
+	ID string `json:"id"`
+	// Lookup is "code" on the answer of GET /applications/status found by application code.
+	Lookup              string                   `json:"lookup,omitempty"`
 	FullName            string                   `json:"fullName"`
 	Nickname            string                   `json:"nickname"`
-	NationalID          string                   `json:"nationalId"`
 	Phone               string                   `json:"phone"`
 	Email               string                   `json:"email"`
 	ParentName          string                   `json:"parentName,omitempty"`
@@ -155,33 +158,44 @@ type ApplicantService struct {
 	// captcha is nil only when Turnstile is deliberately off (development without a secret, tests).
 	// main always sets it in production; config refuses to start without TURNSTILE_SECRET_KEY.
 	captcha TurnstileVerifier
-	// verify locks an application after repeated wrong verifyCode / nationalId answers. main
-	// shares one guard with PaymentService (WithVerifyGuard) so the limit spans every endpoint.
-	verify *VerifyGuard
+	// codes refuses clients that name too many unknown application codes. main shares one guard
+	// with PaymentService (WithCodeGuard) so the budgets span every code-keyed endpoint.
+	codes *CodeGuard
 	// onSeatChange notifies SettingService to drop its short public-settings cache when seats change.
 	onSeatChange func()
 	// mailer dispatches registration / confirmation emails asynchronously after commit.
 	mailer EmailNotifier
 	// now returns the current wall-clock time; defaults to time.Now and can be overridden in tests.
 	now func() time.Time
+	// pauseLogged is the LastHardCeilingAt (UnixNano) the expiry pause was last logged for.
+	pauseLogged atomic.Int64
+	// publicList caches GET /api/applications/public (see public_applicants.go).
+	publicList publicListCache
 }
 
 const (
-	// UnpaidExpiryWindow is the deadline (3 days) after registration by which an applicant
+	// UnpaidExpiryWindow is the deadline (5 days) after registration by which an applicant
 	// must upload a payment slip before their seat is automatically released.
-	UnpaidExpiryWindow = 72 * time.Hour
+	UnpaidExpiryWindow = 120 * time.Hour
 	// UnpaidGraceWindow is the minimum 24h window granted after updated_at or a slip rejection
-	// so applicants rejected or restored after 72h are not re-expired before they can re-upload.
+	// so applicants rejected or restored late in (or after) the 5-day window are not re-expired
+	// before they can re-upload. The enforced deadline is
+	// max(created + UnpaidExpiryWindow, updated_at + UnpaidGraceWindow, latest REJECTED slip + UnpaidGraceWindow).
 	UnpaidGraceWindow = 24 * time.Hour
 	// UnpaidExpiryReason is recorded in applicant_status_logs and audit_logs when auto-expired.
-	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 3 วัน (72 ชั่วโมง) หลังสมัคร"
+	UnpaidExpiryReason = "ตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน 5 วัน (120 ชั่วโมง) หลังสมัคร"
+	// ExpiryPauseAfterCodeCeiling: no seat is auto-released while the application-code guard's global
+	// hard ceiling was reached within this long. During such a flood every code-keyed request (slip
+	// upload included) may be refused, so applicants could not have paid in time; they get at least
+	// this long after the flood ends before the sweep resumes.
+	ExpiryPauseAfterCodeCeiling = 24 * time.Hour
 )
 
-// WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
-// service.
-func (s *ApplicantService) WithVerifyGuard(g *VerifyGuard) *ApplicantService {
+// WithCodeGuard replaces the service's own application-code guard with a shared one and returns
+// the service.
+func (s *ApplicantService) WithCodeGuard(g *CodeGuard) *ApplicantService {
 	if g != nil {
-		s.verify = g
+		s.codes = g
 	}
 	return s
 }
@@ -263,6 +277,8 @@ func formatCampFeeTHB(raw string) string {
 }
 
 func (s *ApplicantService) notifySeatChange() {
+	// A seat taken or released always adds or removes a row of the public list.
+	s.InvalidatePublicList()
 	if s.onSeatChange != nil {
 		s.onSeatChange()
 	}
@@ -277,17 +293,30 @@ func NewApplicantService(
 		appRepo:     appRepo,
 		settingRepo: settingRepo,
 		paymentRepo: paymentRepo,
-		// Never without a lockout: a service nobody wired still counts failures on its own.
-		verify: NewVerifyGuard(nil),
-		now:    time.Now,
+		// Never without a guard: a service nobody wired still counts unknown codes on its own.
+		codes: NewCodeGuard(nil),
+		now:   time.Now,
 	}
 }
 
-// ExpireOverdueUnpaid transitions unpaid active applications older than UnpaidExpiryWindow (72h)
+// ExpireOverdueUnpaid transitions unpaid active applications older than UnpaidExpiryWindow (120h)
 // without a PENDING or APPROVED slip to REJECTED, invalidating the public settings cache whenever
-// at least one seat is released.
+// at least one seat is released. Both cutoffs are derived here from the two window constants and
+// handed to the repository, so the grace offset can never drift from the expiry window again.
+//
+// While the code guard's hard ceiling fired within ExpiryPauseAfterCodeCeiling it releases nothing
+// (see there). A nil guard never pauses.
 func (s *ApplicantService) ExpireOverdueUnpaid(ctx context.Context, now time.Time) ([]string, error) {
-	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, now.UTC().Add(-UnpaidExpiryWindow), UnpaidExpiryReason)
+	utcNow := now.UTC()
+	if last := s.codes.LastHardCeilingAt(); !last.IsZero() && utcNow.Sub(last) < ExpiryPauseAfterCodeCeiling {
+		// The sweep (every minute) and the lookups call this often: log once per ceiling time.
+		if s.pauseLogged.Swap(last.UnixNano()) != last.UnixNano() {
+			log.Printf("unpaid expiry paused: application-code guess ceiling reached at %s; seats are not auto-released until %s after it stops",
+				last.UTC().Format(time.RFC3339), ExpiryPauseAfterCodeCeiling)
+		}
+		return nil, nil
+	}
+	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, utcNow.Add(-UnpaidExpiryWindow), utcNow.Add(-UnpaidGraceWindow), UnpaidExpiryReason)
 	if len(expired) > 0 {
 		s.notifySeatChange()
 	}
@@ -321,7 +350,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		// was saved just before the quota filled must still get their receipt.
 		// It also runs before the captcha: a Turnstile token is single-use, so a retry of an
 		// already-saved submission (the mobile network dropped the 201) carries a spent token.
-		if existing, err := s.replay(ctx, parsed, req.NationalID); existing != nil || err != nil {
+		if existing, err := s.replay(ctx, parsed, req.Phone); existing != nil || err != nil {
 			return existing, existing != nil, err
 		}
 	}
@@ -342,7 +371,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 
 	// Bot check before any quota or database write. Fail closed: no verdict, no seat.
 	if s.captcha != nil {
-		if err := s.captcha.Verify(ctx, req.TurnstileToken, remoteIPFrom(ctx), turnstileKey(key, req.NationalID)); err != nil {
+		if err := s.captcha.Verify(ctx, req.TurnstileToken, remoteIPFrom(ctx), turnstileKey(key, req.Phone)); err != nil {
 			return nil, false, err
 		}
 	}
@@ -361,7 +390,6 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 
 	applicant := &domain.Applicant{
 		ID:                uuid.New(),
-		NationalID:        req.NationalID,
 		Prefix:            "",
 		FirstName:         firstName,
 		LastName:          lastName,
@@ -390,7 +418,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		IdempotencyKey:      key,
 	}
 
-	// Free any unpaid seats older than 72h right before checking capacity so overdue slots become
+	// Free any unpaid seats older than 120h right before checking capacity so overdue slots become
 	// available immediately to the incoming applicant.
 	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
 
@@ -430,7 +458,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		return nil, false, ErrRegistrationBusy
 	case errors.Is(err, domain.ErrDuplicateIdempotencyKey) && key != nil:
 		// A concurrent retry with the same key won the insert race.
-		existing, rerr := s.replay(ctx, *key, req.NationalID)
+		existing, rerr := s.replay(ctx, *key, req.Phone)
 		if rerr != nil {
 			return nil, false, rerr
 		}
@@ -444,21 +472,23 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 }
 
 // turnstileKey derives the idempotency key sent to Cloudflare from the client's X-Idempotency-Key
-// and the national ID being registered (a name-based UUID, so it is a valid UUID and stable for a
-// retry of the same submission). Cloudflare treats a repeated (token, key) pair as the same
-// request and answers from its cache, so binding the national ID into the key means a token that
-// was verified for one ID cannot be replayed for a different ID under the same client key.
+// and the (normalised) phone number being registered (a name-based UUID, so it is a valid UUID and
+// stable for a retry of the same submission). Cloudflare treats a repeated (token, key) pair as the
+// same request and answers from its cache, so binding the phone into the key means a token that was
+// verified for one applicant cannot be replayed for a different phone under the same client key.
+// The phone is unique among live applications, like the national ID it replaces (000011).
 // No client key means no idempotency key for Cloudflare either.
-func turnstileKey(key *uuid.UUID, nationalID string) string {
+func turnstileKey(key *uuid.UUID, phone string) string {
 	if key == nil {
 		return ""
 	}
-	return uuid.NewSHA1(*key, []byte(nationalID)).String()
+	return uuid.NewSHA1(*key, []byte(phone)).String()
 }
 
 // replay returns the application stored under key, or (nil, nil) when there is none. A key that
-// belongs to a different national ID is rejected rather than leaking that application.
-func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID string) (*ApplicationResponse, error) {
+// belongs to a different phone number is rejected rather than leaking that application (and its
+// code) to someone who only copied or guessed the key.
+func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, phone string) (*ApplicationResponse, error) {
 	existing, err := s.appRepo.GetByIdempotencyKey(ctx, key)
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
@@ -466,7 +496,7 @@ func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID
 	if err != nil {
 		return nil, fmt.Errorf("idempotency lookup: %w", err)
 	}
-	if existing.NationalID != nationalID {
+	if existing.Phone != phone {
 		return nil, ErrIdempotencyKeyReused
 	}
 	return s.toPublic(ctx, existing), nil
@@ -475,10 +505,10 @@ func (s *ApplicantService) replay(ctx context.Context, key uuid.UUID, nationalID
 // profileInput is the set of editable text fields shared by registration, the applicant's own
 // profile edit and the staff profile edit, so all three normalise and validate the same way.
 type profileInput struct {
-	FullName, Nickname, NationalID, Phone, Email string
-	ParentName, ParentRelation, ParentPhone      string
-	School, Province, Grade, ShirtSize           string
-	Motivation, Allergies, MedicalConditions     string
+	FullName, Nickname, Phone, Email         string
+	ParentName, ParentRelation, ParentPhone  string
+	School, Province, Grade, ShirtSize       string
+	Motivation, Allergies, MedicalConditions string
 }
 
 func nonEmptyPtr(s string) *string {
@@ -503,7 +533,7 @@ func emergencyContactFallback(parentName, parentPhone, applicantPhone string) (s
 
 func profileInputOfRequest(req ApplicationCreateRequest) profileInput {
 	return profileInput{
-		FullName: req.FullName, Nickname: req.Nickname, NationalID: req.NationalID, Phone: req.Phone,
+		FullName: req.FullName, Nickname: req.Nickname, Phone: req.Phone,
 		Email: req.Email, ParentName: req.ParentName, ParentRelation: req.ParentRelation, ParentPhone: req.ParentPhone,
 		School: req.School, Province: req.Province, Grade: req.Grade,
 		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
@@ -527,9 +557,8 @@ func cleanEmail(s string) string {
 }
 
 func normalizeProfile(p profileInput) profileInput {
-	// IDs and phone numbers pasted from LINE / Facebook chats carry zero-width characters and
-	// are often written 081-234-5678 (AGENTS.md §9.2.2). Strip them before validation.
-	p.NationalID = cleanNumber(p.NationalID)
+	// Phone numbers pasted from LINE / Facebook chats carry zero-width characters and are often
+	// written 081-234-5678 (AGENTS.md §9.2.2). Strip them before validation.
 	p.Phone = cleanNumber(p.Phone)
 	p.Email = cleanEmail(p.Email)
 	p.FullName = cleanText(p.FullName)
@@ -550,7 +579,7 @@ func normalizeProfile(p profileInput) profileInput {
 func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 	p := normalizeProfile(profileInputOfRequest(req))
 	return ApplicationCreateRequest{
-		FullName: p.FullName, Nickname: p.Nickname, NationalID: p.NationalID, Phone: p.Phone,
+		FullName: p.FullName, Nickname: p.Nickname, Phone: p.Phone,
 		Email: p.Email, ParentName: p.ParentName, ParentRelation: p.ParentRelation, ParentPhone: p.ParentPhone,
 		School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
 		Motivation: p.Motivation, Allergies: p.Allergies, MedicalConditions: p.MedicalConditions,
@@ -570,26 +599,6 @@ func splitFullName(full string) (first, last string, err error) {
 		return "", "", newValidationError("full name is too long")
 	}
 	return first, last, nil
-}
-
-// isValidThaiNationalID reports whether id is 13 digits whose last digit is the Thai Mod-11
-// check digit: (11 - (sum(d[i] * (13 - i)) for i in 0..11) % 11) % 10.
-func isValidThaiNationalID(id string) bool {
-	if len(id) != 13 || !isNumeric(id) {
-		return false
-	}
-	sum := 0
-	for i := 0; i < 12; i++ {
-		sum += int(id[i]-'0') * (13 - i)
-	}
-	return (11-sum%11)%10 == int(id[12]-'0')
-}
-
-func checkNationalID(id string) error {
-	if !isValidThaiNationalID(id) {
-		return ErrInvalidNationalID
-	}
-	return nil
 }
 
 func checkPhone(phone string) error {
@@ -644,9 +653,6 @@ func checkLengths(p profileInput) error {
 // validateProfile checks every field of a normalised profile (registration and staff edit).
 // Province may be blank here: registration fills in a default for it.
 func validateProfile(p profileInput) error {
-	if err := checkNationalID(p.NationalID); err != nil {
-		return err
-	}
 	if err := checkPhone(p.Phone); err != nil {
 		return err
 	}
@@ -670,56 +676,108 @@ func validateProfile(p profileInput) error {
 	return checkLengths(p)
 }
 
-// validateSecondary checks only the fields an applicant may edit themselves. Nothing here is an
-// identifier, so there is no way to use it to swap who the application belongs to.
-func validateSecondary(p profileInput) error {
-	if p.Nickname == "" || p.School == "" || p.Province == "" || p.Grade == "" {
-		return ErrRequiredFields
-	}
-	if !isValidShirtSize(p.ShirtSize) {
-		return ErrInvalidShirtSize
-	}
-	if !isValidGrade(p.Grade) {
-		return ErrInvalidGrade
-	}
-	return checkLengths(p)
-}
-
 func validateRequest(req ApplicationCreateRequest) error {
 	return validateProfile(profileInputOfRequest(req))
 }
 
-// QueryStatus is the public lookup by national ID, phone or application ID. It returns the
-// masked view only.
-func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*ApplicationResponse, error) {
+// Lookup values of the public status answer.
+const (
+	LookupCode  = "code"
+	LookupPhone = "phone"
+)
+
+// PhoneLookupResponse is the answer of the public status lookup by phone number. Anyone who knows a
+// phone number can ask, so it is deliberately thin: masked display data and the state of the
+// application, and NEVER the application code (no id, nothing derived from it). CodeRequired tells
+// the page to disable every action and point the student to the CC25-XXXXXX code in their
+// registration email, or to staff.
+type PhoneLookupResponse struct {
+	Lookup       string `json:"lookup"`
+	CodeRequired bool   `json:"codeRequired"`
+	// FullName keeps only the first character of each name part ("ส*** ใ***").
+	FullName   string                   `json:"fullName"`
+	Phone      string                   `json:"phone"`
+	Email      string                   `json:"email,omitempty"`
+	Status     domain.ApplicationStatus `json:"status"`
+	HasSlip    bool                     `json:"hasSlip"`
+	SlipStatus *domain.PaymentStatus    `json:"slipStatus,omitempty"`
+	CreatedAt  string                   `json:"createdAt"`
+	UpdatedAt  string                   `json:"updatedAt,omitempty"`
+}
+
+// StatusLookup is the answer of QueryStatus: exactly one of ByCode and ByPhone is set.
+type StatusLookup struct {
+	ByCode  *ApplicationResponse
+	ByPhone *PhoneLookupResponse
+}
+
+// Body is the JSON body for the HTTP response.
+func (l *StatusLookup) Body() any {
+	if l.ByPhone != nil {
+		return l.ByPhone
+	}
+	return l.ByCode
+}
+
+// QueryStatus is the public lookup by phone number or application code (CC25-XXXXXX).
+//
+// By code it returns the masked application view including the code itself: the caller has just
+// proved they hold it. Codes go through the CodeGuard, so an unknown code counts against the client
+// and the global budget, and a refused client gets *CodeGuessLimitedError before any lookup.
+//
+// By phone it returns PhoneLookupResponse, which never carries the code (see there). A phone that
+// finds no live application counts as a miss for the client (CodeGuard.DoPerClient), but never
+// against the global budget. Anything else,
+// such as a 13-digit national ID typed out of habit, is ErrInvalidQuery and is never looked up.
+func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*StatusLookup, error) {
 	query = normalizeLookupQuery(query)
 	if query == "" || len(query) > maxQueryLen {
 		return nil, ErrInvalidQuery
 	}
 
-	_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
-
-	applicant, err := s.appRepo.FindByQuery(ctx, query)
-	if err != nil {
-		return nil, notFoundOr(err)
+	switch {
+	case isNumeric(query):
+		if checkPhone(query) != nil {
+			return nil, ErrInvalidQuery
+		}
+		// A phone that finds nothing is a miss for this client in the CodeGuard (per client only,
+		// ruling R25), so a client cannot enumerate phone numbers, e.g. to find the phone behind a
+		// guessed code. A locked client gets *CodeGuessLimitedError before any lookup.
+		// The opportunistic unpaid-expiry sweep runs before the guard reservation, so the
+		// reservation covers only the lookup itself.
+		_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
+		var applicant *domain.Applicant
+		err := s.codes.DoPerClient(ctx, CodeActionStatusPhone, func() error {
+			var err error
+			applicant, err = s.appRepo.GetByPhone(ctx, query)
+			return err
+		})
+		if err != nil {
+			return nil, notFoundOr(err)
+		}
+		return &StatusLookup{ByPhone: s.toPhoneLookup(ctx, applicant)}, nil
+	case appNoRe.MatchString(query):
+		_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime()) // outside the guard reservation, as above
+		applicant, err := findByCode(ctx, s.codes, s.appRepo, query, CodeActionStatus)
+		if err != nil {
+			return nil, err
+		}
+		res := s.toPublic(ctx, applicant)
+		res.Lookup = LookupCode
+		return &StatusLookup{ByCode: res}, nil
+	default:
+		return nil, ErrInvalidQuery
 	}
-	return s.toPublic(ctx, applicant), nil
 }
 
-// ConfirmAttendance is public, so it only accepts the application ID (not a phone number) and
-// requires verifyCode, the last 4 digits of the applicant's national ID (see CheckVerifyCode).
-// Repeated wrong codes lock the application (VerifyGuard). The answer is written with an
+// ConfirmAttendance is public and keyed by the application code, which is the applicant's proof
+// (an unknown code counts against the client in the CodeGuard). The answer is written with an
 // application.attendance.confirm audit row carrying confirmed and the client IP, which the handler
 // passes in with WithRemoteIP. The repository re-checks the status at the write, so an application
 // staff rejected after the read below is refused with ErrCannotConfirm.
-func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo, verifyCode string, confirmed bool) (*ApplicationResponse, error) {
-	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo string, confirmed bool) (*ApplicationResponse, error) {
+	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionConfirm)
 	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionConfirm, remoteIPFrom(ctx), func() error {
-		return CheckVerifyCode(applicant, verifyCode)
-	}); err != nil {
 		return nil, err
 	}
 
@@ -745,16 +803,8 @@ func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo,
 	return s.toPublic(ctx, applicant), nil
 }
 
-// CanSeeFullNationalID reports whether an admin role may receive the raw 13-digit national ID.
-// Only admin may, because the ID authorises the public withdraw endpoint
-// (POST /api/applications/{id}/withdraw). Fail closed: an empty or unknown role gets the masked value.
-func CanSeeFullNationalID(role domain.AdminRole) bool {
-	return role == domain.RoleAdmin
-}
-
-// ListAll is the admin list. role is the caller's role: callers that may not see full national IDs
-// (see CanSeeFullNationalID) get them masked like the public status page.
-func (s *ApplicantService) ListAll(ctx context.Context, status *domain.ApplicationStatus, role domain.AdminRole) ([]*ApplicationResponse, error) {
+// ListAll is the admin list (every route under /api/admin requires the admin role).
+func (s *ApplicantService) ListAll(ctx context.Context, status *domain.ApplicationStatus) ([]*ApplicationResponse, error) {
 	if status != nil && !status.IsValid() {
 		return nil, ErrInvalidStatus
 	}
@@ -773,14 +823,9 @@ func (s *ApplicantService) ListAll(ctx context.Context, status *domain.Applicati
 		return nil, err
 	}
 
-	maskID := !CanSeeFullNationalID(role)
 	responses := make([]*ApplicationResponse, 0, len(list))
 	for _, a := range list {
-		res := s.toAdminWithPayment(a, latestPayments[a.ID])
-		if maskID {
-			res.NationalID = MaskNationalID(a.NationalID)
-		}
-		responses = append(responses, res)
+		responses = append(responses, s.toAdminWithPayment(a, latestPayments[a.ID]))
 	}
 	return responses, nil
 }
@@ -845,6 +890,8 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 	if retakesSeat || previousStatus.IsActive() != newStatus.IsActive() {
 		s.notifySeatChange()
 	}
+	// PENDING -> PASSED or PASSED -> CONFIRMED keeps the seat but changes the public list.
+	s.InvalidatePublicList()
 	applicant.Status = newStatus
 	if newStatus == domain.StatusConfirmed {
 		applicant.AttendanceConfirmed = true
@@ -874,9 +921,8 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 		TargetType: domain.AuditTargetApplicant,
 		TargetID:   applicant.ApplicationNo,
 		Details: map[string]any{
-			"fullName":   applicant.FullName(),
-			"nationalId": applicant.NationalID,
-			"reason":     reason,
+			"fullName": applicant.FullName(),
+			"reason":   reason,
 		},
 		IPAddress: ip,
 	}
@@ -889,34 +935,28 @@ func (s *ApplicantService) Delete(ctx context.Context, applicationNo string, adm
 }
 
 // Withdraw lets applicants cancel their own application from the receipt or /status page. It is
-// public and gives a seat away for good, so it needs the application ID plus the applicant's full
-// 13-digit national ID (see CheckNationalID), not just the 4-digit verifyCode. Wrong IDs count
-// towards the same per-application lockout as verifyCode (VerifyGuard). The row is soft-deleted,
-// which frees the seat (CountActive ignores deleted rows) and lets the same person register again.
+// public and keyed by the application code plus the full registered phone (R24; an unknown code or a
+// wrong phone counts against the client in the CodeGuard). The row is soft-deleted, which frees the seat (CountActive
+// ignores deleted rows) and lets the same person register again.
 //
 // Money may already have changed hands, and a soft-deleted row disappears from /admin, so only
 // applicants with nothing to settle can withdraw: no CONFIRMED place, no slip waiting for review
 // or already approved, and not an application that is already closed (REJECTED, REFUND_PENDING,
 // REFUNDED). Everyone else gets ErrCannotWithdraw and is told to contact staff, who record the
 // cancellation as REFUND_PENDING so the refund stays on the ledger.
-func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, nationalID, reason, ip string) error {
+func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, phone, reason, ip string) error {
 	reason = strings.TrimSpace(stripZeroWidth(reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
 		return newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
 	}
-	// Checked before the lookup, so a malformed ID never reveals whether the application exists.
-	nid, err := ParseWithdrawNationalID(nationalID)
-	if err != nil {
-		return err
-	}
 
-	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	// Second factor (owner ruling R24): giving a seat away also needs the full registered phone
+	// number. A missing, malformed or wrong phone is answered exactly like an unknown code (404,
+	// counted by the code guard), so it tells nothing about whether the code exists. The typed phone
+	// is never logged or audited.
+	applicant, err := findByCodeMatching(ctx, s.codes, s.appRepo, applicationNo, CodeActionWithdraw,
+		func(a *domain.Applicant) bool { return samePhone(phone, a.Phone) })
 	if err != nil {
-		return notFoundOr(err)
-	}
-	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionWithdraw, ip, func() error {
-		return CheckNationalID(applicant, nid)
-	}); err != nil {
 		return err
 	}
 
@@ -955,37 +995,11 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, national
 	return nil
 }
 
-// SelfProfileRequest is the applicant's own edit of the secondary fields. The identity fields
-// are declared only so that a request which tries to change them is refused (ErrIdentityLocked)
-// instead of having them silently dropped: changing who an application belongs to is staff-only
-// (anti-scalping, PDPA).
-type SelfProfileRequest struct {
-	// VerifyCode is the last 4 digits of the applicant national ID (AGENTS.md section 13.5).
-	VerifyCode string `json:"verifyCode"`
-	Nickname   string `json:"nickname"`
-	School     string `json:"school"`
-	Province   string `json:"province"`
-	Grade      string `json:"grade"`
-	ShirtSize  string `json:"shirtSize"`
-
-	FullName          *string `json:"fullName,omitempty"`
-	NationalID        *string `json:"nationalId,omitempty"`
-	Phone             *string `json:"phone,omitempty"`
-	Email             *string `json:"email,omitempty"`
-	ParentName        *string `json:"parentName,omitempty"`
-	ParentRelation    *string `json:"parentRelation,omitempty"`
-	ParentPhone       *string `json:"parentPhone,omitempty"`
-	Motivation        *string `json:"motivation,omitempty"`
-	Allergies         *string `json:"allergies,omitempty"`
-	MedicalConditions *string `json:"medicalConditions,omitempty"`
-}
-
 // AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send
 // only what changed; the merged result is validated as a whole.
 type AdminProfileRequest struct {
 	FullName          *string `json:"fullName,omitempty"`
 	Nickname          *string `json:"nickname,omitempty"`
-	NationalID        *string `json:"nationalId,omitempty"`
 	Phone             *string `json:"phone,omitempty"`
 	Email             *string `json:"email,omitempty"`
 	ParentName        *string `json:"parentName,omitempty"`
@@ -1008,7 +1022,7 @@ func profileOf(a *domain.Applicant) profileInput {
 		full += " " + a.LastName
 	}
 	p := profileInput{
-		FullName: full, Nickname: a.Nickname, NationalID: a.NationalID, Phone: a.Phone, Email: a.Email,
+		FullName: full, Nickname: a.Nickname, Phone: a.Phone, Email: a.Email,
 		School: a.School, Province: a.Province, Grade: a.Grade, ShirtSize: a.ShirtSize,
 	}
 	if a.ParentName != nil {
@@ -1039,7 +1053,6 @@ func profileChanges(before, after profileInput) map[string]map[string]string {
 	for _, f := range []struct{ name, old, new string }{
 		{"fullName", before.FullName, after.FullName},
 		{"nickname", before.Nickname, after.Nickname},
-		{"nationalId", before.NationalID, after.NationalID},
 		{"phone", before.Phone, after.Phone},
 		{"email", before.Email, after.Email},
 		{"parentName", before.ParentName, after.ParentName},
@@ -1071,7 +1084,7 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 	medicalConditions := p.MedicalConditions
 	emergencyContact, emergencyPhone := emergencyContactFallback(p.ParentName, p.ParentPhone, p.Phone)
 	return domain.ProfileFields{
-		FirstName: first, LastName: last, Nickname: p.Nickname, NationalID: p.NationalID,
+		FirstName: first, LastName: last, Nickname: p.Nickname,
 		Phone: p.Phone, Email: p.Email, School: p.School, Province: p.Province, Grade: p.Grade,
 		ShirtSize: p.ShirtSize, Motivation: &motivation, Allergies: &allergies,
 		MedicalConditions: &medicalConditions,
@@ -1083,74 +1096,10 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 	}, nil
 }
 
-// UpdateOwnProfile lets an applicant fix their nickname, school, province, grade and shirt size
-// from /status. Public, so it needs the application ID plus verifyCode, only works while the
-// application still holds a seat, and refuses any attempt to touch identity fields. The change
-// and its audit row (application.profile.update.self, no admin) commit together.
-func (s *ApplicantService) UpdateOwnProfile(ctx context.Context, applicationNo string, req SelfProfileRequest, ip string) (*ApplicationResponse, error) {
-	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
-	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	// Authenticate before revealing anything about the application state.
-	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionProfile, ip, func() error {
-		return CheckVerifyCode(applicant, req.VerifyCode)
-	}); err != nil {
-		return nil, err
-	}
-	if !applicant.Status.IsActive() {
-		return nil, ErrProfileLocked
-	}
-	if req.FullName != nil || req.NationalID != nil || req.Phone != nil || req.Email != nil ||
-		req.ParentName != nil || req.ParentRelation != nil || req.ParentPhone != nil ||
-		req.Motivation != nil || req.Allergies != nil || req.MedicalConditions != nil {
-		return nil, ErrIdentityLocked
-	}
-
-	before := profileOf(applicant)
-	after := normalizeProfile(profileInput{
-		FullName: before.FullName, NationalID: before.NationalID, Phone: before.Phone, Email: before.Email,
-		ParentName: before.ParentName, ParentRelation: before.ParentRelation, ParentPhone: before.ParentPhone,
-		Motivation: before.Motivation, Allergies: before.Allergies, MedicalConditions: before.MedicalConditions,
-		Nickname: req.Nickname, School: req.School, Province: req.Province, Grade: req.Grade, ShirtSize: req.ShirtSize,
-	})
-	if err := validateSecondary(after); err != nil {
-		return nil, err
-	}
-
-	changes := profileChanges(before, after)
-	if len(changes) == 0 {
-		return s.toPublic(ctx, applicant), nil
-	}
-	fields, err := profileFieldsOf(after)
-	if err != nil {
-		return nil, err
-	}
-	audit := &domain.AuditEntry{
-		Action:     domain.AuditProfileUpdateSelf,
-		TargetType: domain.AuditTargetApplicant,
-		TargetID:   applicant.ApplicationNo,
-		Details:    map[string]any{"changes": changes, "ip": ip, "selfService": true},
-		IPAddress:  ip,
-	}
-	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, true, audit); err != nil {
-		if errors.Is(err, domain.ErrStateConflict) {
-			return nil, ErrProfileLocked
-		}
-		return nil, notFoundOr(err)
-	}
-
-	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
-	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	return s.toPublic(ctx, updated), nil
-}
-
 // AdminUpdateProfile is the staff edit of any application (any status). The merged profile gets
-// the same full validation as registration, a collision with another live applicant national
-// ID, phone or email is ErrDuplicateApplicant, and keeping the applicant own identifiers is
-// fine. The change and its audit row (old -> new per field, plus the reason) commit together.
+// the same full validation as registration, a collision with another live applicant's phone or
+// email is ErrDuplicateApplicant, and keeping the applicant's own identifiers is fine. The change
+// and its audit row (old -> new per field, plus the reason) commit together.
 func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo string, req AdminProfileRequest, adminID *int64, ip string) (*ApplicationResponse, error) {
 	reason := strings.TrimSpace(stripZeroWidth(req.Reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
@@ -1168,7 +1117,7 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 		dst *string
 		src *string
 	}{
-		{&merged.FullName, req.FullName}, {&merged.Nickname, req.Nickname}, {&merged.NationalID, req.NationalID},
+		{&merged.FullName, req.FullName}, {&merged.Nickname, req.Nickname},
 		{&merged.Phone, req.Phone}, {&merged.Email, req.Email},
 		{&merged.ParentName, req.ParentName}, {&merged.ParentRelation, req.ParentRelation}, {&merged.ParentPhone, req.ParentPhone},
 		{&merged.School, req.School}, {&merged.Province, req.Province}, {&merged.Grade, req.Grade}, {&merged.ShirtSize, req.ShirtSize},
@@ -1205,6 +1154,7 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, false, audit); err != nil {
 		return nil, notFoundOr(err)
 	}
+	s.InvalidatePublicList() // name, nickname, school and province are listed publicly
 
 	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
 	if err != nil {
@@ -1233,7 +1183,6 @@ func (s *ApplicantService) baseResponse(a *domain.Applicant) *ApplicationRespons
 		ID:                  a.ApplicationNo,
 		FullName:            fullName,
 		Nickname:            a.Nickname,
-		NationalID:          a.NationalID,
 		Phone:               a.Phone,
 		Email:               a.Email,
 		School:              a.School,
@@ -1247,13 +1196,34 @@ func (s *ApplicantService) baseResponse(a *domain.Applicant) *ApplicationRespons
 	}
 }
 
-// toPublic masks identifiers and drops free text. A failed payment lookup only hides the slip
-// state; it must not fail a status check.
+// toPublic masks identifiers and drops free text. It carries the application code, so it is only
+// for callers who proved they hold that code (see ApplicationResponse). A failed payment lookup
+// only hides the slip state; it must not fail a status check.
 func (s *ApplicantService) toPublic(ctx context.Context, a *domain.Applicant) *ApplicationResponse {
 	res := s.baseResponse(a)
-	res.NationalID = MaskNationalID(a.NationalID)
 	res.Phone = MaskPhone(a.Phone)
 	res.Email = MaskEmail(a.Email)
+	if p, _ := s.latestPayment(ctx, a.ID); p != nil {
+		res.HasSlip = true
+		st := p.Status
+		res.SlipStatus = &st
+	}
+	return res
+}
+
+// toPhoneLookup is the answer to someone who only knows the phone number: masked display data and
+// the state, never the application code (see PhoneLookupResponse).
+func (s *ApplicantService) toPhoneLookup(ctx context.Context, a *domain.Applicant) *PhoneLookupResponse {
+	res := &PhoneLookupResponse{
+		Lookup:       LookupPhone,
+		CodeRequired: true,
+		FullName:     MaskName(a.FirstName, a.LastName),
+		Phone:        MaskPhone(a.Phone),
+		Email:        MaskEmail(a.Email),
+		Status:       a.Status,
+		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    a.UpdatedAt.Format(time.RFC3339),
+	}
 	if p, _ := s.latestPayment(ctx, a.ID); p != nil {
 		res.HasSlip = true
 		st := p.Status
@@ -1326,8 +1296,9 @@ func notFoundOr(err error) error {
 	return err
 }
 
-// normalizeAppNo accepts an application ID as a student might paste it: with zero-width
-// characters, Thai numerals, lower case, or without the hyphen ("cc๒๕e85b53" → "CC25-E85B53").
+// normalizeAppNo accepts an application code as a student might paste it: with zero-width
+// characters, Thai numerals, lower case, a space or a Unicode dash instead of the hyphen, or
+// without it ("cc๒๕e85b53" → "CC25-E85B53").
 func normalizeAppNo(s string) string {
 	s = strings.ToUpper(NormalizeDigitsAndIdentifier(s))
 	if m := looseAppNoRe.FindStringSubmatch(s); m != nil {
@@ -1336,7 +1307,7 @@ func normalizeAppNo(s string) string {
 	return s
 }
 
-var looseAppNoRe = regexp.MustCompile(`^CC25[-\s]?([0-9A-F]{6})$`)
+var looseAppNoRe = regexp.MustCompile(`^CC25[-\s\x{2010}-\x{2015}\x{2212}]?([0-9A-F]{6})$`)
 
 // normalizeThaiDigit maps Unicode Thai digits (U+0E50 '๐'–U+0E59 '๙') to ASCII '0'–'9'.
 func normalizeThaiDigit(r rune) rune {
@@ -1380,8 +1351,8 @@ func stripZeroWidth(s string) string {
 	}, s)
 }
 
-// cleanNumber removes zero-width characters, hyphens and spaces from a national ID, phone
-// number, or verification code and converts Thai numerals ('๐'–'๙') to ASCII '0'–'9'.
+// cleanNumber removes zero-width characters, hyphens and spaces from a phone number and converts
+// Thai numerals ('๐'–'๙') to ASCII '0'–'9'.
 // Anything else (letters, other symbols) is kept so validation still rejects it.
 func cleanNumber(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -1392,9 +1363,9 @@ func cleanNumber(s string) string {
 	}, s)
 }
 
-// normalizeLookupQuery prepares the public status query. A national ID or phone number written
-// with Thai digits or hyphens/spaces ("๑-๕๐๙๙-๐๐๑๑๒-๒๓-๓", "๐๘๑ ๒๓๔ ๕๖๗๘") becomes ASCII
-// digits only; anything else is treated as an application ID (see normalizeAppNo).
+// normalizeLookupQuery prepares the public status query. A phone number written with Thai digits
+// or hyphens/spaces ("๐๘๑ ๒๓๔ ๕๖๗๘") becomes ASCII digits only; anything else is treated as an
+// application code (see normalizeAppNo).
 func normalizeLookupQuery(q string) string {
 	q = NormalizeDigitsAndIdentifier(q)
 	if digits := cleanNumber(q); digits != "" && isNumeric(digits) {
@@ -1441,7 +1412,7 @@ type ExportRecord struct {
 	// StatusFilter is the dashboard's status tab, "" for all.
 	StatusFilter string
 	// SearchFiltered reports that a search narrowed the list. The search text itself is not
-	// recorded: staff search by phone number or national ID.
+	// recorded: staff search by phone number, name or application code.
 	SearchFiltered bool
 }
 

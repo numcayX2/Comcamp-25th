@@ -45,7 +45,11 @@ import {
   matchesApplicantQuery,
   slipLabel,
 } from '../lib/applicant-tools';
-import { describePaymentDeadline, formatNationalId } from './register/model';
+import {
+  PAYMENT_WINDOW_DAYS,
+  describeStaffPaymentDeadline,
+  type PaymentDeadlineInfo,
+} from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { SlipLightbox } from './slip/SlipLightbox';
@@ -182,26 +186,19 @@ function isAwaitingPayment(a: Application): boolean {
   return (a.slipStatus ?? 'PENDING') === 'REJECTED';
 }
 
-const HOUR_MS = 60 * 60 * 1000;
-
 /**
- * The transfer deadline the server actually enforces (ExpireOverdueUnpaid): 72h after registration,
- * but never earlier than 24h after the last staff change (updatedAt, for example a restored seat) or
- * 24h after a slip was rejected (verifiedAt). Computing it from createdAt alone would flag people the
- * sweep deliberately leaves alone, so staff could reject someone who still has time.
+ * The transfer deadline the server actually enforces (ExpireOverdueUnpaid): 120h (5 days) after
+ * registration, but never earlier than 24h after the last staff change (updatedAt, for example a
+ * restored seat) or 24h after a slip was rejected (verifiedAt). Computing it from createdAt alone
+ * would flag people the sweep deliberately leaves alone, so staff could reject someone who still has time.
  */
-function paymentDeadline(a: Application, nowMs: number): ReturnType<typeof describePaymentDeadline> {
-  const at = (iso?: string | null) => {
-    const t = iso ? Date.parse(iso) : Number.NaN;
-    return Number.isFinite(t) ? t : 0;
-  };
-  const dueMs = Math.max(
-    at(a.createdAt) + 72 * HOUR_MS,
-    at(a.updatedAt) + 24 * HOUR_MS,
-    a.slipStatus === 'REJECTED' ? at(a.verifiedAt) + 24 * HOUR_MS : 0,
+function paymentDeadline(a: Application, nowMs: number): PaymentDeadlineInfo {
+  return describeStaffPaymentDeadline(
+    a.createdAt,
+    a.updatedAt,
+    a.slipStatus === 'REJECTED' ? a.verifiedAt : null,
+    nowMs,
   );
-  // describePaymentDeadline adds its own 72h to the registration time it is given.
-  return describePaymentDeadline(new Date(dueMs - 72 * HOUR_MS).toISOString(), nowMs);
 }
 
 function isPaymentOverdue(a: Application, nowMs: number): boolean {
@@ -293,7 +290,7 @@ function StatusSelect({
   );
 }
 
-/** Time left on the 3-day transfer window, shown only while the applicant still owes a slip. */
+/** Time left on the 5-day transfer window, shown only while the applicant still owes a slip. */
 function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
   if (!isAwaitingPayment(app)) return null;
   const d = paymentDeadline(app, nowMs);
@@ -303,7 +300,7 @@ function PaymentDue({ app, nowMs }: { app: Application; nowMs: number }) {
       style={{ color: d.isOverdue ? DANGER : d.isUrgent ? AMBER_TEXT : INK_3 }}
       title={`ครบกำหนดโอน ${d.deadlineText}`}
     >
-      {d.isOverdue ? 'เกินกำหนดโอน 3 วันแล้ว' : d.remainingText.replace('เหลือเวลาโอนอีก', 'เหลือเวลาโอน')}
+      {d.isOverdue ? `เกินกำหนดโอน ${PAYMENT_WINDOW_DAYS} วันแล้ว` : d.remainingText.replace('เหลือเวลาโอนอีก', 'เหลือเวลาโอน')}
     </span>
   );
 }
@@ -357,7 +354,7 @@ function describeAdminError(err: unknown, fallback: string): string {
       return 'ที่นั่งเต็มแล้ว จึงคืนใบสมัครนี้กลับเป็นสถานะที่ถือที่นั่งไม่ได้ ต้องมีที่นั่งว่างหรือเพิ่มโควตาก่อน (ใบสมัครยังคงสถานะเดิม)';
     }
     if (err.code === 'DUPLICATE_APPLICATION') {
-      return 'เลขบัตรประจำตัว เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
+      return 'เบอร์โทรหรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
     }
     if (err.code === 'SLIP_CHANGED') {
       return 'ผู้สมัครเพิ่งอัปโหลดสลิปใหม่ จึงยังไม่ได้บันทึกผล ระบบโหลดสลิปล่าสุดให้แล้ว กรุณาตรวจสอบอีกครั้ง';
@@ -400,7 +397,7 @@ export function AdminSection() {
   const [query, setQuery] = useState('');
   /** Camp fee in baht from the settings panel; used in the note templates. */
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
-  /** Minute clock for the 3-day transfer countdowns. */
+  /** Minute clock for the 5-day transfer countdowns. */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
@@ -1221,7 +1218,9 @@ export function AdminSection() {
                   {awaitingPayCount} คน
                 </p>
                 <p className="mt-0.5 text-xs leading-5" style={{ color: overduePayCount > 0 ? DANGER : INK_3 }}>
-                  {overduePayCount > 0 ? `เกินกำหนด 3 วันแล้ว ${overduePayCount} คน` : 'ยังไม่มีใครเกินกำหนด 3 วัน'}
+                  {overduePayCount > 0
+                    ? `เกินกำหนด ${PAYMENT_WINDOW_DAYS} วันแล้ว ${overduePayCount} คน`
+                    : `ยังไม่มีใครเกินกำหนด ${PAYMENT_WINDOW_DAYS} วัน`}
                 </p>
               </button>
             </div>
@@ -1530,7 +1529,7 @@ export function AdminSection() {
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล เลขบัตร โรงเรียน ระดับชั้น ไซส์เสื้อ จังหวัด"
+                    placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน ระดับชั้น ไซส์เสื้อ จังหวัด"
                     autoComplete="off"
                     spellCheck={false}
                     enterKeyHint="search"
@@ -1910,7 +1909,7 @@ export function AdminSection() {
                           ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
                         </p>
                         <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                          การลบจะคืนที่นั่งและปล่อยเลขบัตรประจำตัว เบอร์โทร และอีเมลให้สมัครใหม่ได้
+                          การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
                           {(slip || a.status === 'CONFIRMED') &&
                             ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
                         </p>
@@ -1965,12 +1964,6 @@ export function AdminSection() {
                         aria-label={`รายละเอียดใบสมัคร ${a.id}`}
                       >
                         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-                          <div>
-                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>เลขบัตรประจำตัว</p>
-                            <p className="mt-1 font-mono text-sm tabular-nums" style={{ color: INK }}>
-                              {formatNationalId(a.nationalId)}
-                            </p>
-                          </div>
                           <div>
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>การยืนยันสิทธิ์เข้าร่วมค่าย</p>
                             <p className="mt-1 text-sm" style={{ color: INK }}>
@@ -2201,12 +2194,6 @@ export function AdminSection() {
                               <dd className="mt-0.5 break-words font-semibold" style={{ color: INK }}>
                                 {a.fullName}
                                 {a.nickname ? <span className="font-normal" style={{ color: INK_2 }}> ({a.nickname})</span> : null}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs font-semibold" style={{ color: INK_3 }}>เลขบัตรประจำตัว</dt>
-                              <dd className="mt-0.5 font-mono tabular-nums" style={{ color: INK }}>
-                                {formatNationalId(a.nationalId)}
                               </dd>
                             </div>
                             <div>
