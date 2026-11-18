@@ -24,7 +24,7 @@ Internet / Campus HTTPS (Host Nginx / Caddy / Cloudflare Tunnel)
 
 ## ขั้นตอนที่ 1: ตรวจสอบเวลาและพื้นที่ของเซิร์ฟเวอร์
 
-ระบบกำหนดเวลาเปิด-ปิดรับสมัครอัตโนมัติที่ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07:00` ถึง `2026-12-18 23:59:59+07:00`) ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
+ระบบกำหนดเวลาเปิด-ปิดรับสมัครอัตโนมัติที่ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07:00` ถึง `2026-12-18 23:59:59+07:00`) ควรตรวจสอบว่าเวลาของเครื่องโฮสต์ซิงค์กับ NTP และตั้งเขตเวลาถูกต้อง:
 
 ```bash
 timedatectl status
@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000010`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000011`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000010_update_camp_fee_1200.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `18 พ.ย.–18 ธ.ค. 2569` (`2026-11-18 00:00:00+07` ถึง `2026-12-18 23:59:59+07`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`)
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000011_remove_national_id.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -268,6 +268,36 @@ git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อก Phase 5 ด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+
+### Phase 5 deploy (migration `000011`)
+
+`000011_remove_national_id.up.sql` ลบคอลัมน์ `applicants.national_id`, ลบเลขบัตรประชาชนที่ค้างอยู่ใน `audit_logs.details` และย้าย `settings` เป็น `19 พ.ย. 2569 09:00 น.` / `40` ที่นั่ง (เฉพาะเมื่อแถวยังเป็นค่าเก่า) **ต้องทำตามลำดับนี้เท่านั้น:**
+
+```bash
+cd /path/to/Comcamp-site
+git pull origin main
+set -a; . ./.env.prod; set +a   # ให้ $DB_USER / $DB_NAME ใช้ได้ใน shell นี้
+
+# 1. หยุด backend ตัวเก่าก่อน (frontend / edge-proxy / db ทำงานต่อได้ ระหว่างนี้ /api ตอบ 502 ชั่วคราว)
+docker compose -f docker-compose.prod.yml --env-file .env.prod stop backend
+
+# 2. รัน 000011 up ด้วย psql ภายในคอนเทนเนอร์ db (ไฟล์เป็น BEGIN/COMMIT เดียว ล้มเหลว = ไม่มีอะไรเปลี่ยน)
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db   psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000011_remove_national_id.up.sql
+
+# 3. ตรวจผล: ต้องได้ 0 แถว (ไม่มีคอลัมน์ national_id) และ 0 (ไม่มีเลขบัตรใน audit_logs)
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'applicants' AND column_name = 'national_id';"
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT count(*) FROM audit_logs WHERE details ? 'nationalId' OR details->'changes' ? 'nationalId';"
+
+# 4. Build และเปิด backend ตัวใหม่
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+**ทำไมต้องเรียงแบบนี้:**
+- **Build ใหม่บน Schema เก่า:** backend ใหม่ไม่เขียน `national_id` แล้ว แต่คอลัมน์ยังเป็น `NOT NULL` ทุก `POST /api/applications` จะล้มเหลว — ตัว backend ใหม่จึงตรวจ `information_schema.columns` ตอนสตาร์ต ถ้ายังพบ `applicants.national_id` ใน `APP_ENV=production` จะ **ปฏิเสธการสตาร์ต** (log `Refusing to start: applicants.national_id still exists …`) ให้กลับไปทำข้อ 2
+- **Build เก่าบน Schema ใหม่:** backend เก่ายังอ่าน/เขียน `national_id` จะพังทุก Query ที่แตะ `applicants` จึงต้องหยุด backend เก่า **ก่อน** รัน Migration
+- ห้ามรัน `000011` ระหว่างที่ backend เก่ายังรับสมัครอยู่ และควรทำก่อนเปิดรับสมัคร `19 พ.ย. 2569 09:00 น.`
+
 ## เฝ้าระวังการเดารหัสใบสมัคร (CodeGuard) และการหยุดตัดสิทธิ์อัตโนมัติ
 
 รหัสใบสมัคร `CC25-XXXXXX` คือหลักฐานของผู้สมัครบนหน้า `/status` (ค้นด้วยรหัส, ส่งสลิป, ยืนยันสิทธิ์) ส่วนการยกเลิกเองต้องใช้รหัสคู่กับเบอร์โทรที่ใช้สมัคร ระบบนับรหัสที่ไม่มีอยู่จริง (และเบอร์ที่ไม่ตรงตอนยกเลิก) ต่อ IP และรวมทั้งระบบ ถ้าครบเพดานรวม 10 ครั้งใน 5 นาที ทุกคำขอที่ใช้รหัสจะถูกตอบ `429` จนจบช่วง 5 นาทีนั้น
@@ -287,3 +317,12 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
     ```
 - **ถ้าต้องการขยายเวลาให้ผู้สมัครรายใดเพิ่ม:** พี่ค่ายแก้ไขข้อมูลผู้สมัครคนนั้นใน `/admin` (แก้โปรไฟล์ พร้อมใส่เหตุผล) การบันทึกจะอัปเดต `updated_at` ทำให้กำหนดชำระขยายออกไปอย่างน้อย 24 ชั่วโมงนับจากเวลาที่แก้
 - ถ้ามีการโจมตีต่อเนื่อง ให้ตรวจ IP ใน `application.code.lockout` และพิจารณาบล็อกที่ reverse proxy
+
+**ข้อควรรู้เพิ่มเติม (ต้องอ่าน):**
+- **(a) สถานะ CodeGuard อยู่ในหน่วยความจำของ backend เท่านั้น:** การรีสตาร์ต backend (รวมถึง `up -d --build`) จะล้างการล็อก IP ทั้งหมดและเวลาที่เพดานรวมทำงานล่าสุด (`lastHard`) ทำให้ **การหยุดตัดสิทธิ์อัตโนมัติสิ้นสุดก่อนครบ 24 ชั่วโมงทันที** และระบบจะคืนที่นั่งค้างชำระที่เลยกำหนดในรอบถัดไป (ภายใน 1 นาที) ถ้ากำลังอยู่ในช่วงหยุด ให้ตรวจรายชื่อค้างชำระ (คำสั่งด้านบน) และขยายเวลาให้ผู้ที่ควรได้รับก่อนรีสตาร์ต
+- **(b) รหัสของใบสมัครที่ถูกลบหรือยกเลิกแล้วนับเป็นการเดาผิด:** ผู้ที่เปิดใบตอบรับเก่าหรือลิงก์ในอีเมลเดิมหลังยกเลิกจะถูกนับเป็น miss เหมือนรหัสที่ไม่มีอยู่จริง ไม่เป็นปัญหาที่ขนาด 40 ที่นั่ง แต่ถ้าเห็น lockout จาก IP ของผู้สมัครที่เพิ่งยกเลิก ให้ถือว่าเป็นกรณีนี้
+- **(c) ผู้ก่อกวนทำให้การหยุดตัดสิทธิ์อยู่ต่อได้ง่าย:** ใช้การเดาผิดเพียงราว 10 ครั้งต่อ 24 ชั่วโมงก็ทำให้การหยุดไม่สิ้นสุด ดังนั้นตลอดเวลาที่การหยุดยังทำงาน **พี่ค่ายต้องตรวจรายชื่อค้างชำระเกินกำหนดและเปลี่ยนเป็น `REJECTED` ด้วยตนเองทุกวัน** (ขั้นตอนด้านบน) ห้ามรอให้ระบบตัดสิทธิ์เอง
+- **(d) เฝ้าดูการไล่เดาเบอร์โทร:** แถว `application.code.lockout` ที่ `details->>'endpoint' = 'status-phone'` แปลว่ามี IP ค้นด้วยเบอร์ที่ไม่พบซ้ำๆ (อาจกำลังไล่หาเบอร์ของผู้สมัคร) ให้ตรวจ IP และพิจารณาบล็อกที่ reverse proxy
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, ip_address, details FROM audit_logs WHERE action = 'application.code.lockout' AND details->>'endpoint' = 'status-phone' ORDER BY created_at DESC LIMIT 20;"
+  ```

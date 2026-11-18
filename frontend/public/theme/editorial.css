@@ -1604,3 +1604,16 @@ a[href^="tel:"] { white-space: nowrap; }
   text-transform: none !important;
   line-height: 1.5;
 }
+
+/* "รอประกาศ" / TODO(content) markers (AGENTS.md §12.2): text-safe amber, not the icon amber
+   that styles.css gives .todo (#B45309 is only 4.40:1 on --canvas-1). Also covers the
+   feature tile, which styles.css paints #F3C08B for a dark tile it no longer has here. Outside
+   the editorial bands --amber-text is unset and the theme-aware --amber applies. */
+.todo,
+.ed-sec .todo,
+.ed-cta-band .todo,
+.ed-footer .todo,
+#timeline .tm-tile .todo,
+#timeline .tm-tile--feature .todo {
+  color: var(--amber-text, var(--amber));
+}
