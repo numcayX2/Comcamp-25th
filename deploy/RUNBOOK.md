@@ -165,8 +165,22 @@ server {
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f backend edge-proxy
 ```
 
-1. เข้าหน้าเว็บจาก **เครื่องที่ 1 (Wi-Fi มหาวิทยาลัย)** และ **เครื่องที่ 2 (เน็ตมือถือ 4G/5G)**
-2. ยืนยันว่าใน Log ของ `backend` / `edge-proxy` แสดง IP สาธารณะของทั้งสองเครื่องแยกกันชัดเจน (ไม่ใช่ `172.28.0.x` หรือ `127.0.0.1` ซ้ำกัน)
+1. ในแต่ละเครื่องทดสอบ เปิดเว็บ "what is my IP" (เช่น `https://ifconfig.me` หรือ `https://api.ipify.org`) แล้ว **จด IP สาธารณะจริงของเครื่องนั้นไว้**
+2. เข้าหน้าเว็บ (เช่น `/status` แล้วกดค้นหา) จาก **เครื่องที่ 1 (Wi-Fi มหาวิทยาลัย)** และ **เครื่องที่ 2 (เน็ตมือถือ 4G/5G)**
+3. ยืนยันว่า IP ใน Log ของ `backend` **ตรงกับ IP สาธารณะที่จดไว้ของแต่ละเครื่องทุกตัว** — ไม่ใช่แค่ "ต่างกัน" (ต้องไม่ใช่ `172.28.0.x`, `127.0.0.1`, IP ของ Proxy คณะ หรือ IP ของ Cloudflare)
+4. **ทดสอบการปลอม `X-Forwarded-For`** (ต้องผ่านก่อนเปิดรับสมัคร):
+   ```bash
+   curl -sS -H 'X-Forwarded-For: 203.0.113.9' https://<โดเมนจริง>/api/health
+   docker compose -f docker-compose.prod.yml --env-file .env.prod logs --since 2m backend | grep '/api/health'
+   ```
+   บรรทัดของคำขอนี้ใน Log ของ `backend` **ต้องไม่แสดง `203.0.113.9`** แต่ต้องเป็น IP จริงของเครื่องที่รัน `curl` ถ้าเห็น `203.0.113.9` แปลว่าผู้โจมตีเลือก IP ที่ระบบเห็นเองได้ — **ห้ามเปิดรับสมัครจนกว่าจะแก้**
+5. **ตรวจ Proxy ชั้นหน้า edge (Host Nginx / Traefik / NPM ฯลฯ):** ต้องตั้ง `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (ต่อท้าย IP ที่ต่อเข้ามาจริง) หรือถ้าเป็น **hop แรกที่รับจากอินเทอร์เน็ตโดยตรง** ให้ **เขียนทับ** ด้วย `proxy_set_header X-Forwarded-For $remote_addr;` ห้ามส่งต่อ header ที่ client ส่งมาตรงๆ (เช่น `$http_x_forwarded_for`) และห้ามไม่ตั้งค่าเลยในกรณีที่ Proxy นั้นส่ง header เดิมผ่านไปโดยอัตโนมัติ
+6. **ถ้าเว็บอยู่หลัง Cloudflare (Proxy สีส้ม / Tunnel):** IP ที่ต่อเข้าเครื่องเราเป็น IP ของ Cloudflare ให้ทำอย่างใดอย่างหนึ่ง:
+   - ที่ Host Nginx: `set_real_ip_from` ทุกช่วงใน <https://www.cloudflare.com/ips-v4> และ <https://www.cloudflare.com/ips-v6>, `real_ip_header CF-Connecting-IP;` แล้ว `proxy_set_header X-Forwarded-For $remote_addr;` (เขียนทับด้วย IP จริงที่แกะแล้ว) **หรือ**
+   - ใส่ช่วง IP ที่ Cloudflare ประกาศทั้งหมดเพิ่มใน `TRUSTED_PROXIES` ของ `.env.prod` (คั่นด้วยลูกน้ำ) เพื่อให้ backend ข้าม hop ของ Cloudflare ไปหา IP จริง
+   - ช่วง IP ของ Cloudflare เปลี่ยนได้ ให้ตรวจหน้าดังกล่าวอีกครั้งก่อนเปิดรับสมัคร แล้วทำข้อ 3–4 ซ้ำ
+
+> **ทำไมต้องเข้มงวด:** backend เชื่อ `X-Forwarded-For` เมื่อคำขอมาจาก `TRUSTED_PROXIES` เท่านั้น และใช้ IP ขวาสุดที่ไม่ใช่ Proxy ที่เชื่อถือ ค่าเริ่มต้น `172.28.0.0/24` **รวม Gateway ของ Docker Bridge (`172.28.0.1`)** ซึ่งเป็น IP ที่ `edge-proxy` เห็นเมื่อ Host Proxy ต่อเข้า `127.0.0.1:8080` ดังนั้นถ้า Proxy ชั้นหน้าส่ง `X-Forwarded-For` ที่ client ปลอมมาผ่านไปตรงๆ backend จะเชื่อ IP ปลอมนั้น ผู้โจมตีจะ (1) **หลบ Rate Limit / การล็อกการเดารหัส** ได้โดยเปลี่ยน IP ปลอมทุกคำขอ และ (2) **ทำให้ IP ของผู้สมัครคนอื่นถูกล็อก** (เช่น IP ของโรงเรียนหรือเครือข่ายมือถือ) โดยการเดารหัสผิดในนาม IP นั้น
 
 ---
 
@@ -298,6 +312,24 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 - **Build เก่าบน Schema ใหม่:** backend เก่ายังอ่าน/เขียน `national_id` จะพังทุก Query ที่แตะ `applicants` จึงต้องหยุด backend เก่า **ก่อน** รัน Migration
 - ห้ามรัน `000011` ระหว่างที่ backend เก่ายังรับสมัครอยู่ และควรทำก่อนเปิดรับสมัคร `19 พ.ย. 2569 09:00 น.`
 
+**หลังรัน `000011` — ล้างเลขบัตรประชาชนที่ยังค้างนอกตาราง (PDPA):**
+- **ไฟล์ backup เก่า:** ไฟล์ `pg_dump` รายชั่วโมงใน `/opt/cc25-backups/db/` (หรือ `$HOME/cc25-backups/db/`) ที่สร้าง **ก่อน** รัน `000011` ยังมีคอลัมน์ `national_id` และเลขบัตรใน `audit_logs` อยู่ หลังตรวจข้อ 3 ผ่านและ backup รอบถัดไป (หลัง migration) สร้างสำเร็จแล้ว ให้ลบไฟล์ที่เก่ากว่าเวลารัน migration ทิ้ง:
+  ```bash
+  # แทน 2026-11-18 20:00 ด้วยเวลาที่รัน 000011 จริง; ดูรายการก่อนลบด้วยคำสั่งแรก
+  find /opt/cc25-backups/db -name 'cc25_db_*.dump' ! -newermt '2026-11-18 20:00' -print
+  find /opt/cc25-backups/db -name 'cc25_db_*.dump' ! -newermt '2026-11-18 20:00' -delete
+  ```
+  ถ้าต้องการเก็บไว้เผื่อย้อนกลับ ให้ปล่อยให้สคริปต์ backup ลบเองเมื่อครบ 14 วัน (ข้อ 3 ของ `backup.sh`) แต่ต้องรู้ว่าระหว่างนั้นยังมีเลขบัตรอยู่ในไฟล์ และอย่าคัดลอกไฟล์เหล่านั้นออกนอกเครื่อง
+- **Log ของ nginx เก่า:** log ของ `edge-proxy` และ `frontend` ก่อนรุ่นนี้ใช้รูปแบบเริ่มต้นที่บันทึก query string (`/api/applications/status?q=<เลข 13 หลัก>` และ `/status?q=CC25-…`) ให้สร้างคอนเทนเนอร์ใหม่ตอน deploy เพื่อทิ้ง log เก่า (log ของ Docker ถูกลบพร้อมคอนเทนเนอร์) และให้ใช้ `log_format cc25_private` ที่ไม่บันทึก query string:
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build --force-recreate edge-proxy frontend
+  ```
+  (ข้อความใน `error_log` ของ nginx อาจยังมีบรรทัดคำขอเต็มเมื่อเกิด error เช่น backend ล่ม ซึ่งถูกทิ้งไปพร้อมคอนเทนเนอร์เช่นกัน)
+- **(ไม่บังคับ) เขียนหน้า heap ใหม่:** `DROP COLUMN` และ `UPDATE` ไม่ลบข้อมูลเก่าออกจากไฟล์ของ PostgreSQL ทันที ถ้าต้องการให้ข้อมูลเก่าหายจากดิสก์ ให้รันในช่วงที่ไม่มีคนใช้ (ล็อกตารางระหว่างรัน ใช้เวลาไม่นานที่ขนาดนี้):
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "VACUUM FULL applicants, audit_logs;"
+  ```
+
 ## เฝ้าระวังการเดารหัสใบสมัคร (CodeGuard) และการหยุดตัดสิทธิ์อัตโนมัติ
 
 รหัสใบสมัคร `CC25-XXXXXX` คือหลักฐานของผู้สมัครบนหน้า `/status` (ค้นด้วยรหัส, ส่งสลิป, ยืนยันสิทธิ์) ส่วนการยกเลิกเองต้องใช้รหัสคู่กับเบอร์โทรที่ใช้สมัคร ระบบนับรหัสที่ไม่มีอยู่จริง (และเบอร์ที่ไม่ตรงตอนยกเลิก) ต่อ IP และรวมทั้งระบบ ถ้าครบเพดานรวม 10 ครั้งใน 5 นาที ทุกคำขอที่ใช้รหัสจะถูกตอบ `429` จนจบช่วง 5 นาทีนั้น
@@ -326,3 +358,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, ip_address, details FROM audit_logs WHERE action = 'application.code.lockout' AND details->>'endpoint' = 'status-phone' ORDER BY created_at DESC LIMIT 20;"
   ```
+
+**ความเสี่ยงที่ยอมรับแล้ว (Known accepted risks):**
+- **การโจมตีเพดานรวมของการเดารหัส (R23 ยอมรับแล้ว):** ผู้ก่อกวนที่ใช้หลาย IP เดารหัสผิดให้ครบเพดานรวมได้ ระหว่างที่การโจมตียังดำเนินอยู่ ทุกคำขอที่ใช้รหัสใบสมัครจะถูกตอบ `429` ได้แก่ **การส่งสลิป, การค้นสถานะด้วยรหัส, การยืนยันสิทธิ์ และการยกเลิกใบสมัคร** (การค้นด้วยเบอร์โทรยังใช้ได้) เป็นข้อแลกเปลี่ยนที่ยอมรับเพื่อไม่ให้เดารหัสได้ทีละมากๆ
+  - **พี่ค่ายต้องทำ:** เฝ้าดูแถว `application.code.ceiling` (คำสั่งด้านบน) ถ้าเห็น `"level": "hard"` ต่อเนื่อง ให้ประกาศใน LINE OpenChat / เพจ Facebook ว่าระหว่างนี้ **ส่งสลิปทาง LINE หรือส่งให้พี่ค่ายโดยตรงได้** แล้วพี่ค่ายตรวจและเปลี่ยนสถานะใน `/admin` เอง พร้อมตรวจรายชื่อค้างชำระด้วยมือตามข้อ (c) และพิจารณาบล็อก IP ต้นทางที่ reverse proxy
