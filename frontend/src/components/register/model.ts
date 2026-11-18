@@ -56,6 +56,10 @@ export const ALLERGIES_MAX = 500;
 export const MEDICAL_CONDITIONS_MAX = 500;
 
 export const GRADES = ['ม.4', 'ม.5', 'ม.6', 'ปวช.1', 'ปวช.2', 'ปวช.3'] as const;
+/** Title shown before the applicant's name (stored apart from fullName; kept off the public list). */
+export const NAME_PREFIXES = ['นาย', 'นางสาว', 'นาง', 'เด็กชาย', 'เด็กหญิง'] as const;
+/** Titles an applicant may type into the name box by habit, spelled out or abbreviated. */
+const TYPED_PREFIXES = ['นาย', 'นางสาว', 'นาง', 'น.ส', 'นส', 'เด็กชาย', 'เด็กหญิง', 'ด.ช', 'ด.ญ'];
 /** Select value for "other"; the applicant then types their own level, which is what gets submitted. */
 export const GRADE_OTHER = 'อื่นๆ';
 export const GRADE_OTHER_MAX = 20; // grade column is VARCHAR(20)
@@ -99,8 +103,9 @@ export const DIETARY_QUICK_OPTIONS = [
 export interface FormState
   extends Omit<
     ApplicationPayload,
-    'shirtSize' | 'province' | 'allergies' | 'medicalConditions' | 'parentName' | 'parentRelation' | 'parentPhone'
+    'prefix' | 'shirtSize' | 'province' | 'allergies' | 'medicalConditions' | 'parentName' | 'parentRelation' | 'parentPhone'
   > {
+  prefix: string;
   shirtSize: ShirtSize | '';
   province: string;
   allergies: string;
@@ -136,6 +141,7 @@ export const gradeValue = (f: Pick<FormState, 'grade' | 'gradeOther'>) =>
   f.grade === GRADE_OTHER ? cleanSingleLine(f.gradeOther) : f.grade;
 
 export const EMPTY_FORM: FormState = {
+  prefix: '',
   fullName: '',
   nickname: '',
   phone: '',
@@ -154,6 +160,7 @@ export const EMPTY_FORM: FormState = {
 };
 
 export const MOCK_FORM: FormState = {
+  prefix: 'นาย',
   fullName: 'สมชาย ทดสอบระบบ',
   nickname: 'ชาย',
   phone: '0812345678',
@@ -188,7 +195,7 @@ export const STEPS: StepMeta[] = [
     label: 'ข้อมูลผู้สมัคร',
     title: 'ข้อมูลผู้สมัคร',
     lead: 'กรอกให้ครบทุกช่อง · ใช้ออกรหัสใบสมัครและติดต่อประสานงานกับผู้สมัครและผู้ปกครอง',
-    fields: ['fullName', 'nickname', 'phone', 'email', 'parentName', 'parentRelation', 'parentPhone'],
+    fields: ['prefix', 'fullName', 'nickname', 'phone', 'email', 'parentName', 'parentRelation', 'parentPhone'],
   },
   {
     label: 'ข้อมูลการศึกษา',
@@ -241,6 +248,8 @@ export function cleanSingleLine(s: string): string {
 
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
   switch (key) {
+    case 'prefix':
+      return (NAME_PREFIXES as readonly string[]).includes(form.prefix) ? undefined : 'กรุณาเลือกคำนำหน้าชื่อ';
     case 'fullName': {
       const full = cleanSingleLine(form.fullName);
       if (!full) return 'กรุณากรอกชื่อและนามสกุล';
@@ -252,6 +261,9 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       const last = full.slice(spaceIdx + 1).trim();
       if (!first || !last) {
         return 'กรุณากรอกทั้งชื่อจริงและนามสกุล โดยมีเว้นวรรคคั่น (เช่น สมชาย ใจดี)';
+      }
+      if (TYPED_PREFIXES.includes(first.replace(/\.$/, ''))) {
+        return 'เลือกคำนำหน้าที่ช่อง “คำนำหน้า” แล้วกรอกเฉพาะชื่อจริงและนามสกุลในช่องนี้ (เช่น สมชาย ใจดี)';
       }
       if (first.length > NAME_PART_MAX || last.length > NAME_PART_MAX) {
         return `ชื่อและนามสกุลแต่ละส่วนต้องยาวไม่เกิน ${NAME_PART_MAX} ตัวอักษร`;

@@ -24,6 +24,7 @@ const IDEMPOTENCY_KEY = 'cc25_register_idempotency_key';
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 const DRAFT_FIELDS = [
+  'prefix',
   'fullName',
   'nickname',
   'phone',

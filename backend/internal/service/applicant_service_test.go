@@ -947,3 +947,43 @@ func TestApplicantService_AdminListIncludesPaymentNotesAndPublicHidesThem(t *tes
 		t.Fatalf("public status leaked admin slip metadata: %+v", pub)
 	}
 }
+
+func TestApplicantService_NamePrefix(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := setupTestServices()
+
+	base := service.ApplicationCreateRequest{
+		Prefix:    "นางสาว",
+		FullName:  "นภา ทดสอบ",
+		Nickname:  "ภา",
+		Phone:     "0852223344",
+		Email:     "napa@example.com",
+		School:    "โรงเรียนยุพราช",
+		Grade:     "ม.5",
+		ShirtSize: "M",
+	}
+	created, err := svc.Submit(ctx, base)
+	if err != nil {
+		t.Fatalf("submit with prefix failed: %v", err)
+	}
+	if created.Prefix != "" {
+		t.Fatalf("receipt must not echo the prefix, got %q", created.Prefix)
+	}
+
+	list, err := svc.ListAll(ctx, nil)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("ListAll: len=%d err=%v", len(list), err)
+	}
+	if list[0].Prefix != "นางสาว" || list[0].FullName != "นภา ทดสอบ" {
+		t.Fatalf("admin view should carry prefix apart from the name, got prefix=%q name=%q", list[0].Prefix, list[0].FullName)
+	}
+
+	bad := base
+	bad.Prefix = "Dr."
+	bad.Phone = "0861112233"
+	bad.Email = "other@example.com"
+	var verr *service.ValidationError
+	if _, err := svc.Submit(ctx, bad); !errors.As(err, &verr) {
+		t.Fatalf("an unknown prefix must be a validation error, got %v", err)
+	}
+}

@@ -10,12 +10,6 @@ import mono500 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-nor
 import mono600 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2?url';
 import grotesk700 from '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2?url';
 import GraduationCap from '@lucide/astro/icons/graduation-cap';
-import Cpu from '@lucide/astro/icons/cpu';
-import Monitor from '@lucide/astro/icons/monitor';
-import MapPin from '@lucide/astro/icons/map-pin';
-import Users from '@lucide/astro/icons/users';
-import Banknote from '@lucide/astro/icons/banknote';
-import Backpack from '@lucide/astro/icons/backpack';
 import IdCard from '@lucide/astro/icons/id-card';
 import Shirt from '@lucide/astro/icons/shirt';
 import Smartphone from '@lucide/astro/icons/smartphone';
@@ -281,25 +275,21 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 
           <div class="bento" role="list">
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label"><GraduationCap class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ใครสมัครได้</span></div>
               <h3>คุณสมบัติผู้สมัคร</h3>
               <p>ม.<span class="font-mono tabular-nums">4</span>–ม.<span class="font-mono tabular-nums">6</span> หรือ ปวช.<span class="font-mono tabular-nums">1</span>–ปวช.<span class="font-mono tabular-nums">3</span> ทุกสายการเรียน ไม่จำเป็นต้องมีพื้นฐานด้านการเขียนโปรแกรมหรือวงจรไฟฟ้ามาก่อน</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label"><Cpu class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ชุดอุปกรณ์</span></div>
               <h3>อุปกรณ์การเรียนและฝึกปฏิบัติ</h3>
               <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> และ <span class="font-mono tabular-nums">ESP8266</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label"><Monitor class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ห้องเรียน</span></div>
               <h3>คอมพิวเตอร์ห้องปฏิบัติการ</h3>
               <p>จัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC สำหรับผู้เข้าร่วมทุกคน ไม่บังคับนำโน้ตบุ๊กส่วนตัวมา</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label"><MapPin class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />สถานที่</span></div>
               <h3>สถานที่จัดกิจกรรมและที่พัก</h3>
               <p>อบรม ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) และพักค้างคืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกโซนชาย-หญิง)</p>
               <a class="ed-inline-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
@@ -310,22 +300,25 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 
             <div role="listitem" class="card bento-feature">
               <div class="bento-feature__left">
-                <div class="card-top">
-                  <span class="bento-tag th-label"><span class="bento-live-dot" aria-hidden="true"></span><Users class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />จำนวนที่นั่ง</span>
-                </div>
                 <div id="bento-seats-num" class="bento-big">40<small>ที่นั่ง</small></div>
               </div>
               <div class="bento-feature__right">
                 <p id="bento-seats-caption">จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</p>
-                <p class="bento-feature__meta th-label">ไม่มีการสอบคัดเลือก · รับตามลำดับการสมัคร</p>
+                <p class="bento-feature__meta th-label"><span class="bento-live-dot" aria-hidden="true"></span>ไม่มีการสอบคัดเลือก · รับตามลำดับการสมัคร</p>
               </div>
             </div>
 
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
-                <div class="card-top"><span class="bento-tag th-label"><Banknote class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ค่าสมัคร</span></div>
                 <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
-                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
+                <p class="ed-ledger__lead">ค่าสมัครรวม</p>
+                <ul class="ed-incl">
+                  <li>ที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้</li>
+                  <li>อาหารหลัก <span class="font-mono">6</span> มื้อ และอาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ</li>
+                  <li>เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) และกระเป๋าพร้อมปั๊มลาย</li>
+                  <li>เอกสารอบรมและเกียรติบัตร</li>
+                </ul>
+                <p class="ed-ledger__note">โอนผ่านเลขบัญชีเท่านั้น ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
@@ -336,7 +329,6 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
             </div>
 
             <div role="listitem" class="card ed-cell--full">
-              <div class="card-top"><span class="bento-tag th-label"><Backpack class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />สิ่งที่ต้องเตรียม</span></div>
               <h3>สิ่งที่ต้องเตรียมมาค่าย (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)</h3>
               <div class="ed-bring-grid">
                 <div class="ed-bring-col">

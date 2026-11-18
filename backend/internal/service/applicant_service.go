@@ -51,13 +51,13 @@ var (
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
 // not a database error.
 const (
-	maxNameRunes              = 100
+	maxNameRunes = 100
 	// A nickname is one short word (ชาย, มิ้นท์, Ploy); 20 leaves room for compound or English ones.
-	maxNicknameRunes          = 20
-	maxParentNameRunes        = 150
-	maxParentRelationRunes    = 50
-	maxSchoolRunes            = 150
-	maxEmailRunes             = 150
+	maxNicknameRunes       = 20
+	maxParentNameRunes     = 150
+	maxParentRelationRunes = 50
+	maxSchoolRunes         = 150
+	maxEmailRunes          = 150
 	// The motivation note is a short optional answer, not a column limit.
 	maxMotivationRunes        = 1000
 	maxAllergiesRunes         = 500
@@ -89,6 +89,9 @@ func isValidGrade(g string) bool {
 }
 
 type ApplicationCreateRequest struct {
+	// Prefix is the title before the name. It is optional for older clients, but when sent it must
+	// be one of namePrefixes. It is stored apart from the name and never shown on the public list.
+	Prefix            string `json:"prefix,omitempty"`
 	FullName          string `json:"fullName"`
 	Nickname          string `json:"nickname"`
 	Phone             string `json:"phone"`
@@ -120,7 +123,9 @@ type ApplicationCreateRequest struct {
 type ApplicationResponse struct {
 	ID string `json:"id"`
 	// Lookup is "code" on the answer of GET /applications/status found by application code.
-	Lookup              string                   `json:"lookup,omitempty"`
+	Lookup string `json:"lookup,omitempty"`
+	// Prefix is set on admin responses only.
+	Prefix              string                   `json:"prefix,omitempty"`
 	FullName            string                   `json:"fullName"`
 	Nickname            string                   `json:"nickname"`
 	Phone               string                   `json:"phone"`
@@ -339,6 +344,9 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	if err := validateRequest(req); err != nil {
 		return nil, false, err
 	}
+	if req.Prefix != "" && !isValidNamePrefix(req.Prefix) {
+		return nil, false, newValidationError("invalid name prefix")
+	}
 
 	var key *uuid.UUID
 	if idempotencyKey = strings.TrimSpace(idempotencyKey); idempotencyKey != "" {
@@ -392,7 +400,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 
 	applicant := &domain.Applicant{
 		ID:                uuid.New(),
-		Prefix:            "",
+		Prefix:            req.Prefix,
 		FirstName:         firstName,
 		LastName:          lastName,
 		Nickname:          req.Nickname,
@@ -581,6 +589,7 @@ func normalizeProfile(p profileInput) profileInput {
 func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 	p := normalizeProfile(profileInputOfRequest(req))
 	return ApplicationCreateRequest{
+		Prefix:   cleanText(req.Prefix),
 		FullName: p.FullName, Nickname: p.Nickname, Phone: p.Phone,
 		Email: p.Email, ParentName: p.ParentName, ParentRelation: p.ParentRelation, ParentPhone: p.ParentPhone,
 		School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
@@ -1267,6 +1276,7 @@ func (s *ApplicantService) toAdmin(ctx context.Context, a *domain.Applicant) (*A
 
 func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Payment) *ApplicationResponse {
 	res := s.baseResponse(a)
+	res.Prefix = a.Prefix
 	if a.ParentName != nil {
 		res.ParentName = *a.ParentName
 	}
@@ -1403,6 +1413,19 @@ var numericRe = regexp.MustCompile(`^[0-9]+$`)
 
 func isNumeric(s string) bool {
 	return numericRe.MatchString(s)
+}
+
+// namePrefixes are the titles the registration form offers (kept in sync with NAME_PREFIXES in
+// frontend/src/components/register/model.ts).
+var namePrefixes = []string{"นาย", "นางสาว", "นาง", "เด็กชาย", "เด็กหญิง"}
+
+func isValidNamePrefix(prefix string) bool {
+	for _, p := range namePrefixes {
+		if prefix == p {
+			return true
+		}
+	}
+	return false
 }
 
 func isValidShirtSize(size string) bool {

@@ -573,10 +573,24 @@
             scrollTrigger: { trigger: journey, start: 'top 60%', end: function(){ return 'bottom+=' + tailLen + ' 60%'; }, scrub: 0.35, invalidateOnRefresh: true } });
 
           var activeNow = -1;
+          var jNums = jSteps.map(function(s){ return s.querySelector('.step-big-num'); });
+          injected.push(function(){ gsap.set(jNums.filter(Boolean), { clearProps: 'scale,rotation,transformOrigin' }); });
           var setActiveStep = function(activeIdx){
             jSteps.forEach(function(s, i){
-              s.classList.toggle('is-active', i === activeIdx);
+              var on = i === activeIdx;
+              var was = s.classList.contains('is-active');
+              s.classList.toggle('is-active', on);
               s.classList.toggle('is-done', activeIdx >= 0 && i < activeIdx);
+              // The active numeral swells and tips slightly toward the spine (outer edge anchored); eased, not snapped
+              if (jNums[i] && on !== was) {
+                var lean = (isDesktop() && i % 2 === 0) ? -5 : 5;
+                gsap.to(jNums[i], {
+                  scale: on ? 1.14 : 1,
+                  rotation: on ? lean : 0,
+                  transformOrigin: (isDesktop() && i % 2 === 0) ? '100% 50%' : '0% 50%',
+                  duration: 0.7, ease: 'back.out(1.6)', overwrite: 'auto'
+                });
+              }
             });
             // The signal "lands" on a node when it becomes the active step (advancing only, not on scroll back)
             if (activeIdx > activeNow && activeIdx < jSteps.length) {
@@ -610,12 +624,32 @@
               scrollTrigger: { trigger: step, start: 'top 88%', once: true, fastScrollEnd: true }
             });
             // Card and numeral converge on the spine from opposite outer edges (desktop); on mobile the card rises
-            if (card) stepTl.from(card, { x: side(48), y: function(){ return isDesktop() ? 0 : 20; }, opacity: 0, duration: 0.8, clearProps: 'transform,opacity' }, 0);
+            if (card) stepTl.from(card, { x: side(48), y: function(){ return isDesktop() ? 0 : 20; }, scale: 0.97, transformOrigin: function(){ return isDesktop() ? (cardOnRight ? '0% 50%' : '100% 50%') : '50% 0%'; }, opacity: 0, duration: 0.9, ease: 'power3.out', clearProps: 'transform,opacity' }, 0);
             if (aside) stepTl.from(aside, { x: side(-28), opacity: 0, duration: 0.7, clearProps: 'transform,opacity' }, 0.08);
             var inner = [tag, title, body].filter(Boolean);
             if (inner.length) stepTl.from(inner, { y: 10, opacity: 0, duration: 0.5, stagger: 0.07, clearProps: 'transform,opacity' }, 0.22);
-            if (day) stepTl.from(day, { y: 8, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' }, 0.3);
+            if (day) stepTl.from(day, { y: 8, scale: 0.8, opacity: 0, duration: 0.55, ease: 'back.out(2)', clearProps: 'transform,opacity' }, 0.3);
             if (specVal) stepTl.from(specVal, { clipPath: 'inset(0 100% 0 0)', duration: 0.6, ease: 'steps(18)', clearProps: 'clipPath' }, 0.55);
+            // Numeral resolves digit by digit (glyph scramble, same language as the hero title); text is restored on cleanup
+            if (bigNum) {
+              var finalNum = bigNum.textContent;
+              var scr = { p: 0 };
+              var lastTick = -1;
+              stepTl.to(scr, { p: 1, duration: 0.75, ease: 'none',
+                onUpdate: function(){
+                  var tick = Math.floor(scr.p * 14);
+                  if (tick === lastTick) return;
+                  lastTick = tick;
+                  var out = '';
+                  for (var k = 0; k < finalNum.length; k++) {
+                    out += (scr.p >= (k + 1) / (finalNum.length + 0.6)) ? finalNum.charAt(k) : String(Math.floor(Math.random() * 10));
+                  }
+                  bigNum.textContent = out;
+                },
+                onComplete: function(){ bigNum.textContent = finalNum; }
+              }, 0.12);
+              injected.push(function(){ bigNum.textContent = finalNum; });
+            }
             revealTimelines.push({ el: step, tl: stepTl });
 
             ScrollTrigger.create({

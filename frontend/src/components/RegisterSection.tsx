@@ -31,6 +31,7 @@ import {
   FB_URL,
   FEE_TEXT,
   GRADES,
+  NAME_PREFIXES,
   GRADE_OTHER,
   GRADE_OTHER_MAX,
   gradeValue,
@@ -730,6 +731,7 @@ export function RegisterSection() {
 
     try {
       const payload: ApplicationPayload = {
+        prefix: form.prefix,
         fullName: cleanSingleLine(form.fullName),
         nickname: cleanSingleLine(form.nickname),
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
@@ -979,10 +981,34 @@ export function RegisterSection() {
             </p>
           )}
           <div className="rw-fields">
+            <FieldShell id="prefix" label="คำนำหน้า" span={2} error={errors.prefix}>
+              <select
+                id="prefix"
+                name="prefix"
+                aria-required="true"
+                autoComplete="honorific-prefix"
+                className={`rw-input rw-select${form.prefix ? '' : ' is-empty'}`}
+                value={form.prefix}
+                onChange={(e) => set('prefix', e.target.value)}
+                onBlur={() => blur('prefix')}
+                aria-invalid={errors.prefix ? true : undefined}
+                aria-describedby={errors.prefix ? 'prefix-err' : undefined}
+              >
+                <option value="" disabled>
+                  เลือก
+                </option>
+                {NAME_PREFIXES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </FieldShell>
             <TextField
               id="fullName"
               required
               label="ชื่อ-นามสกุล"
+              hint="ไม่ต้องพิมพ์คำนำหน้า"
               span={4}
               value={form.fullName}
               error={errors.fullName}
@@ -996,7 +1022,7 @@ export function RegisterSection() {
               required
               label="ชื่อเล่น"
               hint={<span className="font-mono">{cleanSingleLine(form.nickname).length}/{NICKNAME_MAX}</span>}
-              span={2}
+              span={3}
               value={form.nickname}
               error={errors.nickname}
               onChange={(v) => set('nickname', v)}
@@ -1026,7 +1052,7 @@ export function RegisterSection() {
               id="email"
               required
               label="อีเมล"
-              span={3}
+              span={6}
               hint="รับรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
               inputMode="email"
@@ -1355,7 +1381,7 @@ export function RegisterSection() {
                 title="ข้อมูลผู้สมัคร"
                 onEdit={() => editFromReview(0)}
                 rows={[
-                  ['ชื่อ-นามสกุล', cleanSingleLine(form.fullName)],
+                  ['ชื่อ-นามสกุล', `${form.prefix}${cleanSingleLine(form.fullName)}`],
                   ['ชื่อเล่น', cleanSingleLine(form.nickname)],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],

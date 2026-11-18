@@ -1648,7 +1648,7 @@ export function AdminSection() {
                           {/* Col 2: Name, phone, health flags (email and parent contact live in the details) */}
                           <div className="min-w-0">
                             <p className="break-words text-sm font-semibold leading-6" style={{ color: INK }}>
-                              {a.fullName}
+                              {a.prefix}{a.fullName}
                               {a.nickname ? (
                                 <span className="font-normal" style={{ color: INK_3 }}>
                                   {' '}
@@ -2172,7 +2172,7 @@ export function AdminSection() {
                             <div className="min-w-0">
                               <dt className="text-xs font-semibold" style={{ color: INK_3 }}>ผู้สมัคร</dt>
                               <dd className="mt-0.5 break-words font-semibold" style={{ color: INK }}>
-                                {a.fullName}
+                                {a.prefix}{a.fullName}
                                 {a.nickname ? <span className="font-normal" style={{ color: INK_2 }}> ({a.nickname})</span> : null}
                               </dd>
                             </div>

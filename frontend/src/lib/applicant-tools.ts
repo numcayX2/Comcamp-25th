@@ -154,7 +154,7 @@ export function buildApplicantsCsv(rows: Application[]): string {
     lines.push(
       [
         csvField(a.id),
-        csvField(a.fullName),
+        csvField(`${a.prefix ?? ''}${a.fullName}`),
         csvField(a.nickname ?? ''),
         csvDigits(a.phone),
         csvField(a.email ?? ''),

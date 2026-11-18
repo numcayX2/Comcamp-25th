@@ -114,6 +114,8 @@ export function holdsSeat(status: ApplicationStatus): boolean {
 export type ShirtSize = 'SSS' | 'SS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL' | '4XL';
 
 export interface ApplicationPayload {
+  /** Title before the name (นาย, นางสาว, ...). Stored apart from fullName; never on the public list. */
+  prefix?: string;
   fullName: string;
   nickname: string;
   phone: string;
@@ -147,6 +149,8 @@ export interface ApplicantRecord {
   id: string;
   /** 'code' on a public lookup by application code; absent elsewhere. */
   lookup?: 'code';
+  /** Admin responses only; the public and masked views never carry it. */
+  prefix?: string;
   fullName: string;
   nickname?: string;
   phone: string;

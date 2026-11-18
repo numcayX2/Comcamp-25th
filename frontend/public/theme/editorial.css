@@ -18,8 +18,9 @@
 
    Dividers: every .ed-sec opens on a full-bleed 1px ink rule carrying a pill
    tab (.ed-index) that straddles it, plus a surface change.
-   Depth only from tokens: --shadow-card / --shadow-float, --surface,
-   --canvas-0/1, --rule, radii 9999px / 24px / 28px.
+   Neumorphic depth: panels use the section surface (--sec-bg) and get a
+   light/dark shadow pair (--nm-out / --nm-in); selected = pressed in.
+   Tokens: --nm-*, --canvas-0/1, --rule, radii 9999px / 24px / 28px.
    Type: IBM Plex Sans Thai for reading (letter-spacing 0), IBM Plex Mono only
    for English/numerals. Motion lives in initEditorialMotion() (main.js);
    nothing here hides content (no opacity:0 defaults; --rule-p defaults to 1).
@@ -48,6 +49,15 @@
      This shade holds ≥5.6:1 on both canvas-0 and canvas-1 (WCAG 2.2 AA). */
   --amber-text: #9A4608;
   --sec-bg: var(--canvas-0);
+  /* Neumorphism: panels share the section surface; depth is a light/dark shadow pair. */
+  --nm-hi: rgba(255, 255, 255, 0.9);
+  --nm-lo: rgba(18, 19, 22, 0.22);
+  /* Every state uses the same 4-layer list (outer light/dark + inset light/dark) so box-shadow
+     interpolates smoothly between embossed (--nm-out*) and concave (--nm-in). */
+  --nm-out: 9px 9px 20px var(--nm-lo), -9px -9px 20px var(--nm-hi), inset 0 0 0 0 var(--nm-lo), inset 0 0 0 0 var(--nm-hi);
+  --nm-out-sm: 5px 5px 12px var(--nm-lo), -5px -5px 12px var(--nm-hi), inset 0 0 0 0 var(--nm-lo), inset 0 0 0 0 var(--nm-hi);
+  --nm-in: 0 0 0 0 var(--nm-lo), 0 0 0 0 var(--nm-hi), inset 6px 6px 14px var(--nm-lo), inset -6px -6px 14px var(--nm-hi);
+  --nm-in-sm: inset 2px 2px 5px var(--nm-lo), inset -2px -2px 5px var(--nm-hi);
 }
 
 .ed-sec {
@@ -348,9 +358,10 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   margin: 0;
   padding: 2px 12px;
   box-sizing: border-box;
-  border: 1px solid var(--rule-strong);
+  border: 0;
   border-radius: 9999px;
-  background: var(--surface);
+  background: var(--sec-bg);
+  box-shadow: var(--nm-in-sm);
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--ink-2);
@@ -360,13 +371,13 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   grid-row: 2;
   min-width: 0;
   padding: var(--ed-card-pad);
-  background: var(--surface);
+  background: var(--sec-bg);
   border-radius: 24px;
-  box-shadow: var(--shadow-card);
-  transition: box-shadow 0.35s ease;
+  box-shadow: var(--nm-out);
+  transition: box-shadow 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 #experience .step.is-active .step-content {
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--nm-in);
 }
 #experience .step-num {
   margin: 0 0 6px;
@@ -591,12 +602,12 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   #essentials .bento {
     grid-template-columns: repeat(12, minmax(0, 1fr));
   }
-  #essentials .bento .card:nth-child(1) { grid-column: span 7; }
-  #essentials .bento .card:nth-child(2) { grid-column: span 5; }
+  #essentials .bento .card:nth-child(1) { grid-column: span 5; }
+  #essentials .bento .card:nth-child(2) { grid-column: span 7; }
   #essentials .bento .card:nth-child(3) { grid-column: span 5; }
   #essentials .bento .card:nth-child(4) { grid-column: span 7; }
-  #essentials .bento .card.bento-feature { grid-column: span 7; }
-  #essentials .bento .card.ed-cell--ledger { grid-column: span 5; }
+  #essentials .bento .card.bento-feature { grid-column: span 5; }
+  #essentials .bento .card.ed-cell--ledger { grid-column: span 7; }
   #essentials .bento .card.ed-cell--full { grid-column: 1 / -1; }
 }
 
@@ -606,22 +617,11 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   gap: 10px;
   min-width: 0;
   padding: var(--ed-card-pad) !important;
-  background: var(--surface) !important;
+  background: var(--sec-bg) !important;
   border: 0 !important;
   border-radius: 24px !important;
-  box-shadow: var(--shadow-card) !important;
+  box-shadow: var(--nm-out) !important;
   color: var(--ink);
-}
-#essentials .bento .card-top {
-  display: block;
-}
-#essentials .bento .bento-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--ink-3);
 }
 #essentials .bento .card h3 {
   margin: 0 !important;
@@ -651,7 +651,7 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   gap: 16px;
   align-content: center;
   background: #121316 !important;
-  box-shadow: var(--shadow-float) !important;
+  box-shadow: var(--nm-out) !important;
   color: #F9F8F4 !important;
 }
 @media (min-width: 640px) {
@@ -663,6 +663,19 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   #essentials .bento .bento-feature__right {
     padding-left: clamp(20px, 3vw, 36px);
     border-left: 1px solid rgba(249, 248, 244, 0.16);
+  }
+}
+@media (min-width: 1024px) {
+  /* Narrow plate: the figure sits on top, the caption anchors to the bottom edge */
+  #essentials .bento .card.bento-feature {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: space-between;
+    align-items: start;
+  }
+  #essentials .bento .bento-feature__right {
+    padding: 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid rgba(249, 248, 244, 0.16);
   }
 }
 #essentials .bento .bento-feature__left,
@@ -687,9 +700,6 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
 #essentials .bento .card.bento-feature[data-reg-state="FULL"] .bento-live-dot,
 #essentials .bento .card.bento-feature[data-reg-state="CLOSED"] .bento-live-dot {
   background: rgba(249, 248, 244, 0.45);
-}
-#essentials .bento .card.bento-feature .bento-tag {
-  color: rgba(249, 248, 244, 0.72);
 }
 #essentials .bento .card.bento-feature .bento-big {
   margin: 10px 0 0;
@@ -718,6 +728,9 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   color: rgba(249, 248, 244, 0.9) !important;
 }
 #essentials .bento .card.bento-feature .bento-feature__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.8125rem;
   font-weight: 500;
   color: rgba(249, 248, 244, 0.7) !important;
@@ -753,6 +766,34 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   line-height: 1.72;
   letter-spacing: 0;
   color: var(--ink-2) !important;
+}
+.ed-ledger__lead {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.ed-incl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 28px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.ed-incl li {
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+@media (min-width: 640px) {
+  .ed-incl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 #essentials .bento .card .ed-card-action {
   flex: none;
@@ -855,7 +896,7 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   overflow: hidden;
   border-radius: 12px;
   background: var(--canvas-1);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--nm-out-sm);
 }
 @media (min-width: 640px) {
   .ed-photo-card__frame {
@@ -954,10 +995,10 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
 }
 #timeline .tm-bento--steps .tm-tile.tm-tile--feature {
   padding: var(--ed-card-pad) !important;
-  background: var(--surface) !important;
+  background: var(--sec-bg) !important;
   border: 0 !important;
   border-radius: 24px;
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--nm-out);
 }
 #timeline .tm-bento--steps .tm-tile.tm-tile--feature::before {
   top: calc(var(--ed-card-pad) + 5px);
@@ -1050,9 +1091,9 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
 /* Part B: one raised panel; its head row and the four care cells are split by hairlines, not boxes. */
 #timeline .tm-care-section {
   margin-top: clamp(48px, 6vw, 88px);
-  background: var(--surface);
+  background: var(--sec-bg);
   border-radius: 28px;
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--nm-out);
 }
 #timeline .tm-group-head--care {
   margin: 0;
@@ -1151,14 +1192,14 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   background: none;
 }
 #faq details.faq-item {
-  background: var(--surface);
+  background: var(--sec-bg);
   border: 0;
   border-radius: 24px;
-  box-shadow: var(--shadow-card);
-  transition: box-shadow 0.25s ease;
+  box-shadow: var(--nm-out-sm);
+  transition: box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 #faq details.faq-item[open] {
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--nm-in);
 }
 #faq details.faq-item summary {
   min-height: 48px;
@@ -1226,9 +1267,9 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   max-width: 64rem;
   margin: 0 auto;
   padding: clamp(36px, 6vw, 80px) clamp(22px, 5vw, 72px);
-  background: var(--surface);
+  background: var(--sec-bg);
   border-radius: 28px;
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--nm-out);
   text-align: center;
 }
 .ed-cta-band__eyebrow {
@@ -1534,13 +1575,15 @@ html[data-theme="dark"] .ed-footer {
   --blue-600: #7FA8FF;
   --fern-500: #03B800;
   --fern-600: #22D31E;
+  --nm-hi: rgba(255, 255, 255, 0.05);
+  --nm-lo: rgba(0, 0, 0, 0.5);
 }
 
 /* Dark theme seats plate */
 html.dark #essentials .bento .card.bento-feature,
 html[data-theme="dark"] #essentials .bento .card.bento-feature {
   background: #182032 !important;
-  box-shadow: var(--shadow-float), inset 0 0 0 1px rgba(127, 168, 255, 0.38) !important;
+  box-shadow: var(--nm-out), inset 0 0 0 1px rgba(127, 168, 255, 0.38) !important;
   color: #F5F4EF !important;
 }
 @media (min-width: 640px) {
