@@ -83,6 +83,7 @@ services:
         PUBLIC_API_URL: ${PUBLIC_API_URL:-/api}
         PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:?Set PUBLIC_TURNSTILE_SITE_KEY in .env.prod}
         PUBLIC_GALLERY_BASE_URL: ${PUBLIC_GALLERY_BASE_URL:-https://comcamp25-gallery.sokulshop5.workers.dev/}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-${FRONTEND_URL:-}}
     image: comcamp25-frontend:prod
     container_name: ${COMPOSE_PROJECT_NAME:-comcamp25}_frontend
     restart: unless-stopped

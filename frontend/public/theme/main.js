@@ -507,6 +507,7 @@
       var ease = 'power3.out';
       var isDesktop = function(){ return window.matchMedia('(min-width: 900px)').matches; };
       var revealTimelines = [];
+      var injected = [];
 
       // 1) Page progress hairline (mix-blend keeps it visible on the dark gallery)
       var bar = document.createElement('div');
@@ -545,14 +546,44 @@
             scrollTrigger: { trigger: box, start: 'top 94%', once: true, fastScrollEnd: true } });
         });
 
-        // Curriculum spine (#experience, formerly #journey): scrubbed numeral parallax, staged reveal, and contiguous active step spy
-        if (sec.querySelector('.journey')) {
+        // Curriculum spine (#experience): a signal that travels the spine with the reader.
+        // The grey track draws once (--rule-p above); a blue fill then follows the same 60% reading line as the
+        // step spy, each step converges on the spine from its own side, and the mono spec line reads out like a terminal.
+        var journey = sec.querySelector('.journey');
+        if (journey) {
           var jSteps = gsap.utils.toArray('.journey .step', sec);
+          var fill = document.createElement('span');
+          fill.className = 'spine-fill';
+          fill.setAttribute('aria-hidden', 'true');
+          journey.appendChild(fill);
+          injected.push(fill);
+          // The signal runs past the last step down to the centre of the end node, so the blue line meets the green dot
+          var endDot = sec.querySelector('.ed-journey-signoff .step-node--end');
+          var tailLen = 0;
+          var syncTail = function(){
+            if (!endDot) return;
+            var er = endDot.getBoundingClientRect();
+            tailLen = Math.max(0, er.top + er.height / 2 - journey.getBoundingClientRect().bottom);
+            fill.style.bottom = (-tailLen) + 'px';
+          };
+          syncTail();
+          ScrollTrigger.addEventListener('refreshInit', syncTail);
+          injected.push(function(){ ScrollTrigger.removeEventListener('refreshInit', syncTail); });
+          gsap.fromTo(fill, { scaleY: 0 }, { scaleY: 1, ease: 'none',
+            scrollTrigger: { trigger: journey, start: 'top 60%', end: function(){ return 'bottom+=' + tailLen + ' 60%'; }, scrub: 0.35, invalidateOnRefresh: true } });
+
+          var activeNow = -1;
           var setActiveStep = function(activeIdx){
             jSteps.forEach(function(s, i){
               s.classList.toggle('is-active', i === activeIdx);
               s.classList.toggle('is-done', activeIdx >= 0 && i < activeIdx);
             });
+            // The signal "lands" on a node when it becomes the active step (advancing only, not on scroll back)
+            if (activeIdx > activeNow && activeIdx < jSteps.length) {
+              var landed = jSteps[activeIdx].querySelector('.step-node');
+              if (landed) gsap.fromTo(landed, { scale: 1.7 }, { scale: 1, duration: 0.6, ease: 'expo.out', overwrite: 'auto', clearProps: 'transform' });
+            }
+            activeNow = activeIdx;
           };
           jSteps.forEach(function(step, idx){
             var bigNum = step.querySelector('.step-big-num');
@@ -560,6 +591,12 @@
             var title = step.querySelector('h3');
             var day = step.querySelector('.day');
             var body = step.querySelector('p');
+            var aside = step.querySelector('.step-aside');
+            var card = step.querySelector('.step-content');
+            var specVal = step.querySelector('.step-spec__val');
+            // Odd steps (1st, 3rd) put the card on the right at >=900px, even steps on the left
+            var cardOnRight = idx % 2 === 0;
+            var side = function(px){ return function(){ return isDesktop() ? (cardOnRight ? px : -px) : 0; }; };
 
             if (bigNum) {
               gsap.fromTo(bigNum,
@@ -569,13 +606,16 @@
             }
 
             var stepTl = gsap.timeline({
-              scrollTrigger: { trigger: step, start: 'top 96%', once: true, fastScrollEnd: true }
+              defaults: { ease: 'expo.out' },
+              scrollTrigger: { trigger: step, start: 'top 88%', once: true, fastScrollEnd: true }
             });
-            if (bigNum) stepTl.from(bigNum, { opacity: 0, duration: 0.36, ease: 'power2.out', clearProps: 'opacity' }, 0);
-            if (tag) stepTl.from(tag, { x: -12, opacity: 0, duration: 0.36, ease: 'power2.out', clearProps: 'transform,opacity' }, 0);
-            if (title) stepTl.from(title, { yPercent: 26, opacity: 0, clipPath: 'inset(0 0 100% 0)', duration: 0.45, ease: ease, clearProps: 'clipPath,transform,opacity' }, 0.04);
-            var follow = [day, body].filter(Boolean);
-            if (follow.length) stepTl.from(follow, { y: 12, opacity: 0, duration: 0.42, stagger: 0.04, ease: 'power2.out', clearProps: 'transform,opacity' }, 0.09);
+            // Card and numeral converge on the spine from opposite outer edges (desktop); on mobile the card rises
+            if (card) stepTl.from(card, { x: side(48), y: function(){ return isDesktop() ? 0 : 20; }, opacity: 0, duration: 0.8, clearProps: 'transform,opacity' }, 0);
+            if (aside) stepTl.from(aside, { x: side(-28), opacity: 0, duration: 0.7, clearProps: 'transform,opacity' }, 0.08);
+            var inner = [tag, title, body].filter(Boolean);
+            if (inner.length) stepTl.from(inner, { y: 10, opacity: 0, duration: 0.5, stagger: 0.07, clearProps: 'transform,opacity' }, 0.22);
+            if (day) stepTl.from(day, { y: 8, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' }, 0.3);
+            if (specVal) stepTl.from(specVal, { clipPath: 'inset(0 100% 0 0)', duration: 0.6, ease: 'steps(18)', clearProps: 'clipPath' }, 0.55);
             revealTimelines.push({ el: step, tl: stepTl });
 
             ScrollTrigger.create({
@@ -588,6 +628,20 @@
               onLeaveBack: function(){ if (idx === 0) setActiveStep(-1); }
             });
           });
+
+          // Terminus: the end node lands when the signal reaches the certificate sign-off
+          var signoff = sec.querySelector('.ed-journey-signoff');
+          if (signoff) {
+            var endNode = signoff.querySelector('.step-node--end');
+            var endNote = signoff.querySelector('.ed-signoff-note');
+            var endTl = gsap.timeline({
+              defaults: { ease: 'expo.out' },
+              scrollTrigger: { trigger: signoff, start: 'top 88%', once: true, fastScrollEnd: true }
+            });
+            if (endNode) endTl.from(endNode, { scale: 0, duration: 0.7, clearProps: 'transform' }, 0);
+            if (endNote) endTl.from(endNote, { y: 12, opacity: 0, duration: 0.6, clearProps: 'transform,opacity' }, 0.15);
+            revealTimelines.push({ el: signoff, tl: endTl });
+          }
         }
       });
 
@@ -711,6 +765,7 @@
         window.removeEventListener('scroll', onScrollSafety);
         rowEls.forEach(function(el){ delete el.dataset.ccRevealed; });
         if (bar.parentNode) bar.parentNode.removeChild(bar);
+        injected.forEach(function(n){ if (typeof n === 'function') n(); else if (n.parentNode) n.parentNode.removeChild(n); });
       };
     });
 

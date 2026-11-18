@@ -11,10 +11,13 @@ COPY . .
 ARG PUBLIC_API_URL=/api
 ARG PUBLIC_TURNSTILE_SITE_KEY
 ARG PUBLIC_GALLERY_BASE_URL=https://comcamp25-gallery.sokulshop5.workers.dev/
+# Public origin for canonical / og:url / og:image (compose defaults it to FRONTEND_URL). Empty = those tags are omitted.
+ARG PUBLIC_SITE_URL
 
 ENV PUBLIC_API_URL=${PUBLIC_API_URL}
 ENV PUBLIC_TURNSTILE_SITE_KEY=${PUBLIC_TURNSTILE_SITE_KEY}
 ENV PUBLIC_GALLERY_BASE_URL=${PUBLIC_GALLERY_BASE_URL}
+ENV PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
 ENV NODE_ENV=production
 
 # Fail fast if Turnstile site key is empty, placeholder, or Cloudflare's dummy test keys.

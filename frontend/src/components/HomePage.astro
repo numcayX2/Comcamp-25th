@@ -9,9 +9,26 @@ import thai700 from '@fontsource/ibm-plex-sans-thai/files/ibm-plex-sans-thai-tha
 import mono500 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2?url';
 import mono600 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2?url';
 import grotesk700 from '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2?url';
+import GraduationCap from '@lucide/astro/icons/graduation-cap';
+import Cpu from '@lucide/astro/icons/cpu';
+import Monitor from '@lucide/astro/icons/monitor';
+import MapPin from '@lucide/astro/icons/map-pin';
+import Users from '@lucide/astro/icons/users';
+import Banknote from '@lucide/astro/icons/banknote';
+import Backpack from '@lucide/astro/icons/backpack';
+import IdCard from '@lucide/astro/icons/id-card';
+import Shirt from '@lucide/astro/icons/shirt';
+import Smartphone from '@lucide/astro/icons/smartphone';
+import Phone from '@lucide/astro/icons/phone';
+import MessageCircle from '@lucide/astro/icons/message-circle';
+import ScanLine from '@lucide/astro/icons/scan-line';
 const rawGalleryBase = import.meta.env.PUBLIC_GALLERY_BASE_URL || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
 const galleryBaseUrl = rawGalleryBase.endsWith('/') ? rawGalleryBase : `${rawGalleryBase}/`;
 const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api';
+// Absolute origin for canonical / og:url / og:image. Injected at build time from FRONTEND_URL (see docker-compose.prod.yml);
+// when unset (local dev) the absolute-URL tags are omitted instead of guessing a domain.
+const siteUrl = (import.meta.env.PUBLIC_SITE_URL || '').replace(/\/+$/, '');
+const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 ---
 <!DOCTYPE html>
 <html lang="th">
@@ -25,10 +42,18 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 <meta property="og:title" content="ComCamp #25 — ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 · CS MJU">
 <meta property="og:description" content="ComCamp #25 ค่าย Microcontroller (ESP8266 & Arduino UNO R3) with IoT & AI Dashboard สำหรับ ม.4–ม.6 หรือ ปวช. สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้">
 <meta name="theme-color" content="#F9F8F4">
+<meta property="og:site_name" content="ComCamp #25">
+{siteUrl && <link rel="canonical" href={`${siteUrl}/`}>}
+{siteUrl && <meta property="og:url" content={`${siteUrl}/`}>}
+{ogImage && <meta property="og:image" content={ogImage}>}
+{ogImage && <meta property="og:image:width" content="1200">}
+{ogImage && <meta property="og:image:height" content="630">}
+{ogImage && <meta property="og:image:alt" content="ComCamp #25 ค่ายยุวชนคอมพิวเตอร์ ครั้งที่ 25 บอร์ด Arduino UNO R3 และ ESP8266">}
+<meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'}>
+{ogImage && <meta name="twitter:image" content={ogImage}>}
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="preconnect" href={galleryBaseUrl} crossorigin>
 <link rel="preload" href={thai700} as="font" type="font/woff2" crossorigin>
 <link rel="preload" href={thai400} as="font" type="font/woff2" crossorigin>
@@ -248,7 +273,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
             <div class="ed-metric">
               <dt class="ed-metric__label th-label">ลงทะเบียน</dt>
-              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · เต็มก่อนปิดก่อนทันที</dd>
+              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · ปิดรับทันทีเมื่อที่นั่งเต็ม</dd>
             </div>
           </dl>
         </div>
@@ -256,26 +281,25 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
           <div class="bento" role="list">
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label">01 · ใครสมัครได้</span></div>
+              <div class="card-top"><span class="bento-tag th-label"><GraduationCap class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ใครสมัครได้</span></div>
               <h3>คุณสมบัติผู้สมัคร</h3>
               <p>ม.<span class="font-mono tabular-nums">4</span>–ม.<span class="font-mono tabular-nums">6</span> หรือ ปวช.<span class="font-mono tabular-nums">1</span>–ปวช.<span class="font-mono tabular-nums">3</span> ทุกสายการเรียน ไม่จำเป็นต้องมีพื้นฐานด้านการเขียนโปรแกรมหรือวงจรไฟฟ้ามาก่อน</p>
-              <p><strong>สิทธิพิเศษ:</strong> หากผ่านการเข้าค่ายจะได้รับพิจารณาเป็นพิเศษเมื่อสมัครเรียนต่อที่สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label">02 · ชุดอุปกรณ์</span></div>
+              <div class="card-top"><span class="bento-tag th-label"><Cpu class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ชุดอุปกรณ์</span></div>
               <h3>อุปกรณ์การเรียนและฝึกปฏิบัติ</h3>
               <p>จัดเตรียมชุดบอร์ด <span class="font-mono tabular-nums">Arduino UNO R3</span> และ <span class="font-mono tabular-nums">ESP8266</span> พร้อมเซนเซอร์ให้ฝึกปฏิบัติจริงและจำลองวงจร Tinkercad ตลอดค่าย (ส่วนเสื้อค่าย กระเป๋า เอกสารอบรม และเกียรติบัตรรับกลับบ้าน)</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label">03 · ห้องเรียน</span></div>
+              <div class="card-top"><span class="bento-tag th-label"><Monitor class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ห้องเรียน</span></div>
               <h3>คอมพิวเตอร์ห้องปฏิบัติการ</h3>
               <p>จัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC สำหรับผู้เข้าร่วมทุกคน ไม่บังคับนำโน้ตบุ๊กส่วนตัวมา</p>
             </div>
 
             <div role="listitem" class="card ed-cell--split">
-              <div class="card-top"><span class="bento-tag th-label">04 · สถานที่</span></div>
+              <div class="card-top"><span class="bento-tag th-label"><MapPin class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />สถานที่</span></div>
               <h3>สถานที่จัดกิจกรรมและที่พัก</h3>
               <p>อบรม ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) และพักค้างคืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกโซนชาย-หญิง)</p>
               <a class="ed-inline-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
@@ -287,7 +311,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="card bento-feature">
               <div class="bento-feature__left">
                 <div class="card-top">
-                  <span class="bento-tag th-label"><span class="bento-live-dot" aria-hidden="true"></span>05 · จำนวนที่นั่ง</span>
+                  <span class="bento-tag th-label"><span class="bento-live-dot" aria-hidden="true"></span><Users class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />จำนวนที่นั่ง</span>
                 </div>
                 <div id="bento-seats-num" class="bento-big">40<small>ที่นั่ง</small></div>
               </div>
@@ -299,9 +323,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
-                <div class="card-top"><span class="bento-tag th-label">06 · ค่าสมัคร</span></div>
+                <div class="card-top"><span class="bento-tag th-label"><Banknote class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />ค่าสมัคร</span></div>
                 <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
-                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
+                <p class="ed-ledger__note">รวมที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ · อาหารหลัก <span class="font-mono">6</span> มื้อ · อาหารว่าง (เบรก) <span class="font-mono">5</span> มื้อ · เสื้อค่าย ComCamp #25 (<span class="font-mono">SSS–4XL</span>) · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร · โอนผ่านเลขบัญชีเท่านั้น ภายใน <span class="font-mono">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร</p>
               </div>
               <div class="ed-card-action">
                 <a class="ed-inline-link ed-inline-link--strong" href="/register" data-register-link>
@@ -312,25 +336,25 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             </div>
 
             <div role="listitem" class="card ed-cell--full">
-              <div class="card-top"><span class="bento-tag th-label">07 · สิ่งที่ต้องเตรียม</span></div>
+              <div class="card-top"><span class="bento-tag th-label"><Backpack class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />สิ่งที่ต้องเตรียม</span></div>
               <h3>สิ่งที่ต้องเตรียมมาค่าย (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)</h3>
               <div class="ed-bring-grid">
                 <div class="ed-bring-col">
-                  <h4 class="ed-bring-col__title">1. เอกสารและยาประจำตัว</h4>
+                  <h4 class="ed-bring-col__title"><IdCard class="ed-ico" size={18} stroke-width={1.5} aria-hidden="true" />เอกสารและยาประจำตัว</h4>
                   <ul class="ed-bring-list">
                     <li>บัตรประจำตัว (บัตรประชาชน / บัตรชมพู) หรือบัตรประจำตัวนักเรียน</li>
                     <li>ยาประจำตัว (ถ้ามี) และระบุข้อมูลแพ้อาหารหรือโรคประจำตัวในใบสมัคร</li>
                   </ul>
                 </div>
                 <div class="ed-bring-col">
-                  <h4 class="ed-bring-col__title">2. เครื่องแต่งกายและของใช้ส่วนตัว</h4>
+                  <h4 class="ed-bring-col__title"><Shirt class="ed-ico" size={18} stroke-width={1.5} aria-hidden="true" />เครื่องแต่งกายและของใช้ส่วนตัว</h4>
                   <ul class="ed-bring-list">
                     <li>ชุดลำลองสุภาพ 3 วัน 2 คืน (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ)</li>
                     <li>ชุดนอน เสื้อกันหนาว ผ้าเช็ดตัว และของใช้ส่วนตัว (ค่ายมีเสื้อค่าย ComCamp #25 แจกให้)</li>
                   </ul>
                 </div>
                 <div class="ed-bring-col">
-                  <h4 class="ed-bring-col__title">3. อุปกรณ์อิเล็กทรอนิกส์</h4>
+                  <h4 class="ed-bring-col__title"><Smartphone class="ed-ico" size={18} stroke-width={1.5} aria-hidden="true" />อุปกรณ์อิเล็กทรอนิกส์</h4>
                   <ul class="ed-bring-list">
                     <li>สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อม Wi-Fi บอร์ด ESP8266)</li>
                     <li>โน้ตบุ๊กส่วนตัวไม่บังคับ (มีเครื่อง PC ห้องปฏิบัติการและบอร์ดฝึกปฏิบัติครบทุกคน)</li>
@@ -417,10 +441,10 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--01">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">01</span> · ลงทะเบียน</span>
-                <p class="tm-figure"><span class="tabular-nums ed-nw" data-open-date-short>19 พ.ย. 69</span> – <span class="tabular-nums ed-nw">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · เต็มก่อนปิดก่อนทันที</small></p>
+                <p class="tm-figure"><span class="tabular-nums ed-nw" data-open-date-short>19 พ.ย. 69</span> – <span class="tabular-nums ed-nw">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · ปิดรับทันทีเมื่อที่นั่งเต็ม</small></p>
               </div>
               <div class="tm-tile__detail">
-                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ ลงทะเบียนวันที่ <span class="tabular-nums" data-open-date-full>19 พ.ย. 2569</span> เวลา <span class="font-mono tabular-nums" data-open-time>09:00</span> น. ถึง <span class="tabular-nums">18 ธ.ค. 2569</span> <span style="white-space:nowrap">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์ (เต็มก่อนปิดก่อนทันที)</p>
+                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ เปิดรับเวลา <span class="font-mono tabular-nums" data-open-time>09:00</span> น. <span class="ed-nw">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์</p>
                 <p class="tm-tile-link" data-register-link><a class="ed-inline-link" href="/register"><span>ไปหน้าสมัครค่าย</span><span aria-hidden="true">→</span></a></p>
               </div>
             </div>
@@ -428,14 +452,14 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
               <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน</h3>
-              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (ตามลำดับการสมัคร) โอนผ่านเลขบัญชีเท่านั้น (ไม่มี QR Code) จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
+              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (ตามลำดับการสมัคร) โอนผ่านเลขบัญชีเท่านั้น จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
             <div role="listitem" class="tm-tile tm-tile--03">
               <span class="tm-num"><span class="font-mono tabular-nums">03</span> · ยืนยันสิทธิ์</span>
               <h3>พี่ค่ายตรวจสอบสลิป</h3>
-              <p>ทีมงานตรวจสอบความถูกต้องของหลักฐานการโอนเงิน และอัปเดตสถานะยืนยันสิทธิ์เข้าร่วมค่ายอย่างเป็นทางการ (ระบบส่งอีเมลแจ้งผล <span class="font-mono tabular-nums">2</span> ช่วง: <span class="font-mono">PASSED</span> หลังสมัคร และ <span class="font-mono">CONFIRMED</span> หลังอนุมัติสลิป)</p>
+              <p>ทีมงานตรวจสอบความถูกต้องของหลักฐานการโอนเงิน และอัปเดตสถานะยืนยันสิทธิ์เข้าร่วมค่ายอย่างเป็นทางการ (ระบบส่งอีเมลแจ้งผล <span class="font-mono tabular-nums">2</span> ช่วง: "รอชำระเงิน" หลังสมัคร และ "ยืนยันสิทธิ์แล้ว" หลังอนุมัติสลิป)</p>
             </div>
 
             <div role="listitem" class="tm-tile tm-tile--04 tm-tile--feature">
@@ -478,7 +502,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   <span class="th-label">ที่พัก</span>
                 </div>
                 <h3>เรือนพักสมาคมศิษย์เก่าแม่โจ้ (แยกชาย-หญิง)</h3>
-                <p>เข้าพัก ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ ภายในมหาวิทยาลัยแม่โจ้ แยกโซนหอพักชายและหญิงชัดเจน พร้อมระบบดูแลตลอดคืน</p>
+                <p>เข้าพัก ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้ ภายในมหาวิทยาลัยแม่โจ้ แยกโซนหอพักชายและหญิงชัดเจน</p>
                 <a class="ed-inline-link tm-tile-link" href="https://maps.app.goo.gl/oKP6J7gn3VXLXn7z7" target="_blank" rel="noopener noreferrer">
                   <span>ดูพิกัดที่พัก (Google Maps)</span>
                   <span aria-hidden="true">↗</span>
@@ -493,7 +517,7 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
                   <span class="th-label">สุขภาพและอาหาร</span>
                 </div>
                 <h3>สุขภาพและอาหาร</h3>
-                <p>มีมาตรการด้านการพยาบาลเบื้องต้น และการจัดการเมนูอาหารสำหรับผู้ที่มีอาการแพ้อาหารหรือโรคประจำตัวอย่างเคร่งครัด</p>
+                <p>มีมาตรการด้านการพยาบาลเบื้องต้น และการจัดการเมนูอาหารสำหรับผู้ที่มีอาการแพ้อาหารหรือโรคประจำตัว</p>
               </div>
 
               <div role="listitem" class="tm-tile tm-tile--care-d">
@@ -529,27 +553,27 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
         </div>
         <div class="faq">
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">01</span><span class="faq-q">ต้องมีพื้นฐานการเขียนโปรแกรมหรืออิเล็กทรอนิกส์มาก่อนหรือไม่</span></span></summary>
+            <summary><span class="faq-head"><span class="faq-q">ต้องมีพื้นฐานการเขียนโปรแกรมหรืออิเล็กทรอนิกส์มาก่อนหรือไม่</span></span></summary>
             <div class="faq-body">ไม่จำเป็น ค่ายออกแบบสำหรับผู้เริ่มต้น และมีการเรียนรู้แบบลงมือปฏิบัติจากการจำลองวงจรไปสู่การต่อฮาร์ดแวร์จริง พร้อมชุดอุปกรณ์ที่ค่ายจัดเตรียมให้</div>
           </details>
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">02</span><span class="faq-q">ค่ายใช้บอร์ดและอุปกรณ์อะไรบ้าง</span></span></summary>
+            <summary><span class="faq-head"><span class="faq-q">ค่ายใช้บอร์ดและอุปกรณ์อะไรบ้าง</span></span></summary>
             <div class="faq-body">ใช้ Arduino UNO R3 และ ESP8266 NodeMCU ร่วมกับเซนเซอร์และอุปกรณ์ฝึกปฏิบัติ เช่น Ultrasonic HC-SR04, LDR และ Active Buzzer ตามกิจกรรมในค่าย</div>
           </details>
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">03</span><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>
+            <summary><span class="faq-head"><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>
             <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</div>
           </details>
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">04</span><span class="faq-q">ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span></span></summary>
+            <summary><span class="faq-head"><span class="faq-q">ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span></span></summary>
             <div class="faq-body">ไม่บังคับ ค่ายจัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC และบอร์ดอุปกรณ์ครบชุดสำหรับผู้เข้าร่วมทุกคน (หากต้องการนำโน้ตบุ๊กส่วนตัวมาใช้งานเพิ่มเติมก็สามารถพกมาได้)</div>
           </details>
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">05</span><span class="faq-q">สลิปโอนเงินไม่ชัดเจนหรือถูกแจ้งให้แก้ไขต้องทำอย่างไร</span></span></summary>
-            <div class="faq-body">สามารถเข้าสู่ <a href="/status">หน้าตรวจสอบสถานะ</a> เพื่ออัปโหลดรูปสลิปใหม่ได้ทันทีโดยไม่ต้องกรอกใบสมัครใหม่ โดยค้นหาด้วยรหัสใบสมัคร (<span class="font-mono" style="letter-spacing:0">CC25-XXXXXX</span>)</div>
+            <summary><span class="faq-head"><span class="faq-q">สลิปโอนเงินไม่ชัดเจนหรือถูกแจ้งให้แก้ไขต้องทำอย่างไร</span></span></summary>
+            <div class="faq-body">สามารถเข้าสู่ <a href="/status">หน้าตรวจสอบสถานะ</a> เพื่ออัปโหลดรูปสลิปใหม่ได้ทันทีโดยไม่ต้องกรอกใบสมัครใหม่ โดยค้นหาด้วยรหัสใบสมัคร (<span class="font-mono">CC25-XXXXXX</span>)</div>
           </details>
           <details class="faq-item">
-            <summary><span class="faq-head"><span class="faq-idx" aria-hidden="true">06</span><span class="faq-q">สามารถสมัครและตรวจสอบสถานะผ่านโทรศัพท์มือถือได้หรือไม่</span></span></summary>
+            <summary><span class="faq-head"><span class="faq-q">สามารถสมัครและตรวจสอบสถานะผ่านโทรศัพท์มือถือได้หรือไม่</span></span></summary>
             <div class="faq-body">สามารถกรอกใบสมัครและอัปโหลดสลิปผ่านสมาร์ตโฟนได้ทุกระบบ รวมถึงเปิดใช้งานผ่านลิงก์ในแอปพลิเคชัน Facebook และ LINE ได้โดยตรง</div>
           </details>
         </div>
@@ -648,23 +672,24 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
             <ul class="footer-links">
               <li>
                 <a href={FB_URL} target="_blank" rel="noopener noreferrer">
-                  Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้
+                  <MessageCircle class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+                  <span>Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้</span>
                 </a>
               </li>
               {STAFF_CONTACTS.map((c) => (
                 <li>
                   <a href={`tel:${c.tel}`}>
+                    <Phone class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />
                     <span><span class="font-mono tabular-nums">{c.phone}</span> · {c.name}</span>
                   </a>
                 </li>
               ))}
             </ul>
-            <p class="footer-col__note">อาจารย์ผู้รับผิดชอบโครงการ: {PROJECT_ADVISOR}</p>
+            <p class="footer-col__note"><GraduationCap class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" /><span>อาจารย์ผู้รับผิดชอบโครงการ: {PROJECT_ADVISOR}</span></p>
             <figure class="fb-qr">
               <img class="fb-qr__img" src="/assets/facebook-page-qr.svg" width="120" height="120" loading="lazy" decoding="async" alt="QR Code เพจ Facebook ComCamp (CCCSMJU)">
-              <figcaption class="fb-qr__cap">สแกนเพื่อเข้าเพจ Facebook</figcaption>
+              <figcaption class="fb-qr__cap"><ScanLine class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />สแกนเพื่อเข้าเพจ Facebook</figcaption>
             </figure>
-            <p class="footer-col__note">ลงทะเบียนวันที่ <span class="tabular-nums" data-open-date-full>19 พ.ย. 2569</span> · ปิดรับ <span class="tabular-nums">18 ธ.ค. 2569</span> · <span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง (เต็มก่อนปิดก่อน)</p>
           </div>
         </nav>
         <p class="footer-meta footer-legal">© <span class="font-mono tabular-nums">2569</span> สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ · สอบถามผ่าน Facebook: โครงการค่ายยุวชนคอมพิวเตอร์ ม.แม่โจ้</p>
@@ -674,11 +699,9 @@ const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api'
 
   <BackToTop />
 
-<!-- main.js runs first so the Memory Tunnel + registration state never wait on cdnjs
-     (a slow CDN in FB/LINE in-app browsers held every deferred script behind it).
-     GSAP still executes before DOMContentLoaded, where main.js boots the editorial motion. -->
+<!-- GSAP ships from our own bundle (same-origin; no third-party CDN in FB/LINE in-app browsers).
+     main.js boots the editorial motion as soon as window.gsap + ScrollTrigger exist (DOMContentLoaded / load). -->
+<script>import '../scripts/gsap-global';</script>
 <script is:inline src="/theme/main.js" defer></script>
-<script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-<script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha384-Z3REaz79l2IaAZqJsSABtTbhjgOUYyV3p90XNnAPCSHg3EMTz1fouunq9WZRtj3d" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 </body>
 </html>

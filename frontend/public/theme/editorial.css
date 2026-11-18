@@ -270,6 +270,8 @@
   border: 0 !important;
 }
 #experience .step-node {
+  position: relative;
+  z-index: 1;
   grid-column: 1;
   grid-row: 1;
   align-self: center;
@@ -282,15 +284,27 @@
   background: var(--sec-bg);
   border: 2px solid var(--border-input);
   box-shadow: 0 0 0 4px var(--sec-bg);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
-#experience .step.is-active .step-node {
+/* Signal fill (injected by main.js): blue line over the grey track, scrubbed with scroll. Nodes the signal has passed turn blue. */
+#experience .spine-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 12.5px;
+  width: 2px;
+  z-index: 0;
+  background: var(--blue-600);
+  transform-origin: 50% 0;
+  pointer-events: none;
+}
+#experience .step.is-active .step-node,
+#experience .step.is-done .step-node {
   background: var(--blue-600);
   border-color: var(--blue-600);
 }
-#experience .step.is-done .step-node {
-  background: var(--ink-3);
-  border-color: var(--ink-3);
+#experience .step.is-active .step-node {
+  box-shadow: 0 0 0 4px var(--sec-bg), 0 0 0 6px color-mix(in srgb, var(--blue-600) 32%, transparent);
 }
 #experience .step-aside {
   grid-column: 2;
@@ -309,7 +323,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--border-input);
   user-select: none;
-  will-change: transform;
   transition: color 0.35s ease;
 }
 #experience .step.is-active .step-big-num {
@@ -317,6 +330,15 @@
 }
 #experience .step.is-done .step-big-num {
   color: var(--ink-3);
+}
+/* Dark: the inactive numeral used the form-border grey (2.7:1); lift it to the readable muted ink. */
+html.dark #experience .step:not(.is-active):not(.is-done) .step-big-num,
+html[data-theme="dark"] #experience .step:not(.is-active):not(.is-done) .step-big-num {
+  color: var(--ink-3);
+}
+html.dark #experience .step.is-done .step-big-num,
+html[data-theme="dark"] #experience .step.is-done .step-big-num {
+  color: var(--ink-2);
 }
 #experience .step .day {
   display: inline-flex;
@@ -428,6 +450,10 @@
 }
 
 @media (min-width: 900px) {
+  #experience .spine-fill {
+    left: 50%;
+    margin-left: -1px;
+  }
   #experience .journey {
     background-position: 50% 0;
   }
@@ -476,8 +502,12 @@
     background-position: 50% 0;
     background-size: 1px var(--sig-gap);
   }
+  /* The end node is not a per-step node: undo the step-node offset so the spine meets it exactly. */
   #experience .step-node--end {
     grid-column: 1;
+    grid-row: auto;
+    align-self: start;
+    margin-top: 0;
   }
 }
 
@@ -746,6 +776,14 @@
     padding-left: 24px;
     border-left: 1px solid var(--rule);
   }
+}
+#essentials .ed-ico {
+  flex: none;
+}
+#essentials .ed-bring-col__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .ed-bring-col__title {
   margin: 0 0 8px;
@@ -1134,35 +1172,15 @@
   transition: color 0.18s ease;
 }
 .faq-head {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 12px;
+  display: block;
   min-width: 0;
   flex: 1 1 auto;
-}
-@media (min-width: 640px) {
-  .faq-head {
-    grid-template-columns: 38px minmax(0, 1fr);
-    column-gap: 14px;
-  }
-}
-.faq-idx {
-  font-family: var(--ed-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-  transition: color 0.18s ease;
 }
 .faq-q {
   letter-spacing: 0;
   min-width: 0;
 }
-#faq details.faq-item summary:hover,
-#faq details.faq-item[open] summary .faq-idx,
-#faq details.faq-item summary:hover .faq-idx {
+#faq details.faq-item summary:hover {
   color: var(--blue-600);
 }
 #faq details.faq-item summary:focus-visible {
@@ -1175,21 +1193,11 @@
 }
 #faq .faq-body {
   max-width: 62ch;
-  padding: 0 clamp(18px, 2.4vw, 28px) clamp(20px, 2.4vw, 28px) calc(clamp(18px, 2.4vw, 28px) + 42px);
+  padding: 0 clamp(18px, 2.4vw, 28px) clamp(20px, 2.4vw, 28px);
   font-size: 0.9375rem;
   line-height: 1.78;
   letter-spacing: 0;
   color: var(--ink-2);
-}
-@media (min-width: 640px) {
-  #faq .faq-body {
-    padding-left: calc(clamp(18px, 2.4vw, 28px) + 52px);
-  }
-}
-@media (max-width: 399px) {
-  #faq .faq-body {
-    padding-left: clamp(18px, 2.4vw, 28px);
-  }
 }
 #faq .faq-body a {
   color: var(--ink);
@@ -1424,7 +1432,7 @@
 .ed-footer .footer-links a {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: 100%;
   min-height: 44px;
   line-height: 1.5;
@@ -1445,12 +1453,21 @@
   outline: 2px solid var(--blue-600);
   outline-offset: 2px;
 }
+.ed-footer .ed-ico {
+  flex: none;
+}
 .ed-footer .footer-col__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 10px 0 0;
   font-size: 0.8125rem;
   line-height: 1.7;
   letter-spacing: 0;
   color: var(--ink-3);
+}
+.ed-footer .footer-col__note .ed-ico {
+  margin-top: 0.3em;
 }
 /* Facebook page QR: always dark-on-light (white plate) so phones can scan it in Dark Mode too. */
 .ed-footer .fb-qr {
@@ -1469,6 +1486,10 @@
   box-sizing: content-box;
 }
 .ed-footer .fb-qr__cap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   font-size: 0.8125rem;
   line-height: 1.6;
   letter-spacing: 0;
