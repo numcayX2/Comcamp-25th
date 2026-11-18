@@ -496,7 +496,7 @@
   }
 
 
-  // Editorial immersive motion (sections 02–06 + footer + hero exit + page progress).
+  // Editorial immersive motion (sections 02–05 + CTA + footer + hero exit + page progress).
   // Enhance-only: no CSS hides content, everything is created inside matchMedia(no-preference),
   // so reduced-motion users and no-JS users see the final static layout.
   function initEditorialMotion(){
@@ -515,7 +515,7 @@
       gsap.to(bar, { scaleX: 1, ease: 'none',
         scrollTrigger: { trigger: document.documentElement, start: 'top top', end: 'bottom bottom', scrub: 0.2 } });
 
-      // 2) Hero exit: copy lifts, stage drifts and softens as you scroll into 02
+      // 2) Hero exit: copy lifts, stage drifts and softens as you scroll into 02 (curriculum)
       var hero = document.querySelector('.hero');
       if (hero) {
         var heroTl = gsap.timeline({ defaults: { ease: 'none' },
@@ -528,8 +528,8 @@
       // 3) Per-section choreography
       gsap.utils.toArray('.ed-sec').forEach(function(sec){
         var idx = sec.querySelector('.ed-index');
-        var title = sec.querySelector('.section-title, .exp-title');
-        var lead = sec.querySelector('.section-head .body, .exp-lead');
+        var title = sec.querySelector('.section-title');
+        var lead = sec.querySelector('.section-head .body');
         var tl = gsap.timeline({ defaults: { ease: ease },
           scrollTrigger: { trigger: sec, start: 'top 92%', once: true, fastScrollEnd: true } });
         if (idx) tl.from(idx, { x: -16, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, 0);
@@ -537,14 +537,14 @@
         if (lead) tl.from(lead, { y: 12, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' }, 0.12);
         revealTimelines.push({ el: sec, tl: tl });
 
-        // Hairline draws left → right (container top rules use --rule-p)
-        sec.querySelectorAll('.exp-list, .bento, .journey, .tm-bento, .faq').forEach(function(box){
+        // Line draws (CSS defaults --rule-p: 1): curriculum spine top → bottom, registration track along its axis
+        sec.querySelectorAll('.journey, .tm-bento--steps').forEach(function(box){
           gsap.fromTo(box, { '--rule-p': 0 }, { '--rule-p': 1, duration: 0.95, ease: 'expo.out',
             scrollTrigger: { trigger: box, start: 'top 94%', once: true, fastScrollEnd: true } });
         });
 
-        // Section 04 Journey (Option C): scrubbed numeral parallax, staged reveal, and contiguous active step spy
-        if (sec.id === 'journey') {
+        // Curriculum spine (#experience, formerly #journey): scrubbed numeral parallax, staged reveal, and contiguous active step spy
+        if (sec.querySelector('.journey')) {
           var jSteps = gsap.utils.toArray('.journey .step', sec);
           var setActiveStep = function(activeIdx){
             jSteps.forEach(function(s, i){
@@ -589,8 +589,8 @@
         }
       });
 
-      // 4) Row reveals: batched so rows entering together cascade (Section 04 handled with Option C choreography)
-      var rowEls = gsap.utils.toArray('.exp-item, .bento .card, .tm-tile, .faq-item');
+      // 4) Row reveals: batched so rows entering together cascade (curriculum steps use the spine choreography above)
+      var rowEls = gsap.utils.toArray('.bento .card, .tm-tile, .faq-item');
       var revealRows = function(els){
         var pending = els.filter(function(el){ return el.dataset.ccRevealed !== '1'; });
         if (!pending.length) return;
