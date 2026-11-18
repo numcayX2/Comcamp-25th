@@ -74,6 +74,13 @@ func TestPostgres_Migration000011WithRowsPresent(t *testing.T) {
 	addApplicant("22222222-0000-0000-0000-000000000002", "CC25-M11AA2", "1509900000012", "0800000012", "", false)
 	addApplicant("22222222-0000-0000-0000-000000000003", "CC25-M11AA3", "1509900000013", "0800000013", "m11c@example.com", true)
 
+	// Audit rows written by earlier builds that carry national IDs, plus one that does not.
+	exec(`INSERT INTO audit_logs (action, target_type, target_id, details) VALUES
+		('application.delete', 'application', 'm11-top', '{"nationalId":"1509900000013","applicationNo":"CC25-M11AA3"}'::jsonb),
+		('application.profile.update', 'application', 'm11-changes', '{"changes":{"nationalId":{"old":"1509900000011","new":"1509900000012"},"phone":{"old":"0800000011","new":"0800000012"}},"reason":"typo"}'::jsonb),
+		('application.profile.update', 'application', 'm11-both', '{"nationalId":"1509900000012","changes":{"nationalId":{"old":"1","new":"2"}}}'::jsonb),
+		('settings.update', 'settings', 'm11-clean', '{"maxCapacity":40}'::jsonb)`)
+
 	queryBool := func(sql string, args ...any) bool {
 		t.Helper()
 		var v bool
@@ -118,6 +125,24 @@ func TestPostgres_Migration000011WithRowsPresent(t *testing.T) {
 	}
 	if !queryBool(`SELECT count(*) = 3 FROM applicants`) {
 		t.Fatal("up must keep every applicant row")
+	}
+	if !queryBool(`SELECT count(*) = 0 FROM audit_logs WHERE details ? 'nationalId' OR details->'changes' ? 'nationalId'`) {
+		t.Fatal("up must scrub nationalId from audit_logs.details (top level and changes)")
+	}
+	if !queryBool(`SELECT count(*) = 4 FROM audit_logs WHERE target_id LIKE 'm11-%'`) {
+		t.Fatal("up must keep every audit row")
+	}
+	if !queryBool(`SELECT details = '{"applicationNo":"CC25-M11AA3"}'::jsonb FROM audit_logs WHERE target_id = 'm11-top'`) {
+		t.Fatal("up must keep the other top-level audit details")
+	}
+	if !queryBool(`SELECT details = '{"changes":{"phone":{"old":"0800000011","new":"0800000012"}},"reason":"typo"}'::jsonb FROM audit_logs WHERE target_id = 'm11-changes'`) {
+		t.Fatal("up must keep the other changes and fields")
+	}
+	if !queryBool(`SELECT details = '{"changes":{}}'::jsonb FROM audit_logs WHERE target_id = 'm11-both'`) {
+		t.Fatal("up must scrub both locations in one row")
+	}
+	if !queryBool(`SELECT details = '{"maxCapacity":40}'::jsonb FROM audit_logs WHERE target_id = 'm11-clean'`) {
+		t.Fatal("up must leave audit rows without a national ID alone")
 	}
 	if !settingsAre("2026-11-19 09:00:00+07", 40) || !untouched() {
 		t.Fatal("up must move the stale row to 19 Nov 09:00 / 40 seats and leave close/fee alone")

@@ -1,5 +1,6 @@
 -- ComCamp 25th - PDPA: national ID numbers leave the system.
---  * applicants.national_id and its live-row unique index (000003) are dropped. The application code
+--  * applicants.national_id and its live-row unique index (000003) are dropped, and national IDs
+--    copied into audit_logs.details (top-level "nationalId", changes.nationalId) are scrubbed. The application code
 --    (CC25-XXXXXX) is now the applicant's proof on /status (slip upload, confirm, withdraw), so the
 --    column has no remaining purpose. Dropping it discards the stored IDs on purpose; the migration
 --    works the same with or without applicant rows present.
@@ -32,6 +33,12 @@ END $$;
 DROP INDEX IF EXISTS uq_applicants_national_id_live;
 ALTER TABLE applicants DROP CONSTRAINT IF EXISTS applicants_national_id_key;
 ALTER TABLE applicants DROP COLUMN IF EXISTS national_id;
+
+-- National IDs that earlier builds copied into audit_logs.details (JSONB, see 000002): the
+-- top-level "nationalId" key (e.g. application.delete snapshots) and changes.nationalId (old -> new
+-- from application.profile.update). Only that key is removed; the rest of each audit row stays.
+UPDATE audit_logs SET details = details - 'nationalId' WHERE details ? 'nationalId';
+UPDATE audit_logs SET details = details #- '{changes,nationalId}' WHERE details->'changes' ? 'nationalId';
 
 ALTER TABLE settings
     ALTER COLUMN registration_open_at SET DEFAULT '2026-11-19 09:00:00+07',

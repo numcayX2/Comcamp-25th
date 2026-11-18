@@ -44,6 +44,16 @@ func main() {
 	switch {
 	case err == nil:
 		log.Println("Database connection established: using PostgreSQL repositories")
+		// Deploy-order safety net for migration 000011 (deploy/RUNBOOK.md, Phase 5 deploy).
+		schemaCtx, cancelSchema := context.WithTimeout(context.Background(), 3*time.Second)
+		present, probeErr := postgres.LegacyNationalIDColumnPresent(schemaCtx, pool)
+		cancelSchema()
+		if fatal, warning := checkSchemaForStartup(present, probeErr, cfg.IsProduction()); fatal != nil {
+			pool.Close()
+			log.Fatalf("Refusing to start: %v", fatal)
+		} else if warning != "" {
+			log.Print(warning)
+		}
 		appRepo = postgres.NewApplicantPostgresRepo(pool)
 		settingRepo = postgres.NewSettingPostgresRepo(pool)
 		adminRepo = postgres.NewAdminPostgresRepo(pool)
