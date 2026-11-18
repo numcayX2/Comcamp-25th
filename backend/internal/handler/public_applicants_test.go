@@ -309,3 +309,12 @@ func TestPublicList_SelfWithdrawLeavesTheListImmediately(t *testing.T) {
 		t.Fatalf("a withdrawn applicant must leave the cached list immediately, got %v", rows)
 	}
 }
+
+// The list names minors: like the /applicants page, its JSON must stay out of search indexes.
+func TestPublicList_IsNotIndexed(t *testing.T) {
+	app := setupTestApp(t)
+	_, headers, _ := app.getPublicList(t)
+	if got := headers.Get("X-Robots-Tag"); got != "noindex, nofollow" {
+		t.Fatalf("X-Robots-Tag = %q, want %q", got, "noindex, nofollow")
+	}
+}

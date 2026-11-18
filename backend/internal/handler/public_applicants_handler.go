@@ -11,8 +11,10 @@ import (
 // ListPublic handles GET /api/applications/public: the public applicants list shown on
 // /applicants. The body is service.PublicApplicantsResponse, the PDPA allowlist only (no code,
 // phone, email, parent, health, motivation, slip or id). The router puts it behind its own
-// per-IP limiter; /api already answers with Cache-Control: no-store.
+// per-IP limiter; /api already answers with Cache-Control: no-store. The list names minors, so the
+// JSON is kept out of search indexes like the /applicants page itself (X-Robots-Tag).
 func (h *ApplicantHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	list, err := h.appService.ListPublicApplicants(r.Context())
 	if err != nil {
 		if clientGone(r, err) {
