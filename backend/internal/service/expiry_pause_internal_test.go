@@ -1,8 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +70,42 @@ func TestExpireOverdueUnpaid_PausedWhileCodeCeilingFiredRecently(t *testing.T) {
 	expired, err = svc.ExpireOverdueUnpaid(ctx, created.Add(119*time.Hour+ExpiryPauseAfterCodeCeiling+time.Minute))
 	if err != nil || len(expired) != 1 || expired[0] != res.ID {
 		t.Fatalf("expected %s to expire once the pause is over, got %v, %v", res.ID, expired, err)
+	}
+}
+
+// The sweep runs every minute (and lookups call it too): the pause is logged once per ceiling time,
+// and again only when a new flood moves the ceiling time forward.
+func TestExpireOverdueUnpaid_PauseIsLoggedOncePerCeiling(t *testing.T) {
+	var buf bytes.Buffer
+	prev, flags := log.Writer(), log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(prev); log.SetFlags(flags) })
+
+	ctx := context.Background()
+	appRepo := memory.NewMemoryApplicantRepo()
+	guard, clock, _ := newTestCodeGuard(CodeGuardConfig{})
+	svc := NewApplicantService(appRepo, memory.NewMemorySettingRepo(), memory.NewMemoryPaymentRepo(appRepo)).
+		WithCodeGuard(guard).
+		WithNow(clock.Now)
+	paused := func() int { return strings.Count(buf.String(), "unpaid expiry paused") }
+
+	fireHardCeiling(t, guard)
+	for i := 0; i < 5; i++ {
+		clock.Advance(time.Minute)
+		_, _ = svc.ExpireOverdueUnpaid(ctx, clock.Now())
+	}
+	if n := paused(); n != 1 {
+		t.Fatalf("expected one pause log line for one ceiling, got %d: %s", n, buf.String())
+	}
+	clock.Advance(time.Hour) // a fresh global window
+	fireHardCeiling(t, guard)
+	for i := 0; i < 3; i++ {
+		clock.Advance(time.Minute)
+		_, _ = svc.ExpireOverdueUnpaid(ctx, clock.Now())
+	}
+	if n := paused(); n != 2 {
+		t.Fatalf("a new ceiling time should log once more, got %d lines: %s", n, buf.String())
 	}
 }
 

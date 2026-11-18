@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -166,6 +167,8 @@ type ApplicantService struct {
 	mailer EmailNotifier
 	// now returns the current wall-clock time; defaults to time.Now and can be overridden in tests.
 	now func() time.Time
+	// pauseLogged is the LastHardCeilingAt (UnixNano) the expiry pause was last logged for.
+	pauseLogged atomic.Int64
 }
 
 const (
@@ -302,8 +305,11 @@ func NewApplicantService(
 func (s *ApplicantService) ExpireOverdueUnpaid(ctx context.Context, now time.Time) ([]string, error) {
 	utcNow := now.UTC()
 	if last := s.codes.LastHardCeilingAt(); !last.IsZero() && utcNow.Sub(last) < ExpiryPauseAfterCodeCeiling {
-		log.Printf("unpaid expiry paused: application-code guess ceiling reached at %s; seats are not auto-released until %s after it stops",
-			last.UTC().Format(time.RFC3339), ExpiryPauseAfterCodeCeiling)
+		// The sweep (every minute) and the lookups call this often: log once per ceiling time.
+		if s.pauseLogged.Swap(last.UnixNano()) != last.UnixNano() {
+			log.Printf("unpaid expiry paused: application-code guess ceiling reached at %s; seats are not auto-released until %s after it stops",
+				last.UTC().Format(time.RFC3339), ExpiryPauseAfterCodeCeiling)
+		}
 		return nil, nil
 	}
 	expired, err := s.appRepo.ExpireOverdueUnpaid(ctx, utcNow.Add(-UnpaidExpiryWindow), utcNow.Add(-UnpaidGraceWindow), UnpaidExpiryReason)
@@ -715,7 +721,9 @@ func (l *StatusLookup) Body() any {
 // proved they hold it. Codes go through the CodeGuard, so an unknown code counts against the client
 // and the global budget, and a refused client gets *CodeGuessLimitedError before any lookup.
 //
-// By phone it returns PhoneLookupResponse, which never carries the code (see there). Anything else,
+// By phone it returns PhoneLookupResponse, which never carries the code (see there). A phone that
+// finds no live application counts as a miss for the client (CodeGuard.DoPerClient), but never
+// against the global budget. Anything else,
 // such as a 13-digit national ID typed out of habit, is ErrInvalidQuery and is never looked up.
 func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*StatusLookup, error) {
 	query = normalizeLookupQuery(query)
@@ -728,8 +736,16 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Stat
 		if checkPhone(query) != nil {
 			return nil, ErrInvalidQuery
 		}
-		_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
-		applicant, err := s.appRepo.GetByPhone(ctx, query)
+		// A phone that finds nothing is a miss for this client in the CodeGuard (per client only,
+		// ruling R25), so a client cannot enumerate phone numbers, e.g. to find the phone behind a
+		// guessed code. A locked client gets *CodeGuessLimitedError before any lookup.
+		var applicant *domain.Applicant
+		err := s.codes.DoPerClient(ctx, CodeActionStatusPhone, func() error {
+			_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
+			var err error
+			applicant, err = s.appRepo.GetByPhone(ctx, query)
+			return err
+		})
 		if err != nil {
 			return nil, notFoundOr(err)
 		}

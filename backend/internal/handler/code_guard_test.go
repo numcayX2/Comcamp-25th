@@ -114,10 +114,8 @@ func TestCodeGuard_UnknownCodesLockTheClientAcrossEndpoints(t *testing.T) {
 		t.Fatalf("a refused withdraw must not remove the application: %v", err)
 	}
 
-	// The phone lookup is not code-keyed: a locked client can still find an application by phone.
-	if rec := app.doAs(t, attacker, http.MethodGet, "/api/applications/status?q=0810000501", ""); rec.Code != http.StatusOK {
-		t.Fatalf("phone lookup while locked: expected 200, got %d (%s)", rec.Code, rec.Body.String())
-	}
+	// The phone lookup shares the client's record (ruling R25): a locked client is refused it too.
+	wantLimited(t, app.doAs(t, attacker, http.MethodGet, "/api/applications/status?q=0810000501", ""), service.CodeBaseLockout)
 	// Another client is not affected.
 	if rec := app.doAs(t, student, http.MethodGet, "/api/applications/status?q="+mine.ID, ""); rec.Code != http.StatusOK {
 		t.Fatalf("another client: expected 200, got %d (%s)", rec.Code, rec.Body.String())
@@ -179,8 +177,9 @@ func TestCodeGuard_GlobalCeilingSpansClients(t *testing.T) {
 	}
 }
 
-// Only well-formed unknown codes count. Malformed codes, phone numbers that match nobody, codes
-// that exist and the disabled self-edit route never do.
+// Only well-formed unknown codes (and phones that match nobody, see
+// TestCodeGuard_PhoneMissesLockTheClient) count. Malformed codes, codes and phones that exist and
+// the disabled self-edit route never do.
 func TestCodeGuard_OnlyUnknownWellFormedCodesCount(t *testing.T) {
 	app := setupRelaxedApp(t)
 	mine := app.submit(t, "0810000503", "guard3@example.com")
@@ -189,7 +188,9 @@ func TestCodeGuard_OnlyUnknownWellFormedCodesCount(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		wantErrCode(t, app.doAs(t, client, http.MethodPost, "/api/applications/CC25-NOTHEX/confirm", `{"confirmed":true}`), http.StatusNotFound, response.CodeNotFound)
 		wantErrCode(t, app.doAs(t, client, http.MethodPost, "/api/applications/0810000503/withdraw", `{}`), http.StatusNotFound, response.CodeNotFound)
-		wantErrCode(t, app.doAs(t, client, http.MethodGet, fmt.Sprintf("/api/applications/status?q=08999%05d", i), ""), http.StatusNotFound, response.CodeNotFound)
+		if rec := app.doAs(t, client, http.MethodGet, "/api/applications/status?q=0810000503", ""); rec.Code != http.StatusOK {
+			t.Fatalf("round %d: the real phone must keep working, got %d (%s)", i, rec.Code, rec.Body.String())
+		}
 		wantErrCode(t, app.doAs(t, client, http.MethodGet, "/api/applications/status?q=CC25-1234", ""), http.StatusBadRequest, response.CodeValidation)
 		wantErrCode(t, app.doAs(t, client, http.MethodPatch, "/api/applications/"+mine.ID+"/profile", `{}`), http.StatusForbidden, response.CodeForbidden)
 		if rec := app.doAs(t, client, http.MethodGet, "/api/applications/status?q="+mine.ID, ""); rec.Code != http.StatusOK {
@@ -211,5 +212,38 @@ func TestCodeGuard_AuditRowsCarryNoCodes(t *testing.T) {
 		if strings.Contains(fmt.Sprint(e.Details), "CC25-") {
 			t.Fatalf("a guard audit row must not contain the typed code: %+v", e)
 		}
+	}
+}
+
+// Ruling R25: a phone that matches nobody is a miss for the client, so enumerating phone numbers
+// (e.g. to find the withdraw's second factor) hits the same escalating lockout: 429 RATE_LIMITED with
+// Retry-After, even for a phone that exists. Phone misses never reach the global ceilings.
+func TestCodeGuard_PhoneMissesLockTheClient(t *testing.T) {
+	app := setupRelaxedApp(t)
+	mine := app.submit(t, "0810000504", "guard4@example.com")
+	const enumerator, student = "198.51.100.99", "203.0.113.30"
+
+	for i := 0; i < service.CodeClientMaxMisses; i++ {
+		rec := app.doAs(t, enumerator, http.MethodGet, fmt.Sprintf("/api/applications/status?q=08999%05d", i), "")
+		wantErrCode(t, rec, http.StatusNotFound, response.CodeNotFound)
+	}
+	secs := wantLimited(t, app.doAs(t, enumerator, http.MethodGet, "/api/applications/status?q=0810000504", ""), service.CodeBaseLockout)
+	if secs != int(service.CodeBaseLockout/time.Second) {
+		t.Fatalf("first lockout should report the full %v, got %ds", service.CodeBaseLockout, secs)
+	}
+	// Locked for code lookups as well.
+	wantLimited(t, app.doAs(t, enumerator, http.MethodGet, "/api/applications/status?q="+mine.ID, ""), service.CodeBaseLockout)
+	// Another client is not affected.
+	if rec := app.doAs(t, student, http.MethodGet, "/api/applications/status?q=0810000504", ""); rec.Code != http.StatusOK {
+		t.Fatalf("another client: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rows := app.auditOf(domain.AuditCodeGuessLockout); len(rows) != 1 || rows[0].Details["endpoint"] != service.CodeActionStatusPhone {
+		t.Fatalf("expected one lockout row for the phone lookup, got %+v", rows)
+	}
+	if n := len(app.auditOf(domain.AuditCodeGuessCeiling)); n != 0 {
+		t.Fatalf("phone misses must not reach the global ceilings, got %d ceiling rows", n)
+	}
+	if body := app.doAs(t, student, http.MethodGet, "/api/applications/status?q=0810000504", "").Body.String(); strings.Contains(body, mine.ID) {
+		t.Fatalf("a phone hit must not reveal the code: %s", body)
 	}
 }

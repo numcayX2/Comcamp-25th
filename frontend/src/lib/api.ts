@@ -138,7 +138,7 @@ export type SlipStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
  * Applicant record matching the Go backend DTO.
  *
  * Public endpoints (code lookup, confirm, submit) return identifiers masked by the server
- * (AGENTS.md §13.5): phone `XXX-XXX-5678`, email `s***@x.com`, and never a slip URL.
+ * (AGENTS.md §13.5): phone `XXX-XXX-XX78` (last 2 digits only), email `s***@x.com`, and never a slip URL.
  * There is no national ID anywhere any more: the application code (CC25-XXXXXX) is the
  * applicant's proof. Only /admin endpoints return full values and `slipUrl`, which is an
  * authenticated API path — load it with fetchAdminSlip, not an <img src>.
@@ -553,7 +553,7 @@ export function getApplicationStatus(query: string): Promise<ApiResult<StatusLoo
             lookup: 'phone',
             codeRequired: true,
             fullName: 'ส*** ส***',
-            phone: 'XXX-XXX-6543',
+            phone: 'XXX-XXX-XX43',
             email: 's***@school.ac.th',
             status: 'PASSED' as ApplicationStatus,
             hasSlip: false,
@@ -564,7 +564,7 @@ export function getApplicationStatus(query: string): Promise<ApiResult<StatusLoo
             lookup: 'code',
             fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
             nickname: 'เกียรติ',
-            phone: 'XXX-XXX-6543',
+            phone: 'XXX-XXX-XX43',
             email: 's***@school.ac.th',
             school: 'โรงเรียนแม่โจ้วิทยาคม',
             grade: 'ม.5',
@@ -615,7 +615,7 @@ export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiRe
       id,
       fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
       nickname: 'เกียรติ',
-      phone: 'XXX-XXX-6543',
+      phone: 'XXX-XXX-XX43',
       email: 's***@school.ac.th',
       school: 'โรงเรียนแม่โจ้วิทยาคม',
       grade: 'ม.5',

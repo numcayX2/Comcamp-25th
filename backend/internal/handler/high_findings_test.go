@@ -66,7 +66,7 @@ func TestAdminList_FullContactIsVisibleToAdminAndPublicStatusRemainsMasked(t *te
 	if pub.Code != http.StatusOK {
 		t.Fatalf("public status: expected 200, got %d", pub.Code)
 	}
-	if body := pub.Body.String(); !strings.Contains(body, "XXX-XXX-0001") || strings.Contains(body, "0880000001") || strings.Contains(body, "pii1@example.com") {
+	if body := pub.Body.String(); !strings.Contains(body, "XXX-XXX-XX01") || strings.Contains(body, "0880000001") || strings.Contains(body, "pii1@example.com") {
 		t.Fatalf("public status must mask the phone and email, got %s", body)
 	}
 }

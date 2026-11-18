@@ -44,9 +44,17 @@ import (
 // counted: they cannot be a hit.
 //
 // The state lives in process memory (like the per-IP rate limiters), is bounded by CodeMaxClients, and
-// is per backend process. The phone lookup is not code-keyed and never passes through this guard: a
-// student who lost their code can always find their application by phone (which never reveals the
-// code) and contact staff.
+// is per backend process.
+//
+// The phone lookup (GET /status?q=<phone>) is guarded per client only (DoPerClient, review round 2,
+// ruling R25): a well-formed phone that finds no live application is a miss on the same per-client
+// record as an unknown code, so a client enumerating phone numbers (for instance to find the phone
+// behind a guessed code, the withdraw's second factor) is locked out on the same ladder, and a client
+// locked for either kind of miss is refused both. Phone misses never feed the global window, so they
+// can neither trigger the global ceilings nor the unpaid-expiry pause tied to the hard ceiling
+// (LastHardCeilingAt), and the global ceilings never refuse a phone lookup: a student who lost their
+// code can find their application by phone (which never reveals the code) even while someone floods
+// the code endpoints.
 const (
 	CodeClientMaxMisses   = 5
 	CodeClientWindow      = 15 * time.Minute
@@ -68,6 +76,8 @@ const (
 	CodeActionConfirm  = "confirm"
 	CodeActionSlip     = "slip"
 	CodeActionWithdraw = "withdraw"
+	// CodeActionStatusPhone is the status lookup by phone number (counted per client only).
+	CodeActionStatusPhone = "status-phone"
 )
 
 // CodeGuessLimitedError refuses a code-keyed request: the client sent too many unknown codes, or all
@@ -174,21 +184,34 @@ func NewCodeGuardWith(audit domain.AuditRepository, cfg CodeGuardConfig) *CodeGu
 // refuses with *CodeGuessLimitedError before find runs while the client or the global budget is
 // exhausted, and records find's domain.ErrNotFound as a miss. Any other result, including other
 // errors, only releases the reservation.
-func (g *CodeGuard) Do(ctx context.Context, action string, find func() error) (err error) {
+func (g *CodeGuard) Do(ctx context.Context, action string, find func() error) error {
+	return g.do(ctx, action, true, find)
+}
+
+// DoPerClient is Do for a lookup that is not keyed by a code (the status lookup by phone): it is
+// refused while the client is locked out or at its miss budget, and its domain.ErrNotFound counts as
+// a miss for the client, exactly like Do. It neither checks nor feeds the global window, so it cannot
+// move the global ceilings or LastHardCeilingAt, and the global ceilings never refuse it.
+func (g *CodeGuard) DoPerClient(ctx context.Context, action string, find func() error) error {
+	return g.do(ctx, action, false, find)
+}
+
+func (g *CodeGuard) do(ctx context.Context, action string, global bool, find func() error) (err error) {
 	key := clientKeyFrom(ctx)
-	c, refused := g.begin(key)
+	c, refused := g.begin(key, global)
 	if refused != nil {
 		return refused
 	}
 	miss := false
-	defer func() { g.finish(ctx, key, action, c, miss) }()
+	defer func() { g.finish(ctx, key, action, c, miss, global) }()
 	err = find()
 	miss = errors.Is(err, domain.ErrNotFound)
 	return err
 }
 
-// begin checks the budgets and reserves one lookup for key.
-func (g *CodeGuard) begin(key string) (*codeClient, error) {
+// begin checks the budgets and reserves one lookup for key. With global false only the client's own
+// budget is checked and the global window is left alone.
+func (g *CodeGuard) begin(key string, global bool) (*codeClient, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.cfg.Now()
@@ -212,7 +235,7 @@ func (g *CodeGuard) begin(key string) (*codeClient, error) {
 	if !clean {
 		ceiling = g.cfg.GlobalSoftCeiling
 	}
-	if used >= ceiling {
+	if global && used >= ceiling {
 		retry := codeBusyRetry
 		if g.globalMisses >= ceiling {
 			retry = g.globalStart.Add(g.cfg.GlobalWindow).Sub(now)
@@ -226,7 +249,9 @@ func (g *CodeGuard) begin(key string) (*codeClient, error) {
 		g.clients[key] = c
 	}
 	c.pending++
-	g.globalPending++
+	if global {
+		g.globalPending++
+	}
 	return c, nil
 }
 
@@ -236,21 +261,22 @@ type codeEvent struct {
 	detail map[string]any
 }
 
-// finish releases the reservation of c and records a miss.
-func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClient, miss bool) {
+// finish releases the reservation of c and records a miss (in the global window too when global).
+func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClient, miss, global bool) {
 	var events []codeEvent
 	g.mu.Lock()
 	now := g.cfg.Now()
 	g.rollGlobalLocked(now)
 	c.pending--
-	g.globalPending--
+	if global {
+		g.globalPending--
+	}
 	if miss {
 		g.refreshLocked(c, now)
 		if c.misses == 0 {
 			c.windowStart = now
 		}
 		c.misses++
-		g.globalMisses++
 		if c.misses >= g.cfg.ClientMaxMisses && c.lockedUntil.IsZero() {
 			c.strikes++
 			lock := g.cfg.BaseLockout
@@ -269,6 +295,9 @@ func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClien
 				"lockedForSeconds": int(lock / time.Second),
 			}})
 		}
+	}
+	if miss && global {
+		g.globalMisses++
 		if g.globalMisses >= g.cfg.GlobalHardCeiling {
 			g.lastHard = now
 		}

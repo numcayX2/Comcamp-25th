@@ -276,6 +276,14 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, details FROM audit_logs WHERE action = 'application.code.ceiling' ORDER BY created_at DESC LIMIT 20;"
   ```
-- **ระหว่างนั้นระบบหยุดตัดสิทธิ์เอง:** ถ้าเพดานรวมทำงานภายใน 24 ชั่วโมงล่าสุด ระบบจะ **ไม่** ตัดสิทธิ์ใบสมัครที่ค้างชำระอัตโนมัติ (log `unpaid expiry paused`) เพราะผู้สมัครอาจส่งสลิปไม่ได้ในช่วงที่ถูกก่อกวน เมื่อหยุดเกิน 24 ชั่วโมง การตัดสิทธิ์จะกลับมาทำงานเอง
+- **ระหว่างนั้นระบบหยุดตัดสิทธิ์เอง:** ถ้าเพดานรวมทำงานภายใน 24 ชั่วโมงล่าสุด ระบบจะ **ไม่** ตัดสิทธิ์ใบสมัครที่ค้างชำระอัตโนมัติ เพราะผู้สมัครอาจส่งสลิปไม่ได้ในช่วงที่ถูกก่อกวน เมื่อหยุดเกิน 24 ชั่วโมง การตัดสิทธิ์จะกลับมาทำงานเอง (การค้นด้วยเบอร์โทรที่ไม่พบนับต่อ IP เท่านั้น ไม่ทำให้เกิดการหยุดนี้)
+  - **รู้ได้อย่างไรว่ากำลังหยุดอยู่:** มีแถว `application.code.ceiling` ที่ `"level": "hard"` ภายใน 24 ชั่วโมงล่าสุด (คำสั่งด้านบน) และ log ของ backend มีบรรทัด `unpaid expiry paused: application-code guess ceiling reached at …` (บันทึก **ครั้งเดียว** ต่อเวลาที่เพดานทำงาน ไม่ใช่ทุกนาที ถ้าเห็นบรรทัดใหม่ แปลว่ามีการโจมตีรอบใหม่ และนับ 24 ชั่วโมงใหม่จากเวลานั้น)
+    ```bash
+    docker compose -f docker-compose.prod.yml --env-file .env.prod logs backend | grep "unpaid expiry paused"
+    ```
+  - **สิ่งที่พี่ค่ายต้องทำระหว่างหยุด:** ที่นั่งของผู้ที่ค้างชำระเกินกำหนดจะไม่ถูกคืนเอง ให้ตรวจรายชื่อค้างชำระเองอย่างน้อยวันละครั้ง (ไม่มีสลิปที่รอตรวจหรืออนุมัติแล้ว และเลยกำหนด = `max(สมัคร + 120 ชม., แก้ไขล่าสุด + 24 ชม., สลิปที่ถูกปฏิเสธล่าสุด + 24 ชม.)`) แล้วเปลี่ยนสถานะเป็น `REJECTED` ใน `/admin` ทีละราย ควรติดต่อผู้สมัครก่อน เพราะเขาอาจส่งสลิปไม่ได้เพราะการก่อกวน (ถ้าต้องการขยายเวลาให้ ดูข้อถัดไป) คำสั่งนี้แสดงรายชื่อที่เข้าเงื่อนไขเดียวกับที่ระบบใช้ตัดสิทธิ์อัตโนมัติ:
+    ```bash
+    docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT application_no, status, created_at, updated_at FROM applicants a WHERE deleted_at IS NULL AND status IN ('PENDING','PASSED','RESERVE') AND created_at <= now() - interval '120 hours' AND updated_at <= now() - interval '24 hours' AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.applicant_id = a.id AND NOT p.applicant_deleted AND (p.status IN ('PENDING','APPROVED') OR (p.status = 'REJECTED' AND COALESCE(p.verified_at, p.uploaded_at) > now() - interval '24 hours'))) ORDER BY created_at;"
+    ```
 - **ถ้าต้องการขยายเวลาให้ผู้สมัครรายใดเพิ่ม:** พี่ค่ายแก้ไขข้อมูลผู้สมัครคนนั้นใน `/admin` (แก้โปรไฟล์ พร้อมใส่เหตุผล) การบันทึกจะอัปเดต `updated_at` ทำให้กำหนดชำระขยายออกไปอย่างน้อย 24 ชั่วโมงนับจากเวลาที่แก้
 - ถ้ามีการโจมตีต่อเนื่อง ให้ตรวจ IP ใน `application.code.lockout` และพิจารณาบล็อกที่ reverse proxy

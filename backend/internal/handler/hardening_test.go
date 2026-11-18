@@ -185,7 +185,7 @@ func TestSecurity_CopyPastedIdentifiersAreCleaned(t *testing.T) {
 	}
 
 	for _, q := range []string{"081 000 0060", "\u200B0810000060", "๐๘๑-๐๐๐-๐๐๖๐"} {
-		if res := app.phoneStatus(t, q); res.Lookup != service.LookupPhone || !res.CodeRequired || res.Phone != "XXX-XXX-0060" {
+		if res := app.phoneStatus(t, q); res.Lookup != service.LookupPhone || !res.CodeRequired || res.Phone != "XXX-XXX-XX60" {
 			t.Errorf("phone lookup %q: unexpected answer %+v", q, res)
 		}
 	}

@@ -26,12 +26,15 @@ func MaskName(first, last string) string {
 	return f + " " + l
 }
 
-// MaskPhone renders 0812345678 as XXX-XXX-5678.
+// MaskPhone renders 0812345678 as XXX-XXX-XX78: only the last 2 digits, for public responses only
+// (admin endpoints return the full number and never call this). Showing 4 digits left about 3×10⁴
+// candidates for a Thai mobile (06/08/09 + 4 unknown digits), few enough to enumerate through the
+// phone lookup; 2 digits leave about 3×10⁶ (ruling R25).
 func MaskPhone(phone string) string {
-	if len(phone) < 4 {
+	if len(phone) < 2 {
 		return "XXX-XXX-XXXX"
 	}
-	return "XXX-XXX-" + phone[len(phone)-4:]
+	return "XXX-XXX-XX" + phone[len(phone)-2:]
 }
 
 // MaskEmail renders somchai@example.com as s***@example.com.

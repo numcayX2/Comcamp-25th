@@ -328,3 +328,64 @@ func TestNormalizeAppNo_AcceptsWhatStudentsPaste(t *testing.T) {
 		}
 	}
 }
+
+// Ruling R25: phone lookups are guarded per client only. Their misses lock the client on the same
+// ladder as unknown codes (and a client locked for either is refused both), but they never reach the
+// global window: no ceiling, no ceiling audit row, no LastHardCeilingAt (the unpaid-expiry pause), and
+// the global ceilings never refuse a phone lookup.
+func TestCodeGuard_PerClientLookupsNeverFeedTheGlobalWindow(t *testing.T) {
+	g, _, audit := newTestCodeGuard(CodeGuardConfig{})
+	phone := func(client string, find func() error) error {
+		return g.DoPerClient(clientCtx(client), CodeActionStatusPhone, find)
+	}
+
+	// Many clients, each just below its own budget: far more misses than the hard ceiling.
+	clients := CodeGlobalHardCeiling
+	for i := 0; i < clients; i++ {
+		for j := 0; j < CodeClientMaxMisses-1; j++ {
+			if err := phone(fmt.Sprintf("10.0.0.%d", i), codeMiss); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("client %d miss %d: %v", i, j, err)
+			}
+		}
+	}
+	if g.globalMisses != 0 || g.globalPending != 0 || !g.LastHardCeilingAt().IsZero() {
+		t.Fatalf("phone misses must not reach the global window: misses=%d pending=%d lastHard=%v",
+			g.globalMisses, g.globalPending, g.LastHardCeilingAt())
+	}
+	if n := len(audit.byAction(domain.AuditCodeGuessCeiling)); n != 0 {
+		t.Fatalf("phone misses must not write ceiling rows, got %d", n)
+	}
+	// A clean client's code lookup is not held up by them, and a found phone still works.
+	if err := lookup(g, "10.9.9.9", codeHit); err != nil {
+		t.Fatalf("clean code lookup: %v", err)
+	}
+	if err := phone("10.0.0.0", codeHit); err != nil {
+		t.Fatalf("found phone below the client budget: %v", err)
+	}
+
+	// The next miss locks that client, for phone and code lookups alike.
+	if err := phone("10.0.0.0", codeMiss); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("last allowed miss: %v", err)
+	}
+	if d := retryOf(t, phone("10.0.0.0", codeHit)); d != CodeBaseLockout {
+		t.Fatalf("phone lookup while locked: retry %v, want %v", d, CodeBaseLockout)
+	}
+	if d := retryOf(t, lookup(g, "10.0.0.0", codeHit)); d != CodeBaseLockout {
+		t.Fatalf("code lookup while locked by phone misses: retry %v, want %v", d, CodeBaseLockout)
+	}
+	if rows := audit.byAction(domain.AuditCodeGuessLockout); len(rows) != 1 || rows[0].Details["endpoint"] != CodeActionStatusPhone {
+		t.Fatalf("expected one lockout row for the phone lookup, got %+v", rows)
+	}
+
+	// Code misses fill the global window up to the hard ceiling: phone lookups are still served.
+	for i := 0; i < CodeGlobalHardCeiling; i++ {
+		_ = lookup(g, fmt.Sprintf("10.1.0.%d", i), codeMiss)
+	}
+	if g.LastHardCeilingAt().IsZero() {
+		t.Fatal("code misses should have reached the hard ceiling")
+	}
+	retryOf(t, lookup(g, "10.9.9.8", codeHit))
+	if err := phone("10.9.9.8", codeHit); err != nil {
+		t.Fatalf("a phone lookup must not be refused by the global ceiling: %v", err)
+	}
+}

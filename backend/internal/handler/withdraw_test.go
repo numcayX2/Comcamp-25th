@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -147,6 +148,14 @@ func TestWithdraw_PhoneIsTheSecondFactor(t *testing.T) {
 		if rec.Code != unknown.Code || rec.Body.String() != unknown.Body.String() {
 			t.Fatalf("%s: got %d %s, want exactly the unknown-code answer %d %s", name, rec.Code, rec.Body.String(), unknown.Code, unknown.Body.String())
 		}
+		// Headers too: same Content-Type, no Retry-After on either, and nothing else that differs
+		// (apart from the per-request id).
+		if got, want := comparableHeaders(rec.Header()), comparableHeaders(unknown.Header()); !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: headers differ from the unknown-code answer: got %v, want %v", name, got, want)
+		}
+		if rec.Header().Get("Retry-After") != "" || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("%s: expected a JSON answer without Retry-After, got headers %v", name, rec.Header())
+		}
 		if strings.Contains(rec.Body.String(), "0810000034") {
 			t.Fatalf("%s: the phone must not be echoed", name)
 		}
@@ -203,4 +212,13 @@ func TestWithdraw_ConfirmedIsRejectedWith409(t *testing.T) {
 	if rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil); rec.Code != http.StatusOK {
 		t.Fatalf("confirmed application must still exist, got %d", rec.Code)
 	}
+}
+
+// comparableHeaders drops the headers that legitimately differ per request.
+func comparableHeaders(h http.Header) http.Header {
+	out := h.Clone()
+	for _, k := range []string{"X-Request-Id", "Date"} {
+		out.Del(k)
+	}
+	return out
 }

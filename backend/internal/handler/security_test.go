@@ -119,21 +119,23 @@ func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 	app := setupTestApp(t)
 	created := app.submit(t, e2ePhone, "somkiat@school.ac.th")
 
-	secrets := []string{e2ePhone, "somkiat@school.ac.th", "ESP8266", "สุขสมบูรณ์"}
+	// "6543" is the last 4 of e2ePhone: public responses carry only the last 2 (ruling R25), since
+	// 4 left few enough candidates to enumerate through the phone lookup.
+	secrets := []string{e2ePhone, "somkiat@school.ac.th", "XXX-6543", "ESP8266", "สุขสมบูรณ์"}
 
 	// By code: the full masked record.
 	rec := app.do(t, http.MethodGet, "/api/applications/status?q="+created.ID, nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("q=code: expected 200, got %d", rec.Code)
 	}
-	for _, secret := range secrets[:3] {
+	for _, secret := range secrets[:4] {
 		if strings.Contains(rec.Body.String(), secret) {
 			t.Errorf("q=code: public response contains %q: %s", secret, rec.Body.String())
 		}
 	}
 	var byCode service.ApplicationResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &byCode)
-	if byCode.ID != created.ID || byCode.Lookup != service.LookupCode || byCode.Phone != "XXX-XXX-6543" ||
+	if byCode.ID != created.ID || byCode.Lookup != service.LookupCode || byCode.Phone != "XXX-XXX-XX43" ||
 		byCode.Email != "s***@school.ac.th" || byCode.School == "" || byCode.FullName != "สมเกียรติ สุขสมบูรณ์" {
 		t.Errorf("unexpected code lookup: %+v", byCode)
 	}
@@ -165,7 +167,7 @@ func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 		var byPhone service.PhoneLookupResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &byPhone)
 		if byPhone.Lookup != service.LookupPhone || !byPhone.CodeRequired || byPhone.FullName != "ส*** ส***" ||
-			byPhone.Phone != "XXX-XXX-6543" || byPhone.Email != "s***@school.ac.th" || byPhone.Status != domain.StatusPassed {
+			byPhone.Phone != "XXX-XXX-XX43" || byPhone.Email != "s***@school.ac.th" || byPhone.Status != domain.StatusPassed {
 			t.Errorf("q=%q: unexpected phone lookup: %+v", q, byPhone)
 		}
 	}
@@ -176,7 +178,7 @@ func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 	}
 
 	// The submit response (the receipt) carries the code; it is masked otherwise.
-	if created.ID == "" || created.Phone != "XXX-XXX-6543" || created.Email != "s***@school.ac.th" {
+	if created.ID == "" || created.Phone != "XXX-XXX-XX43" || created.Email != "s***@school.ac.th" {
 		t.Errorf("submit response not masked: %+v", created)
 	}
 }

@@ -235,7 +235,7 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	if byCode.ByPhone != nil || byCode.ByCode == nil || byCode.ByCode.ID != created.ID || byCode.ByCode.Lookup != service.LookupCode {
 		t.Fatalf("code lookup: expected the record of %s, got %+v", created.ID, byCode)
 	}
-	if byCode.ByCode.School != "โรงเรียนเทศบาล" || byCode.ByCode.Phone != "XXX-XXX-9999" || byCode.ByCode.Email != "t***@example.com" {
+	if byCode.ByCode.School != "โรงเรียนเทศบาล" || byCode.ByCode.Phone != "XXX-XXX-XX99" || byCode.ByCode.Email != "t***@example.com" {
 		t.Fatalf("code lookup must return the masked record, got %+v", byCode.ByCode)
 	}
 
@@ -248,7 +248,7 @@ func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 		t.Fatalf("phone lookup must answer with PhoneLookupResponse, got %+v", byPhone)
 	}
 	p := byPhone.ByPhone
-	if p.Lookup != service.LookupPhone || !p.CodeRequired || p.FullName != "น*** ส***" || p.Phone != "XXX-XXX-9999" ||
+	if p.Lookup != service.LookupPhone || !p.CodeRequired || p.FullName != "น*** ส***" || p.Phone != "XXX-XXX-XX99" ||
 		p.Email != "t***@example.com" || p.Status != domain.StatusPassed {
 		t.Fatalf("unexpected phone lookup answer: %+v", p)
 	}

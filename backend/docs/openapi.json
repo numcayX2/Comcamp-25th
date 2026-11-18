@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "ComCamp #25 API Documentation",
-    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับผู้ดูแลระบบ (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป, ตั้งค่าค่าย)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- มีบทบาทเดียวคือ admin สำหรับทุก endpoint ภายใต้ /admin/*\n- บทบาทอื่นหรือบัญชีที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\n- GET /admin/applications ส่งข้อมูลเต็ม (เบอร์ อีเมล ผู้ปกครอง ข้อมูลสุขภาพ) ให้ผู้ดูแลระบบบทบาท admin เท่านั้น ระบบไม่เก็บเลขบัตรประชาชนแล้ว (migration 000011)\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nรหัสใบสมัคร (CC25-XXXXXX, path {id}) คือหลักฐานตัวตนของผู้สมัครบน endpoint สาธารณะ (ค้นสถานะด้วยรหัส, confirm, slip, withdraw) ไม่มีเลขยืนยันหรือเลขบัตรประชาชนอีกต่อไป CodeGuard นับรหัสรูปแบบถูกต้องที่ไม่มีอยู่จริง (miss) ทุก endpoint รวมกัน: ต่อ client (IP หรือ IPv6 /64) miss 5 ครั้งใน 15 นาที ถูกปฏิเสธ 15 นาที และเพิ่มเป็นสองเท่าทุกครั้งที่ถูกล็อกซ้ำ (สูงสุด 1 ชั่วโมง เพราะนักเรียนหลายคนอาจใช้ IP เดียวกันผ่านเครือข่ายมือถือหรือ Wi-Fi โรงเรียน) และระหว่างที่เพดานรวม 10 miss เคยทำงานภายใน 24 ชั่วโมงล่าสุด ระบบจะไม่ตัดสิทธิ์ใบสมัครที่ค้างชำระอัตโนมัติ และรวมทุก client ต่อช่วง 5 นาที: ครบ 5 miss ปฏิเสธ client ที่มีประวัติ miss ครบ 10 miss ปฏิเสธทุก client จนจบช่วง 5 นาทีนั้น คำตอบเป็น 429 RATE_LIMITED + Retry-After ก่อนค้นฐานข้อมูลเสมอ บันทึก audit application.code.lockout / application.code.ceiling (ไม่บันทึกรหัสที่พิมพ์) การค้นด้วยเบอร์โทรไม่ผ่าน CodeGuard และไม่เคยส่งรหัสใบสมัครกลับ",
+    "description": "API Specification for ComCamp #25 (25th Computer Science Camp, Maejo University)\n\nระบบรับสมัครและจัดการค่าย ComCamp 25 ประกอบด้วย:\n- Public Endpoints สำหรับหน้าบ้าน (Countdown, สมัคร, ตรวจสอบสถานะ, แนบสลิป)\n- Admin Protected Endpoints สำหรับผู้ดูแลระบบ (ดูรายชื่อ, ปรับสถานะ, ตรวจสอบสลิป, ตั้งค่าค่าย)\n\nสิทธิ์ตามบทบาท (ตรวจจากฐานข้อมูลทุก request ไม่ได้เชื่อ role ใน token):\n- มีบทบาทเดียวคือ admin สำหรับทุก endpoint ภายใต้ /admin/*\n- บทบาทอื่นหรือบัญชีที่ไม่มีสิทธิ์ได้ 403 FORBIDDEN\n- GET /admin/applications ส่งข้อมูลเต็ม (เบอร์ อีเมล ผู้ปกครอง ข้อมูลสุขภาพ) ให้ผู้ดูแลระบบบทบาท admin เท่านั้น ระบบไม่เก็บเลขบัตรประชาชนแล้ว (migration 000011)\n\nRate limit นับต่อ IP ของผู้เรียก โดย IPv6 นับรวมทั้ง prefix /64 (ผู้ใช้หนึ่งรายมักได้ทั้ง /64 การหมุนที่อยู่ภายใน /64 จึงไม่ช่วยเลี่ยงลิมิต) และตารางตัวนับมีเพดานหน่วยความจำ\n\nรหัสใบสมัคร (CC25-XXXXXX, path {id}) คือหลักฐานตัวตนของผู้สมัครบน endpoint สาธารณะ (ค้นสถานะด้วยรหัส, confirm, slip, withdraw) ไม่มีเลขยืนยันหรือเลขบัตรประชาชนอีกต่อไป CodeGuard นับรหัสรูปแบบถูกต้องที่ไม่มีอยู่จริง (miss) ทุก endpoint รวมกัน: ต่อ client (IP หรือ IPv6 /64) miss 5 ครั้งใน 15 นาที ถูกปฏิเสธ 15 นาที และเพิ่มเป็นสองเท่าทุกครั้งที่ถูกล็อกซ้ำ (สูงสุด 1 ชั่วโมง เพราะนักเรียนหลายคนอาจใช้ IP เดียวกันผ่านเครือข่ายมือถือหรือ Wi-Fi โรงเรียน) และระหว่างที่เพดานรวม 10 miss เคยทำงานภายใน 24 ชั่วโมงล่าสุด ระบบจะไม่ตัดสิทธิ์ใบสมัครที่ค้างชำระอัตโนมัติ และรวมทุก client ต่อช่วง 5 นาที: ครบ 5 miss ปฏิเสธ client ที่มีประวัติ miss ครบ 10 miss ปฏิเสธทุก client จนจบช่วง 5 นาทีนั้น คำตอบเป็น 429 RATE_LIMITED + Retry-After ก่อนค้นฐานข้อมูลเสมอ บันทึก audit application.code.lockout / application.code.ceiling (ไม่บันทึกรหัสที่พิมพ์) การค้นด้วยเบอร์โทรที่ไม่พบใบสมัครนับเป็น miss ต่อ client เท่านั้น (ใช้บันทึกและการล็อกเดียวกับรหัส client ที่ถูกล็อกจะถูกปฏิเสธทั้งการค้นด้วยรหัสและเบอร์) แต่ไม่นับในเพดานรวมและไม่ถูกเพดานรวมปฏิเสธ และไม่เคยส่งรหัสใบสมัครกลับ endpoint สาธารณะแสดงเบอร์โทรเฉพาะ 2 หลักท้าย (XXX-XXX-XX78)",
     "version": "1.0.0",
     "contact": {
       "name": "ComCamp 25 Technical Team",
@@ -128,7 +128,7 @@
                   "id": "CC25-8A4B2C",
                   "fullName": "สมชาย ใจดี",
                   "nickname": "ชาย",
-                  "phone": "XXX-XXX-5678",
+                  "phone": "XXX-XXX-XX78",
                   "email": "s***@example.com",
                   "school": "โรงเรียนแม่โจ้วิทยาคม",
                   "grade": "ม.5",
@@ -193,10 +193,10 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "404": {
-            "description": "ไม่พบข้อมูลใบสมัคร (รหัสที่ไม่มีอยู่จริงนับเป็น miss ใน CodeGuard เบอร์โทรไม่นับ)",
+            "description": "ไม่พบข้อมูลใบสมัคร (รหัสที่ไม่มีอยู่จริงนับเป็น miss ใน CodeGuard เบอร์โทรที่ไม่พบนับเป็น miss ต่อ client เท่านั้น ไม่นับในเพดานรวม)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
-          "429": { "description": "ค้นหาถี่เกินไป (60 ครั้ง/นาที/IP) หรือ CodeGuard ปฏิเสธการค้นด้วยรหัสใบสมัคร (miss มากเกินไป ดูคำอธิบายด้านบนสุด) (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "429": { "description": "ค้นหาถี่เกินไป (60 ครั้ง/นาที/IP) หรือ CodeGuard ปฏิเสธการค้น (miss ด้วยรหัสหรือเบอร์โทรมากเกินไป ดูคำอธิบายด้านบนสุด) (code RATE_LIMITED) ดู header Retry-After", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },
@@ -780,7 +780,7 @@
           "lookup": { "type": "string", "enum": ["code"], "description": "มีเฉพาะผลของ GET /applications/status ที่ค้นด้วยรหัสใบสมัคร" },
           "fullName": { "type": "string", "example": "สมชาย ใจดี" },
           "nickname": { "type": "string", "example": "ชาย" },
-          "phone": { "type": "string", "example": "XXX-XXX-5678", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
+          "phone": { "type": "string", "example": "XXX-XXX-XX78", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
           "email": { "type": "string", "example": "s***@example.com", "description": "endpoint สาธารณะได้ค่าแบบ mask" },
           "parentName": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "parentRelation": { "type": "string", "description": "เฉพาะ /api/admin/*" },
@@ -818,7 +818,7 @@
           "lookup": { "type": "string", "enum": ["phone"] },
           "codeRequired": { "type": "boolean", "example": true, "description": "เป็น true เสมอ: ต้องใช้รหัสใบสมัครจึงจะทำรายการได้" },
           "fullName": { "type": "string", "example": "ส*** ใ***", "description": "เหลือเพียงอักษรแรกของแต่ละส่วนของชื่อ" },
-          "phone": { "type": "string", "example": "XXX-XXX-5678" },
+          "phone": { "type": "string", "example": "XXX-XXX-XX78" },
           "email": { "type": "string", "example": "s***@example.com" },
           "status": { "type": "string", "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"], "example": "PASSED" },
           "hasSlip": { "type": "boolean", "example": false },
