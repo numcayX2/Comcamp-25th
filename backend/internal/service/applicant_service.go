@@ -1225,6 +1225,7 @@ func (s *ApplicantService) baseResponse(a *domain.Applicant) *ApplicationRespons
 // only hides the slip state; it must not fail a status check.
 func (s *ApplicantService) toPublic(ctx context.Context, a *domain.Applicant) *ApplicationResponse {
 	res := s.baseResponse(a)
+	res.FullName = MaskName(a.FirstName, a.LastName)
 	res.Phone = MaskPhone(a.Phone)
 	res.Email = MaskEmail(a.Email)
 	if p, _ := s.latestPayment(ctx, a.ID); p != nil {

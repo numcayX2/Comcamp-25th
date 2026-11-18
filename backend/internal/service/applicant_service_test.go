@@ -49,8 +49,8 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	if res.Status != domain.StatusPassed {
 		t.Errorf("expected status %s (first come, first served), got %s", domain.StatusPassed, res.Status)
 	}
-	if res.FullName != "สมชาย ใจดี" {
-		t.Errorf("expected full name 'สมชาย ใจดี', got '%s'", res.FullName)
+	if res.FullName != "ส*** ใ***" {
+		t.Errorf("expected masked full name 'ส*** ใ***', got '%s'", res.FullName)
 	}
 }
 

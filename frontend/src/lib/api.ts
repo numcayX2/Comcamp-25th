@@ -562,7 +562,7 @@ export function getApplicationStatus(query: string): Promise<ApiResult<StatusLoo
         : {
             id: query.toUpperCase(),
             lookup: 'code',
-            fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
+            fullName: 'ส*** ส***',
             nickname: 'เกียรติ',
             phone: 'XXX-XXX-XX43',
             email: 's***@school.ac.th',
@@ -613,7 +613,7 @@ export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiRe
       }),
     () => ({
       id,
-      fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)',
+      fullName: 'ส*** ส***',
       nickname: 'เกียรติ',
       phone: 'XXX-XXX-XX43',
       email: 's***@school.ac.th',

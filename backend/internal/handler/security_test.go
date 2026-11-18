@@ -136,7 +136,7 @@ func TestSecurity_PublicStatusIsMasked(t *testing.T) {
 	var byCode service.ApplicationResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &byCode)
 	if byCode.ID != created.ID || byCode.Lookup != service.LookupCode || byCode.Phone != "XXX-XXX-XX43" ||
-		byCode.Email != "s***@school.ac.th" || byCode.School == "" || byCode.FullName != "สมเกียรติ สุขสมบูรณ์" {
+		byCode.Email != "s***@school.ac.th" || byCode.School == "" || byCode.FullName != "ส*** ส***" {
 		t.Errorf("unexpected code lookup: %+v", byCode)
 	}
 
