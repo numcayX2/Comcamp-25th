@@ -70,8 +70,9 @@ func TestPostgres_FullIntegration(t *testing.T) {
 		if settings.CampName != "ComCamp 25th" {
 			t.Errorf("expected camp name 'ComCamp 25th', got '%s'", settings.CampName)
 		}
-		if settings.MaxCapacity != 30 {
-			t.Errorf("expected max capacity 30, got %d", settings.MaxCapacity)
+		// Migration 000011 sets the owner-confirmed quota of 40 seats.
+		if settings.MaxCapacity != 40 {
+			t.Errorf("expected max capacity 40, got %d", settings.MaxCapacity)
 		}
 	})
 

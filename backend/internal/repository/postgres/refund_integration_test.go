@@ -223,7 +223,13 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 			Details: map[string]any{"changes": map[string]string{"k": "v"}}, IPAddress: "203.0.113.9"}
 	}
 
-	// A normal edit: columns, updated_at and the audit row land together.
+	// A self edit (requireActive=true): columns and the audit row land together, and updated_at is
+	// kept on purpose (commit e642d67) so an edit cannot push the unpaid-expiry deadline
+	// (updated_at + 24h grace) further out.
+	stored, err := repo.GetByID(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := profileOfRow(a)
 	p.Nickname, p.School, p.Grade, p.ShirtSize = "ใหม่", "โรงเรียนใหม่", "ปวส.1", "XL"
 	newPhone := "0" + tag + "9999"
@@ -239,8 +245,8 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 	if got.EmergencyPhone != newPhone {
 		t.Fatalf("emergency_phone mirrored the old phone and must follow it, got %s", got.EmergencyPhone)
 	}
-	if !got.UpdatedAt.After(a.UpdatedAt) {
-		t.Fatalf("updated_at must move: %v -> %v", a.UpdatedAt, got.UpdatedAt)
+	if !got.UpdatedAt.Equal(stored.UpdatedAt) {
+		t.Fatalf("a requireActive (self) edit must keep updated_at: %v -> %v", stored.UpdatedAt, got.UpdatedAt)
 	}
 	var rows int
 	var status, ip string
@@ -257,11 +263,17 @@ func TestPostgres_UpdateProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Phone = "0" + tag + "8888"
+	time.Sleep(10 * time.Millisecond)
 	if err := repo.UpdateProfile(ctx, a.ID, p, false, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := repo.GetByID(ctx, a.ID); got.EmergencyPhone != "0899999999" {
-		t.Fatalf("a separate emergency phone must not be overwritten, got %s", got.EmergencyPhone)
+	got2, _ := repo.GetByID(ctx, a.ID)
+	if got2.EmergencyPhone != "0899999999" {
+		t.Fatalf("a separate emergency phone must not be overwritten, got %s", got2.EmergencyPhone)
+	}
+	// An admin edit (requireActive=false) does move updated_at.
+	if !got2.UpdatedAt.After(got.UpdatedAt) {
+		t.Fatalf("an admin edit must move updated_at: %v -> %v", got.UpdatedAt, got2.UpdatedAt)
 	}
 
 	// Collisions with another live applicant map to ErrDuplicateApplicant and change nothing.
