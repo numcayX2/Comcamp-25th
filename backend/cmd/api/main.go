@@ -119,7 +119,9 @@ func main() {
 		Setting:   settingSvc,
 		Payment: service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
 			WithCodeGuard(codeGuard).
-			WithMailer(mailer),
+			WithMailer(mailer).
+			// A slip verdict moves PASSED <-> CONFIRMED, which the public applicants list shows.
+			WithOnStatusChange(applicantSvc.InvalidatePublicList),
 	}
 
 	// 3. Router (all security middleware lives in internal/server)

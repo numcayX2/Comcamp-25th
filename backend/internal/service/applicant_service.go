@@ -169,6 +169,8 @@ type ApplicantService struct {
 	now func() time.Time
 	// pauseLogged is the LastHardCeilingAt (UnixNano) the expiry pause was last logged for.
 	pauseLogged atomic.Int64
+	// publicList caches GET /api/applications/public (see public_applicants.go).
+	publicList publicListCache
 }
 
 const (
@@ -275,6 +277,8 @@ func formatCampFeeTHB(raw string) string {
 }
 
 func (s *ApplicantService) notifySeatChange() {
+	// A seat taken or released always adds or removes a row of the public list.
+	s.InvalidatePublicList()
 	if s.onSeatChange != nil {
 		s.onSeatChange()
 	}
@@ -885,6 +889,8 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 	if retakesSeat || previousStatus.IsActive() != newStatus.IsActive() {
 		s.notifySeatChange()
 	}
+	// PENDING -> PASSED or PASSED -> CONFIRMED keeps the seat but changes the public list.
+	s.InvalidatePublicList()
 	applicant.Status = newStatus
 	if newStatus == domain.StatusConfirmed {
 		applicant.AttendanceConfirmed = true
@@ -1147,6 +1153,7 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, false, audit); err != nil {
 		return nil, notFoundOr(err)
 	}
+	s.InvalidatePublicList() // name, nickname, school and province are listed publicly
 
 	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
 	if err != nil {

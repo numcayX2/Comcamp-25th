@@ -1007,3 +1007,61 @@ export async function deleteApplication(
   });
   return { data, source: 'LIVE GO API' };
 }
+
+/* ── Public applicants list (/applicants) ─────────────────────────────────── */
+
+/** Public status labels (Thai), exactly as the server sends them. */
+export type PublicApplicantStatus = 'รอชำระเงิน' | 'ยืนยันสิทธิ์แล้ว';
+
+/**
+ * One row of GET /applications/public. This is the complete PDPA allowlist the registration
+ * consent discloses (name, nickname, school, province) plus order and status. The server never
+ * sends the application code, phone, email, parent, health, motivation, slip or any id, and the
+ * client must not add them (CLAUDE_REVAMP_HANDOFF.md 5.4).
+ */
+export interface PublicApplicant {
+  no: number;
+  fullName: string;
+  nickname: string;
+  school: string;
+  province: string;
+  status: PublicApplicantStatus;
+}
+
+/** Copies only the allowlisted keys, so an unexpected server field can never reach the UI. */
+function pickPublicApplicant(raw: unknown): PublicApplicant | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const status = r.status === 'ยืนยันสิทธิ์แล้ว' ? 'ยืนยันสิทธิ์แล้ว' : r.status === 'รอชำระเงิน' ? 'รอชำระเงิน' : null;
+  if (status === null || typeof r.no !== 'number') return null;
+  return {
+    no: r.no,
+    fullName: str(r.fullName),
+    nickname: str(r.nickname),
+    school: str(r.school),
+    province: str(r.province),
+    status,
+  };
+}
+
+/**
+ * GET /applications/public — the public applicants list (live PASSED / CONFIRMED applications,
+ * oldest first). Before registration opens it is simply empty. The offline mock runs only in
+ * `astro dev` when the server cannot be reached; a real 4xx/5xx (e.g. 429 RATE_LIMITED) is always
+ * thrown so the page shows its error state instead of made-up names.
+ */
+export function fetchPublicApplicants(): Promise<ApiResult<PublicApplicant[]>> {
+  return withFallback(
+    async () => {
+      const data = await fetchJson<{ applicants?: unknown }>('/applications/public', { method: 'GET' });
+      const list = Array.isArray(data?.applicants) ? data.applicants : [];
+      return list.map(pickPublicApplicant).filter((row): row is PublicApplicant => row !== null);
+    },
+    () => [
+      { no: 1, fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)', nickname: 'เกียรติ', school: 'โรงเรียนแม่โจ้วิทยาคม', province: 'เชียงใหม่', status: 'ยืนยันสิทธิ์แล้ว' },
+      { no: 2, fullName: 'สมหญิง ใจดี (Mock)', nickname: 'หญิง', school: 'โรงเรียนสันทรายวิทยาคม', province: 'เชียงใหม่', status: 'รอชำระเงิน' },
+      { no: 3, fullName: 'ปิยะ รักเรียน (Mock)', nickname: 'ปิยะ', school: 'โรงเรียนลำพูนวิทยา', province: 'ลำพูน', status: 'รอชำระเงิน' },
+    ],
+  );
+}

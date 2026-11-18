@@ -1,6 +1,6 @@
 ---
 interface Props {
-  active?: 'home' | 'register' | 'status' | 'admin';
+  active?: 'home' | 'register' | 'status' | 'admin' | 'applicants';
   isHome?: boolean;
 }
 
@@ -14,6 +14,7 @@ const navLinks = isAdmin ? [] : [
   { href: isHome ? '#timeline' : '/#timeline', label: 'ไทม์ไลน์' },
   { href: isHome ? '#faq' : '/#faq', label: 'คำถามที่พบบ่อย' },
   { href: isHome ? '#gallery' : '/#gallery', label: 'แกลเลอรี' },
+  { href: '/applicants', label: 'รายชื่อผู้สมัคร', current: active === 'applicants' },
 ];
 ---
 
@@ -45,7 +46,7 @@ const navLinks = isAdmin ? [] : [
     <!-- Navigation Links -->
     <nav class="nav-links" id="site-menu" aria-label="ส่วนต่าง ๆ ของหน้า">
       {navLinks.map((link) => (
-        <a class="nav-sec" href={link.href}>{link.label}</a>
+        <a class="nav-sec" href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
       ))}
 
       <!-- Mobile-only drawer items -->

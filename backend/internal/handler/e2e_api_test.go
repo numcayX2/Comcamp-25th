@@ -113,7 +113,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
-		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard),
+		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard).WithOnStatusChange(applicantSvc.InvalidatePublicList),
 	}
 
 	router := server.NewRouter(services, server.Options{

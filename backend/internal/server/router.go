@@ -40,7 +40,17 @@ type RateLimits struct {
 	Confirm  *middleware.RateLimiter
 	Withdraw *middleware.RateLimiter
 	Profile  *middleware.RateLimiter
+
+	// PublicList guards GET /api/applications/public (see PublicListRatePerMinute).
+	PublicList *middleware.RateLimiter
 }
+
+// PublicListRatePerMinute is the per-IP allowance for the public applicants list. The answer is
+// cached and identical for everyone, so the limit only stops one client hammering the API: a
+// page load costs one request (plus a manual retry), and 60/min still lets a whole classroom
+// behind one school or carrier NAT open /applicants at the same moment, while capping a scraper
+// at one request a second. Same allowance as the status lookup, in its own bucket.
+const PublicListRatePerMinute = 60
 
 func DefaultRateLimits() RateLimits {
 	return RateLimits{
@@ -52,6 +62,8 @@ func DefaultRateLimits() RateLimits {
 		Confirm:  middleware.NewRateLimiter(20, time.Minute),
 		Withdraw: middleware.NewRateLimiter(20, time.Minute),
 		Profile:  middleware.NewRateLimiter(20, time.Minute),
+
+		PublicList: middleware.NewRateLimiter(PublicListRatePerMinute, time.Minute),
 	}
 }
 
@@ -115,6 +127,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 
 			json.With(limits.Submit.Middleware).Post("/applications", appHandler.Submit)
 			json.With(limits.StatusQuery.Middleware).Get("/applications/status", appHandler.GetStatus)
+			json.With(limits.PublicList.Middleware).Get("/applications/public", appHandler.ListPublic)
 			json.With(limits.Confirm.Middleware).Post("/applications/{id}/confirm", appHandler.ConfirmAttendance)
 			json.With(limits.Withdraw.Middleware).Post("/applications/{id}/withdraw", appHandler.Withdraw)
 			json.With(limits.Profile.Middleware).Patch("/applications/{id}/profile", appHandler.UpdateOwnProfile)
