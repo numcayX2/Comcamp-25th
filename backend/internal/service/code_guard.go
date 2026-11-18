@@ -40,7 +40,10 @@ import (
 // A refusal happens BEFORE the database lookup, so it never tells whether a code exists, and it is the
 // same for every endpoint. A hit never clears a client's misses: otherwise someone could interleave
 // their own valid code with guesses. Lookups in flight hold a reservation, so a burst of parallel
-// requests cannot squeeze past either budget. Malformed codes are rejected before the guard and never
+// requests cannot squeeze past either budget. A request refused at a global ceiling only because of
+// lookups still in flight (not because of misses) first waits up to CodeBusyWait for one of them to
+// finish and is then checked again, so a handful of concurrent applicants looking up their own codes
+// does not turn away the next one; the budgets themselves are unchanged. Malformed codes are rejected before the guard and never
 // counted: they cannot be a hit.
 //
 // The state lives in process memory (like the per-IP rate limiters), is bounded by CodeMaxClients, and
@@ -68,6 +71,9 @@ const (
 	CodeMaxClients = 50_000
 	// codeBusyRetry is the Retry-After for a refusal caused only by lookups still in flight.
 	codeBusyRetry = time.Second
+	// CodeBusyWait is how long a request held back at a global ceiling only by lookups in flight
+	// waits for one of them to finish before it is refused (lookups take milliseconds).
+	CodeBusyWait = time.Second
 )
 
 // Endpoint names recorded in the audit details.
@@ -101,7 +107,9 @@ type CodeGuardConfig struct {
 	GlobalSoftCeiling int
 	GlobalHardCeiling int
 	MaxClients        int
-	Now               func() time.Time
+	// BusyWait bounds the wait for in-flight lookups (see CodeBusyWait). It uses the real clock.
+	BusyWait time.Duration
+	Now      func() time.Time
 }
 
 type codeClient struct {
@@ -135,6 +143,9 @@ type CodeGuard struct {
 	hardLogged    bool
 	// lastHard is when the global hard ceiling was last reached (see LastHardCeilingAt).
 	lastHard time.Time
+	// released is closed (and replaced) whenever a global reservation is released, waking requests
+	// that wait for in-flight lookups.
+	released chan struct{}
 }
 
 // NewCodeGuard uses the production limits. audit may be nil (no audit rows, tests only).
@@ -174,10 +185,13 @@ func NewCodeGuardWith(audit domain.AuditRepository, cfg CodeGuardConfig) *CodeGu
 	if cfg.MaxClients <= 0 {
 		cfg.MaxClients = CodeMaxClients
 	}
+	if cfg.BusyWait <= 0 {
+		cfg.BusyWait = CodeBusyWait
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &CodeGuard{cfg: cfg, audit: audit, clients: map[string]*codeClient{}}
+	return &CodeGuard{cfg: cfg, audit: audit, clients: map[string]*codeClient{}, released: make(chan struct{})}
 }
 
 // Do runs find, a database lookup by application code, for the client in ctx (see WithClientKey). It
@@ -198,9 +212,36 @@ func (g *CodeGuard) DoPerClient(ctx context.Context, action string, find func() 
 
 func (g *CodeGuard) do(ctx context.Context, action string, global bool, find func() error) (err error) {
 	key := clientKeyFrom(ctx)
-	c, refused := g.begin(key, global)
-	if refused != nil {
-		return refused
+	var c *codeClient
+	var waitUntil time.Time
+	for {
+		var refused error
+		var busy <-chan struct{}
+		c, refused, busy = g.begin(key, global)
+		if refused == nil {
+			break
+		}
+		if busy == nil {
+			return refused
+		}
+		// Held back only by lookups in flight: wait for one to finish, then check again.
+		if waitUntil.IsZero() {
+			waitUntil = time.Now().Add(g.cfg.BusyWait)
+		}
+		left := time.Until(waitUntil)
+		if left <= 0 {
+			return refused
+		}
+		timer := time.NewTimer(left)
+		select {
+		case <-busy:
+			timer.Stop()
+		case <-timer.C:
+			return refused
+		case <-ctx.Done():
+			timer.Stop()
+			return refused
+		}
 	}
 	miss := false
 	defer func() { g.finish(ctx, key, action, c, miss, global) }()
@@ -210,8 +251,10 @@ func (g *CodeGuard) do(ctx context.Context, action string, global bool, find fun
 }
 
 // begin checks the budgets and reserves one lookup for key. With global false only the client's own
-// budget is checked and the global window is left alone.
-func (g *CodeGuard) begin(key string, global bool) (*codeClient, error) {
+// budget is checked and the global window is left alone. When the refusal comes only from global
+// lookups in flight (the misses alone are below the ceiling), busy is a channel that is closed when
+// a reservation is released, so the caller may wait and try again.
+func (g *CodeGuard) begin(key string, global bool) (_ *codeClient, refused error, busy <-chan struct{}) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.cfg.Now()
@@ -222,10 +265,10 @@ func (g *CodeGuard) begin(key string, global bool) (*codeClient, error) {
 	if c != nil {
 		g.refreshLocked(c, now)
 		if now.Before(c.lockedUntil) {
-			return nil, &CodeGuessLimitedError{RetryAfter: c.lockedUntil.Sub(now)}
+			return nil, &CodeGuessLimitedError{RetryAfter: c.lockedUntil.Sub(now)}, nil
 		}
 		if c.misses+c.pending >= g.cfg.ClientMaxMisses {
-			return nil, &CodeGuessLimitedError{RetryAfter: codeBusyRetry}
+			return nil, &CodeGuessLimitedError{RetryAfter: codeBusyRetry}, nil
 		}
 	}
 
@@ -236,11 +279,11 @@ func (g *CodeGuard) begin(key string, global bool) (*codeClient, error) {
 		ceiling = g.cfg.GlobalSoftCeiling
 	}
 	if global && used >= ceiling {
-		retry := codeBusyRetry
 		if g.globalMisses >= ceiling {
-			retry = g.globalStart.Add(g.cfg.GlobalWindow).Sub(now)
+			retry := g.globalStart.Add(g.cfg.GlobalWindow).Sub(now)
+			return nil, &CodeGuessLimitedError{RetryAfter: max(retry, time.Second)}, nil
 		}
-		return nil, &CodeGuessLimitedError{RetryAfter: max(retry, time.Second)}
+		return nil, &CodeGuessLimitedError{RetryAfter: codeBusyRetry}, g.released
 	}
 
 	if c == nil {
@@ -252,7 +295,7 @@ func (g *CodeGuard) begin(key string, global bool) (*codeClient, error) {
 	if global {
 		g.globalPending++
 	}
-	return c, nil
+	return c, nil, nil
 }
 
 type codeEvent struct {
@@ -270,6 +313,8 @@ func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClien
 	c.pending--
 	if global {
 		g.globalPending--
+		close(g.released)
+		g.released = make(chan struct{})
 	}
 	if miss {
 		g.refreshLocked(c, now)
@@ -491,24 +536,21 @@ var appNoRe = regexp.MustCompile(`^CC25-[0-9A-F]{6}$`)
 // and is ErrApplicantNotFound without a database call and without counting as a guess. A well-formed
 // code is looked up through the guard: an unknown one counts as a miss, and a refused client gets
 // *CodeGuessLimitedError before any lookup.
-func findByCode(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string, before func()) (*domain.Applicant, error) {
-	return findByCodeMatching(ctx, guard, repo, raw, action, before, nil)
+func findByCode(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string) (*domain.Applicant, error) {
+	return findByCodeMatching(ctx, guard, repo, raw, action, nil)
 }
 
 // findByCodeMatching is findByCode with a second factor: when match is set, an application that
 // exists but fails match is treated exactly like an unknown code. It counts as a miss for the
 // client and the global budget and comes back as ErrApplicantNotFound, so the extra factor is not a
 // new oracle for whether a code exists.
-func findByCodeMatching(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string, before func(), match func(*domain.Applicant) bool) (*domain.Applicant, error) {
+func findByCodeMatching(ctx context.Context, guard *CodeGuard, repo domain.ApplicantRepository, raw, action string, match func(*domain.Applicant) bool) (*domain.Applicant, error) {
 	code := normalizeAppNo(raw)
 	if !appNoRe.MatchString(code) {
 		return nil, ErrApplicantNotFound
 	}
 	var a *domain.Applicant
 	err := guard.Do(ctx, action, func() error {
-		if before != nil {
-			before()
-		}
 		var err error
 		a, err = repo.GetByApplicationNo(ctx, code)
 		if err == nil && match != nil && !match(a) {

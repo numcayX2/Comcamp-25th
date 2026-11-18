@@ -311,7 +311,7 @@ func TestFindByCode_MalformedCodesAreNotCounted(t *testing.T) {
 	g, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 1000, GlobalHardCeiling: 1000})
 	for _, raw := range []string{"", "CC25", "CC25-12345", "CC25-1234567", "CC26-ABCDEF", "0812345678", "CC25-GHIJKL"} {
 		for i := 0; i < 10; i++ {
-			if _, err := findByCode(clientCtx("c"), g, nil, raw, CodeActionSlip, nil); !errors.Is(err, ErrApplicantNotFound) {
+			if _, err := findByCode(clientCtx("c"), g, nil, raw, CodeActionSlip); !errors.Is(err, ErrApplicantNotFound) {
 				t.Fatalf("%q: expected ErrApplicantNotFound, got %v", raw, err)
 			}
 		}
@@ -387,5 +387,61 @@ func TestCodeGuard_PerClientLookupsNeverFeedTheGlobalWindow(t *testing.T) {
 	retryOf(t, lookup(g, "10.9.9.8", codeHit))
 	if err := phone("10.9.9.8", codeHit); err != nil {
 		t.Fatalf("a phone lookup must not be refused by the global ceiling: %v", err)
+	}
+}
+
+// Lookups in flight count toward the global budget, but a clean applicant held back only by them
+// waits for one to finish instead of being refused (final fix wave, m1). Misses still refuse at once.
+func TestCodeGuard_CleanClientWaitsForInFlightLookups(t *testing.T) {
+	g, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 2, GlobalHardCeiling: 2, BusyWait: 5 * time.Second})
+	release := make(chan struct{})
+	started := make(chan struct{}, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = lookup(g, fmt.Sprintf("10.9.0.%d", i), func() error { started <- struct{}{}; <-release; return nil })
+		}(i)
+	}
+	<-started
+	<-started
+
+	done := make(chan error, 1)
+	go func() { done <- lookup(g, "192.0.2.50", codeHit) }()
+	select {
+	case err := <-done:
+		t.Fatalf("the third clean lookup must wait while the budget is only held by lookups in flight, got %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("after the in-flight lookups finished the clean client must be served, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the waiting lookup was not woken when the in-flight lookups finished")
+	}
+	wg.Wait()
+
+	// With nothing released the wait is bounded and ends in the usual busy refusal.
+	g2, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 1, GlobalHardCeiling: 1, BusyWait: 30 * time.Millisecond})
+	hold := make(chan struct{})
+	holding := make(chan struct{})
+	go func() { _ = lookup(g2, "10.9.1.1", func() error { close(holding); <-hold; return nil }) }()
+	<-holding
+	if retry := retryOf(t, lookup(g2, "192.0.2.51", codeHit)); retry != codeBusyRetry {
+		t.Fatalf("busy refusal Retry-After = %v, want %v", retry, codeBusyRetry)
+	}
+	close(hold)
+
+	// A ceiling reached by misses refuses at once, without waiting.
+	g3, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 1, GlobalHardCeiling: 1, BusyWait: 5 * time.Second})
+	_ = lookup(g3, "10.9.2.1", codeMiss)
+	start := time.Now()
+	_ = retryOf(t, lookup(g3, "192.0.2.52", codeHit))
+	if time.Since(start) > time.Second {
+		t.Fatal("a ceiling reached by misses must refuse without waiting")
 	}
 }

@@ -743,9 +743,11 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Stat
 		// A phone that finds nothing is a miss for this client in the CodeGuard (per client only,
 		// ruling R25), so a client cannot enumerate phone numbers, e.g. to find the phone behind a
 		// guessed code. A locked client gets *CodeGuessLimitedError before any lookup.
+		// The opportunistic unpaid-expiry sweep runs before the guard reservation, so the
+		// reservation covers only the lookup itself.
+		_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
 		var applicant *domain.Applicant
 		err := s.codes.DoPerClient(ctx, CodeActionStatusPhone, func() error {
-			_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
 			var err error
 			applicant, err = s.appRepo.GetByPhone(ctx, query)
 			return err
@@ -755,9 +757,8 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Stat
 		}
 		return &StatusLookup{ByPhone: s.toPhoneLookup(ctx, applicant)}, nil
 	case appNoRe.MatchString(query):
-		applicant, err := findByCode(ctx, s.codes, s.appRepo, query, CodeActionStatus, func() {
-			_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime())
-		})
+		_, _ = s.ExpireOverdueUnpaid(ctx, s.currentTime()) // outside the guard reservation, as above
+		applicant, err := findByCode(ctx, s.codes, s.appRepo, query, CodeActionStatus)
 		if err != nil {
 			return nil, err
 		}
@@ -775,7 +776,7 @@ func (s *ApplicantService) QueryStatus(ctx context.Context, query string) (*Stat
 // passes in with WithRemoteIP. The repository re-checks the status at the write, so an application
 // staff rejected after the read below is refused with ErrCannotConfirm.
 func (s *ApplicantService) ConfirmAttendance(ctx context.Context, applicationNo string, confirmed bool) (*ApplicationResponse, error) {
-	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionConfirm, nil)
+	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionConfirm)
 	if err != nil {
 		return nil, err
 	}
@@ -953,7 +954,7 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, phone, r
 	// number. A missing, malformed or wrong phone is answered exactly like an unknown code (404,
 	// counted by the code guard), so it tells nothing about whether the code exists. The typed phone
 	// is never logged or audited.
-	applicant, err := findByCodeMatching(ctx, s.codes, s.appRepo, applicationNo, CodeActionWithdraw, nil,
+	applicant, err := findByCodeMatching(ctx, s.codes, s.appRepo, applicationNo, CodeActionWithdraw,
 		func(a *domain.Applicant) bool { return samePhone(phone, a.Phone) })
 	if err != nil {
 		return err

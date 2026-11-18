@@ -137,7 +137,7 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo string, f
 		return nil, ErrSlipTooLarge
 	}
 
-	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionSlip, nil)
+	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionSlip)
 	if err != nil {
 		return nil, err
 	}
