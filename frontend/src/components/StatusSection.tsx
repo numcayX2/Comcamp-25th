@@ -28,10 +28,14 @@ import {
   withdrawApplication,
   hasSlip,
   holdsSeat,
+  isApplicationCodeQuery,
+  isPhoneLookup,
+  isPhoneQuery,
   normalizeLookupQuery,
   type Application,
   type ApplicationStatus,
   type ApiSource,
+  type PhoneLookupResult,
 } from '../lib/api';
 import {
   DORM_MAPS_URL,
@@ -49,13 +53,11 @@ import {
   STAFF_CONTACTS,
   describeApplicantPaymentDeadline,
   formatCampFee,
-  isValidThaiNationalID,
 } from './register/model';
 import { clearReceipt, loadReceipt } from './register/storage';
-import { cleanNationalIdInput, describeApiError as describeError, describeVerifyLock } from '../lib/slip-upload';
+import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeError } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
-import { VerifyCodeField } from './slip/VerifyCodeField';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
 const STATUS_DOT: Record<ApplicationStatus, string> = {
@@ -408,48 +410,159 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
   );
 }
 
-const INPUT_CLS =
-  'w-full rounded-xl border bg-[var(--bg-card)] px-3.5 py-2.5 text-base leading-7 outline-none transition-colors placeholder:text-[var(--color-ink-subtle)] focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30';
+const PHONE_SLIP_LABEL: Record<'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED', string> = {
+  NONE: 'ยังไม่ได้ส่งสลิป',
+  PENDING: 'ได้รับสลิปแล้ว รอทีมงานตรวจสอบ',
+  APPROVED: 'สลิปผ่านการตรวจสอบแล้ว',
+  REJECTED: 'สลิปไม่ผ่านการตรวจสอบ ส่งใหม่ได้ด้วยรหัสใบสมัคร',
+};
+
+/**
+ * Answer to a search by phone number. A phone number is easy to know, so the server sends only a
+ * short masked status and never the application code; this card therefore offers NO write action
+ * (no slip upload, no withdraw, no copy-code). It points the applicant to the code in their email.
+ */
+function PhoneLookupCard({
+  result,
+  source,
+  nowMs,
+  onSearchByCode,
+}: {
+  result: PhoneLookupResult;
+  source: ApiSource | null;
+  nowMs: number;
+  onSearchByCode: () => void;
+}) {
+  const slip = result.hasSlip ? (result.slipStatus ?? 'PENDING') : null;
+  const showDeadline = result.status === 'PASSED' && (slip === null || slip === 'REJECTED');
+  const dl = showDeadline ? describeApplicantPaymentDeadline(result.createdAt, result.updatedAt, nowMs) : null;
+  const rows: { k: string; v: string; mono: boolean }[] = [
+    { k: 'เบอร์โทรศัพท์ติดต่อ', v: result.phone, mono: true },
+    ...(result.email ? [{ k: 'อีเมล', v: result.email, mono: false }] : []),
+    { k: 'สลิปค่าสมัคร', v: PHONE_SLIP_LABEL[slip ?? 'NONE'], mono: false },
+    ...(dl ? [{ k: 'กำหนดโอนและแนบสลิป', v: `ภายใน ${dl.deadlineText} (${dl.remainingText})`, mono: false }] : []),
+  ];
+  return (
+    <section className="st-card" aria-labelledby="phone-result-title" data-lookup="phone">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
+        <div className="min-w-0">
+          <h2 id="phone-result-title" className="text-sm font-bold leading-6" style={{ color: INK_SUBTLE }}>
+            สถานะโดยย่อ (ค้นหาด้วยเบอร์โทรศัพท์)
+          </h2>
+          <p className="mt-1 break-words text-2xl font-semibold leading-9" style={{ color: INK }}>
+            {result.fullName}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusTag status={result.status} />
+          {import.meta.env.DEV && source && (
+            <span className="rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold" style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}>
+              {source}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.k} className="min-w-0 border-b py-2.5 sm:py-3" style={{ borderColor: RULE }}>
+            <dt className="text-xs font-semibold leading-5" style={{ color: INK_SUBTLE }}>{row.k}</dt>
+            <dd className={`mt-0.5 break-words [overflow-wrap:anywhere] text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
+              {row.v}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div role="note" className="st-notice mt-6">
+        <p className="flex items-start gap-2.5 text-base font-semibold leading-7" style={{ color: INK }}>
+          <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
+          <span>
+            ส่งสลิปหรือจัดการใบสมัคร ต้องค้นหาด้วยรหัสใบสมัคร{' '}
+            <span className="whitespace-nowrap font-mono tabular-nums">CC25-XXXXXX</span>
+          </span>
+        </p>
+        <p className="mt-1.5 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+          รหัสใบสมัครอยู่ในอีเมลที่ได้รับหลังสมัคร (และบนหน้าใบตอบรับหลังกดส่ง) เพื่อความปลอดภัย
+          การค้นหาด้วยเบอร์โทรจึงแสดงเพียงสถานะโดยย่อ หากหารหัสไม่พบ กรุณาติดต่อทีมงาน
+        </p>
+        <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
+          ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / จดหมายขยะ หรือแท็บ Promotions (Gmail)
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onSearchByCode}
+            className={`inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
+            style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
+          >
+            ค้นหาด้วยรหัสใบสมัคร
+          </button>
+          <a
+            href={FB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+            style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+          >
+            ติดต่อทีมงานทาง Facebook
+          </a>
+          {STAFF_CONTACTS.map((c) => (
+            <a
+              key={c.tel}
+              href={`tel:${c.tel}`}
+              className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
+              style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+            >
+              <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
+              <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
+                <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
+                <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
+                  <span aria-hidden="true" className="hidden sm:inline">· </span>
+                  {c.name}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Copy for a query that is neither a 10-digit phone nor a CC25 code; it is never sent. */
+const BAD_QUERY_COPY = 'ค้นหาได้ด้วยเบอร์โทรศัพท์ 10 หลัก (ขึ้นต้นด้วย 0) หรือรหัสใบสมัคร CC25-XXXXXX เท่านั้น กรุณาตรวจสอบอีกครั้ง';
 
 export function StatusSection() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [app, setApp] = useState<Application | null>(null);
+  /** Answer to a phone search: masked, without the code, and never enables a write action. */
+  const [phoneResult, setPhoneResult] = useState<PhoneLookupResult | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [seats, setSeats] = useState(SEATS);
   const [feeText, setFeeText] = useState(FEE_TEXT);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
-  /** A wrong verify code reported by the slip upload, shown beneath #verify-code. */
-  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const acctCopyTimer = useRef<number | undefined>(undefined);
   const idCopyTimer = useRef<number | undefined>(undefined);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  /** Last 4 digits of the national ID (AGENTS.md §13.5). Kept in memory only, never stored. */
-  const [verifyCode, setVerifyCode] = useState('');
-  const [autoVerifiedById, setAutoVerifiedById] = useState(false);
-  const [showManualVerifyCode, setShowManualVerifyCode] = useState(false);
-  const manualCodeFocusRef = useRef(false);
-  const codeReady = verifyCode.length === 4;
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
-  /**
-   * The applicant's full 13-digit national ID, typed to confirm a withdrawal (4 digits are not
-   * enough to give a seat away, AGENTS.md §13.5). Component state only: never written to
-   * localStorage / sessionStorage (§9.2), cleared on close, on a new search and on success.
-   */
-  const [withdrawNid, setWithdrawNid] = useState('');
   const [withdrawErr, setWithdrawErr] = useState<string | null>(null);
-  const withdrawNidComplete = withdrawNid.length === 13;
-  const withdrawNidValid = withdrawNidComplete && isValidThaiNationalID(withdrawNid);
+  /** The full registered phone, the second factor for self-withdraw (R24). State only, never stored. */
+  const [withdrawPhone, setWithdrawPhone] = useState('');
+  const withdrawPhoneReady = /^0\d{9}$/.test(withdrawPhone);
   /** Set after a successful withdrawal; the record is cleared and this notice replaces it. */
   const [withdrawnId, setWithdrawnId] = useState<string | null>(null);
   const withdrawToggleRef = useRef<HTMLButtonElement>(null);
   const withdrawConfirmRef = useRef<HTMLButtonElement>(null);
-  const withdrawNidRef = useRef<HTMLInputElement>(null);
+  const withdrawPhoneRef = useRef<HTMLInputElement>(null);
+  /** After a failed attempt the phone field is refocused once it is enabled again. */
+  const withdrawRefocus = useRef(false);
   const withdrawnRef = useRef<HTMLDivElement>(null);
   /** Focus goes back to the toggle only when the panel was closed by the user. */
   const withdrawRestore = useRef(false);
@@ -462,40 +575,50 @@ export function StatusSection() {
     // Zero-width characters, Thai numerals and hyphens from a LINE copy-paste are removed (§9.2.2).
     const query = normalizeLookupQuery(rawQuery);
     if (!query) return;
-    const digitsOnly = /^\d+$/.test(query) ? query : '';
-    const isNationalIdLookup = !opts?.fromStoredReceipt && digitsOnly.length === 13;
     const run = ++searchRun.current;
+    setStoredNotice(null);
+    setWithdrawOpen(false);
+    setWithdrawErr(null);
+    setWithdrawPhone('');
+    setWithdrawnId(null);
+    // Only a 10-digit phone or a CC25 code ever leaves the browser: anything else (for example a
+    // 13-digit national ID typed out of habit) is answered here and never sent.
+    if (!isPhoneQuery(query) && !isApplicationCodeQuery(query)) {
+      searchBusyRef.current = false;
+      setBusy(false);
+      setApp(null);
+      setPhoneResult(null);
+      setError(BAD_QUERY_COPY);
+      return;
+    }
     searchBusyRef.current = true;
     setBusy(true);
     setError(null);
-    setStoredNotice(null);
-    setVerifyError(null);
-    setShowManualVerifyCode(false);
-    setVerifyCode(isNationalIdLookup ? digitsOnly.slice(-4) : '');
-    setAutoVerifiedById(isNationalIdLookup);
-    setWithdrawOpen(false);
-    setWithdrawNid('');
-    setWithdrawErr(null);
-    setWithdrawnId(null);
     try {
       const res = await getApplicationStatus(query);
       if (run !== searchRun.current) return;
-      setApp(res.data);
+      const data = res.data;
+      if (isPhoneLookup(data)) {
+        setApp(null);
+        setPhoneResult(data);
+      } else {
+        setPhoneResult(null);
+        setApp(data);
+      }
       setSource(res.source);
     } catch (err) {
       if (run !== searchRun.current) return;
-      setAutoVerifiedById(false);
-      setVerifyCode('');
-      setShowManualVerifyCode(false);
       if (opts?.fromStoredReceipt && err instanceof ApiHttpError && err.status === 404) {
         clearReceipt();
         setQ('');
         setApp(null);
-        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยเบอร์โทรศัพท์หรือเลขบัตรประจำตัว 13 หลักได้ด้านล่าง`);
+        setPhoneResult(null);
+        setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยรหัสใบสมัครจากอีเมล หรือดูสถานะโดยย่อด้วยเบอร์โทรศัพท์ได้ด้านล่าง`);
         return;
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
       setApp(null);
+      setPhoneResult(null);
     } finally {
       if (run === searchRun.current) {
         searchBusyRef.current = false;
@@ -519,6 +642,16 @@ export function StatusSection() {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = (params.get('q') ?? params.get('id') ?? '').trim();
     if (urlQuery) {
+      // The email link carries the code (/status?q=CC25-…). Read it once, then drop it from the
+      // address bar so it is not left in the visible URL, a screenshot or a shared link.
+      params.delete('q');
+      params.delete('id');
+      const rest = params.toString();
+      try {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+      } catch {
+        /* some in-app browsers refuse replaceState; the search still runs */
+      }
       setQ(urlQuery);
       void runSearch(urlQuery);
     } else {
@@ -538,7 +671,7 @@ export function StatusSection() {
   }, [runSearch]);
 
   useEffect(() => {
-    if (withdrawOpen) withdrawNidRef.current?.focus();
+    if (withdrawOpen) withdrawPhoneRef.current?.focus();
     else if (withdrawRestore.current) {
       withdrawRestore.current = false;
       withdrawToggleRef.current?.focus();
@@ -548,15 +681,12 @@ export function StatusSection() {
     if (withdrawnId) withdrawnRef.current?.focus();
   }, [withdrawnId]);
   useEffect(() => {
-    if (showManualVerifyCode && manualCodeFocusRef.current) {
-      manualCodeFocusRef.current = false;
-      const el = document.getElementById('verify-code');
-      if (el instanceof HTMLInputElement) {
-        el.focus();
-        el.select();
-      }
+    if (!withdrawBusy && withdrawRefocus.current) {
+      withdrawRefocus.current = false;
+      withdrawPhoneRef.current?.focus();
+      withdrawPhoneRef.current?.select();
     }
-  }, [showManualVerifyCode]);
+  }, [withdrawBusy]);
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -572,57 +702,59 @@ export function StatusSection() {
     });
   }
 
+  /** From the phone-lookup card: put the cursor in the search box for the CC25 code. */
+  function focusCodeSearch() {
+    setQ('');
+    const el = searchInputRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+    el.focus({ preventScroll: true });
+  }
+
   function closeWithdraw() {
     if (withdrawBusy || withdrawBusyRef.current) return;
     withdrawRestore.current = true;
     setWithdrawOpen(false);
-    setWithdrawNid('');
+    setWithdrawPhone('');
     setWithdrawErr(null);
   }
 
   async function onWithdraw() {
-    if (!app || !withdrawNidValid || withdrawBusy || withdrawBusyRef.current) return;
+    if (!app || !withdrawPhoneReady || withdrawBusy || withdrawBusyRef.current) return;
     withdrawBusyRef.current = true;
     setWithdrawBusy(true);
     setError(null);
     setWithdrawErr(null);
     try {
-      await withdrawApplication(app.id, withdrawNid);
+      await withdrawApplication(app.id, withdrawPhone);
       const id = app.id;
       if (loadReceipt()?.id === id) clearReceipt();
       setApp(null);
       setSource(null);
-      setVerifyCode('');
-      setAutoVerifiedById(false);
-      setShowManualVerifyCode(false);
-      setWithdrawNid('');
+      setWithdrawPhone('');
       setWithdrawOpen(false);
-      setVerifyError(null);
       setWithdrawnId(id);
     } catch (err) {
-      // Problems with the typed ID (wrong, malformed, locked) are shown next to the field.
-      const locked = describeVerifyLock(err);
-      if (locked) {
-        setWithdrawErr(locked);
-      } else if (err instanceof ApiHttpError && err.code === 'INVALID_VERIFY_CODE') {
-        setWithdrawErr('เลขบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง');
-      } else if (err instanceof ApiHttpError && err.status === 400) {
-        setWithdrawErr('กรุณากรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครให้ถูกต้อง');
-      } else if (err instanceof ApiHttpError && err.status === 429) {
+      if (err instanceof ApiHttpError && err.status === 429) {
         setWithdrawErr(describeError(err, 'ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่'));
+        withdrawRefocus.current = true;
+      } else if (err instanceof ApiHttpError && err.status === 404) {
+        // An unknown code and a wrong phone are the same 404 on purpose: never say which part was
+        // wrong, and keep the stored receipt (the code itself may be fine).
+        setWithdrawErr(WITHDRAW_MISMATCH_COPY);
+        withdrawRefocus.current = true;
       } else if (err instanceof ApiHttpError && err.status === 409) {
         setWithdrawOpen(false);
-        setWithdrawNid('');
+        setWithdrawPhone('');
         setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งยกเลิก');
         getApplicationStatus(app.id)
           .then((res) => {
+            if (isPhoneLookup(res.data)) return;
             setApp(res.data);
             setSource(res.source);
           })
           .catch(() => {});
-      } else if (err instanceof ApiHttpError && err.status === 404) {
-        if (loadReceipt()?.id === app.id) clearReceipt();
-        setError('ไม่พบใบสมัครนี้ในระบบ อาจถูกยกเลิกไปแล้ว ลองค้นหาอีกครั้ง');
       } else {
         setError(describeError(err, 'ยกเลิกใบสมัครไม่สำเร็จ'));
       }
@@ -668,51 +800,6 @@ export function StatusSection() {
   const canWithdraw = Boolean(app && seatHeld && app.status !== 'CONFIRMED' && !moneyHeld);
   // Cancelling is staff-only: say so, with the way to reach them.
   const mustAskStaffToCancel = seatHeld && !canWithdraw;
-  // The code is asked for only while there is a payment slip left to send. Applicants can no longer
-  // edit their own profile here: corrections go through staff (see the notice in the record card).
-  const needsVerifyCode = Boolean(isEligibleForPayment && !slipApproved);
-  const verifyHint = app && needsVerifyCode ? 'ใช้ยืนยันตัวตนก่อนส่งสลิป' : '';
-
-  /* Second factor (AGENTS.md §13.5): an application ID or a phone number alone is not enough to
-     send a slip. The phone's digits are not accepted on purpose: the record shows
-     them. Searching by full 13-digit national ID already proves identity. */
-  const verifyCard = (
-    <section aria-label="ยืนยันตัวตน" className="st-card st-card--compact">
-              {autoVerifiedById && !showManualVerifyCode ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm leading-6">
-                  <p className="inline-flex items-center gap-2 font-medium" style={{ color: INK }}>
-                    <CircleCheck aria-hidden="true" size={16} strokeWidth={1.75} className="shrink-0" style={{ color: 'var(--color-success)' }} />
-                    <span>ยืนยันตัวตนด้วยเลขบัตรประจำตัว 13 หลักแล้ว (ส่งสลิปได้ทันที)</span>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      manualCodeFocusRef.current = true;
-                      setShowManualVerifyCode(true);
-                    }}
-                    className={`inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 transition-opacity hover:opacity-80 ${FOCUS_RING}`}
-                    style={{ color: INK_MUTED }}
-                  >
-                    เปลี่ยนรหัส
-                  </button>
-                </div>
-              ) : (
-                <VerifyCodeField
-                  id="verify-code"
-                  value={verifyCode}
-                  onChange={(v) => {
-                    setVerifyCode(v);
-                    if (verifyError) setVerifyError(null);
-                  }}
-                  error={verifyError}
-                  notPhone
-                  hintId="verify-code-hint"
-                  hint={verifyHint}
-                />
-              )}
-            </section>
-  );
-
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
       {/* ── Masthead + search: the search field is in the first phone screen ── */}
@@ -731,14 +818,14 @@ export function StatusSection() {
             ค้นหาใบสมัครของน้อง
           </h2>
           <p className="mt-2 max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            ใช้ข้อมูลอย่างใดอย่างหนึ่ง: เลขบัตรประจำตัว <span className="font-mono tabular-nums">13</span> หลัก
-            เบอร์โทรศัพท์ที่ใช้สมัคร หรือรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>
+            ค้นหาด้วยรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>{' '}
+            จากอีเมลหรือหน้าใบตอบรับ เพื่อดูรายละเอียดและส่งสลิป หรือใช้เบอร์โทรศัพท์ที่ใช้สมัครเพื่อดูสถานะโดยย่อ
           </p>
         </div>
 
         <form onSubmit={onSearch} className="st-card md:col-span-7">
           <label className="mb-1.5 block text-sm font-semibold" style={{ color: INK }} htmlFor="status-q">
-            เลขบัตร 13 หลัก เบอร์โทร หรือรหัสใบสมัคร
+            รหัสใบสมัคร หรือเบอร์โทรศัพท์
           </label>
           <div className="relative flex items-center">
             <input
@@ -746,7 +833,7 @@ export function StatusSection() {
               id="status-q"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="เช่น 0812345678 หรือ CC25-XXXXXX"
+              placeholder="เช่น CC25-1A2B3C หรือ 0812345678"
               autoComplete="off"
               spellCheck={false}
               className="min-h-11 w-full rounded-none border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
@@ -852,11 +939,15 @@ export function StatusSection() {
         </div>
       )}
 
+      {phoneResult && !app && (
+        <div className="mt-8 space-y-8">
+          <PhoneLookupCard result={phoneResult} source={source} nowMs={nowMs} onSearchByCode={focusCodeSearch} />
+        </div>
+      )}
+
       {app && (
         <div className="mt-8 space-y-8">
           <StatusHighlight app={app} seats={seats} feeText={feeText} nowMs={nowMs} />
-
-          {needsVerifyCode && verifyCard}
 
           {/* ── Payment: the next task for a PASSED applicant, so it comes before the record ── */}
           {isEligibleForPayment && (
@@ -1012,17 +1103,10 @@ export function StatusSection() {
                   key={app.id}
                   appId={app.id}
                   slip={slipApproved ? 'APPROVED' : slipState}
-                  verifyCode={verifyCode}
-                  codeInputId="verify-code"
-                  onCodeInvalid={(msg) => {
-                    setVerifyError(msg);
-                    if (msg) setShowManualVerifyCode(true);
-                  }}
                   submitLabel="ยืนยันและส่งหลักฐานสลิป"
                   onUploaded={(status, _message, src) => {
                     setSource(src);
                     setError(null);
-                    setVerifyError(null);
                     setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
                   }}
                 />
@@ -1094,7 +1178,6 @@ export function StatusSection() {
               {[
                 { k: 'ชื่อ – นามสกุล', v: app.fullName, mono: false },
                 { k: 'ชื่อเล่น', v: app.nickname || '–', mono: false },
-                { k: 'เลขบัตรประจำตัว', v: app.nationalId, mono: true },
                 { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
                 { k: 'โรงเรียน', v: app.school, mono: false },
                 {
@@ -1163,7 +1246,7 @@ export function StatusSection() {
               </p>
             </div>
 
-            {/* Self-service withdrawal: frees the seat; asks for the full national ID (not the 4-digit code above). */}
+            {/* Self-service withdrawal: frees the seat. Needs the code this record was found by AND the full registered phone (R24). */}
             {canWithdraw && (
               <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
                 {withdrawOpen ? (
@@ -1185,16 +1268,16 @@ export function StatusSection() {
                       {slipUploaded && ' หากโอนเงินไปแล้ว กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ'}
                     </p>
                     <div className="mt-3 max-w-[22rem]">
-                      <label htmlFor="withdraw-nid" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
-                        กรอกเลขบัตรประจำตัว 13 หลักของผู้สมัครเพื่อยืนยัน
+                      <label htmlFor="withdraw-phone" className="block text-sm font-semibold leading-7" style={{ color: INK }}>
+                        เบอร์โทรที่ใช้สมัคร
                       </label>
                       <input
-                        id="withdraw-nid"
-                        ref={withdrawNidRef}
-                        value={withdrawNid}
-                        // Digits only, max 13: drops dashes and zero-width characters pasted from LINE (§9.2.2).
+                        id="withdraw-phone"
+                        ref={withdrawPhoneRef}
+                        value={withdrawPhone}
+                        // Digits only, max 10: Thai digits become 0-9; dashes, spaces and zero-width characters go (§9.2.2).
                         onChange={(e) => {
-                          setWithdrawNid(cleanNationalIdInput(e.target.value));
+                          setWithdrawPhone(cleanPhoneInput(e.target.value));
                           if (withdrawErr) setWithdrawErr(null);
                         }}
                         onKeyDown={(e) => {
@@ -1203,43 +1286,34 @@ export function StatusSection() {
                             void onWithdraw();
                           }
                         }}
-                        inputMode="numeric"
+                        type="tel"
+                        inputMode="tel"
                         autoComplete="off"
                         spellCheck={false}
-                        placeholder="1234567890123"
+                        placeholder="08XXXXXXXX"
                         disabled={withdrawBusy}
-                        aria-invalid={withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? true : undefined}
-                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-nid-hint withdraw-nid-err' : 'withdraw-warn withdraw-nid-hint'}
-                        className={`${INPUT_CLS} mt-1 font-mono tabular-nums disabled:opacity-60`}
-                        style={{
-                          borderColor: withdrawErr || (withdrawNidComplete && !withdrawNidValid) ? 'var(--color-danger)' : BORDER_INPUT,
-                          color: INK,
-                        }}
+                        aria-invalid={withdrawErr ? true : undefined}
+                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-phone-hint withdraw-err' : 'withdraw-warn withdraw-phone-hint'}
+                        className={`mt-1 w-full rounded-xl border bg-[var(--bg-card)] px-3.5 py-2.5 font-mono text-base leading-7 tabular-nums outline-none transition-colors placeholder:text-[var(--color-ink-subtle)] focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30 disabled:opacity-60`}
+                        style={{ borderColor: withdrawErr ? 'var(--color-danger)' : BORDER_INPUT, color: INK }}
                       />
-                      <p id="withdraw-nid-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                        {withdrawNidComplete && !withdrawNidValid ? (
-                          'เลขบัตรประจำตัว 13 หลักนี้ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
-                        ) : (
-                          <>
-                            ใช้เลขเดียวกับที่กรอกตอนสมัคร (<span className="font-mono tabular-nums">{withdrawNid.length}/13</span> หลัก)
-                            ระบบไม่บันทึกเลขนี้ไว้ในเครื่อง
-                          </>
-                        )}
+                      <p id="withdraw-phone-hint" className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
+                        กรอกเบอร์โทรศัพท์ <span className="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร แล้วกดยืนยันเพื่อยกเลิกใบสมัครนี้ ระบบไม่บันทึกเบอร์นี้ไว้ในเครื่อง
                       </p>
-                      {withdrawErr && (
-                        <p id="withdraw-nid-err" role="alert" className="mt-1 text-sm font-semibold leading-7" style={{ color: 'var(--color-danger)' }}>
-                          {withdrawErr}
-                        </p>
-                      )}
                     </div>
+                    {withdrawErr && (
+                      <p id="withdraw-err" role="alert" className="mt-1 max-w-[60ch] text-sm font-semibold leading-7" style={{ color: 'var(--color-danger)' }}>
+                        {withdrawErr}
+                      </p>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         ref={withdrawConfirmRef}
                         type="button"
                         onClick={onWithdraw}
-                        disabled={withdrawBusy || !withdrawNidValid}
+                        disabled={withdrawBusy || !withdrawPhoneReady}
                         aria-busy={withdrawBusy || undefined}
-                        aria-describedby="withdraw-warn withdraw-nid-hint"
+                        aria-describedby={withdrawErr ? 'withdraw-warn withdraw-err' : 'withdraw-warn'}
                         className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${FOCUS_RING}`}
                         style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)', backgroundColor: SURFACE }}
                       >

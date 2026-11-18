@@ -5,9 +5,8 @@
  * 4096x4096 px. Any PNG screenshot, oversized image (> 1600 px), or file > 300 KB is shrunk to
  * a longest edge of 1600 px and re-encoded as WebP (with safe JPEG fallback for older WebViews)
  * in the browser first, keeping banking text and Mini QR crisp while dropping EXIF and upload size.
- * The server still re-validates everything. The verifyCode (last 4 digits of the national ID,
- * section 13.5) is held in component state only: these helpers never touch localStorage or
- * sessionStorage.
+ * The server still re-validates everything. The application code in the URL is the applicant's
+ * proof; these helpers never touch localStorage or sessionStorage.
  */
 import { ApiHttpError } from './api';
 
@@ -21,32 +20,6 @@ const OPTIMIZE_TARGET_BYTES = 300 * 1024;
 /** Must match the backend allow-list (magic-byte checked server-side). */
 export const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const SLIP_ACCEPT = SLIP_TYPES.join(',');
-
-const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
-
-/**
- * Normalises what a student typed or pasted into the 4-digit code: Thai digits become 0-9, then
- * everything that is not a digit (dashes, spaces, zero-width characters pasted from LINE) is
- * dropped and the result is capped at 4.
- */
-export function cleanVerifyCode(value: string): string {
-  return value
-    .replace(/[๐-๙]/g, (c) => String(THAI_DIGITS.indexOf(c)))
-    .replace(/\D/g, '')
-    .slice(0, 4);
-}
-
-/**
- * The same cleaning for the full 13-digit national ID asked for by self-service withdrawal: Thai
- * digits become 0-9, separators and zero-width characters are dropped, capped at 13. Held in
- * component state only, never in browser storage.
- */
-export function cleanNationalIdInput(value: string): string {
-  return value
-    .replace(/[๐-๙]/g, (c) => String(THAI_DIGITS.indexOf(c)))
-    .replace(/\D/g, '')
-    .slice(0, 13);
-}
 
 /** True when the raw input holds Thai letters: the phone keyboard is still on Thai. Thai digits do not count. */
 export function hasThaiKeyboardChars(raw: string): boolean {
@@ -203,32 +176,31 @@ function clockAfter(seconds: number): string {
 }
 
 /**
- * The per-IP limit answers within a minute; a Retry-After longer than that means the application
- * itself is locked after 5 wrong verify answers (backend VerifyGuard, 15 minutes).
+ * The per-IP request limits answer within a minute. A longer Retry-After comes from the backend
+ * CodeGuard: too many unknown application codes were tried from this connection (lockout from
+ * 15 minutes up), or across the whole site in the last few minutes (at most 5 minutes).
  */
-const VERIFY_LOCK_MIN_SECONDS = 60;
+const CODE_PAUSE_MIN_SECONDS = 60;
 
-/** Thai copy for the 15-minute lock after repeated wrong verify codes / national IDs, else null. */
-export function describeVerifyLock(err: unknown): string | null {
-  if (!(err instanceof ApiHttpError) || err.status !== 429) return null;
-  if (!err.retryAfterSeconds || err.retryAfterSeconds <= VERIFY_LOCK_MIN_SECONDS) return null;
-  return `กรอกเลขยืนยันตัวตนผิดหลายครั้ง เพื่อความปลอดภัยระบบจึงพักการยืนยันตัวตนของใบสมัครนี้ไว้ชั่วคราว กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`;
+/** Calm Thai copy for any 429 RATE_LIMITED answer, using Retry-After when the server sent it. */
+export function describeRateLimit(err: ApiHttpError): string {
+  const s = err.retryAfterSeconds;
+  if (s && s > CODE_PAUSE_MIN_SECONDS) {
+    return `มีการกรอกรหัสใบสมัครที่ไม่ถูกต้องหลายครั้ง เพื่อความปลอดภัยระบบจึงพักการตรวจสอบด้วยรหัสใบสมัครไว้ชั่วคราว กรุณาลองใหม่หลังเวลา ${clockAfter(s)} หากต้องการความช่วยเหลือ ติดต่อทีมงานพี่ค่ายได้เลย`;
+  }
+  return s
+    ? `ขณะนี้มีการทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่หลังเวลา ${clockAfter(s)}`
+    : 'ขณะนี้มีการทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
 }
 
 /** Thai copy for validation errors, differentiating query lookup, slip upload, profile edit, and withdraw. */
 function describeValidationError(message: string, fallback: string): string {
   const msg = message.toLowerCase();
   if (msg.includes('search query') || msg.includes("query parameter 'q'")) {
-    return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเลขบัตรประจำตัว 13 หลัก เบอร์โทร 10 หลัก หรือรหัส CC25-XXXXXX';
+    return 'ข้อมูลที่ค้นหาไม่ถูกต้อง กรุณาระบุเบอร์โทร 10 หลัก หรือรหัสใบสมัคร CC25-XXXXXX';
   }
   if (msg.includes('file type') || msg.includes('slip') || msg.includes('multipart')) {
     return 'ไฟล์รูปภาพไม่ถูกต้อง รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP เท่านั้น';
-  }
-  if (msg.includes('verifycode')) {
-    return 'กรุณากรอกเลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักให้ครบ 4 หลัก';
-  }
-  if (msg.includes('national id')) {
-    return 'เลขบัตรประจำตัว 13 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
   }
   if (msg.includes('grade')) {
     return 'ระดับชั้นไม่ถูกต้อง กรุณาเลือกระดับชั้นหรือระบุความยาว 2–20 ตัวอักษร';
@@ -245,16 +217,25 @@ function describeValidationError(message: string, fallback: string): string {
   return fallback;
 }
 
+/** Withdraw failed on the code + phone check. Deliberately does not say which part was wrong (R24). */
+export const WITHDRAW_MISMATCH_COPY = 'ข้อมูลไม่ตรงกับใบสมัคร กรุณาตรวจสอบแล้วลองอีกครั้ง หากยังไม่สำเร็จ กรุณาติดต่อทีมงาน';
+
+/** Digits only (Thai digits converted, dashes/spaces/zero-width dropped), at most 10: the withdraw phone field. */
+export function cleanPhoneInput(value: string): string {
+  return value
+    .replace(/[๐-๙]/g, (c) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(c)))
+    .replace(/\D/g, '')
+    .slice(0, 10);
+}
+
+const NOT_FOUND_COPY = 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเบอร์โทรศัพท์หรือรหัสใบสมัคร (CC25-XXXXXX) อีกครั้ง';
+
 /** Thai copy keyed by the backend error code; never exposes raw English developer errors to users. */
 export function describeApiError(err: unknown, fallback: string): string {
-  const locked = describeVerifyLock(err);
-  if (locked) return locked;
   if (err instanceof ApiHttpError) {
     switch (err.code) {
       case 'NOT_FOUND':
-        return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
-      case 'INVALID_VERIFY_CODE':
-        return 'เลข 4 ตัวท้ายของบัตรประจำตัว 13 หลักไม่ตรงกับใบสมัครนี้ กรุณาตรวจสอบแล้วลองอีกครั้ง';
+        return NOT_FOUND_COPY;
       case 'INVALID_IMAGE_DIMENSIONS':
         return `รูปสลิปมีขนาดใหญ่เกิน ${MAX_SLIP_PX}×${MAX_SLIP_PX} พิกเซล กรุณาส่งภาพหน้าจอสลิปจากแอปธนาคาร หรือย่อรูปก่อนอัปโหลด`;
       case 'DUPLICATE_SLIP':
@@ -266,9 +247,7 @@ export function describeApiError(err: unknown, fallback: string): string {
       case 'PAYLOAD_TOO_LARGE':
         return 'ขนาดไฟล์รูปภาพใหญ่เกิน 5 MB กรุณาเลือกรูปภาพที่มีขนาดเล็กลง';
       case 'RATE_LIMITED':
-        return err.retryAfterSeconds
-          ? `ทำรายการถี่เกินไป กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`
-          : 'ทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
+        return describeRateLimit(err);
       case 'VALIDATION_ERROR':
         return describeValidationError(err.message, fallback);
       case 'SERVICE_UNAVAILABLE':
@@ -278,7 +257,7 @@ export function describeApiError(err: unknown, fallback: string): string {
       case 'QUOTA_FULL':
         return 'ขณะนี้มีผู้สมัครครบตามจำนวนที่รับแล้ว';
       case 'DUPLICATE_APPLICATION':
-        return 'เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว';
+        return 'เบอร์โทรศัพท์หรืออีเมลนี้เคยใช้สมัครแล้ว หากเป็นใบสมัครของคุณ ตรวจสอบได้ที่หน้าตรวจสอบสถานะ';
       case 'CAPTCHA_FAILED':
         return 'การยืนยันตัวตนไม่ผ่านหรือหมดอายุ กรุณายืนยันใหม่อีกครั้ง';
       case 'IDEMPOTENCY_KEY_REUSED':
@@ -289,12 +268,10 @@ export function describeApiError(err: unknown, fallback: string): string {
         return 'ใบสมัครนี้อยู่ในสถานะที่ดำเนินการขั้นตอนนี้ไม่ได้ หากมีข้อสงสัยกรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ';
     }
     if (err.status === 429) {
-      return err.retryAfterSeconds
-        ? `ทำรายการถี่เกินไป กรุณาลองใหม่หลังเวลา ${clockAfter(err.retryAfterSeconds)}`
-        : 'ทำรายการถี่เกินไป เพื่อความปลอดภัยกรุณารอสักครู่แล้วลองใหม่อีกครั้ง';
+      return describeRateLimit(err);
     }
     if (err.status === 404) {
-      return 'ไม่พบข้อมูลใบสมัครในระบบ กรุณาตรวจสอบเลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรือรหัสใบสมัครอีกครั้ง';
+      return NOT_FOUND_COPY;
     }
     if (err.status === 403) {
       return 'ไม่สามารถดำเนินการได้ในขณะนี้ กรุณาติดต่อทีมงานพี่ค่าย';

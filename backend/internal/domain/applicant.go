@@ -44,7 +44,6 @@ func (s ApplicationStatus) IsActive() bool {
 type Applicant struct {
 	ID                  uuid.UUID         `db:"id" json:"id"`
 	ApplicationNo       string            `db:"application_no" json:"applicationNo"`
-	NationalID          string            `db:"national_id" json:"nationalId"`
 	Prefix              string            `db:"prefix" json:"prefix"`
 	FirstName           string            `db:"first_name" json:"firstName"`
 	LastName            string            `db:"last_name" json:"lastName"`
@@ -94,7 +93,6 @@ type ProfileFields struct {
 	FirstName         string
 	LastName          string
 	Nickname          string
-	NationalID        string
 	Phone             string
 	Email             string
 	School            string
@@ -130,8 +128,9 @@ type ApplicantRepository interface {
 	GetByIdempotencyKey(ctx context.Context, key uuid.UUID) (*Applicant, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Applicant, error)
 	GetByApplicationNo(ctx context.Context, appNo string) (*Applicant, error)
-	GetByNationalID(ctx context.Context, nationalID string) (*Applicant, error)
-	FindByQuery(ctx context.Context, query string) (*Applicant, error)
+	// GetByPhone returns the live application registered with this phone number (the phone is
+	// unique among live rows, uq_applicants_phone_live).
+	GetByPhone(ctx context.Context, phone string) (*Applicant, error)
 	ListAll(ctx context.Context, status *ApplicationStatus) ([]*Applicant, error)
 	// UpdateStatus changes the status and writes applicant_status_logs plus the audit entry
 	// (when non-nil) in one transaction.

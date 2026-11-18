@@ -6,7 +6,7 @@ import "errors"
 // so that storage details (constraint names, SQL text) never reach API clients.
 var (
 	ErrNotFound                = errors.New("record not found")
-	ErrDuplicateApplicant      = errors.New("an application with this national ID, phone number or email already exists")
+	ErrDuplicateApplicant      = errors.New("an application with this phone number or email already exists")
 	ErrDuplicateApplicationNo  = errors.New("application number collision")
 	ErrDuplicateIdempotencyKey = errors.New("idempotency key already used")
 	ErrCapacityReached         = errors.New("camp capacity quota reached")

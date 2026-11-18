@@ -48,7 +48,6 @@ import {
 import {
   PAYMENT_WINDOW_DAYS,
   describeStaffPaymentDeadline,
-  formatNationalId,
   type PaymentDeadlineInfo,
 } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
@@ -355,7 +354,7 @@ function describeAdminError(err: unknown, fallback: string): string {
       return 'ที่นั่งเต็มแล้ว จึงคืนใบสมัครนี้กลับเป็นสถานะที่ถือที่นั่งไม่ได้ ต้องมีที่นั่งว่างหรือเพิ่มโควตาก่อน (ใบสมัครยังคงสถานะเดิม)';
     }
     if (err.code === 'DUPLICATE_APPLICATION') {
-      return 'เลขบัตรประจำตัว เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
+      return 'เบอร์โทรหรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ';
     }
     if (err.code === 'SLIP_CHANGED') {
       return 'ผู้สมัครเพิ่งอัปโหลดสลิปใหม่ จึงยังไม่ได้บันทึกผล ระบบโหลดสลิปล่าสุดให้แล้ว กรุณาตรวจสอบอีกครั้ง';
@@ -1530,7 +1529,7 @@ export function AdminSection() {
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล เลขบัตร โรงเรียน ระดับชั้น ไซส์เสื้อ จังหวัด"
+                    placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน ระดับชั้น ไซส์เสื้อ จังหวัด"
                     autoComplete="off"
                     spellCheck={false}
                     enterKeyHint="search"
@@ -1910,7 +1909,7 @@ export function AdminSection() {
                           ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
                         </p>
                         <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                          การลบจะคืนที่นั่งและปล่อยเลขบัตรประจำตัว เบอร์โทร และอีเมลให้สมัครใหม่ได้
+                          การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
                           {(slip || a.status === 'CONFIRMED') &&
                             ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
                         </p>
@@ -1965,12 +1964,6 @@ export function AdminSection() {
                         aria-label={`รายละเอียดใบสมัคร ${a.id}`}
                       >
                         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-                          <div>
-                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>เลขบัตรประจำตัว</p>
-                            <p className="mt-1 font-mono text-sm tabular-nums" style={{ color: INK }}>
-                              {formatNationalId(a.nationalId)}
-                            </p>
-                          </div>
                           <div>
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>การยืนยันสิทธิ์เข้าร่วมค่าย</p>
                             <p className="mt-1 text-sm" style={{ color: INK }}>
@@ -2201,12 +2194,6 @@ export function AdminSection() {
                               <dd className="mt-0.5 break-words font-semibold" style={{ color: INK }}>
                                 {a.fullName}
                                 {a.nickname ? <span className="font-normal" style={{ color: INK_2 }}> ({a.nickname})</span> : null}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt className="text-xs font-semibold" style={{ color: INK_3 }}>เลขบัตรประจำตัว</dt>
-                              <dd className="mt-0.5 font-mono tabular-nums" style={{ color: INK }}>
-                                {formatNationalId(a.nationalId)}
                               </dd>
                             </div>
                             <div>

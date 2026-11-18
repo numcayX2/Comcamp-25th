@@ -64,7 +64,6 @@ func TestPostgres_ReverifySlipAndParentContact(t *testing.T) {
 		FirstName:         got.FirstName,
 		LastName:          got.LastName,
 		Nickname:          got.Nickname,
-		NationalID:        got.NationalID,
 		Phone:             got.Phone,
 		Email:             got.Email,
 		School:            got.School,

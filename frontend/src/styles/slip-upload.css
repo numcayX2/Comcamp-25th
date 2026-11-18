@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Shared slip upload (SlipUploadPanel, VerifyCodeField, SlipLightbox)
+   Shared slip upload (SlipUploadPanel, SlipLightbox)
    Used on /register (the .rw wizard tokens) and /status (the global tokens): the --su-* aliases
    below resolve to whichever set is in scope, so both pages look the same in light and dark.
    Flat by design (AGENTS.md section 2.3): hairlines and whitespace, no nested cards, no shadows.
@@ -7,7 +7,6 @@
    ========================================================================== */
 
 .su,
-.su-field,
 .su-lightbox {
   --su-ink: var(--rw-ink, var(--color-ink));
   --su-ink-2: var(--rw-ink-2, var(--color-ink-muted));
@@ -30,7 +29,7 @@
 
 .su { display: grid; gap: 20px; min-width: 0; max-width: 100%; }
 .su-form { display: grid; gap: 22px; width: 100%; max-width: 560px; min-width: 0; }
-.su *:focus-visible, .su-field *:focus-visible, .su-lightbox *:focus-visible { outline: 2px solid var(--su-focus); outline-offset: 3px; }
+.su *:focus-visible, .su-lightbox *:focus-visible { outline: 2px solid var(--su-focus); outline-offset: 3px; }
 
 .su-sr {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -64,37 +63,6 @@
 .su-msg__body { min-width: 0; display: grid; gap: 4px; }
 .su-msg__title { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
 .su-msg__text { margin: 0; font-size: 0.9375rem; line-height: 1.75; overflow-wrap: anywhere; }
-
-/* ---------- Verify code: one boxed input ---------- */
-.su-field { width: 100%; max-width: 520px; min-width: 0; scroll-margin-top: 120px; }
-.su-code {
-  display: block;
-  box-sizing: border-box;
-  width: 11rem;
-  max-width: 100%;
-  min-height: 48px;
-  margin-top: 10px;
-  padding: 0 14px;
-  border: 1.5px solid var(--su-line);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--su-ink);
-  font-family: var(--font-mono, monospace);
-  font-size: 1.125rem; /* >=16px: iOS never zooms */
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-  letter-spacing: 0.12em;
-  scroll-margin-top: 120px;
-  appearance: none;
-  -webkit-appearance: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.su-code::placeholder { color: var(--su-ink-3); opacity: 1; }
-.su-code:hover { border-color: var(--su-ink); }
-.su-code:focus { outline: none; border-color: var(--su-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--su-focus) 28%, transparent); }
-.su-code[aria-invalid='true'] { border-color: var(--su-danger); }
-.su-code:disabled { opacity: 0.55; }
 
 /* ---------- Empty: dashed drop tile (no shadow, no elevation) ---------- */
 .su-zone {
@@ -170,26 +138,6 @@
 .su-checklist li > span { flex: none; width: 1em; font-family: var(--font-mono, monospace); }
 .su-checklist li[data-done='true'] { color: var(--su-ink); }
 .su-checklist li[data-done='true'] > span { color: var(--su-ok-bg); }
-
-.su-code-prompt { display: grid; justify-items: start; gap: 4px; }
-.su-link-btn {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--su-focus);
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.5;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.su-link-btn:hover { opacity: 0.85; }
 
 /* ---------- Buttons: full pill, 44px+ targets ---------- */
 .su-btn {

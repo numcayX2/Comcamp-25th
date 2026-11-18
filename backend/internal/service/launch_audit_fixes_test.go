@@ -22,7 +22,6 @@ func auditApplicant(t *testing.T, apps *memory.MemoryApplicantRepo, idx int, sta
 	a := &domain.Applicant{
 		ID:            uuid.New(),
 		ApplicationNo: fmt.Sprintf("CC25-AD%04X", idx),
-		NationalID:    validTestNationalID(900 + idx),
 		FirstName:     "ทดสอบ",
 		LastName:      "ระบบ",
 		Nickname:      "ทด",
@@ -58,7 +57,7 @@ func TestUnpaidExpiry_NotExtendedBySelfServiceActivity(t *testing.T) {
 		}
 	}
 
-	if _, err := svc.ConfirmAttendance(ctx, confirmer.ApplicationNo, confirmer.NationalID[9:], true); err != nil {
+	if _, err := svc.ConfirmAttendance(ctx, confirmer.ApplicationNo, true); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
 	expired, err := svc.ExpireOverdueUnpaid(ctx, time.Now().UTC())

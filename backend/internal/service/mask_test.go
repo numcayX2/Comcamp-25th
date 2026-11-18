@@ -4,10 +4,16 @@ import "testing"
 
 func TestMasking(t *testing.T) {
 	cases := []struct{ got, want string }{
-		{MaskNationalID("1509900112233"), "1-5099-XXXXX-XX-X"},
-		{MaskNationalID("123"), "X-XXXX-XXXXX-XX-X"},
-		{MaskPhone("0812345678"), "XXX-XXX-5678"},
-		{MaskPhone("12"), "XXX-XXX-XXXX"},
+		{MaskName("สมชาย", "ใจดี"), "ส*** ใ***"},
+		{MaskName("เกียรติ", ""), "เ***"},
+		{MaskName("", "ใจดี"), "ใ***"},
+		{MaskName(" ", " "), ""},
+		{MaskName("Somchai", "Jaidee"), "S*** J***"},
+		// Public responses show only the last 2 digits (ruling R25).
+		{MaskPhone("0812345678"), "XXX-XXX-XX78"},
+		{MaskPhone("12"), "XXX-XXX-XX12"},
+		{MaskPhone("1"), "XXX-XXX-XXXX"},
+		{MaskPhone(""), "XXX-XXX-XXXX"},
 		{MaskEmail("somchai@example.com"), "s***@example.com"},
 		{MaskEmail("ก@example.com"), "ก***@example.com"},
 		{MaskEmail(""), ""},

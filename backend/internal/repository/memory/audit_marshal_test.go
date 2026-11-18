@@ -34,7 +34,7 @@ func TestMemoryAuditRepo_RejectsUnmarshalableDetails(t *testing.T) {
 func TestMemoryApplicantRepo_SoftDeleteSurfacesBadAuditAndKeepsRecord(t *testing.T) {
 	repo := memory.NewMemoryApplicantRepo()
 	ctx := context.Background()
-	a := &domain.Applicant{ApplicationNo: "CC25-AAAAAA", FirstName: "สมชาย", LastName: "ใจดี", NationalID: "1509900000017", Phone: "0812345678", Status: domain.StatusPassed}
+	a := &domain.Applicant{ApplicationNo: "CC25-AAAAAA", FirstName: "สมชาย", LastName: "ใจดี", Phone: "0812345678", Status: domain.StatusPassed}
 	if err := repo.Create(ctx, a); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -42,7 +43,16 @@ func (h *ApplicantHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, app)
 }
 
-// GetStatus handles the public lookup; the response is masked (AGENTS.md §13.5).
+// clientContext carries the client IP (audit rows, Turnstile) and the rate-limit key (the
+// application-code guard counts unknown codes per client under the same key as the per-IP limiters).
+func clientContext(r *http.Request) context.Context {
+	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
+	return service.WithClientKey(ctx, middleware.RateLimitKey(r))
+}
+
+// GetStatus handles the public lookup by phone number or application code; the response is masked
+// (AGENTS.md §13.5). A lookup by phone never carries the application code (codeRequired: true);
+// only a lookup by code returns it, with the full masked record.
 func (h *ApplicantHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	if q == "" {
@@ -50,13 +60,13 @@ func (h *ApplicantHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app, err := h.appService.QueryStatus(r.Context(), q)
+	res, err := h.appService.QueryStatus(clientContext(r), q)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
 
-	response.OK(w, app)
+	response.OK(w, res.Body())
 }
 
 func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Request) {
@@ -66,18 +76,16 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// The application code in the path is the proof; there is no second factor any more.
 	var body struct {
 		Confirmed bool `json:"confirmed"`
-		// VerifyCode is the last 4 digits of the applicant's national ID (AGENTS.md §13.5).
-		VerifyCode string `json:"verifyCode"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 
-	// The client IP goes into the verify guard and the attendance audit row.
-	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
-	app, err := h.appService.ConfirmAttendance(ctx, id, body.VerifyCode, body.Confirmed)
+	// The client IP goes into the attendance audit row, the client key into the code guard.
+	app, err := h.appService.ConfirmAttendance(clientContext(r), id, body.Confirmed)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
@@ -86,10 +94,10 @@ func (h *ApplicantHandler) ConfirmAttendance(w http.ResponseWriter, r *http.Requ
 	response.OK(w, app)
 }
 
-// Withdraw is the applicant's own cancellation: POST /api/applications/{id}/withdraw with
-// { nationalId, reason }. It needs the full 13-digit national ID (a 4-digit verifyCode is not
-// accepted here): missing or malformed 400, wrong 403 INVALID_VERIFY_CODE, too many wrong answers
-// 429 RATE_LIMITED + Retry-After, confirmed place 409.
+// Withdraw is the applicant's own cancellation: POST /api/applications/{id}/withdraw with an
+// { phone, reason? }. The application code in the path plus the full registered phone are the proof
+// (R24): an unknown code or a missing/wrong phone is the same 404, a client refused by the code guard
+// 429 RATE_LIMITED + Retry-After, nothing left to cancel online 409.
 func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -97,17 +105,18 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The code in the path plus the full registered phone are the proof (R24). A missing body or
+	// phone is not a 400: it goes through the same path as a wrong phone, so every failure looks
+	// like an unknown code.
 	var body struct {
-		// NationalID is the applicant's full 13-digit national ID. It is compared and dropped,
-		// never logged or echoed.
-		NationalID string `json:"nationalId"`
-		Reason     string `json:"reason,omitempty"`
+		Phone  string `json:"phone,omitempty"`
+		Reason string `json:"reason,omitempty"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeOptionalJSON(w, r, &body) {
 		return
 	}
 
-	if err := h.appService.Withdraw(r.Context(), id, body.NationalID, body.Reason, middleware.RemoteIP(r)); err != nil {
+	if err := h.appService.Withdraw(clientContext(r), id, body.Phone, body.Reason, middleware.RemoteIP(r)); err != nil {
 		writeServiceError(w, r, err)
 		return
 	}
@@ -118,8 +127,9 @@ func (h *ApplicantHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 // UpdateOwnProfile handles PATCH /api/applications/{id}/profile. Applicant self-edit is disabled:
 // corrections go through staff (PATCH /api/admin/applications/{id}/profile). The route stays
 // registered behind its rate limiter so old clients get a clear 403 instead of a 404/405. It
-// answers before touching the body, the service or the database, so it consumes no VerifyGuard
-// attempt, writes no audit row and cannot be used to probe whether an application exists.
+// answers before touching the body, the service or the database, so it never counts towards the
+// application-code guard, writes no audit row and cannot be used to probe whether an application
+// exists.
 func (h *ApplicantHandler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
 	response.ErrorCode(w, http.StatusForbidden, response.CodeForbidden, selfProfileEditDisabledMessage)
 }
@@ -128,7 +138,7 @@ func (h *ApplicantHandler) UpdateOwnProfile(w http.ResponseWriter, r *http.Reque
 const selfProfileEditDisabledMessage = "ปิดการแก้ไขข้อมูลด้วยตนเองแล้ว กรุณาติดต่อทีมงานเพื่อขอแก้ไขข้อมูล"
 
 // AdminUpdateProfile handles PATCH /api/admin/applications/{id}/profile: the staff edit of any
-// field of an application, including identifiers.
+// field of an application, including the phone number and email.
 func (h *ApplicantHandler) AdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -158,14 +168,7 @@ func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 		statusFilter = &st
 	}
 
-	// The caller's role decides whether national IDs come back in full: only admin gets
-	// them unmasked (see service.CanSeeFullNationalID). No identity at all is treated as no role.
-	var role domain.AdminRole
-	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
-		role = claims.Role
-	}
-
-	apps, err := h.appService.ListAll(r.Context(), statusFilter, role)
+	apps, err := h.appService.ListAll(r.Context(), statusFilter)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
@@ -205,7 +208,7 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 
 // AdminExportAudit records a CSV export of the applicant list before the dashboard builds the file:
 // POST /api/admin/applications/export-audit with { applicationIds, statusFilter, searchFiltered }.
-// admin only (the role that sees full national IDs). Answers { count }.
+// admin only. Answers { count }.
 func (h *ApplicantHandler) AdminExportAudit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ApplicationIDs []string `json:"applicationIds"`

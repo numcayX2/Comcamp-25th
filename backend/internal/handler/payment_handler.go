@@ -73,9 +73,9 @@ func (h *PaymentHandler) UploadSlip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// verifyCode: last 4 digits of the applicant's national ID, sent as a multipart field.
-	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
-	res, err := h.paymentService.UploadSlip(ctx, id, r.FormValue("verifyCode"), fileBytes)
+	// The application code in the path is the proof (a verifyCode field sent by an outdated page is
+	// ignored). The client key goes to the code guard, the IP into the audit rows.
+	res, err := h.paymentService.UploadSlip(clientContext(r), id, fileBytes)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

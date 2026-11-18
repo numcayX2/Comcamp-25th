@@ -101,7 +101,7 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 	newApplication := func(t *testing.T) string {
 		t.Helper()
 		seq++
-		created := app.submit(t, validTestNationalID(70_000+seq), fmt.Sprintf("08%08d", 70_000+seq), fmt.Sprintf("rbac%d@example.com", seq))
+		created := app.submit(t, fmt.Sprintf("08%08d", 70_000+seq), fmt.Sprintf("rbac%d@example.com", seq))
 		return created.ID
 	}
 	newApplicationWithSlip := func(t *testing.T) string {

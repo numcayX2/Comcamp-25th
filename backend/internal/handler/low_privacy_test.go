@@ -30,8 +30,8 @@ func withExif(img []byte) []byte {
 // LOW-07: the stored slip has no EXIF, and slip_hash is the hash of exactly the stored bytes.
 func TestUploadSlip_StripsExifBeforeHashAndStore(t *testing.T) {
 	app := setupTestApp(t)
-	a := app.submit(t, validTestNationalID(9301), "0819309301", "exif1@example.com")
-	b := app.submit(t, validTestNationalID(9302), "0819309302", "exif2@example.com")
+	a := app.submit(t, "0819309301", "exif1@example.com")
+	b := app.submit(t, "0819309302", "exif2@example.com")
 
 	plain := encodeJPEG(41, 29)
 	rec := app.uploadSlip(t, a.ID, "camera.jpg", withExif(plain))
@@ -76,8 +76,8 @@ func exportEntries(app *testApp) []domain.AuditEntry {
 func TestAdminExportAudit(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	x := app.submit(t, validTestNationalID(9311), "0819309311", "exp1@example.com")
-	y := app.submit(t, validTestNationalID(9312), "0819309312", "exp2@example.com")
+	x := app.submit(t, "0819309311", "exp1@example.com")
+	y := app.submit(t, "0819309312", "exp2@example.com")
 
 	body := `{"applicationIds":["` + x.ID + `","` + strings.ToLower(y.ID) + `"],"statusFilter":"PASSED","searchFiltered":true}`
 	rec := app.do(t, http.MethodPost, "/api/admin/applications/export-audit", bytes.NewBufferString(body), bearer(token))

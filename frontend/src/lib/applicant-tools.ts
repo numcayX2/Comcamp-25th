@@ -38,10 +38,9 @@ export function slipLabel(app: Application): string {
 
 /**
  * Case-insensitive match on the fields staff search by: ID, name, nickname, phone, email, parent
- * contact, school, province, grade, shirt size and (when unmasked) national ID. Zero-width
- * characters, Thai numerals and surrounding spaces are normalised. A query made only of digits,
- * spaces and hyphens also matches phone, parentPhone and unmasked national ID written without them
- * (081-234 finds 0812345678).
+ * contact, school, province, grade and shirt size. Zero-width characters, Thai numerals and
+ * surrounding spaces are normalised. A query made only of digits, spaces and hyphens also matches
+ * phone and parentPhone written without them (081-234 finds 0812345678).
  */
 export function matchesApplicantQuery(app: Application, rawQuery: string): boolean {
   const q = stripZeroWidth(rawQuery).trim().toLowerCase();
@@ -69,8 +68,7 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
   if (digits.length > 0 && /^[\d๐-๙\s-]+$/.test(q)) {
     const phoneMatch = sanitizeDigits(app.phone).includes(digits);
     const parentPhoneMatch = app.parentPhone ? sanitizeDigits(app.parentPhone).includes(digits) : false;
-    const nidMatch = !/x/i.test(app.nationalId) && sanitizeDigits(app.nationalId).includes(digits);
-    return phoneMatch || parentPhoneMatch || nidMatch;
+    return phoneMatch || parentPhoneMatch;
   }
   return false;
 }
@@ -81,7 +79,6 @@ export const CSV_HEADERS = [
   'รหัสใบสมัคร',
   'ชื่อ-นามสกุล',
   'ชื่อเล่น',
-  'เลขประจำตัวประชาชน',
   'เบอร์โทรศัพท์',
   'อีเมล',
   'ชื่อผู้ปกครอง',
@@ -123,22 +120,14 @@ export function csvField(value: string): string {
 }
 
 /**
- * Phone and national ID are digit strings that Excel would otherwise mangle: the leading 0 of a
- * phone disappears and a 13-digit ID becomes 1.5099E+12. Writing them as ="…" keeps them as text.
+ * Phone numbers are digit strings that Excel would otherwise mangle (the leading 0 disappears).
+ * Writing them as ="…" keeps them as text.
  */
 function csvDigits(value: string): string {
   const d = sanitizeDigits(value);
   return d ? `"=""${d}"""` : '';
 }
 
-/**
- * The national ID column. If a masked value (1-5099-XXXXX-XX-X) is ever passed, stripping that down
- * to its digits would export the misleading number 15099, so a value with a mask in it is written
- * as the text it is.
- */
-function csvNationalId(value: string): string {
-  return /x/i.test(value) ? csvField(value) : csvDigits(value);
-}
 
 const BANGKOK_DATETIME = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Bangkok',
@@ -167,7 +156,6 @@ export function buildApplicantsCsv(rows: Application[]): string {
         csvField(a.id),
         csvField(a.fullName),
         csvField(a.nickname ?? ''),
-        csvNationalId(a.nationalId),
         csvDigits(a.phone),
         csvField(a.email ?? ''),
         csvField(a.parentName ?? ''),

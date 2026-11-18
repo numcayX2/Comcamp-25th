@@ -19,7 +19,6 @@ import {
   SIZE_CHEST,
   SIZE_LENGTH,
   gradeValue,
-  isValidThaiNationalID,
   splitGrade,
   validateGradeFields,
 } from './register/model';
@@ -51,7 +50,6 @@ type ApplicantWithParent = Application & {
 interface Form {
   fullName: string;
   nickname: string;
-  nationalId: string;
   phone: string;
   email: string;
   parentName: string;
@@ -73,7 +71,6 @@ type Errors = Partial<Record<keyof Form, string>>;
 const ORDER: (keyof Form)[] = [
   'fullName',
   'nickname',
-  'nationalId',
   'phone',
   'email',
   'parentName',
@@ -95,7 +92,6 @@ function initialForm(a: Application): Form {
   return {
     fullName: a.fullName,
     nickname: a.nickname ?? '',
-    nationalId: a.nationalId,
     phone: a.phone,
     email: a.email ?? '',
     parentName: withParent.parentName ?? '',
@@ -138,10 +134,6 @@ function validate(f: Form): Errors {
   const nickname = cleanSingleLine(f.nickname);
   if (!nickname) e.nickname = 'กรุณากรอกชื่อเล่น';
   else if (nickname.length > 50) e.nickname = 'ชื่อเล่นยาวได้ไม่เกิน 50 ตัวอักษร';
-
-  const nid = sanitizeDigits(f.nationalId);
-  if (nid.length !== 13) e.nationalId = `เลขบัตรประจำตัวต้องมี 13 หลัก (ตอนนี้ ${nid.length} หลัก)`;
-  else if (!isValidThaiNationalID(nid)) e.nationalId = 'เลขบัตรประจำตัว 13 หลักไม่ผ่านการตรวจเลขตรวจสอบ (Mod-11)';
 
   if (!/^0\d{9}$/.test(sanitizeDigits(f.phone))) e.phone = 'เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
   const email = stripZeroWidth(f.email).replace(/\s+/g, '');
@@ -197,7 +189,7 @@ function validate(f: Form): Errors {
 function describeSaveError(err: unknown): string {
   if (err instanceof ApiHttpError) {
     if (err.code === 'DUPLICATE_APPLICATION' || err.status === 409) {
-      return 'เลขบัตรประจำตัว เบอร์โทร หรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง';
+      return 'เบอร์โทรหรืออีเมลนี้ซ้ำกับผู้สมัครคนอื่นที่ยังอยู่ในระบบ กรุณาตรวจสอบอีกครั้ง';
     }
     if (err.status === 404) return 'ไม่พบใบสมัครนี้ในระบบ อาจถูกลบไปแล้ว กรุณากดรีเฟรชรายการ';
     if (err.status === 413) return 'ข้อมูลที่ส่งใหญ่เกินไป กรุณาลดความยาวเหตุผลการสมัคร';
@@ -208,7 +200,6 @@ function describeSaveError(err: unknown): string {
     }
     if (err.status === 400) {
       const m = err.message.toLowerCase();
-      if (m.includes('national id')) return 'เลขบัตรประจำตัวไม่ถูกต้อง ต้องมี 13 หลักและผ่านการตรวจเลขตรวจสอบ';
       if (m.includes('parent phone')) return 'เบอร์โทรผู้ปกครองไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('phone')) return 'เบอร์โทรไม่ถูกต้อง ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0';
       if (m.includes('email')) return 'รูปแบบอีเมลไม่ถูกต้อง';
@@ -247,8 +238,8 @@ function Field({ id, label, hint, error, children }: { id: string; label: string
 
 /**
  * Inline staff editor under a ledger row (same pattern as the slip panel). Staff may change any
- * field, including identifiers; the server validates the whole record, answers 409 for a national
- * ID / phone / email that belongs to another live applicant, and writes the old -> new values to
+ * field, including the phone and email; the server validates the whole record, answers 409 for a
+ * phone / email that belongs to another live applicant, and writes the old -> new values to
  * the audit log together with the reason typed here.
  */
 export function AdminProfileEditor({
@@ -331,7 +322,6 @@ export function AdminProfileEditor({
     const payload = {
       fullName: cleanSingleLine(form.fullName),
       nickname: cleanSingleLine(form.nickname),
-      nationalId: sanitizeDigits(form.nationalId),
       phone: sanitizeDigits(form.phone),
       email: stripZeroWidth(form.email).replace(/\s+/g, ''),
       parentName: cleanSingleLine(form.parentName),
@@ -411,7 +401,7 @@ export function AdminProfileEditor({
         )}
       </div>
       <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_3 }}>
-        พี่ค่ายแก้ไขได้ทุกช่อง รวมถึงเลขบัตรประจำตัว เบอร์โทร และอีเมล ระบบตรวจสอบข้อมูลเหมือนตอนสมัคร และบันทึกค่าเก่า → ค่าใหม่พร้อมเหตุผลลงประวัติการใช้งาน
+        พี่ค่ายแก้ไขได้ทุกช่อง รวมถึงเบอร์โทรและอีเมล ระบบตรวจสอบข้อมูลเหมือนตอนสมัคร และบันทึกค่าเก่า → ค่าใหม่พร้อมเหตุผลลงประวัติการใช้งาน
       </p>
 
       <div className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-2">
@@ -420,17 +410,6 @@ export function AdminProfileEditor({
         </Field>
         <Field id={`${pid}-nickname`} label="ชื่อเล่น" error={errors.nickname}>
           <input {...input('nickname', { autoComplete: 'off' })} />
-        </Field>
-        <Field id={`${pid}-nationalId`} label="เลขบัตรประจำตัว" hint="13 หลัก" error={errors.nationalId}>
-          <input
-            {...input('nationalId', {
-              inputMode: 'numeric',
-              autoComplete: 'off',
-              spellCheck: false,
-              maxLength: 17,
-              className: `${INPUT_BASE} rounded-xl font-mono tabular-nums`,
-            })}
-          />
         </Field>
         <Field id={`${pid}-phone`} label="เบอร์โทรศัพท์" hint="10 หลัก" error={errors.phone}>
           <input
@@ -443,7 +422,7 @@ export function AdminProfileEditor({
             })}
           />
         </Field>
-        <div className="md:col-span-2">
+        <div>
           <Field id={`${pid}-email`} label="อีเมล" hint="ห้ามเว้นว่าง" error={errors.email}>
             <input {...input('email', { type: 'email', inputMode: 'email', autoComplete: 'off' })} />
           </Field>
@@ -519,7 +498,7 @@ export function AdminProfileEditor({
         </Field>
         <div className="md:col-span-2">
           <Field id={`${pid}-reason`} label="เหตุผลการแก้ไข" hint="บันทึกในประวัติ แนะนำให้ระบุ" error={errors.reason}>
-            <input {...input('reason', { placeholder: 'เช่น ผู้ปกครองแจ้งแก้ไขเลขบัตร', maxLength: 500 })} />
+            <input {...input('reason', { placeholder: 'เช่น ผู้ปกครองแจ้งแก้ไขเบอร์โทร', maxLength: 500 })} />
           </Field>
         </div>
       </div>

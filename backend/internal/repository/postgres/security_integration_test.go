@@ -37,7 +37,6 @@ func openTestPool(t *testing.T) *pgxpool.Pool {
 func newApplicant(i int, tag string) *domain.Applicant {
 	return &domain.Applicant{
 		ApplicationNo:    fmt.Sprintf("T%s%04d", tag, i),
-		NationalID:       fmt.Sprintf("9%s%07d", tag, i),
 		FirstName:        "ทดสอบ",
 		Nickname:         "test",
 		BirthDate:        time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -130,10 +129,22 @@ func TestPostgres_ConstraintErrorsAreMapped(t *testing.T) {
 		t.Errorf("same idempotency key: want ErrDuplicateIdempotencyKey, got %v", err)
 	}
 
-	dupID := newApplicant(3, tag)
-	dupID.NationalID = a.NationalID
-	if err := repo.Create(ctx, dupID); !errors.Is(err, domain.ErrDuplicateApplicant) {
-		t.Errorf("same national ID: want ErrDuplicateApplicant, got %v", err)
+	// Since 000011 the live phone (uq_applicants_phone_live) and the live non-empty email
+	// (uq_applicants_email) are the identity constraints.
+	dupPhone := newApplicant(3, tag)
+	dupPhone.Phone = a.Phone
+	if err := repo.Create(ctx, dupPhone); !errors.Is(err, domain.ErrDuplicateApplicant) {
+		t.Errorf("same phone: want ErrDuplicateApplicant, got %v", err)
+	}
+	withEmail := newApplicant(5, tag)
+	withEmail.Email = "it-" + tag + "-dup@example.com"
+	if err := repo.Create(ctx, withEmail); err != nil {
+		t.Fatalf("create with email: %v", err)
+	}
+	dupEmail := newApplicant(6, tag)
+	dupEmail.Email = withEmail.Email
+	if err := repo.Create(ctx, dupEmail); !errors.Is(err, domain.ErrDuplicateApplicant) {
+		t.Errorf("same email: want ErrDuplicateApplicant, got %v", err)
 	}
 
 	// Two applicants without an email are allowed (000002 replaced the UNIQUE(email) constraint).

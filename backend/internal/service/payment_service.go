@@ -63,17 +63,18 @@ type PaymentService struct {
 	settingRepo domain.SettingRepository
 	auditRepo   domain.AuditRepository
 	slipDir     string
-	// verify is the per-application lockout for wrong verifyCodes, shared with ApplicantService.
-	verify *VerifyGuard
+	// codes refuses clients that name too many unknown application codes; shared with
+	// ApplicantService so the budgets span every code-keyed endpoint.
+	codes *CodeGuard
 	// mailer sends Stage 2 (CONFIRMED) emails asynchronously after slip approval commits.
 	mailer EmailNotifier
 }
 
-// WithVerifyGuard replaces the service's own lockout guard with a shared one and returns the
-// service.
-func (s *PaymentService) WithVerifyGuard(g *VerifyGuard) *PaymentService {
+// WithCodeGuard replaces the service's own application-code guard with a shared one and returns
+// the service.
+func (s *PaymentService) WithCodeGuard(g *CodeGuard) *PaymentService {
 	if g != nil {
-		s.verify = g
+		s.codes = g
 	}
 	return s
 }
@@ -102,8 +103,8 @@ func NewPaymentService(
 		settingRepo: settingRepo,
 		auditRepo:   auditRepo,
 		slipDir:     slipDir,
-		// Never without a lockout: a service nobody wired still counts failures on its own.
-		verify: NewVerifyGuard(auditRepo),
+		// Never without a guard: a service nobody wired still counts unknown codes on its own.
+		codes: NewCodeGuard(auditRepo),
 	}
 }
 
@@ -115,11 +116,10 @@ type SlipUploadResult struct {
 	Message    string               `json:"message"`
 }
 
-// UploadSlip stores a payment slip for an applicant identified by application ID and verifyCode
-// (the last 4 digits of the national ID, see CheckVerifyCode; repeated wrong codes lock the
-// application, see VerifyGuard). The file is written to disk and only its relative path goes into
-// the database (AGENTS.md §13.3).
-func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCode string, fileData []byte) (*SlipUploadResult, error) {
+// UploadSlip stores a payment slip for the applicant identified by the application code, which is
+// the applicant's proof (an unknown code counts against the client in the CodeGuard). The file is
+// written to disk and only its relative path goes into the database (AGENTS.md §13.3).
+func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo string, fileData []byte) (*SlipUploadResult, error) {
 	if len(fileData) == 0 {
 		return nil, ErrEmptySlip
 	}
@@ -127,13 +127,8 @@ func (s *PaymentService) UploadSlip(ctx context.Context, applicationNo, verifyCo
 		return nil, ErrSlipTooLarge
 	}
 
-	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
+	applicant, err := findByCode(ctx, s.codes, s.appRepo, applicationNo, CodeActionSlip, nil)
 	if err != nil {
-		return nil, notFoundOr(err)
-	}
-	if err := s.verify.Check(ctx, applicant.ApplicationNo, VerifyActionSlip, remoteIPFrom(ctx), func() error {
-		return CheckVerifyCode(applicant, verifyCode)
-	}); err != nil {
 		return nil, err
 	}
 	if applicant.Status != domain.StatusPassed && applicant.Status != domain.StatusConfirmed {

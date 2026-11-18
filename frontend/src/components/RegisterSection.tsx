@@ -48,7 +48,6 @@ import {
   cleanSingleLine,
   firstErrorKey,
   formatCampFee,
-  formatNationalId,
   formatPhone,
   validateField,
   validateStep,
@@ -182,11 +181,12 @@ function describeSubmitError(err: unknown): ErrorBannerState {
     switch (err.code) {
       case 'DUPLICATE_APPLICATION':
         return {
-          text: 'เลขบัตรประจำตัว 13 หลัก เบอร์โทรศัพท์ หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ',
+          text: 'เบอร์โทรศัพท์หรืออีเมลนี้เคยใช้สมัครแล้ว จึงไม่บันทึกใบสมัครซ้ำ ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะด้วยรหัสใบสมัครจากอีเมล หากจำรหัสไม่ได้ติดต่อทีมงาน',
+          withContacts: true,
         };
       case 'IDEMPOTENCY_KEY_REUSED':
         return {
-          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเลขบัตรประจำตัว 13 หลักอื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเลขบัตรประจำตัวให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
+          text: 'แบบฟอร์มนี้เคยส่งใบสมัครด้วยเบอร์โทรศัพท์อื่นไปแล้ว ตรวจสอบใบสมัครเดิมได้ที่หน้าตรวจสอบสถานะ หากต้องการสมัครด้วยข้อมูลชุดนี้ ตรวจเบอร์โทรศัพท์ให้ถูกต้องแล้วกดส่งอีกครั้ง (ข้อมูลที่กรอกยังอยู่ครบ)',
         };
       case 'RATE_LIMITED': {
         const wait = err.retryAfterSeconds ? ` ${err.retryAfterSeconds} วินาที` : 'สักครู่';
@@ -214,9 +214,6 @@ function describeSubmitError(err: unknown): ErrorBannerState {
         };
       case 'VALIDATION_ERROR': {
         const msg = err.message.toLowerCase();
-        if (msg.includes('national id') || msg.includes('check digit')) {
-          return { text: 'เลขบัตรประจำตัว 13 หลักไม่ถูกต้อง กรุณาตรวจสอบตัวเลขอีกครั้ง' };
-        }
         if (msg.includes('parent phone')) {
           return { text: 'เบอร์โทรศัพท์ผู้ปกครองต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0' };
         }
@@ -592,9 +589,9 @@ export function RegisterSection() {
   }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    // The idempotency key belongs to one applicant: the server refuses it for another national ID
-    // (IDEMPOTENCY_KEY_REUSED). After the ID is edited the next send starts a fresh attempt.
-    if (key === 'nationalId' && value !== form.nationalId) {
+    // The idempotency key belongs to one applicant: the server refuses it for another phone number
+    // (IDEMPOTENCY_KEY_REUSED). After the phone is edited the next send starts a fresh attempt.
+    if (key === 'phone' && value !== form.phone) {
       clearIdempotencyKey();
       idemKeyRef.current = '';
     }
@@ -730,7 +727,6 @@ export function RegisterSection() {
         fullName: cleanSingleLine(form.fullName),
         nickname: cleanSingleLine(form.nickname),
         // Digits only: drops zero-width characters and hyphens pasted from LINE (§9.2.2).
-        nationalId: sanitizeDigits(form.nationalId),
         phone: sanitizeDigits(form.phone),
         email: stripZeroWidth(form.email).replace(/\s+/g, ''),
         parentName: cleanSingleLine(form.parentName),
@@ -884,8 +880,6 @@ export function RegisterSection() {
     return () => ctx.revert();
   }, [step, wizard]);
 
-  const receiptDigits = sanitizeDigits(form.nationalId);
-  const receiptVerifyCode = receiptDigits.length === 13 ? receiptDigits.slice(-4) : undefined;
   const stepNo = Math.min(step, LAST_FORM_STEP);
   const current = gate === 'open' || appId ? step : -1;
   // One scale everywhere: the sidebar shows 6 steps (5 form steps + payment), so does the phone bar.
@@ -974,8 +968,7 @@ export function RegisterSection() {
             <p className="rw-draft__text rw-draft__text--restored" role="status">
               <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
               <span>
-                กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.) ·
-                เลขบัตร <span className="font-mono tabular-nums">13</span> หลักไม่ถูกบันทึกตาม PDPA กรุณากรอกใหม่
+                กู้คืนข้อมูลที่กรอกค้างไว้ (บันทึกเมื่อ <span className="font-mono">{timeText(restoredAt)}</span> น.) กรุณาตรวจทานอีกครั้ง
               </span>
             </p>
           )}
@@ -1004,28 +997,6 @@ export function RegisterSection() {
               autoComplete="nickname"
               placeholder="เช่น ชาย"
             />
-            <div className="rw-span-3" style={{ minWidth: 0 }}>
-              <TextField
-                id="nationalId"
-                required
-                label="เลขบัตรประจำตัว 13 หลัก"
-                hint={<span className={form.nationalId.length === 13 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.nationalId.length}/13</span> หลัก</span>}
-                groups={[1, 4, 5, 2, 1]}
-                span={3}
-                mono
-                digits={13}
-                inputMode="numeric"
-                autoComplete="off"
-                value={form.nationalId}
-                error={errors.nationalId}
-                onChange={(v) => set('nationalId', v)}
-                onBlur={() => blur('nationalId')}
-                placeholder="X-XXXX-XXXXX-XX-X"
-              />
-              <p className="rw-withdraw__hint" style={{ marginTop: '6px', marginBottom: 0, fontSize: '0.8125rem' }}>
-                ใช้ได้ทั้งบัตรประชาชนและบัตรชมพู (คนไม่มีสัญชาติไทย)
-              </p>
-            </div>
             <TextField
               id="phone"
               required
@@ -1048,6 +1019,7 @@ export function RegisterSection() {
               id="email"
               required
               label="อีเมล"
+              span={3}
               hint="ใช้รับอีเมลแจ้งรหัสใบสมัครและผลยืนยันสิทธิ์"
               type="email"
               inputMode="email"
@@ -1128,7 +1100,7 @@ export function RegisterSection() {
                 <p className="rw-draft__text">
                   <Clock size={16} strokeWidth={1.5} aria-hidden="true" />
                   <span>
-                  บันทึกร่างไว้เฉพาะแท็บนี้ และหายเมื่อปิดแท็บ · ไม่บันทึกเลขบัตร <span className="font-mono tabular-nums">13</span> หลักและข้อมูลสุขภาพตาม PDPA
+                  บันทึกร่างไว้เฉพาะแท็บนี้ และหายเมื่อปิดแท็บ · ไม่บันทึกข้อมูลสุขภาพตาม PDPA
                   </span>
                 </p>
                 {!formIsEmpty && (
@@ -1378,7 +1350,6 @@ export function RegisterSection() {
                 rows={[
                   ['ชื่อ-นามสกุล', cleanSingleLine(form.fullName)],
                   ['ชื่อเล่น', cleanSingleLine(form.nickname)],
-                  ['เลขบัตรประจำตัว 13 หลัก', <span className="font-mono" key="nid">{formatNationalId(form.nationalId)}</span>],
                   ['เบอร์โทรศัพท์', <span className="font-mono" key="ph">{formatPhone(form.phone)}</span>],
                   ['อีเมล', stripZeroWidth(form.email).replace(/\s+/g, '') || <Empty key="em" />],
                   ['ชื่อผู้ปกครอง', `${cleanSingleLine(form.parentName)} (${cleanSingleLine(form.parentRelation)})`],
@@ -1691,7 +1662,6 @@ export function RegisterSection() {
                 feeText={feeText}
                 source={source}
                 showSource={isDev}
-                defaultVerifyCode={receiptVerifyCode}
                 headingRef={headingRef}
                 onWithdrawn={onWithdrawn}
               />

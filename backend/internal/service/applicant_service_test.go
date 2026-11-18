@@ -30,7 +30,6 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	req := service.ApplicationCreateRequest{
 		FullName:   "สมชาย ใจดี",
 		Nickname:   "ชาย",
-		NationalID: validTestNationalID(1),
 		Phone:      "0812345678",
 		Email:      "somchai@example.com",
 		School:     "โรงเรียนแม่โจ้วิทยาคม",
@@ -55,12 +54,6 @@ func TestApplicantService_Submit_Success(t *testing.T) {
 	}
 }
 
-// badCheckDigit returns id with its last digit changed, so the Mod-11 check fails.
-func badCheckDigit(id string) string {
-	last := id[12] - '0'
-	return id[:12] + string(rune('0'+(last+1)%10))
-}
-
 func TestApplicantService_Submit_ValidationErrors(t *testing.T) {
 	svc, _, _ := setupTestServices()
 
@@ -70,58 +63,41 @@ func TestApplicantService_Submit_ValidationErrors(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name: "National ID too short",
+			name: "Phone with 13 digits (a national ID typed by habit)",
 			req: service.ApplicationCreateRequest{
-				FullName:   "สมหญิง จริงใจ",
-				Nickname:   "หญิง",
-				NationalID: "12345",
-				Phone:      "0812345678",
-				Email:      "ying@test.com",
-				School:     "โรงเรียนเทศบาล",
-				Grade:      "ม.4",
-				ShirtSize:  "M",
+				FullName:  "สมหญิง จริงใจ",
+				Nickname:  "หญิง",
+				Phone:     "1509900112233",
+				Email:     "ying@test.com",
+				School:    "โรงเรียนเทศบาล",
+				Grade:     "ม.4",
+				ShirtSize: "M",
 			},
-			expectedErr: service.ErrInvalidNationalID,
-		},
-		{
-			name: "National ID with a wrong check digit",
-			req: service.ApplicationCreateRequest{
-				FullName:   "สมหญิง จริงใจ",
-				Nickname:   "หญิง",
-				NationalID: badCheckDigit(validTestNationalID(4)),
-				Phone:      "0812345678",
-				Email:      "ying@test.com",
-				School:     "โรงเรียนเทศบาล",
-				Grade:      "ม.4",
-				ShirtSize:  "M",
-			},
-			expectedErr: service.ErrInvalidNationalID,
+			expectedErr: service.ErrInvalidPhone,
 		},
 		{
 			name: "Invalid phone format",
 			req: service.ApplicationCreateRequest{
-				FullName:   "สมหญิง จริงใจ",
-				Nickname:   "หญิง",
-				NationalID: validTestNationalID(2),
-				Phone:      "999999",
-				Email:      "ying@test.com",
-				School:     "โรงเรียนเทศบาล",
-				Grade:      "ม.4",
-				ShirtSize:  "M",
+				FullName:  "สมหญิง จริงใจ",
+				Nickname:  "หญิง",
+				Phone:     "999999",
+				Email:     "ying@test.com",
+				School:    "โรงเรียนเทศบาล",
+				Grade:     "ม.4",
+				ShirtSize: "M",
 			},
 			expectedErr: service.ErrInvalidPhone,
 		},
 		{
 			name: "Invalid shirt size",
 			req: service.ApplicationCreateRequest{
-				FullName:   "สมหญิง จริงใจ",
-				Nickname:   "หญิง",
-				NationalID: validTestNationalID(3),
-				Phone:      "0898765432",
-				Email:      "ying2@test.com",
-				School:     "โรงเรียนเทศบาล",
-				Grade:      "ม.4",
-				ShirtSize:  "XXXXL",
+				FullName:  "สมหญิง จริงใจ",
+				Nickname:  "หญิง",
+				Phone:     "0898765432",
+				Email:     "ying2@test.com",
+				School:    "โรงเรียนเทศบาล",
+				Grade:     "ม.4",
+				ShirtSize: "XXXXL",
 			},
 			expectedErr: service.ErrInvalidShirtSize,
 		},
@@ -150,14 +126,13 @@ func TestApplicantService_Submit_ClosedSchedule(t *testing.T) {
 	})
 
 	req := service.ApplicationCreateRequest{
-		FullName:   "สมชาย ใจดี",
-		Nickname:   "ชาย",
-		NationalID: validTestNationalID(1),
-		Phone:      "0812345678",
-		Email:      "somchai@example.com",
-		School:     "โรงเรียนแม่โจ้วิทยาคม",
-		Grade:      "ม.5",
-		ShirtSize:  "L",
+		FullName:  "สมชาย ใจดี",
+		Nickname:  "ชาย",
+		Phone:     "0812345678",
+		Email:     "somchai@example.com",
+		School:    "โรงเรียนแม่โจ้วิทยาคม",
+		Grade:     "ม.5",
+		ShirtSize: "L",
 	}
 
 	_, err := svc.Submit(context.Background(), req)
@@ -181,14 +156,13 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	})
 
 	req1 := service.ApplicationCreateRequest{
-		FullName:   "คนที่หนึ่ง",
-		Nickname:   "หนึ่ง",
-		NationalID: validTestNationalID(11),
-		Phone:      "0811111111",
-		Email:      "one@example.com",
-		School:     "โรงเรียน 1",
-		Grade:      "ม.4",
-		ShirtSize:  "M",
+		FullName:  "คนที่หนึ่ง",
+		Nickname:  "หนึ่ง",
+		Phone:     "0811111111",
+		Email:     "one@example.com",
+		School:    "โรงเรียน 1",
+		Grade:     "ม.4",
+		ShirtSize: "M",
 	}
 	_, err := svc.Submit(context.Background(), req1)
 	if err != nil {
@@ -196,14 +170,13 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 	}
 
 	req2 := service.ApplicationCreateRequest{
-		FullName:   "คนที่สอง",
-		Nickname:   "สอง",
-		NationalID: validTestNationalID(22),
-		Phone:      "0822222222",
-		Email:      "two@example.com",
-		School:     "โรงเรียน 2",
-		Grade:      "ม.5",
-		ShirtSize:  "L",
+		FullName:  "คนที่สอง",
+		Nickname:  "สอง",
+		Phone:     "0822222222",
+		Email:     "two@example.com",
+		School:    "โรงเรียน 2",
+		Grade:     "ม.5",
+		ShirtSize: "L",
 	}
 	if _, err := svc.Submit(context.Background(), req2); err != service.ErrQuotaExceeded {
 		t.Fatalf("capacity 1 is full: expected ErrQuotaExceeded for person 2, got %v", err)
@@ -239,74 +212,79 @@ func TestApplicantService_Submit_AdjustableCapacity(t *testing.T) {
 
 func TestApplicantService_QueryStatus_And_ConfirmAttendance(t *testing.T) {
 	svc, _, _ := setupTestServices()
-	nid := validTestNationalID(8888888)
-	verify := nid[9:] // verifyCode = last 4 digits of the national ID
 
 	req := service.ApplicationCreateRequest{
-		FullName:   "น้องทดสอบ สดใส",
-		Nickname:   "สด",
-		NationalID: nid,
-		Phone:      "0899999999",
-		Email:      "test@example.com",
-		School:     "โรงเรียนเทศบาล",
-		Grade:      "ม.6",
-		ShirtSize:  "S",
+		FullName:  "น้องทดสอบ สดใส",
+		Nickname:  "สด",
+		Phone:     "0899999999",
+		Email:     "test@example.com",
+		School:    "โรงเรียนเทศบาล",
+		Grade:     "ม.6",
+		ShirtSize: "S",
 	}
 	created, err := svc.Submit(context.Background(), req)
 	if err != nil {
 		t.Fatalf("failed to submit: %v", err)
 	}
 
-	// 1. Query by National ID
-	byNational, err := svc.QueryStatus(context.Background(), nid)
+	// 1. Query by application code: the full masked record, with the code, marked as a code lookup.
+	byCode, err := svc.QueryStatus(context.Background(), strings.ToLower(created.ID))
 	if err != nil {
-		t.Fatalf("failed to query by national id: %v", err)
+		t.Fatalf("failed to query by code: %v", err)
 	}
-	if byNational.ID != created.ID {
-		t.Errorf("expected ID %s, got %s", created.ID, byNational.ID)
+	if byCode.ByPhone != nil || byCode.ByCode == nil || byCode.ByCode.ID != created.ID || byCode.ByCode.Lookup != service.LookupCode {
+		t.Fatalf("code lookup: expected the record of %s, got %+v", created.ID, byCode)
+	}
+	if byCode.ByCode.School != "โรงเรียนเทศบาล" || byCode.ByCode.Phone != "XXX-XXX-XX99" || byCode.ByCode.Email != "t***@example.com" {
+		t.Fatalf("code lookup must return the masked record, got %+v", byCode.ByCode)
 	}
 
-	// 2. Query by Phone
-	byPhone, err := svc.QueryStatus(context.Background(), "0899999999")
+	// 2. Query by phone: masked display data only, never the code.
+	byPhone, err := svc.QueryStatus(context.Background(), "089-999-9999")
 	if err != nil {
 		t.Fatalf("failed to query by phone: %v", err)
 	}
-	if byPhone.ID != created.ID {
-		t.Errorf("expected ID %s, got %s", created.ID, byPhone.ID)
+	if byPhone.ByCode != nil || byPhone.ByPhone == nil {
+		t.Fatalf("phone lookup must answer with PhoneLookupResponse, got %+v", byPhone)
+	}
+	p := byPhone.ByPhone
+	if p.Lookup != service.LookupPhone || !p.CodeRequired || p.FullName != "น*** ส***" || p.Phone != "XXX-XXX-XX99" ||
+		p.Email != "t***@example.com" || p.Status != domain.StatusPassed {
+		t.Fatalf("unexpected phone lookup answer: %+v", p)
 	}
 
-	// 3. Confirm attendance while PENDING should fail (staff can still park an application there)
-	if _, err := svc.UpdateStatus(context.Background(), created.ID, domain.StatusPending, nil, "hold", "127.0.0.1"); err != nil {
-		t.Fatalf("failed to set PENDING: %v", err)
-	}
-	_, err = svc.ConfirmAttendance(context.Background(), created.ID, verify, true)
-	if err != service.ErrCannotConfirm {
-		t.Fatalf("expected ErrCannotConfirm while PENDING, got %v", err)
-	}
-
-	// 4. Update status to PASSED then confirm should succeed
-	_, err = svc.UpdateStatus(context.Background(), created.ID, domain.StatusPassed, nil, "Passed screening", "127.0.0.1")
-	if err != nil {
-		t.Fatalf("failed to update status: %v", err)
-	}
-
-	// 5. verifyCode (AGENTS.md §13.5): last 4 digits of the national ID only. A missing code is a
-	//    validation error; a wrong one, or the phone's last 4 digits, is rejected.
-	if _, err := svc.ConfirmAttendance(context.Background(), created.ID, "", true); err != service.ErrVerifyCodeRequired {
-		t.Fatalf("missing verifyCode: expected ErrVerifyCodeRequired, got %v", err)
-	}
-	for _, code := range []string{"1234", "9999"} { // 9999 = the phone's last 4 digits
-		if _, err := svc.ConfirmAttendance(context.Background(), created.ID, code, true); err != service.ErrInvalidVerifyCode {
-			t.Fatalf("verifyCode %s: expected ErrInvalidVerifyCode, got %v", code, err)
+	// 3. Anything that is neither a phone number nor a code is refused without a lookup.
+	for _, q := range []string{"1509900112233", "12345", "CC25-12345", "hello"} {
+		if _, err := svc.QueryStatus(context.Background(), q); err != service.ErrInvalidQuery {
+			t.Fatalf("query %q: expected ErrInvalidQuery, got %v", q, err)
 		}
 	}
 
-	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, verify, true)
+	// 4. Confirm attendance while PENDING should fail (staff can still park an application there)
+	if _, err := svc.UpdateStatus(context.Background(), created.ID, domain.StatusPending, nil, "hold", "127.0.0.1"); err != nil {
+		t.Fatalf("failed to set PENDING: %v", err)
+	}
+	if _, err = svc.ConfirmAttendance(context.Background(), created.ID, true); err != service.ErrCannotConfirm {
+		t.Fatalf("expected ErrCannotConfirm while PENDING, got %v", err)
+	}
+
+	// 5. Update status to PASSED then confirm should succeed with the code alone.
+	if _, err = svc.UpdateStatus(context.Background(), created.ID, domain.StatusPassed, nil, "Passed screening", "127.0.0.1"); err != nil {
+		t.Fatalf("failed to update status: %v", err)
+	}
+	confirmed, err := svc.ConfirmAttendance(context.Background(), created.ID, true)
 	if err != nil {
 		t.Fatalf("failed to confirm attendance: %v", err)
 	}
 	if !confirmed.AttendanceConfirmed {
 		t.Errorf("expected attendanceConfirmed to be true")
+	}
+
+	// 6. An unknown or malformed code is not found.
+	for _, code := range []string{"CC25-000000", "CC25-XYZ", ""} {
+		if _, err := svc.ConfirmAttendance(context.Background(), code, true); err != service.ErrApplicantNotFound {
+			t.Fatalf("code %q: expected ErrApplicantNotFound, got %v", code, err)
+		}
 	}
 }
 
@@ -334,27 +312,25 @@ func TestApplicantService_ListAll_UsesBatchPaymentLookup(t *testing.T) {
 
 	ctx := context.Background()
 	a1, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName:   "น้องหนึ่ง ทดสอบ",
-		Nickname:   "หนึ่ง",
-		NationalID: validTestNationalID(101),
-		Phone:      "0811111111",
-		Email:      "one@example.com",
-		School:     "โรงเรียนทดสอบ",
-		Grade:      "ม.5",
-		ShirtSize:  "M",
+		FullName:  "น้องหนึ่ง ทดสอบ",
+		Nickname:  "หนึ่ง",
+		Phone:     "0811111111",
+		Email:     "one@example.com",
+		School:    "โรงเรียนทดสอบ",
+		Grade:     "ม.5",
+		ShirtSize: "M",
 	})
 	if err != nil {
 		t.Fatalf("submit a1: %v", err)
 	}
 	a2, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName:   "น้องสอง ทดสอบ",
-		Nickname:   "สอง",
-		NationalID: validTestNationalID(102),
-		Phone:      "0822222222",
-		Email:      "two@example.com",
-		School:     "โรงเรียนทดสอบ",
-		Grade:      "ม.6",
-		ShirtSize:  "L",
+		FullName:  "น้องสอง ทดสอบ",
+		Nickname:  "สอง",
+		Phone:     "0822222222",
+		Email:     "two@example.com",
+		School:    "โรงเรียนทดสอบ",
+		Grade:     "ม.6",
+		ShirtSize: "L",
 	})
 	if err != nil {
 		t.Fatalf("submit a2: %v", err)
@@ -388,7 +364,7 @@ func TestApplicantService_ListAll_UsesBatchPaymentLookup(t *testing.T) {
 	payRepo.singleCalls.Store(0)
 	payRepo.batchCalls.Store(0)
 
-	list, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	list, err := svc.ListAll(ctx, nil)
 	if err != nil {
 		t.Fatalf("ListAll failed: %v", err)
 	}
@@ -419,13 +395,11 @@ func TestApplicantService_ListAll_UsesBatchPaymentLookup(t *testing.T) {
 func TestApplicantService_ParentContactFields(t *testing.T) {
 	svc, appRepo, _ := setupTestServices()
 	ctx := context.Background()
-	nid := validTestNationalID(777)
 
 	// 1. Invalid parentPhone and oversized parentName / parentRelation are rejected.
 	baseReq := service.ApplicationCreateRequest{
 		FullName:       "น้องทิวา ทดสอบ",
 		Nickname:       "ทิวา",
-		NationalID:     nid,
 		Phone:          "0812345678",
 		Email:          "tiwa@example.com",
 		ParentName:     "สมศรี\u200B   ทดสอบ",
@@ -460,10 +434,11 @@ func TestApplicantService_ParentContactFields(t *testing.T) {
 	if submitted.ParentName != "" || submitted.ParentRelation != "" || submitted.ParentPhone != "" {
 		t.Fatalf("submit response must not expose parent PII, got %+v", submitted)
 	}
-	queried, err := svc.QueryStatus(ctx, submitted.ID)
+	lookup, err := svc.QueryStatus(ctx, submitted.ID)
 	if err != nil {
 		t.Fatalf("QueryStatus failed: %v", err)
 	}
+	queried := lookup.ByCode
 	if queried.ParentName != "" || queried.ParentRelation != "" || queried.ParentPhone != "" {
 		t.Fatalf("public QueryStatus must omit parent PII, got %+v", queried)
 	}
@@ -482,7 +457,7 @@ func TestApplicantService_ParentContactFields(t *testing.T) {
 		t.Fatalf("expected emergency contact/phone to mirror parent fields, got %q / %q", stored.EmergencyContact, stored.EmergencyPhone)
 	}
 
-	list, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	list, err := svc.ListAll(ctx, nil)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("ListAll failed: len=%d err=%v", len(list), err)
 	}
@@ -544,14 +519,13 @@ func TestApplicantService_OfficialShirtSizes(t *testing.T) {
 	sizes := []string{"SSS", "SS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"}
 	for i, sz := range sizes {
 		res, err := svc.Submit(context.Background(), service.ApplicationCreateRequest{
-			FullName:   "สมชาย ทดสอบ",
-			Nickname:   "ชาย",
-			NationalID: validTestNationalID(50 + i),
-			Phone:      "08200000" + string(rune('1'+i)) + "0",
-			Email:      "size" + sz + "@test.com",
-			School:     "โรงเรียนแม่โจ้วิทยาคม",
-			Grade:      "ม.5",
-			ShirtSize:  sz,
+			FullName:  "สมชาย ทดสอบ",
+			Nickname:  "ชาย",
+			Phone:     "08200000" + string(rune('1'+i)) + "0",
+			Email:     "size" + sz + "@test.com",
+			School:    "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:     "ม.5",
+			ShirtSize: sz,
 		})
 		if err != nil {
 			t.Fatalf("expected shirt size %q to succeed, got %v", sz, err)
@@ -577,14 +551,13 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 
 	submitSample := func(idx int, phone, email string) *service.ApplicationResponse {
 		res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-			FullName:   "สมชาย ทดสอบ",
-			Nickname:   "ชาย",
-			NationalID: validTestNationalID(70 + idx),
-			Phone:      phone,
-			Email:      email,
-			School:     "โรงเรียนแม่โจ้วิทยาคม",
-			Grade:      "ม.5",
-			ShirtSize:  "L",
+			FullName:  "สมชาย ทดสอบ",
+			Nickname:  "ชาย",
+			Phone:     phone,
+			Email:     email,
+			School:    "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:     "ม.5",
+			ShirtSize: "L",
 		})
 		if err != nil {
 			t.Fatalf("submit %d failed: %v", idx, err)
@@ -694,7 +667,7 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 		WithNow(func() time.Time { return curNow })
 
 	first, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName: "คนที่ หนึ่ง", Nickname: "หนึ่ง", NationalID: validTestNationalID(81),
+		FullName: "คนที่ หนึ่ง", Nickname: "หนึ่ง",
 		Phone: "0840000001", Email: "c1@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
 	})
 	if err != nil {
@@ -703,7 +676,7 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 
 	// Same time -> quota full.
 	if _, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
+		FullName: "คนที่ สอง", Nickname: "สอง",
 		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
 	}); !errors.Is(err, service.ErrQuotaExceeded) {
 		t.Fatalf("expected ErrQuotaExceeded before 120h, got %v", err)
@@ -712,7 +685,7 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 	// Advance clock by 121h -> Submit auto-expires the first unpaid applicant and takes the seat.
 	curNow = curNow.Add(121 * time.Hour)
 	second, err := capSvc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName: "คนที่ สอง", Nickname: "สอง", NationalID: validTestNationalID(82),
+		FullName: "คนที่ สอง", Nickname: "สอง",
 		Phone: "0840000002", Email: "c2@test.com", School: "รร.ทดสอบ", Grade: "ม.5", ShirtSize: "M",
 	})
 	if err != nil {
@@ -744,14 +717,13 @@ func TestApplicantService_ExpireOverdueUnpaid_24hGracePeriod(t *testing.T) {
 
 	submitSample := func(idx int, phone, email string) *domain.Applicant {
 		res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-			FullName:   "สมหญิง ทดสอบ",
-			Nickname:   "หญิง",
-			NationalID: validTestNationalID(100 + idx),
-			Phone:      phone,
-			Email:      email,
-			School:     "โรงเรียนแม่โจ้วิทยาคม",
-			Grade:      "ม.5",
-			ShirtSize:  "M",
+			FullName:  "สมหญิง ทดสอบ",
+			Nickname:  "หญิง",
+			Phone:     phone,
+			Email:     email,
+			School:    "โรงเรียนแม่โจ้วิทยาคม",
+			Grade:     "ม.5",
+			ShirtSize: "M",
 		})
 		if err != nil {
 			t.Fatalf("submit %d failed: %v", idx, err)
@@ -876,14 +848,13 @@ func TestApplicantService_UpdateStatusConfirmed_MarksAttendanceAndSendsMail(t *t
 	svc.WithMailer(mailer)
 
 	res, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName:   "กิตติ ยืนยัน",
-		Nickname:   "กิต",
-		NationalID: validTestNationalID(120),
-		Phone:      "0851112233",
-		Email:      "kitti@example.com",
-		School:     "โรงเรียนแม่โจ้วิทยาคม",
-		Grade:      "ม.6",
-		ShirtSize:  "L",
+		FullName:  "กิตติ ยืนยัน",
+		Nickname:  "กิต",
+		Phone:     "0851112233",
+		Email:     "kitti@example.com",
+		School:    "โรงเรียนแม่โจ้วิทยาคม",
+		Grade:     "ม.6",
+		ShirtSize: "L",
 	})
 	if err != nil {
 		t.Fatalf("submit failed: %v", err)
@@ -926,14 +897,13 @@ func TestApplicantService_AdminListIncludesPaymentNotesAndPublicHidesThem(t *tes
 	psvc := service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), t.TempDir())
 
 	created, err := svc.Submit(ctx, service.ApplicationCreateRequest{
-		FullName:   "นภา ทดสอบ",
-		Nickname:   "ภา",
-		NationalID: validTestNationalID(121),
-		Phone:      "0852223344",
-		Email:      "napa@example.com",
-		School:     "โรงเรียนยุพราช",
-		Grade:      "ม.5",
-		ShirtSize:  "M",
+		FullName:  "นภา ทดสอบ",
+		Nickname:  "ภา",
+		Phone:     "0852223344",
+		Email:     "napa@example.com",
+		School:    "โรงเรียนยุพราช",
+		Grade:     "ม.5",
+		ShirtSize: "M",
 	})
 	if err != nil {
 		t.Fatalf("submit failed: %v", err)
@@ -953,7 +923,7 @@ func TestApplicantService_AdminListIncludesPaymentNotesAndPublicHidesThem(t *tes
 		t.Fatalf("VerifySlip reject failed: %v", err)
 	}
 
-	adminList, err := svc.ListAll(ctx, nil, domain.RoleAdmin)
+	adminList, err := svc.ListAll(ctx, nil)
 	if err != nil || len(adminList) != 1 {
 		t.Fatalf("ListAll failed: len=%d err=%v", len(adminList), err)
 	}
@@ -968,10 +938,11 @@ func TestApplicantService_AdminListIncludesPaymentNotesAndPublicHidesThem(t *tes
 		t.Fatalf("expected VerifiedAt to be populated, got %v", got.VerifiedAt)
 	}
 
-	pub, err := svc.QueryStatus(ctx, created.ID)
+	lookup, err := svc.QueryStatus(ctx, created.ID)
 	if err != nil {
 		t.Fatalf("QueryStatus failed: %v", err)
 	}
+	pub := lookup.ByCode
 	if pub.AdminNote != nil || pub.RejectionReason != nil || pub.VerifiedAt != nil || pub.SlipURL != nil || pub.SlipPaymentID != nil {
 		t.Fatalf("public status leaked admin slip metadata: %+v", pub)
 	}

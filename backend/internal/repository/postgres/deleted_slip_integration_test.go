@@ -235,16 +235,17 @@ func TestPostgres_Migration000006RoundTrip(t *testing.T) {
 		run(f)
 	}
 
-	addApplicant := func(id, no, nid, phone string, deleted bool) {
-		exec(`INSERT INTO applicants (id, application_no, national_id, prefix, first_name, last_name, nickname, birth_date,
+	// Every up migration has run, 000011 included, so applicants has no national_id column here.
+	addApplicant := func(id, no, phone string, deleted bool) {
+		exec(`INSERT INTO applicants (id, application_no, prefix, first_name, last_name, nickname, birth_date,
 			gender, school, grade, phone, email, province, emergency_contact, emergency_phone, shirt_size, status, deleted_at)
-			VALUES ($1, $2, $3, '-', 'a', 'b', 'a', '2008-01-01', 'unspecified', 's', 'ม.5', $4, '', 'p', 'x', $4, 'M', 'PASSED',
-			CASE WHEN $5::bool THEN now() END)`, id, no, nid, phone, deleted)
+			VALUES ($1, $2, '-', 'a', 'b', 'a', '2008-01-01', 'unspecified', 's', 'ม.5', $3, '', 'p', 'x', $3, 'M', 'PASSED',
+			CASE WHEN $4::bool THEN now() END)`, id, no, phone, deleted)
 	}
 	live, dead1, dead2 := "11111111-0000-0000-0000-000000000001", "11111111-0000-0000-0000-000000000002", "11111111-0000-0000-0000-000000000003"
-	addApplicant(live, "CC25-RTLIVE", "1509900000001", "0800000001", false)
-	addApplicant(dead1, "CC25-RTDEL1", "1509900000002", "0800000002", true)
-	addApplicant(dead2, "CC25-RTDEL2", "1509900000003", "0800000003", true)
+	addApplicant(live, "CC25-RTLIVE", "0800000001", false)
+	addApplicant(dead1, "CC25-RTDEL1", "0800000002", true)
+	addApplicant(dead2, "CC25-RTDEL2", "0800000003", true)
 
 	h := func(c string) string { return strings.Repeat(c, 64) }
 	addPay := func(id, applicant, status, hash, age string, deleted bool) {

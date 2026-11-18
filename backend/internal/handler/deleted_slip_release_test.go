@@ -10,20 +10,20 @@ import (
 )
 
 // MEDIUM-04 case B: staff delete an application whose slip is PENDING, and another whose slip is
-// APPROVED. Both students register again (same national ID, phone, email) and send the same bank
+// APPROVED. Both students register again (same phone and email) and send the same bank
 // slips: accepted, because a deleted application nobody can see in /admin no longer holds them.
 func TestAdminDelete_ReleasesSlipImagesForReRegistration(t *testing.T) {
 	app := setupUnlimitedApp(t)
 	token := app.login(t)
 	ctx := context.Background()
 
-	type student struct{ nid, phone, email string }
-	pendingStudent := student{validTestNationalID(86_001), "0886000001", "del1@example.com"}
-	approvedStudent := student{validTestNationalID(86_002), "0886000002", "del2@example.com"}
+	type student struct{ phone, email string }
+	pendingStudent := student{"0886000001", "del1@example.com"}
+	approvedStudent := student{"0886000002", "del2@example.com"}
 	pendingImg, approvedImg := uniqueSlip(881), uniqueSlip(882)
 
-	first := app.submit(t, pendingStudent.nid, pendingStudent.phone, pendingStudent.email)
-	second := app.submit(t, approvedStudent.nid, approvedStudent.phone, approvedStudent.email)
+	first := app.submit(t, pendingStudent.phone, pendingStudent.email)
+	second := app.submit(t, approvedStudent.phone, approvedStudent.email)
 	if rec := app.uploadSlip(t, first.ID, "s.jpg", pendingImg); rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
@@ -57,8 +57,8 @@ func TestAdminDelete_ReleasesSlipImagesForReRegistration(t *testing.T) {
 	// Settling the deleted application is not possible (it is gone from /admin).
 	wantCode(t, app.verifyWithPaymentID(t, token, first.ID, firstPays[0].ID.String(), true), http.StatusNotFound, "")
 
-	again1 := app.submit(t, pendingStudent.nid, pendingStudent.phone, pendingStudent.email)
-	again2 := app.submit(t, approvedStudent.nid, approvedStudent.phone, approvedStudent.email)
+	again1 := app.submit(t, pendingStudent.phone, pendingStudent.email)
+	again2 := app.submit(t, approvedStudent.phone, approvedStudent.email)
 	if rec := app.uploadSlip(t, again1.ID, "s.jpg", pendingImg); rec.Code != http.StatusOK {
 		t.Fatalf("re-registered student sending the slip of a deleted PENDING application: %d %s", rec.Code, rec.Body.String())
 	}

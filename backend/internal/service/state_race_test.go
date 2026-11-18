@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -81,11 +82,10 @@ func newRaceFixture(t *testing.T) *raceFixture {
 	return f
 }
 
-func (f *raceFixture) submit(t *testing.T, seq int) (appNo string, a *domain.Applicant, nid string) {
+func (f *raceFixture) submit(t *testing.T, seq int) (appNo string, a *domain.Applicant) {
 	t.Helper()
-	nid = validTestNationalID(seq)
 	res, err := f.svc.Submit(context.Background(), service.ApplicationCreateRequest{
-		FullName: "สมชาย ใจดี", Nickname: "ชาย", NationalID: nid, Phone: "08" + nid[5:13], Email: "r" + nid + "@example.com",
+		FullName: "สมชาย ใจดี", Nickname: "ชาย", Phone: testPhone(seq), Email: fmt.Sprintf("r%d@example.com", seq),
 		School: "โรงเรียนแม่โจ้วิทยาคม", Grade: "ม.5", ShirtSize: "L",
 	})
 	if err != nil {
@@ -95,7 +95,7 @@ func (f *raceFixture) submit(t *testing.T, seq int) (appNo string, a *domain.App
 	if err != nil {
 		t.Fatal(err)
 	}
-	return res.ID, a, nid
+	return res.ID, a
 }
 
 func (f *raceFixture) addSlip(t *testing.T, a *domain.Applicant, hash string) *domain.Payment {
@@ -120,7 +120,7 @@ func TestRace_VerifySlipAfterApplicantDeleted(t *testing.T) {
 	for _, approved := range []bool{true, false} {
 		f := newRaceFixture(t)
 		ctx := context.Background()
-		appNo, a, _ := f.submit(t, 4001)
+		appNo, a := f.submit(t, 4001)
 		p := f.addSlip(t, a, "e1")
 		admin := int64(9)
 		f.rpays.beforeVerify = func() {
@@ -160,9 +160,9 @@ func TestRace_WithdrawWhileSlipArrives(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := newRaceFixture(t)
 			ctx := context.Background()
-			appNo, a, nid := f.submit(t, 4100)
+			appNo, a := f.submit(t, 4100)
 			f.race.beforeSoftDelete = func() { meanwhile(f, t, a) }
-			if err := f.svc.Withdraw(ctx, appNo, nid, "เปลี่ยนใจ", "203.0.113.2"); !errors.Is(err, service.ErrCannotWithdraw) {
+			if err := f.svc.Withdraw(ctx, appNo, a.Phone, "เปลี่ยนใจ", "203.0.113.2"); !errors.Is(err, service.ErrCannotWithdraw) {
 				t.Fatalf("want ErrCannotWithdraw, got %v", err)
 			}
 			if _, err := f.apps.GetByApplicationNo(ctx, appNo); err != nil {
@@ -178,7 +178,7 @@ func TestRace_UpdateStatusAfterSeatReleased(t *testing.T) {
 	ctx := context.Background()
 	for _, full := range []bool{true, false} {
 		f := newRaceFixture(t)
-		appNo, a, _ := f.submit(t, 4200)
+		appNo, a := f.submit(t, 4200)
 		settings, _ := f.sets.Get(ctx)
 		cp := *settings
 		cp.MaxCapacity = 2
@@ -224,7 +224,7 @@ func TestRace_UpdateStatusAfterSeatReleased(t *testing.T) {
 func TestRace_AdminDeleteDuringVerifyKeepsSlipAndReleasesHash(t *testing.T) {
 	f := newRaceFixture(t)
 	ctx := context.Background()
-	appNo, a, _ := f.submit(t, 4300)
+	appNo, a := f.submit(t, 4300)
 	p := f.addSlip(t, a, "h1")
 	admin := int64(9)
 	f.rpays.beforeVerify = func() {
@@ -242,7 +242,7 @@ func TestRace_AdminDeleteDuringVerifyKeepsSlipAndReleasesHash(t *testing.T) {
 	if dup, _ := f.pays.CheckDuplicateSlipHash(ctx, *p.SlipHash); dup {
 		t.Fatal("the deleted applicant's slip must not hold its hash")
 	}
-	_, again, _ := f.submit(t, 4301)
+	_, again := f.submit(t, 4301)
 	f.addSlip(t, again, "h1")
 }
 
@@ -251,14 +251,14 @@ func TestRace_AdminDeleteDuringVerifyKeepsSlipAndReleasesHash(t *testing.T) {
 func TestRace_ConfirmAttendanceAfterReject(t *testing.T) {
 	ctx := context.Background()
 	f := newRaceFixture(t)
-	appNo, a, nid := f.submit(t, 9101)
+	appNo, a := f.submit(t, 9101)
 
 	f.race.beforeUpdateAttendance = func() {
 		if err := f.apps.UpdateStatus(ctx, a.ID, domain.StatusRejected, nil, "rejected meanwhile", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.4"), appNo, nid[9:], true)
+	_, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.4"), appNo, true)
 	if !errors.Is(err, service.ErrCannotConfirm) {
 		t.Fatalf("expected ErrCannotConfirm, got %v", err)
 	}
@@ -277,10 +277,10 @@ func TestRace_ConfirmAttendanceAfterReject(t *testing.T) {
 func TestConfirmAttendance_WritesAuditEntry(t *testing.T) {
 	ctx := context.Background()
 	f := newRaceFixture(t)
-	appNo, a, nid := f.submit(t, 9102)
+	appNo, a := f.submit(t, 9102)
 
 	for _, confirmed := range []bool{true, false} {
-		if _, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.9"), appNo, nid[9:], confirmed); err != nil {
+		if _, err := f.svc.ConfirmAttendance(service.WithRemoteIP(ctx, "198.51.100.9"), appNo, confirmed); err != nil {
 			t.Fatalf("confirmed=%v: %v", confirmed, err)
 		}
 		var last *domain.AuditEntry

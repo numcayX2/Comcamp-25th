@@ -15,13 +15,12 @@ import (
 func TestConfirmAttendance_AuditsAndGuardsStatus(t *testing.T) {
 	app := setupTestApp(t)
 	token := app.login(t)
-	created := app.submit(t, validTestNationalID(9149), "0812349149", "att49@example.com")
-	code := app.verifyCodes[created.ID]
+	created := app.submit(t, "0812349149", "att49@example.com")
 
 	rec := app.do(t, http.MethodPost, "/api/applications/"+created.ID+"/confirm",
-		bytes.NewBufferString(`{"confirmed":false,"verifyCode":"`+code+`"}`), nil)
+		bytes.NewBufferString(`{"confirmed":false}`), nil)
 	wantCode(t, rec, http.StatusOK, "")
-	rec = app.confirmWith(t, created.ID, code)
+	rec = app.confirmWith(t, created.ID)
 	wantCode(t, rec, http.StatusOK, "")
 
 	var got []domain.AuditEntry
@@ -42,7 +41,7 @@ func TestConfirmAttendance_AuditsAndGuardsStatus(t *testing.T) {
 	}
 
 	app.setStatus(t, token, created.ID, domain.StatusRejected)
-	rec = app.confirmWith(t, created.ID, code)
+	rec = app.confirmWith(t, created.ID)
 	wantCode(t, rec, http.StatusConflict, response.CodeForbidden)
 }
 
