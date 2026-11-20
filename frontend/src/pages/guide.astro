@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SiteNav from '../components/SiteNav.astro';
+import GuidePage from '../components/GuidePage.astro';
+---
+
+<BaseLayout
+  title="คู่มือผู้สมัคร · ComCamp #25"
+  description="คู่มือผู้สมัครค่าย ComCamp #25 สาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้ สรุปคุณสมบัติ ขั้นตอนสมัครและการชำระเงิน สิ่งที่ต้องเตรียม คำถามที่พบบ่อย และช่องทางติดต่อพี่ค่าย"
+>
+  <SiteNav active="guide" />
+  <main id="main">
+    <GuidePage />
+  </main>
+</BaseLayout>

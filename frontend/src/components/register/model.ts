@@ -2,7 +2,16 @@
  * /register wizard — data model, step definitions and validation.
  * No React in here so the rules stay testable and the component stays thin.
  */
-import { stripZeroWidth, type ApplicationPayload, type ShirtSize } from '../../lib/api';
+import {
+  REFERRAL_GROUPS,
+  REFERRAL_LABELS,
+  REFERRAL_OTHER_MAX,
+  stripZeroWidth,
+  type ApplicationPayload,
+  type ReferralCode,
+  type ReferralGroup,
+  type ShirtSize,
+} from '../../lib/api';
 import { canonicalProvince } from '../../lib/provinces';
 
 // Camp facts (seats, fee) live in lib/camp-facts — the one fallback shared with the home page.
@@ -101,7 +110,16 @@ export const DIETARY_QUICK_OPTIONS = [
 export interface FormState
   extends Omit<
     ApplicationPayload,
-    'prefix' | 'shirtSize' | 'province' | 'allergies' | 'medicalConditions' | 'parentName' | 'parentRelation' | 'parentPhone'
+    | 'prefix'
+    | 'shirtSize'
+    | 'province'
+    | 'allergies'
+    | 'medicalConditions'
+    | 'parentName'
+    | 'parentRelation'
+    | 'parentPhone'
+    | 'referralSources'
+    | 'referralOther'
   > {
   prefix: string;
   shirtSize: ShirtSize | '';
@@ -113,6 +131,12 @@ export interface FormState
   parentPhone: string;
   /** Free-text level, used only while `grade` is GRADE_OTHER. */
   gradeOther: string;
+  /** Ticked group ids from REFERRAL_GROUPS (multi-option groups stay ticked while picking sub-options). */
+  referralGroups: string[];
+  /** Selected leaf codes from REFERRAL_GROUPS. */
+  referralSources: ReferralCode[];
+  /** Free-text detail when 'other' is ticked (≤ REFERRAL_OTHER_MAX). */
+  referralOther: string;
 }
 
 /** Splits a stored grade back into the select value and the free-text part. */
@@ -155,6 +179,9 @@ export const EMPTY_FORM: FormState = {
   motivation: '',
   allergies: '',
   medicalConditions: '',
+  referralGroups: [],
+  referralSources: [],
+  referralOther: '',
 };
 
 export const MOCK_FORM: FormState = {
@@ -174,6 +201,9 @@ export const MOCK_FORM: FormState = {
   motivation: 'สนใจการต่อวงจรเซนเซอร์และพัฒนา IoT Dashboard ผ่านบอร์ด ESP8266 ในค่าย ComCamp #25',
   allergies: 'แพ้อาหารทะเล',
   medicalConditions: '',
+  referralGroups: ['social'],
+  referralSources: ['social_facebook'],
+  referralOther: '',
 };
 
 export type FieldKey = keyof FormState | 'consent';
@@ -209,9 +239,9 @@ export const STEPS: StepMeta[] = [
   },
   {
     label: 'หมายเหตุและสุขภาพ',
-    title: 'แรงบันดาลใจและหมายเหตุสุขภาพ',
-    lead: 'ข้อมูลทั้งหมดในขั้นตอนนี้ไม่บังคับ ใช้เตรียมอาหารและการดูแลสุขภาพให้ปลอดภัย (ไม่บันทึกลงเครื่องตาม PDPA)',
-    fields: ['motivation', 'allergies', 'medicalConditions'],
+    title: 'ช่องทางรู้จักค่ายและหมายเหตุสุขภาพ',
+    lead: 'เลือกช่องทางที่รู้จักค่ายนี้ (บังคับ) ส่วนความสนใจ ข้อจำกัดด้านอาหาร และโรคประจำตัวไม่บังคับ ใช้เตรียมอาหารและการดูแลสุขภาพให้ปลอดภัย (ไม่บันทึกลงเครื่องตาม PDPA)',
+    fields: ['referralSources', 'referralOther', 'motivation', 'allergies', 'medicalConditions'],
   },
   {
     label: 'ตรวจทานและยืนยัน',
@@ -242,6 +272,47 @@ export const onlyDigits = (s: string) => normalizeThaiDigits(s).replace(/\D/g, '
 
 export function cleanSingleLine(s: string): string {
   return stripZeroWidth(s).trim().replace(/\s+/g, ' ');
+}
+
+/** Selected referral codes in REFERRAL_GROUPS order, deduplicated; unticked groups are excluded. */
+export function orderedReferralSources(
+  form: Pick<FormState, 'referralGroups' | 'referralSources'>,
+): ReferralCode[] {
+  const out: ReferralCode[] = [];
+  for (const group of REFERRAL_GROUPS) {
+    if (!form.referralGroups.includes(group.id)) continue;
+    if (group.options.length === 1) {
+      out.push(group.options[0].code);
+    } else {
+      for (const opt of group.options) {
+        if (form.referralSources.includes(opt.code)) out.push(opt.code);
+      }
+    }
+  }
+  return out;
+}
+
+/** First ticked multi-option group that has none of its sub-options selected. */
+export function firstMissingReferralSubgroup(
+  form: Pick<FormState, 'referralGroups' | 'referralSources'>,
+): ReferralGroup | undefined {
+  return REFERRAL_GROUPS.find(
+    (g) =>
+      g.options.length > 1 &&
+      form.referralGroups.includes(g.id) &&
+      !g.options.some((o) => form.referralSources.includes(o.code)),
+  );
+}
+
+/** Stand-alone Thai labels for the chosen referral sources (Step 05 review). */
+export function formatReferralLabels(
+  form: Pick<FormState, 'referralGroups' | 'referralSources' | 'referralOther'>,
+): string[] {
+  const codes = orderedReferralSources(form);
+  const otherText = stripZeroWidth(form.referralOther).trim();
+  return codes.map((code) =>
+    code === 'other' && otherText ? `${REFERRAL_LABELS.other}: ${otherText}` : REFERRAL_LABELS[code],
+  );
 }
 
 export function validateField(key: FieldKey, form: FormState, consent: boolean): string | undefined {
@@ -329,6 +400,20 @@ export function validateField(key: FieldKey, form: FormState, consent: boolean):
       return validateGradeFields(form.grade, form.gradeOther);
     case 'shirtSize':
       return form.shirtSize ? undefined : 'กรุณาเลือกไซส์เสื้อ';
+    case 'referralSources': {
+      if (form.referralGroups.length === 0) return 'กรุณาเลือกอย่างน้อย 1 ช่องทาง';
+      const missing = firstMissingReferralSubgroup(form);
+      if (missing) return `เลือกอย่างน้อย 1 ข้อในกลุ่ม${missing.label}`;
+      return undefined;
+    }
+    case 'referralOther': {
+      if (!form.referralGroups.includes('other')) return undefined;
+      const text = stripZeroWidth(form.referralOther).trim();
+      if (!text) return 'กรุณาระบุช่องทาง';
+      if (text.length > REFERRAL_OTHER_MAX) return `ระบุได้ไม่เกิน ${REFERRAL_OTHER_MAX} ตัวอักษร`;
+      if (/[\u0000-\u001F\u007F]/.test(text)) return 'ข้อความต้องไม่มีอักขระควบคุม';
+      return undefined;
+    }
     case 'motivation': {
       const m = stripZeroWidth(form.motivation).trim();
       return m.length > MOTIVATION_MAX ? `ความยาวต้องไม่เกิน ${MOTIVATION_MAX.toLocaleString('th-TH')} ตัวอักษร` : undefined;

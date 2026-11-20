@@ -1,7 +1,8 @@
 /** Step 06 — receipt + payment instructions, shown after a successful submit. */
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode, Ref } from 'react';
-import { ArrowRight, ArrowUpRight, Check, Copy, MapPin, Phone, TriangleAlert } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Copy, FileDown, MapPin, Phone, TriangleAlert } from 'lucide-react';
+import { DOCS_READY, PARENT_CONSENT_PDF } from '../../lib/camp-facts';
 import {
   ApiHttpError,
   getApplicationStatus,
@@ -522,6 +523,12 @@ export function Receipt({
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
+          {DOCS_READY && (
+            <a href={PARENT_CONSENT_PDF} download className="rw-btn rw-btn--ghost rw-btn--doc">
+              <FileDown size={18} strokeWidth={1.5} aria-hidden="true" />
+              ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
+            </a>
+          )}
           <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
             เพจ Facebook โครงการ
           </a>

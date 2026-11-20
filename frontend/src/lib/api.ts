@@ -135,20 +135,50 @@ export const REFERRAL_CODES = [
 
 export type ReferralCode = (typeof REFERRAL_CODES)[number];
 
-export const REFERRAL_LABELS: Record<ReferralCode, string> = {
-  social_facebook: 'Facebook',
-  social_instagram: 'Instagram',
-  social_tiktok: 'TikTok',
-  google: 'ค้นหาใน Google',
-  website: 'เว็บไซต์มหาวิทยาลัย / สาขา',
-  word_friend: 'เพื่อนแนะนำ',
-  word_senior: 'รุ่นพี่แนะนำ',
-  word_junior: 'รุ่นน้องแนะนำ',
-  word_teacher: 'ครู / อาจารย์แนะนำ',
-  parent: 'ผู้ปกครองแนะนำ',
-  last_year: 'เคยรู้จักค่ายจากปีก่อน',
-  other: 'อื่นๆ',
-};
+/**
+ * The question as the form shows it (upgrade decision §2.3). A group with sub-options reveals them
+ * when ticked and needs at least one; a single-option group stores its own code. Order = form order
+ * = the order the backend sorts the stored codes into.
+ */
+export interface ReferralGroup {
+  id: string;
+  label: string;
+  options: { code: ReferralCode; label: string }[];
+}
+
+export const REFERRAL_GROUPS: ReferralGroup[] = [
+  {
+    id: 'social',
+    label: 'โซเชียลมีเดีย',
+    options: [
+      { code: 'social_facebook', label: 'Facebook' },
+      { code: 'social_instagram', label: 'Instagram' },
+      { code: 'social_tiktok', label: 'TikTok' },
+    ],
+  },
+  { id: 'google', label: 'ค้นหาใน Google', options: [{ code: 'google', label: 'ค้นหาใน Google' }] },
+  { id: 'website', label: 'เข้าเว็บไซต์โดยตรง', options: [{ code: 'website', label: 'เข้าเว็บไซต์โดยตรง' }] },
+  {
+    id: 'word',
+    label: 'คนรู้จักบอกต่อ',
+    options: [
+      { code: 'word_friend', label: 'เพื่อน' },
+      { code: 'word_senior', label: 'รุ่นพี่' },
+      { code: 'word_junior', label: 'รุ่นน้อง' },
+      { code: 'word_teacher', label: 'ครู/อาจารย์' },
+    ],
+  },
+  { id: 'parent', label: 'ผู้ปกครองแนะนำ', options: [{ code: 'parent', label: 'ผู้ปกครองแนะนำ' }] },
+  { id: 'last_year', label: 'ค่ายปีที่แล้ว', options: [{ code: 'last_year', label: 'ค่ายปีที่แล้ว' }] },
+  { id: 'other', label: 'อื่นๆ', options: [{ code: 'other', label: 'อื่นๆ' }] },
+];
+
+/** Stand-alone label of one stored code (admin detail, CSV): "คนรู้จักบอกต่อ · รุ่นพี่", "ค้นหาใน Google". */
+export const REFERRAL_LABELS = Object.fromEntries(
+  REFERRAL_GROUPS.flatMap((g) =>
+    g.options.map((o) => [o.code, g.options.length > 1 ? `${g.label} · ${o.label}` : g.label]),
+  ),
+) as Record<ReferralCode, string>;
 
 export const REFERRAL_OTHER_MAX = 50;
 

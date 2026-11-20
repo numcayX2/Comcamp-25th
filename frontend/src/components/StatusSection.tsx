@@ -9,6 +9,7 @@ import {
   CircleX,
   Clock,
   Copy,
+  FileDown,
   Hourglass,
   Info,
   ListOrdered,
@@ -57,6 +58,7 @@ import {
 import { clearReceipt, loadReceipt } from './register/storage';
 import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeError } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
+import { DOCS_READY, PARENT_CONSENT_PDF } from '../lib/camp-facts';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
@@ -204,9 +206,9 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
       return {
         tone: 'danger',
         icon: CircleX,
-        badge: 'ไม่ผ่าน / ตัดสิทธิ์อัตโนมัติ',
-        title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือกหรือพ้นกำหนดชำระเงิน',
-        body: `ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน`,
+        badge: 'ไม่ผ่าน',
+        title: 'ใบสมัครนี้ไม่ผ่านการพิจารณา',
+        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว หากคิดว่าเกิดความผิดพลาดหรือมีข้อสงสัย กรุณาติดต่อทีมงาน',
         contact: true,
       };
     case 'FORFEITED':
@@ -297,6 +299,8 @@ const FOCUS_RING =
  */
 function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; seats: number; feeText: string; nowMs: number }) {
   const h = describeHighlight(app, seats, feeText, nowMs);
+  // Seat holders need the signed parent consent; hidden until the real file replaces the placeholder.
+  const showConsentPdf = DOCS_READY && holdsSeat(app.status);
   const color = TONE_COLOR[h.tone];
   const Icon = h.icon;
   return (
@@ -363,7 +367,7 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
               </p>
             </div>
           )}
-          {(h.toSlip || h.toLine || h.contact) && (
+          {(h.toSlip || h.toLine || h.contact || showConsentPdf) && (
             <div className="mt-4 flex flex-wrap gap-2">
               {h.toSlip && (
                 <a
@@ -382,6 +386,17 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                 >
                   <span>ไปเข้ากลุ่ม LINE OpenChat ด้านล่าง</span>
                   <ArrowRight aria-hidden="true" size={16} strokeWidth={1.75} />
+                </a>
+              )}
+              {showConsentPdf && (
+                <a
+                  href={PARENT_CONSENT_PDF}
+                  download
+                  className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
+                  style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
+                >
+                  <FileDown aria-hidden="true" size={16} strokeWidth={1.5} />
+                  ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
                 </a>
               )}
               {h.contact && (

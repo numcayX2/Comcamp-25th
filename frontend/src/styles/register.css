@@ -1179,6 +1179,129 @@ html[data-theme="dark"] .rw-due {
 }
 .rw-diet-chip:focus-visible { outline: 2px solid var(--rw-focus); outline-offset: 2px; }
 
+/* ---------- Referral source chips (Step 04) ---------- */
+.rw-ref-field {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--rw-rule);
+}
+.rw-ref-legend {
+  width: 100%;
+  flex-wrap: wrap;
+}
+.rw-ref-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rw-ref-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+}
+.rw-ref-group--open { flex: 1 0 100%; }
+.rw-ref-chip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  cursor: pointer;
+}
+.rw-ref-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  scroll-margin: 140px 0 120px;
+}
+.rw-ref-chip__face {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid var(--rw-line);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--rw-ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.45;
+  touch-action: manipulation;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.rw-ref-chip__face svg { flex: none; }
+@media (hover: hover) and (pointer: fine) {
+  .rw-ref-chip:hover .rw-ref-chip__face { border-color: var(--rw-ink); }
+}
+.rw-ref-chip input:checked + .rw-ref-chip__face {
+  background: var(--rw-ink);
+  border-color: var(--rw-ink);
+  color: var(--rw-canvas);
+  font-weight: 600;
+}
+.rw-ref-chip input:focus-visible + .rw-ref-chip__face {
+  outline: 2px solid var(--rw-focus);
+  outline-offset: 2px;
+}
+.rw-ref-chip input[aria-invalid='true'] + .rw-ref-chip__face { border-color: var(--rw-danger); }
+.rw-ref-chip input[aria-invalid='true']:checked + .rw-ref-chip__face { border-color: var(--rw-ink); }
+.rw-ref-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rw-rule);
+  max-width: calc(100% - 14px);
+}
+.rw-ref-other {
+  box-sizing: border-box;
+  width: calc(100% - 14px);
+  max-width: 360px;
+  margin-top: 10px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rw-rule);
+}
+.rw-ref-other__label { margin-bottom: 6px; }
+.rw-ref-other__input {
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--rw-line);
+  border-radius: 12px;
+  background: var(--rw-surface);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+@media (hover: hover) and (pointer: fine) {
+  .rw-ref-other__input:hover { border-color: var(--rw-ink); }
+}
+.rw-ref-other__input:focus {
+  border-color: var(--rw-focus);
+  box-shadow: 0 0 0 1px var(--rw-focus);
+}
+.rw-ref-other__input[aria-invalid='true']:not(:focus) {
+  border-color: var(--rw-danger);
+  box-shadow: 0 0 0 1px var(--rw-danger);
+}
+
+/* Receipt download link: wraps cleanly on 360px phones without nudging the icon sideways. */
+.rw-btn--doc {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.rw-btn--doc:hover:not(:disabled) svg:first-child { transform: none; }
+
 .rw-line-card {
   display: grid;
   gap: 20px;

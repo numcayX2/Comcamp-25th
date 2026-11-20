@@ -1,0 +1,584 @@
+---
+import '../styles/guide.css';
+import ArrowRight from '@lucide/astro/icons/arrow-right';
+import ArrowUpRight from '@lucide/astro/icons/arrow-up-right';
+import ChevronDown from '@lucide/astro/icons/chevron-down';
+import FileDown from '@lucide/astro/icons/file-down';
+import GraduationCap from '@lucide/astro/icons/graduation-cap';
+import IdCard from '@lucide/astro/icons/id-card';
+import MapPin from '@lucide/astro/icons/map-pin';
+import MessageCircle from '@lucide/astro/icons/message-circle';
+import Phone from '@lucide/astro/icons/phone';
+import Shirt from '@lucide/astro/icons/shirt';
+import Smartphone from '@lucide/astro/icons/smartphone';
+import {
+  CAMP_FEE_TEXT,
+  DOCS_READY,
+  MAX_CAPACITY,
+  PARENT_CONSENT_PDF,
+  REGISTRATION_CLOSE_AT,
+  REGISTRATION_OPEN_AT,
+  formatBangkokTime,
+  formatThaiDateFull,
+} from '../lib/camp-facts';
+import {
+  DORM_MAPS_URL,
+  DORM_NAME,
+  FB_URL,
+  PAYMENT_WINDOW_DAYS,
+  PAYMENT_WINDOW_HOURS,
+  PROJECT_ADVISOR,
+  STAFF_CONTACTS,
+} from './register/model';
+
+const formatGuideDateTime = (at: string | number) =>
+  `${formatThaiDateFull(at)} เวลา ${formatBangkokTime(at)} น.`;
+
+const openDateText = formatGuideDateTime(REGISTRATION_OPEN_AT);
+const closeDateText = formatGuideDateTime(REGISTRATION_CLOSE_AT);
+
+const tocItems = [
+  { id: 'eligibility', label: 'คุณสมบัติผู้สมัคร' },
+  { id: 'steps', label: 'ขั้นตอนสมัครถึงวันค่าย' },
+  { id: 'payment-deadline', label: 'ถ้าชำระไม่ทันกำหนด' },
+  { id: 'checklist', label: 'สิ่งที่ต้องเตรียมมาค่าย' },
+  ...(DOCS_READY ? [{ id: 'documents', label: 'เอกสารดาวน์โหลด' }] : []),
+  { id: 'faq', label: 'คำถามที่พบบ่อย' },
+  { id: 'contact', label: 'ติดต่อพี่ค่าย' },
+];
+---
+
+<article class="gd-page">
+  <a class="gd-skip-toc" href="#guide-toc">ข้ามไปยังสารบัญ</a>
+
+  <!-- 1. Intro -->
+  <header class="gd-intro">
+    <p class="gd-eyebrow">คู่มือผู้สมัคร</p>
+    <h1 class="gd-title">
+      ทุกอย่างที่ต้องรู้ก่อนสมัคร ComCamp <span class="font-mono tabular-nums">#25</span>
+    </h1>
+    <p class="gd-lead">
+      รวมรายละเอียดสำหรับน้อง ๆ และผู้ปกครอง ตั้งแต่คุณสมบัติผู้สมัคร ขั้นตอนการสมัครและส่งสลิป
+      การดูแลหากชำระไม่ทันกำหนด สิ่งที่ต้องเตรียมมาค่าย ไปจนถึงช่องทางติดต่อพี่ค่ายโดยตรง
+    </p>
+
+    <dl class="gd-facts" aria-label="สรุปข้อมูลสำคัญของค่าย">
+      <div class="gd-fact">
+        <dt class="gd-fact__label">วันค่าย</dt>
+        <dd class="gd-fact__value">
+          <span class="font-mono tabular-nums">5–7</span> ก.พ. <span class="font-mono tabular-nums">2570</span>{' '}
+          <span class="gd-fact__sub">(<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)</span>
+        </dd>
+      </div>
+      <div class="gd-fact">
+        <dt class="gd-fact__label">ผู้สมัคร</dt>
+        <dd class="gd-fact__value">
+          ม.<span class="font-mono tabular-nums">4–6</span> หรือ ปวช.<span class="font-mono tabular-nums">1–3</span>
+        </dd>
+      </div>
+      <div class="gd-fact">
+        <dt class="gd-fact__label">ค่าสมัคร</dt>
+        <dd class="gd-fact__value">
+          <span class="font-mono tabular-nums" data-guide-fee>{CAMP_FEE_TEXT}</span> บาท
+        </dd>
+      </div>
+      <div class="gd-fact">
+        <dt class="gd-fact__label">ที่นั่ง</dt>
+        <dd class="gd-fact__value">
+          <span class="font-mono tabular-nums" data-guide-seats>{MAX_CAPACITY}</span> ที่นั่ง
+        </dd>
+      </div>
+    </dl>
+
+    <p class="gd-window">
+      <span class="gd-window__label">ช่วงเปิดรับสมัคร</span>
+      <span class="gd-window__dates">
+        <span data-guide-date="open">{openDateText}</span>
+        <span aria-hidden="true"> – </span>
+        <span data-guide-date="close">{closeDateText}</span>
+        <span> · ปิดรับทันทีเมื่อที่นั่งเต็ม</span>
+      </span>
+    </p>
+
+    <div class="gd-actions">
+      <a class="gd-btn gd-btn--primary" href="/register">
+        <span>สมัครค่าย</span>
+        <ArrowRight class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+      </a>
+      <a class="gd-btn gd-btn--secondary" href="/status">
+        <span>ตรวจสอบสถานะใบสมัคร</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- 2. On-page contents + Long-form guide body -->
+  <div class="gd-body">
+    <nav id="guide-toc" class="gd-toc" aria-label="สารบัญ">
+      <p class="gd-toc__heading" aria-hidden="true">สารบัญ</p>
+      <ul class="gd-toc__list">
+        {tocItems.map((item) => (
+          <li class="gd-toc__item">
+            <a class="gd-toc__link" href={`#${item.id}`}>{item.label}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <div class="gd-content">
+      <!-- 3. คุณสมบัติผู้สมัคร -->
+      <section id="eligibility" class="gd-sec" aria-labelledby="eligibility-title">
+        <h2 id="eligibility-title" class="gd-h2">คุณสมบัติผู้สมัคร</h2>
+        <div class="gd-prose">
+          <p>
+            เปิดรับนักเรียนระดับชั้น ม.<span class="font-mono tabular-nums">4</span>–ม.<span class="font-mono tabular-nums">6</span>{' '}
+            หรือ ปวช.<span class="font-mono tabular-nums">1</span>–ปวช.<span class="font-mono tabular-nums">3</span>{' '}
+            ทุกสายการเรียน ไม่จำเป็นต้องมีพื้นฐานด้านการเขียนโปรแกรมหรือวงจรไฟฟ้ามาก่อน
+            ค่ายออกแบบมาสำหรับผู้เริ่มต้น โดยเริ่มตั้งแต่การจำลองวงจรบนคอมพิวเตอร์ไปจนถึงการต่อบอร์ดจริง
+          </p>
+          <p>
+            ไม่มีการสอบคัดเลือก เปิดรับจำนวนจำกัด <span class="font-mono tabular-nums" data-guide-seats>{MAX_CAPACITY}</span> ที่นั่ง
+            คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน
+          </p>
+        </div>
+
+        <dl class="gd-kv">
+          <div class="gd-kv__row">
+            <dt class="gd-kv__key">สถานที่อบรมและที่พัก</dt>
+            <dd class="gd-kv__val">
+              อบรม ณ อาคาร <span class="font-mono tabular-nums">60</span> ปี แม่โจ้ ชั้น <span class="font-mono tabular-nums">6</span>{' '}
+              (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่)
+              และพักค้างคืน ณ {DORM_NAME} (แยกโซนชาย-หญิง)
+              <span class="gd-kv__link-wrap">
+                <a class="gd-inline-link gd-inline-link--icon" href={DORM_MAPS_URL} target="_blank" rel="noopener noreferrer">
+                  <MapPin class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+                  <span>ดูแผนที่เรือนพัก (Google Maps)</span>
+                  <ArrowUpRight class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+                </a>
+              </span>
+            </dd>
+          </div>
+          <div class="gd-kv__row">
+            <dt class="gd-kv__key">
+              ค่าสมัคร <span class="font-mono tabular-nums" data-guide-fee>{CAMP_FEE_TEXT}</span> บาท รวมอะไรบ้าง
+            </dt>
+            <dd class="gd-kv__val">
+              <ul class="gd-list">
+                <li>ที่พัก <span class="font-mono tabular-nums">2</span> คืน ณ {DORM_NAME}</li>
+                <li>อาหารหลัก <span class="font-mono tabular-nums">6</span> มื้อ และอาหารว่าง (เบรก) <span class="font-mono tabular-nums">5</span> มื้อ</li>
+                <li>เสื้อค่าย ComCamp <span class="font-mono tabular-nums">#25</span> (<span class="font-mono">SSS–4XL</span>) และกระเป๋าพร้อมปั๊มลาย</li>
+                <li>เอกสารอบรมและเกียรติบัตรจากสาขาวิชาวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้</li>
+              </ul>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <!-- 4. ขั้นตอนตั้งแต่สมัครจนถึงวันค่าย -->
+      <section id="steps" class="gd-sec" aria-labelledby="steps-title">
+        <h2 id="steps-title" class="gd-h2">ขั้นตอนตั้งแต่สมัครจนถึงวันค่าย</h2>
+        <p class="gd-sec-lead">
+          ทำรายการทั้งหมดผ่านเว็บไซต์ค่ายบนมือถือหรือคอมพิวเตอร์ได้โดยตรง ตามลำดับ <span class="font-mono tabular-nums">5</span> ขั้นตอนดังนี้
+        </p>
+
+        <ol class="gd-steps">
+          <li class="gd-step">
+            <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">01</span>
+            <div class="gd-step__body">
+              <h3 class="gd-h3">กรอกใบสมัครออนไลน์</h3>
+              <p>
+                กรอกข้อมูลให้ครบทั้ง <span class="font-mono tabular-nums">5</span> ขั้นตอนที่หน้า{' '}
+                <a class="gd-inline-link" href="/register">สมัครค่าย</a>{' '}
+                (ข้อมูลผู้สมัครและผู้ปกครอง ข้อมูลการศึกษา ไซส์เสื้อค่าย หมายเหตุสุขภาพ และตรวจทานยืนยัน)
+                เปิดรับสมัครตั้งแต่ <span data-guide-date="open">{openDateText}</span> ถึง <span data-guide-date="close">{closeDateText}</span>{' '}
+                และปิดรับทันทีเมื่อที่นั่งเต็ม
+              </p>
+            </div>
+          </li>
+
+          <li class="gd-step">
+            <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">02</span>
+            <div class="gd-step__body">
+              <h3 class="gd-h3">เก็บรหัสใบสมัครไว้เป็นความลับ</h3>
+              <p>
+                หลังส่งใบสมัครสำเร็จ ระบบจะแสดงรหัสใบสมัครรูปแบบ{' '}
+                <span class="font-mono tabular-nums">CC25-XXXXXX</span> บนหน้าจอใบตอบรับและส่งไปยังอีเมลที่ใช้สมัคร
+                กรุณาเก็บรหัสนี้ไว้เป็นความลับ เพราะเป็นหลักฐานส่วนตัวสำหรับตรวจสอบสถานะและแนบสลิปชำระเงิน
+              </p>
+            </div>
+          </li>
+
+          <li class="gd-step">
+            <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">03</span>
+            <div class="gd-step__body">
+              <h3 class="gd-h3">
+                โอนค่าสมัครและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน
+              </h3>
+              <p>
+                โอนค่าสมัครจำนวน <span class="font-mono tabular-nums" data-guide-fee>{CAMP_FEE_TEXT}</span> บาท
+                ผ่านเลขบัญชีที่แสดงบนหน้าใบตอบรับหลังสมัคร หรือดูได้ในหน้า{' '}
+                <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a> เมื่อค้นหาด้วยรหัสใบสมัคร
+                แล้วแนบรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน
+                (<span class="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
+                ไม่มี QR Code สำหรับชำระเงิน โอนผ่านเลขบัญชีเท่านั้น
+              </p>
+            </div>
+          </li>
+
+          <li class="gd-step">
+            <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">04</span>
+            <div class="gd-step__body">
+              <h3 class="gd-h3">พี่ค่ายตรวจสอบสลิปและยืนยันสิทธิ์</h3>
+              <p>
+                ทีมงานตรวจสอบความถูกต้องของหลักฐานการโอนเงิน เมื่อสลิปผ่านการตรวจสอบ สถานะในหน้า{' '}
+                <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a>{' '}
+                จะเปลี่ยนเป็น “ยืนยันสิทธิ์แล้ว” พร้อมส่งอีเมลแจ้งผลอย่างเป็นทางการ
+                (ช่องทางเข้ากลุ่มติดต่อผู้เข้าร่วมจะแสดงในหน้าตรวจสอบสถานะหลังแนบสลิปในระบบ)
+              </p>
+            </div>
+          </li>
+
+          <li class="gd-step">
+            <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">05</span>
+            <div class="gd-step__body">
+              <h3 class="gd-h3">เข้าร่วมค่ายตามกำหนดการ</h3>
+              <p>
+                เดินทางเข้าร่วมกิจกรรมวันที่ <span class="font-mono tabular-nums">5–7</span> กุมภาพันธ์{' '}
+                <span class="font-mono tabular-nums">2570</span>{' '}
+                (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)
+                ณ อาคาร <span class="font-mono tabular-nums">60</span> ปี แม่โจ้ ชั้น <span class="font-mono tabular-nums">6</span>{' '}
+                มหาวิทยาลัยแม่โจ้ จ.เชียงใหม่ และเข้าพัก ณ {DORM_NAME}
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <!-- 5. ถ้าชำระไม่ทันกำหนด -->
+      <section id="payment-deadline" class="gd-sec" aria-labelledby="payment-deadline-title">
+        <h2 id="payment-deadline-title" class="gd-h2">ถ้าชำระไม่ทันกำหนด</h2>
+        <div class="gd-prose">
+          <p>
+            หากไม่ได้โอนเงินและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน
+            (<span class="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
+            ระบบจะปล่อยที่นั่งว่างคืนให้ผู้สมัครคนอื่นโดยอัตโนมัติ และใบสมัครจะเปลี่ยนสถานะเป็น “หมดสิทธิ์”
+          </p>
+          <p>
+            เมื่อใบสมัครหมดสิทธิ์แล้ว เบอร์โทรศัพท์และอีเมลเดิมจะไม่สามารถส่งใบสมัครใหม่ด้วยตนเองได้
+            หากเกิดเหตุขัดข้องหรือต้องการความช่วยเหลือ กรุณาติดต่อพี่ค่ายโดยตรงผ่านช่องทางด้านล่าง
+          </p>
+          <p>
+            <strong>กรณีเปลี่ยนใจและยังไม่สะดวกเข้าร่วม:</strong> หากยังไม่ได้แนบสลิปและยังไม่ได้ยืนยันสิทธิ์
+            น้องสามารถยกเลิกใบสมัครด้วยตนเองได้จากหน้าใบตอบรับหลังสมัคร
+            หรือในหน้า <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a>{' '}
+            โดยค้นหาด้วยรหัสใบสมัคร <span class="font-mono tabular-nums">CC25-XXXXXX</span>{' '}
+            แล้วยืนยันด้วยเบอร์โทรศัพท์ <span class="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร
+            ที่นั่งจะถูกคืนทันที และสามารถกลับมาสมัครใหม่ในภายหลังได้หากยังมีที่นั่งว่าง
+            (หากแนบสลิปแล้ว กรุณาติดต่อพี่ค่าย)
+          </p>
+        </div>
+
+        <div class="gd-inline-contacts" aria-label="ช่องทางติดต่อพี่ค่ายกรณีชำระไม่ทันกำหนด">
+          <a class="gd-pill-link" href={FB_URL} target="_blank" rel="noopener noreferrer">
+            <MessageCircle class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            <span>ติดต่อทาง Facebook</span>
+            <ArrowUpRight class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          </a>
+          {STAFF_CONTACTS.map((c) => (
+            <a class="gd-pill-link" href={`tel:${c.tel}`}>
+              <Phone class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span class="gd-pill-link__text">
+                <span class="font-mono tabular-nums gd-phone">{c.phone}</span>
+                <span class="gd-pill-link__meta"> · {c.name}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <!-- 6. สิ่งที่ต้องเตรียมมาค่าย -->
+      <section id="checklist" class="gd-sec" aria-labelledby="checklist-title">
+        <h2 id="checklist-title" class="gd-h2">
+          สิ่งที่ต้องเตรียมมาค่าย (<span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน)
+        </h2>
+
+        <div class="gd-bring">
+          <div class="gd-bring__group">
+            <h3 class="gd-bring__title">
+              <IdCard class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>เอกสารและยาประจำตัว</span>
+            </h3>
+            <ul class="gd-list">
+              <li>บัตรประจำตัว (บัตรประชาชน / บัตรชมพู) หรือบัตรประจำตัวนักเรียน</li>
+              <li>ยาประจำตัว (ถ้ามี) และระบุข้อมูลแพ้อาหารหรือโรคประจำตัวในใบสมัคร</li>
+            </ul>
+          </div>
+
+          <div class="gd-bring__group">
+            <h3 class="gd-bring__title">
+              <Shirt class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>เครื่องแต่งกายและของใช้ส่วนตัว</span>
+            </h3>
+            <ul class="gd-list">
+              <li>
+                ชุดลำลองสุภาพ <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน
+                (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ)
+              </li>
+              <li>
+                ชุดนอน เสื้อกันหนาว ผ้าเช็ดตัว และของใช้ส่วนตัว (ค่ายมีเสื้อค่าย ComCamp{' '}
+                <span class="font-mono tabular-nums">#25</span> แจกให้)
+              </li>
+            </ul>
+          </div>
+
+          <div class="gd-bring__group">
+            <h3 class="gd-bring__title">
+              <Smartphone class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>อุปกรณ์อิเล็กทรอนิกส์</span>
+            </h3>
+            <ul class="gd-list">
+              <li>สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อม Wi-Fi บอร์ด <span class="font-mono">ESP8266</span>)</li>
+              <li>โน้ตบุ๊กส่วนตัวไม่บังคับ (มีเครื่อง PC ห้องปฏิบัติการและบอร์ดฝึกปฏิบัติครบทุกคน)</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. เอกสารดาวน์โหลด (only rendered when DOCS_READY is true) -->
+      {DOCS_READY && (
+        <section id="documents" class="gd-sec" aria-labelledby="documents-title">
+          <h2 id="documents-title" class="gd-h2">เอกสารดาวน์โหลด</h2>
+          <p class="gd-sec-lead">
+            ดาวน์โหลดเอกสารสำหรับผู้ปกครองเพื่อเตรียมพร้อมก่อนเดินทางเข้าร่วมค่าย
+          </p>
+          <div class="gd-actions">
+            <a class="gd-btn gd-btn--secondary" href={PARENT_CONSENT_PDF} download>
+              <FileDown class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>ใบขออนุญาตผู้ปกครอง (PDF)</span>
+            </a>
+          </div>
+        </section>
+      )}
+
+      <!-- 8. คำถามที่พบบ่อย -->
+      <section id="faq" class="gd-sec" aria-labelledby="faq-title">
+        <h2 id="faq-title" class="gd-h2">คำถามที่พบบ่อย</h2>
+
+        <div class="gd-faq">
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ต้องมีพื้นฐานการเขียนโปรแกรมหรืออิเล็กทรอนิกส์มาก่อนหรือไม่</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                ไม่จำเป็น ค่ายออกแบบสำหรับผู้เริ่มต้น และมีการเรียนรู้แบบลงมือปฏิบัติจากการจำลองวงจรไปสู่การต่อฮาร์ดแวร์จริง
+                พร้อมชุดอุปกรณ์ที่ค่ายจัดเตรียมให้
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ค่ายใช้บอร์ดและอุปกรณ์อะไรบ้าง</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                ใช้ <span class="font-mono">Arduino UNO R3</span> และ <span class="font-mono">ESP8266 NodeMCU</span>{' '}
+                ร่วมกับเซนเซอร์และอุปกรณ์ฝึกปฏิบัติ เช่น <span class="font-mono">Ultrasonic HC-SR04</span>,{' '}
+                <span class="font-mono">LDR</span> และ <span class="font-mono">Active Buzzer</span> ตามกิจกรรมในค่าย
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>รับกี่คน และคัดเลือกอย่างไร</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                เปิดรับ <span class="font-mono tabular-nums" data-guide-seats>{MAX_CAPACITY}</span> ที่นั่ง
+                และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                ไม่บังคับ ค่ายจัดเตรียมห้องปฏิบัติการคอมพิวเตอร์พร้อมเครื่อง PC และบอร์ดอุปกรณ์ครบชุดสำหรับผู้เข้าร่วมทุกคน
+                (หากต้องการนำโน้ตบุ๊กส่วนตัวมาใช้งานเพิ่มเติมก็สามารถพกมาได้)
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>สลิปโอนเงินไม่ชัดเจนหรือถูกแจ้งให้แก้ไขต้องทำอย่างไร</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                สามารถเข้าสู่ <a class="gd-inline-link" href="/status">หน้าตรวจสอบสถานะ</a> เพื่ออัปโหลดรูปสลิปใหม่ได้ทันทีโดยไม่ต้องกรอกใบสมัครใหม่
+                โดยค้นหาด้วยรหัสใบสมัคร (<span class="font-mono tabular-nums">CC25-XXXXXX</span>)
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>สามารถสมัครและตรวจสอบสถานะผ่านแอป Facebook หรือ LINE ได้หรือไม่</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                สามารถกรอกใบสมัครและอัปโหลดสลิปผ่านสมาร์ตโฟนได้ทุกระบบ รวมถึงเปิดใช้งานผ่านลิงก์ในแอปพลิเคชัน Facebook และ LINE ได้โดยตรง
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ลืมรหัสใบสมัครต้องทำอย่างไร</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                สามารถใช้เบอร์โทรศัพท์ <span class="font-mono tabular-nums">10</span> หลักที่สมัครค้นหาในหน้า{' '}
+                <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a> เพื่อดูสถานะโดยย่อได้
+                แต่เพื่อความปลอดภัยระบบจะไม่แสดงรหัสใบสมัครกลับมา หากหารหัสจากอีเมลไม่พบและต้องการรหัสเพื่อส่งสลิป
+                กรุณาติดต่อพี่ค่ายที่หัวข้อ <a class="gd-inline-link" href="#contact">ติดต่อพี่ค่าย</a> ด้านล่าง
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ข้อมูลใดบ้างที่แสดงบนหน้ารายชื่อผู้สมัคร</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                หน้า <a class="gd-inline-link" href="/applicants">รายชื่อผู้สมัคร</a> แสดงเฉพาะลำดับการสมัคร ชื่อ–นามสกุล ชื่อเล่น โรงเรียน จังหวัด
+                และสถานะ (รอชำระเงิน หรือ ยืนยันสิทธิ์แล้ว) เท่านั้น ไม่เปิดเผยรหัสใบสมัคร เบอร์โทรศัพท์ อีเมล หรือข้อมูลสุขภาพ
+              </p>
+            </div>
+          </details>
+
+          <details class="gd-faq__item">
+            <summary class="gd-faq__summary">
+              <span>ยกเลิกใบสมัครหรือแก้ไขข้อมูลภายหลังได้หรือไม่</span>
+              <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+            </summary>
+            <div class="gd-faq__body">
+              <p>
+                หากยังไม่ได้แนบสลิปและยังไม่ได้ยืนยันสิทธิ์ สามารถยกเลิกใบสมัครได้ด้วยตนเองที่หน้าใบตอบรับหรือหน้า{' '}
+                <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a>{' '}
+                โดยค้นหาด้วยรหัสใบสมัคร <span class="font-mono tabular-nums">CC25-XXXXXX</span>{' '}
+                แล้วยืนยันด้วยเบอร์โทรศัพท์ <span class="font-mono tabular-nums">10</span> หลักที่ใช้สมัคร
+                ส่วนการแก้ไขข้อมูลใบสมัคร (เช่น ชื่อเล่น โรงเรียน หรือไซส์เสื้อ) กรุณาติดต่อพี่ค่ายพร้อมแจ้งรหัสใบสมัคร
+              </p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 9. ติดต่อพี่ค่าย -->
+      <section id="contact" class="gd-sec" aria-labelledby="contact-title">
+        <h2 id="contact-title" class="gd-h2">ติดต่อพี่ค่าย</h2>
+        <p class="gd-sec-lead">
+          หากมีข้อสงสัยเพิ่มเติมเรื่องการสมัคร การชำระเงิน หรือรายละเอียดค่าย สามารถติดต่อพี่ค่ายและผู้ประสานงานโครงการได้โดยตรง
+        </p>
+
+        <ul class="gd-contacts">
+          {STAFF_CONTACTS.map((c) => (
+            <li class="gd-contact-row">
+              <a class="gd-contact-link" href={`tel:${c.tel}`}>
+                <Phone class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+                <span class="gd-contact-link__text">
+                  <span class="font-mono tabular-nums gd-phone">{c.phone}</span>
+                  <span class="gd-contact-link__name">{c.name}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+          <li class="gd-contact-row">
+            <a class="gd-contact-link" href={FB_URL} target="_blank" rel="noopener noreferrer">
+              <MessageCircle class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span class="gd-contact-link__text">
+                <span>Facebook เพจโครงการ (<span class="font-mono">CCCSMJU</span>)</span>
+                <ArrowUpRight class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              </span>
+            </a>
+          </li>
+        </ul>
+
+        <p class="gd-advisor">
+          <GraduationCap class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          <span>อาจารย์ผู้รับผิดชอบโครงการ: <strong>{PROJECT_ADVISOR}</strong></span>
+        </p>
+      </section>
+    </div>
+  </div>
+</article>
+
+<script>
+  import { API_BASE } from '../lib/api';
+  import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
+  import { formatBangkokTime, formatThaiDateFull } from '../lib/camp-facts';
+
+  function formatGuideDateTime(iso: string): string {
+    return `${formatThaiDateFull(iso)} เวลา ${formatBangkokTime(iso)} น.`;
+  }
+
+  async function syncGuidePublicSettings() {
+    const openEls = document.querySelectorAll<HTMLElement>('[data-guide-date="open"]');
+    const closeEls = document.querySelectorAll<HTMLElement>('[data-guide-date="close"]');
+    if (!openEls.length && !closeEls.length) return;
+
+    try {
+      const settings = await fetchSharedPublicSettings(API_BASE, { timeoutMs: 4000 });
+
+      if (settings.registrationOpenAt && Number.isFinite(Date.parse(settings.registrationOpenAt))) {
+        const text = formatGuideDateTime(settings.registrationOpenAt);
+        openEls.forEach((el) => {
+          el.textContent = text;
+        });
+      }
+
+      if (settings.registrationCloseAt && Number.isFinite(Date.parse(settings.registrationCloseAt))) {
+        const text = formatGuideDateTime(settings.registrationCloseAt);
+        closeEls.forEach((el) => {
+          el.textContent = text;
+        });
+      }
+
+      if (typeof settings.maxCapacity === 'number' && Number.isFinite(settings.maxCapacity) && settings.maxCapacity > 0) {
+        const capText = String(settings.maxCapacity);
+        document.querySelectorAll<HTMLElement>('[data-guide-seats]').forEach((el) => {
+          el.textContent = capText;
+        });
+      }
+
+      if (settings.campFee !== null && settings.campFee !== undefined && settings.campFee !== '') {
+        const feeNum = typeof settings.campFee === 'number' ? settings.campFee : Number(settings.campFee);
+        if (Number.isFinite(feeNum) && feeNum >= 0) {
+          const feeText = feeNum.toLocaleString('en-US', { maximumFractionDigits: 2 });
+          document.querySelectorAll<HTMLElement>('[data-guide-fee]').forEach((el) => {
+            el.textContent = feeText;
+          });
+        }
+      }
+    } catch {
+      /* Keep server-rendered fallback values when settings cannot be reached. */
+    }
+  }
+
+  syncGuidePublicSettings();
+  document.addEventListener('astro:page-load', syncGuidePublicSettings);
+</script>

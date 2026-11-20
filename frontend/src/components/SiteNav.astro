@@ -9,7 +9,7 @@ import {
 } from '../lib/camp-facts';
 
 interface Props {
-  active?: 'home' | 'register' | 'status' | 'admin' | 'applicants';
+  active?: 'home' | 'register' | 'status' | 'admin' | 'applicants' | 'guide';
   isHome?: boolean;
 }
 
@@ -24,6 +24,7 @@ const navLinks = isAdmin ? [] : [
   { href: isHome ? '#timeline' : '/#timeline', label: 'ไทม์ไลน์' },
   { href: isHome ? '#faq' : '/#faq', label: 'คำถามที่พบบ่อย' },
   { href: isHome ? '#gallery' : '/#gallery', label: 'แกลเลอรี' },
+  { href: '/guide', label: 'คู่มือผู้สมัคร', current: active === 'guide' },
   { href: '/applicants', label: 'รายชื่อผู้สมัคร', current: active === 'applicants' },
 ];
 ---

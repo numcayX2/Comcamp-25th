@@ -16,9 +16,10 @@ export const CAMP_FEE_TEXT = CAMP_FEE.toLocaleString('en-US');
 /**
  * Downloadable documents in public/assets/docs/ start as empty placeholders. Download buttons stay
  * hidden until the real files replace them (same file name) and this flag is flipped to true.
+ * Bump `?v=` whenever the file is replaced: Cloudflare caches /assets for hours.
  */
 export const DOCS_READY = false;
-export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf';
+export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf?v=1';
 
 const THAI_MONTHS_SHORT = [
   'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',

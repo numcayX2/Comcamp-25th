@@ -13,6 +13,8 @@ import { gsap } from 'gsap';
 import { ArrowLeft, ArrowRight, Check, Clock, Moon, RotateCw, Sun, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
+  REFERRAL_GROUPS,
+  REFERRAL_OTHER_MAX,
   fetchPublicSettings,
   sanitizeDigits,
   stripZeroWidth,
@@ -20,6 +22,8 @@ import {
   type ApiSource,
   type Application,
   type ApplicationPayload,
+  type ReferralCode,
+  type ReferralGroup,
   type ShirtSize,
 } from '../lib/api';
 import { canonicalProvince } from '../lib/provinces';
@@ -51,8 +55,11 @@ import {
   TOTAL_STEPS,
   cleanSingleLine,
   firstErrorKey,
+  firstMissingReferralSubgroup,
   formatCampFee,
   formatPhone,
+  formatReferralLabels,
+  orderedReferralSources,
   validateField,
   validateStep,
   type FieldErrors,
@@ -61,7 +68,7 @@ import {
   PAYMENT_WINDOW_DAYS,
   PAYMENT_WINDOW_HOURS,
 } from './register/model';
-import { FieldShell, StepHeader, TextField } from './register/parts';
+import { FieldError, FieldShell, StepHeader, TextField } from './register/parts';
 import { SizeChips } from './register/SizeChips';
 import { Receipt } from './register/Receipt';
 import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
@@ -240,6 +247,9 @@ function describeSubmitError(err: unknown): ErrorBannerState {
         }
         if (msg.includes('province')) {
           return { text: 'จังหวัดไม่ถูกต้อง กรุณากลับไปเลือกจังหวัดจากรายการอีกครั้ง' };
+        }
+        if (msg.includes('referral')) {
+          return { text: 'ข้อมูลช่องทางที่รู้จักค่ายไม่ถูกต้อง กรุณากลับไปตรวจสอบขั้นตอนที่ 4 อีกครั้ง' };
         }
         if (msg.includes('idempotency')) {
           return { text: 'รหัสอ้างอิงคำขอไม่ถูกต้อง กรุณารีเฟรชหน้านี้แล้วลองส่งใหม่อีกครั้ง' };
@@ -580,8 +590,17 @@ export function RegisterSection() {
     const target = pending.current;
     if (!target) return;
     pending.current = null;
-    if (target.field) document.getElementById(target.field)?.focus();
-    else headingRef.current?.focus({ preventScroll: true });
+    if (target.field) {
+      if (target.field === 'referralSources') {
+        const missing = firstMissingReferralSubgroup(form);
+        const targetId = missing ? `referral-opt-${missing.options[0].code}` : 'referralSources';
+        document.getElementById(targetId)?.focus();
+      } else {
+        document.getElementById(target.field)?.focus();
+      }
+    } else {
+      headingRef.current?.focus({ preventScroll: true });
+    }
   }, [step, errors, appId]);
 
   useEffect(() => {
@@ -735,6 +754,10 @@ export function RegisterSection() {
     };
 
     try {
+      const referralSources = orderedReferralSources(form);
+      const referralOtherText = referralSources.includes('other')
+        ? stripZeroWidth(form.referralOther).trim()
+        : '';
       const payload: ApplicationPayload = {
         prefix: form.prefix,
         fullName: cleanSingleLine(form.fullName),
@@ -752,6 +775,8 @@ export function RegisterSection() {
         motivation: stripZeroWidth(form.motivation).trim(),
         allergies: stripZeroWidth(form.allergies).trim(),
         medicalConditions: stripZeroWidth(form.medicalConditions).trim(),
+        referralSources,
+        ...(referralOtherText ? { referralOther: referralOtherText } : {}),
         turnstileToken: turnstileToken || undefined,
       };
       // Same key on every retry: if an earlier attempt was saved but its answer was lost (timeout,
@@ -931,6 +956,49 @@ export function RegisterSection() {
     const next = nextParts.join(', ');
     if (next.length <= ALLERGIES_MAX) {
       set('allergies', next);
+    }
+  }
+
+  function toggleReferralGroup(group: ReferralGroup) {
+    const isChecked = form.referralGroups.includes(group.id);
+    const groupCodes = new Set(group.options.map((o) => o.code));
+    const nextGroups = isChecked
+      ? form.referralGroups.filter((id) => id !== group.id)
+      : [...form.referralGroups, group.id];
+    const nextSources = isChecked
+      ? form.referralSources.filter((c) => !groupCodes.has(c))
+      : group.options.length === 1
+        ? Array.from(new Set([...form.referralSources, group.options[0].code]))
+        : form.referralSources;
+    const nextOther = isChecked && group.id === 'other' ? '' : form.referralOther;
+    const nextForm: FormState = {
+      ...form,
+      referralGroups: nextGroups,
+      referralSources: nextSources,
+      referralOther: nextOther,
+    };
+    setForm(nextForm);
+    setErrors((e) => {
+      let next = e;
+      if (e.referralSources) {
+        next = { ...next, referralSources: validateField('referralSources', nextForm, consent) };
+      }
+      if (e.referralOther) {
+        next = { ...next, referralOther: validateField('referralOther', nextForm, consent) };
+      }
+      return next;
+    });
+  }
+
+  function toggleReferralOption(code: ReferralCode) {
+    const has = form.referralSources.includes(code);
+    const nextSources = has
+      ? form.referralSources.filter((c) => c !== code)
+      : [...form.referralSources, code];
+    const nextForm: FormState = { ...form, referralSources: nextSources };
+    setForm(nextForm);
+    if (errors.referralSources) {
+      setErrors((e) => ({ ...e, referralSources: validateField('referralSources', nextForm, consent) }));
     }
   }
 
@@ -1269,9 +1337,123 @@ export function RegisterSection() {
           </div>
         );
 
-      case 3:
+      case 3: {
+        const noGroupSelected = Boolean(errors.referralSources) && form.referralGroups.length === 0;
+        const referralOtherLen = stripZeroWidth(form.referralOther).trim().length;
         return (
           <div className="rw-fields">
+            <div className="rw-field rw-span-6 rw-ref-field">
+              <fieldset className="rw-fieldset">
+                <legend className="rw-label rw-ref-legend">
+                  <span>รู้จักค่ายนี้จากช่องทางไหน</span>
+                  <span id="referralSources-hint" className="rw-hint">
+                    เลือกได้มากกว่า <span className="font-mono tabular-nums">1</span> ข้อ
+                  </span>
+                </legend>
+                <div className="rw-ref-list">
+                  {REFERRAL_GROUPS.map((group, groupIdx) => {
+                    const checked = form.referralGroups.includes(group.id);
+                    const hasSubs = group.options.length > 1;
+                    const isOther = group.id === 'other';
+                    const expanded = checked && (hasSubs || isOther);
+                    const inputId = groupIdx === 0 ? 'referralSources' : `referral-group-${group.id}`;
+                    const subMissing =
+                      Boolean(errors.referralSources) &&
+                      hasSubs &&
+                      checked &&
+                      !group.options.some((o) => form.referralSources.includes(o.code));
+                    const groupDescribedBy = [
+                      'referralSources-hint',
+                      noGroupSelected ? 'referralSources-err' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    return (
+                      <div key={group.id} className={`rw-ref-group${expanded ? ' rw-ref-group--open' : ''}`}>
+                        <label className="rw-ref-chip" htmlFor={inputId}>
+                          <input
+                            type="checkbox"
+                            id={inputId}
+                            name="referralGroups"
+                            value={group.id}
+                            checked={checked}
+                            onChange={() => toggleReferralGroup(group)}
+                            aria-controls={expanded ? (hasSubs ? `referral-sub-${group.id}` : 'referral-other-wrap') : undefined}
+                            aria-invalid={noGroupSelected ? true : undefined}
+                            aria-describedby={groupDescribedBy}
+                          />
+                          <span className="rw-ref-chip__face">
+                            {checked && <Check size={14} strokeWidth={1.5} aria-hidden="true" />}
+                            <span>{group.label}</span>
+                          </span>
+                        </label>
+
+                        {hasSubs && checked && (
+                          <div
+                            id={`referral-sub-${group.id}`}
+                            className="rw-ref-sub"
+                            role="group"
+                            aria-label={`ตัวเลือกย่อยของ${group.label}`}
+                          >
+                            {group.options.map((opt) => {
+                              const optChecked = form.referralSources.includes(opt.code);
+                              const optId = `referral-opt-${opt.code}`;
+                              return (
+                                <label key={opt.code} className="rw-ref-chip" htmlFor={optId}>
+                                  <input
+                                    type="checkbox"
+                                    id={optId}
+                                    name="referralSources"
+                                    value={opt.code}
+                                    checked={optChecked}
+                                    onChange={() => toggleReferralOption(opt.code)}
+                                    aria-invalid={subMissing ? true : undefined}
+                                    aria-describedby={subMissing ? 'referralSources-err' : undefined}
+                                  />
+                                  <span className="rw-ref-chip__face">
+                                    {optChecked && <Check size={14} strokeWidth={1.5} aria-hidden="true" />}
+                                    <span>{opt.label}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {isOther && checked && (
+                          <div id="referral-other-wrap" className="rw-ref-other">
+                            <label className="rw-label rw-ref-other__label" htmlFor="referralOther">
+                              <span>โปรดระบุ</span>
+                              <span className="rw-hint font-mono tabular-nums">
+                                {referralOtherLen}/{REFERRAL_OTHER_MAX}
+                              </span>
+                            </label>
+                            <input
+                              id="referralOther"
+                              name="referralOther"
+                              type="text"
+                              className="rw-input rw-ref-other__input"
+                              maxLength={REFERRAL_OTHER_MAX}
+                              value={form.referralOther}
+                              onChange={(e) => set('referralOther', e.target.value)}
+                              onBlur={() => blur('referralOther')}
+                              placeholder="เช่น โปสเตอร์โรงเรียน, เว็บไซต์ข่าว"
+                              aria-required="true"
+                              aria-invalid={errors.referralOther ? true : undefined}
+                              aria-describedby={errors.referralOther ? 'referralOther-err' : undefined}
+                              spellCheck={false}
+                            />
+                            <FieldError id="referralOther" message={errors.referralOther} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <FieldError id="referralSources" message={errors.referralSources} />
+              </fieldset>
+            </div>
+
             <FieldShell
               id="motivation"
               label="ความสนใจด้าน IoT / ไมโครคอนโทรลเลอร์"
@@ -1377,8 +1559,10 @@ export function RegisterSection() {
             </FieldShell>
           </div>
         );
+      }
 
-      default:
+      default: {
+        const referralSummary = formatReferralLabels(form);
         return (
           <>
             <div className="rw-card">
@@ -1422,9 +1606,10 @@ export function RegisterSection() {
                 ]}
               />
               <ReviewGroup
-                title="แรงบันดาลใจและหมายเหตุสุขภาพ"
+                title="ช่องทางรู้จักค่ายและหมายเหตุสุขภาพ"
                 onEdit={() => editFromReview(3)}
                 rows={[
+                  ['รู้จักค่ายจาก', referralSummary.length > 0 ? referralSummary.join(', ') : <Empty key="ref" />],
                   ['ความสนใจ', stripZeroWidth(form.motivation).trim() ? <span className="rw-pre" key="mo">{stripZeroWidth(form.motivation).trim()}</span> : <Empty key="mo" />],
                   ['การแพ้อาหาร', stripZeroWidth(form.allergies).trim() ? <span className="rw-pre" key="al">{stripZeroWidth(form.allergies).trim()}</span> : <Empty key="al" />],
                   ['โรคประจำตัว', stripZeroWidth(form.medicalConditions).trim() ? <span className="rw-pre" key="mc">{stripZeroWidth(form.medicalConditions).trim()}</span> : <Empty key="mc" />],
@@ -1521,6 +1706,7 @@ export function RegisterSection() {
             )}
           </>
         );
+      }
     }
   }
 
