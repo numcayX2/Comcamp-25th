@@ -177,6 +177,17 @@ func (h *ApplicantHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, apps)
 }
 
+// AdminListWithdrawn answers GET /api/admin/applications/withdrawn: the read-only list of
+// applications their applicants withdrew, most recent first.
+func (h *ApplicantHandler) AdminListWithdrawn(w http.ResponseWriter, r *http.Request) {
+	list, err := h.appService.ListWithdrawn(r.Context())
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	response.OK(w, list)
+}
+
 func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

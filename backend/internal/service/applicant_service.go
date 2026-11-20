@@ -46,6 +46,10 @@ var (
 	ErrInvalidQuery          = newValidationError("search query must be a phone number (10 digits starting with 0) or an application code (CC25-XXXXXX)")
 	ErrInvalidProvince       = newValidationError("invalid province (choose one of the 77 Thai provinces)")
 	ErrCannotWithdraw        = errors.New("this application can no longer be cancelled online (confirmed, slip already sent, or already closed), please contact staff")
+	// ErrForfeitedApplicant: the phone or email belongs to an application whose seat was released
+	// for non-payment (FORFEITED). Registering again needs staff (restore or delete), so the
+	// applicant is told to contact them.
+	ErrForfeitedApplicant = errors.New("an earlier application with this phone number or email was forfeited because it was not paid in time, please contact staff")
 )
 
 // Field length limits mirror the VARCHAR sizes in the schema so oversized input is a clean 400,
@@ -106,6 +110,10 @@ type ApplicationCreateRequest struct {
 	Allergies         string `json:"allergies,omitempty"`
 	MedicalConditions string `json:"medicalConditions,omitempty"`
 	Province          string `json:"province,omitempty"`
+	// ReferralSources / ReferralOther answer "where did you hear about the camp" (referral.go).
+	// Optional for the API: older clients do not send them.
+	ReferralSources []string `json:"referralSources,omitempty"`
+	ReferralOther   string   `json:"referralOther,omitempty"`
 	// TurnstileToken is the single-use Cloudflare Turnstile response. It is verified, never
 	// stored, and never logged.
 	TurnstileToken string `json:"turnstileToken,omitempty"`
@@ -138,6 +146,8 @@ type ApplicationResponse struct {
 	ShirtSize           string                   `json:"shirtSize"`
 	Province            string                   `json:"province,omitempty"`
 	Motivation          string                   `json:"motivation,omitempty"`
+	ReferralSources     []string                 `json:"referralSources,omitempty"` // admin responses only
+	ReferralOther       string                   `json:"referralOther,omitempty"`
 	Allergies           string                   `json:"allergies,omitempty"`
 	MedicalConditions   string                   `json:"medicalConditions,omitempty"`
 	Status              domain.ApplicationStatus `json:"status"`
@@ -421,6 +431,8 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 		Motivation:        &req.Motivation,
 		Allergies:         &req.Allergies,
 		MedicalConditions: &req.MedicalConditions,
+		ReferralSources:   req.ReferralSources,
+		ReferralOther:     req.ReferralOther,
 		// First come, first served: the quota check above is the selection, so the applicant holds
 		// a seat (and may upload a slip) straight away, with no staff step in between.
 		Status:              domain.StatusPassed,
@@ -462,6 +474,11 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	case errors.Is(err, domain.ErrCapacityReached):
 		return nil, false, ErrQuotaExceeded
 	case errors.Is(err, domain.ErrDuplicateApplicant):
+		// A FORFEITED application keeps its phone and email (it stays live), so the unique
+		// indexes refuse the insert; only this rare path pays for telling the two cases apart.
+		if forfeited, ferr := s.appRepo.HasForfeitedIdentity(ctx, req.Phone, req.Email); ferr == nil && forfeited {
+			return nil, false, ErrForfeitedApplicant
+		}
 		return nil, false, ErrDuplicateApplicant
 	case errors.Is(err, domain.ErrLockTimeout):
 		// Nothing was stored; the client retries with the same idempotency key.
@@ -519,6 +536,8 @@ type profileInput struct {
 	ParentName, ParentRelation, ParentPhone  string
 	School, Province, Grade, ShirtSize       string
 	Motivation, Allergies, MedicalConditions string
+	ReferralSources                          []string
+	ReferralOther                            string
 }
 
 func nonEmptyPtr(s string) *string {
@@ -548,6 +567,7 @@ func profileInputOfRequest(req ApplicationCreateRequest) profileInput {
 		School: req.School, Province: req.Province, Grade: req.Grade,
 		ShirtSize: req.ShirtSize, Motivation: req.Motivation,
 		Allergies: req.Allergies, MedicalConditions: req.MedicalConditions,
+		ReferralSources: req.ReferralSources, ReferralOther: req.ReferralOther,
 	}
 }
 
@@ -583,6 +603,7 @@ func normalizeProfile(p profileInput) profileInput {
 	p.Allergies = strings.TrimSpace(stripZeroWidth(p.Allergies))
 	p.MedicalConditions = strings.TrimSpace(stripZeroWidth(p.MedicalConditions))
 	p.ShirtSize = strings.ToUpper(strings.TrimSpace(stripZeroWidth(p.ShirtSize)))
+	p.ReferralSources, p.ReferralOther = normalizeReferral(p.ReferralSources, p.ReferralOther)
 	return p
 }
 
@@ -594,7 +615,8 @@ func normalizeRequest(req ApplicationCreateRequest) ApplicationCreateRequest {
 		Email: p.Email, ParentName: p.ParentName, ParentRelation: p.ParentRelation, ParentPhone: p.ParentPhone,
 		School: p.School, Grade: p.Grade, ShirtSize: p.ShirtSize,
 		Motivation: p.Motivation, Allergies: p.Allergies, MedicalConditions: p.MedicalConditions,
-		Province:       p.Province,
+		Province:        p.Province,
+		ReferralSources: p.ReferralSources, ReferralOther: p.ReferralOther,
 		TurnstileToken: strings.TrimSpace(req.TurnstileToken),
 	}
 }
@@ -703,6 +725,9 @@ func validateProfile(p profileInput, before *profileInput) error {
 		return ErrInvalidProvince
 	}
 	if err := checkEmail(p.Email); err != nil {
+		return err
+	}
+	if err := validateReferral(p.ReferralSources, p.ReferralOther); err != nil {
 		return err
 	}
 	return checkLengths(p, before)
@@ -1027,6 +1052,44 @@ func (s *ApplicantService) Withdraw(ctx context.Context, applicationNo, phone, r
 	return nil
 }
 
+// WithdrawnEntry is one row of the read-only "withdrawn by the applicant" staff list
+// (GET /api/admin/applications/withdrawn). Status is the status the application had when withdrawn.
+type WithdrawnEntry struct {
+	ApplicationNo string                   `json:"id"`
+	FullName      string                   `json:"fullName"`
+	Nickname      string                   `json:"nickname"`
+	Phone         string                   `json:"phone"`
+	School        string                   `json:"school"`
+	Province      string                   `json:"province"`
+	Status        domain.ApplicationStatus `json:"status"`
+	CreatedAt     string                   `json:"createdAt"`
+	WithdrawnAt   string                   `json:"withdrawnAt"`
+	Reason        string                   `json:"reason"`
+}
+
+// ListWithdrawn is the admin list of applications their applicants withdrew, most recent first.
+func (s *ApplicantService) ListWithdrawn(ctx context.Context) ([]WithdrawnEntry, error) {
+	list, err := s.appRepo.ListWithdrawn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WithdrawnEntry, 0, len(list))
+	for _, w := range list {
+		name := w.Prefix + w.FirstName
+		if w.LastName != "" {
+			name += " " + w.LastName
+		}
+		out = append(out, WithdrawnEntry{
+			ApplicationNo: w.ApplicationNo, FullName: name, Nickname: w.Nickname, Phone: w.Phone,
+			School: w.School, Province: w.Province, Status: w.Status,
+			CreatedAt:   w.CreatedAt.UTC().Format(time.RFC3339),
+			WithdrawnAt: w.WithdrawnAt.UTC().Format(time.RFC3339),
+			Reason:      w.Reason,
+		})
+	}
+	return out, nil
+}
+
 // AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send
 // only what changed; the merged result is validated as a whole.
 type AdminProfileRequest struct {
@@ -1044,7 +1107,10 @@ type AdminProfileRequest struct {
 	Motivation        *string `json:"motivation,omitempty"`
 	Allergies         *string `json:"allergies,omitempty"`
 	MedicalConditions *string `json:"medicalConditions,omitempty"`
-	Reason            string  `json:"reason,omitempty"`
+	// ReferralSources replaces the whole list when present (an empty array clears it).
+	ReferralSources *[]string `json:"referralSources,omitempty"`
+	ReferralOther   *string   `json:"referralOther,omitempty"`
+	Reason          string    `json:"reason,omitempty"`
 }
 
 // profileOf is the stored profile as the shared validators see it.
@@ -1056,6 +1122,7 @@ func profileOf(a *domain.Applicant) profileInput {
 	p := profileInput{
 		FullName: full, Nickname: a.Nickname, Phone: a.Phone, Email: a.Email,
 		School: a.School, Province: a.Province, Grade: a.Grade, ShirtSize: a.ShirtSize,
+		ReferralSources: a.ReferralSources, ReferralOther: a.ReferralOther,
 	}
 	if a.ParentName != nil {
 		p.ParentName = *a.ParentName
@@ -1097,6 +1164,8 @@ func profileChanges(before, after profileInput) map[string]map[string]string {
 		{"motivation", before.Motivation, after.Motivation},
 		{"allergies", before.Allergies, after.Allergies},
 		{"medicalConditions", before.MedicalConditions, after.MedicalConditions},
+		{"referralSources", strings.Join(before.ReferralSources, ","), strings.Join(after.ReferralSources, ",")},
+		{"referralOther", before.ReferralOther, after.ReferralOther},
 	} {
 		if f.old != f.new {
 			changes[f.name] = map[string]string{"old": f.old, "new": f.new}
@@ -1125,6 +1194,8 @@ func profileFieldsOf(p profileInput) (domain.ProfileFields, error) {
 		ParentPhone:       nonEmptyPtr(p.ParentPhone),
 		EmergencyContact:  emergencyContact,
 		EmergencyPhone:    emergencyPhone,
+		ReferralSources:   p.ReferralSources,
+		ReferralOther:     p.ReferralOther,
 	}, nil
 }
 
@@ -1158,6 +1229,12 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 		if f.src != nil {
 			*f.dst = *f.src
 		}
+	}
+	if req.ReferralSources != nil {
+		merged.ReferralSources = *req.ReferralSources
+	}
+	if req.ReferralOther != nil {
+		merged.ReferralOther = *req.ReferralOther
 	}
 	after := normalizeProfile(merged)
 	stored := normalizeProfile(before)
@@ -1295,6 +1372,8 @@ func (s *ApplicantService) toAdminWithPayment(a *domain.Applicant, p *domain.Pay
 	if a.MedicalConditions != nil {
 		res.MedicalConditions = *a.MedicalConditions
 	}
+	res.ReferralSources = a.ReferralSources
+	res.ReferralOther = a.ReferralOther
 	if p != nil {
 		res.HasSlip = true
 		st := p.Status

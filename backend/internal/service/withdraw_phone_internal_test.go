@@ -33,7 +33,7 @@ func TestSamePhone(t *testing.T) {
 func TestWithdraw_PhoneSecondFactorService(t *testing.T) {
 	appRepo := memory.NewMemoryApplicantRepo()
 	guard, clock, _ := newTestCodeGuard(CodeGuardConfig{})
-	svc := NewApplicantService(appRepo, memory.NewMemorySettingRepo(), memory.NewMemoryPaymentRepo(appRepo)).
+	svc := NewApplicantService(appRepo, settingsOpenAround(t, clock.Now()), memory.NewMemoryPaymentRepo(appRepo)).
 		WithCodeGuard(guard).WithNow(clock.Now)
 	ctx := clientCtx("198.51.100.90")
 	res, err := svc.Submit(ctx, ApplicationCreateRequest{

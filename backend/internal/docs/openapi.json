@@ -154,7 +154,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApplicationResponse" } } }
           },
           "409": {
-            "description": "code QUOTA_FULL = ครบโควตา 40 ที่นั่ง, code DUPLICATE_APPLICATION = เบอร์โทรหรืออีเมลนี้มีใบสมัครที่ยังอยู่ในระบบแล้ว (ใบสมัครที่ยกเลิก/ถูกลบไม่นับ)",
+            "description": "code QUOTA_FULL = ครบโควตา 40 ที่นั่ง, code DUPLICATE_APPLICATION = เบอร์โทรหรืออีเมลนี้มีใบสมัครที่ยังอยู่ในระบบแล้ว (ใบสมัครที่ยกเลิก/ถูกลบไม่นับ), code FORFEITED_APPLICATION = เบอร์โทรหรืออีเมลนี้เป็นของใบสมัครที่ถูกตัดสิทธิ์เพราะไม่ชำระเงินภายในกำหนด (FORFEITED) สมัครใหม่เองไม่ได้ ให้ติดต่อพี่ค่าย",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": { "description": "Request body เกิน 64 KB", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
@@ -407,7 +407,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "กรองตามสถานะ เช่น PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED",
+            "description": "กรองตามสถานะ เช่น PENDING, PASSED, RESERVE, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED, FORFEITED",
             "schema": { "type": "string" }
           }
         ],
@@ -431,6 +431,22 @@
             "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/applications/withdrawn": {
+      "get": {
+        "tags": ["Admin Management"],
+        "summary": "Admin List Self-Withdrawn Applications",
+        "description": "รายการใบสมัครที่ผู้สมัครยกเลิกเอง (POST /applications/{id}/withdraw, deleted_reason SELF_WITHDRAWN) ล่าสุดก่อน อ่านอย่างเดียว ไม่รวมใบสมัครที่พี่ค่ายลบ สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "รายการใบสมัครที่ยกเลิกเอง",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/WithdrawnApplicant" } } } }
+          },
+          "401": { "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
@@ -793,6 +809,8 @@
           "motivation": { "type": "string", "maxLength": 1000, "example": "อยากเรียนรู้ IoT และเขียนโปรแกรม Arduino" },
           "allergies": { "type": "string", "maxLength": 500, "example": "แพ้อาหารทะเล / ถั่วลิสง" },
           "medicalConditions": { "type": "string", "maxLength": 500, "example": "หอบหืด (พกยาพ่นประจำตัว)" },
+          "referralSources": { "type": "array", "items": { "type": "string", "enum": ["social_facebook", "social_instagram", "social_tiktok", "google", "website", "word_friend", "word_senior", "word_junior", "word_teacher", "parent", "last_year", "other"] }, "description": "รู้จักค่ายจากช่องทางใด (เลือกได้หลายข้อ ไม่บังคับฝั่ง API เพื่อรองรับหน้าเว็บรุ่นเก่า) ระบบตัดค่าซ้ำและเรียงตามลำดับในฟอร์ม รหัสที่ไม่รู้จักตอบ 400", "example": ["social_facebook", "word_teacher"] },
+          "referralOther": { "type": "string", "maxLength": 50, "description": "จำเป็นเมื่อเลือก other; ถูกละทิ้งถ้าไม่ได้เลือก other" },
           "province": { "type": "string", "example": "เชียงใหม่", "description": "ชื่อทางการของจังหวัดใดจังหวัดหนึ่งใน 77 จังหวัด (คำนำหน้า จังหวัด / จ. และชื่อย่อ กทม / กรุงเทพฯ / อยุธยา / โคราช ถูกแปลงเป็นชื่อทางการ) ค่าอื่น → 400 VALIDATION_ERROR" },
           "turnstileToken": { "type": "string", "maxLength": 2048, "description": "Cloudflare Turnstile response token (single-use, ได้จาก widget ในหน้า /register). จำเป็นเมื่อเซิร์ฟเวอร์ตั้ง TURNSTILE_SECRET_KEY (production บังคับเสมอ) ไม่ถูกบันทึกลงฐานข้อมูลหรือ log. ถ้าส่งซ้ำด้วย X-Idempotency-Key เดิมที่บันทึกไว้แล้ว ระบบคืนใบสมัครเดิมโดยไม่ตรวจ token อีก" }
         }
@@ -815,12 +833,14 @@
           "shirtSize": { "type": "string", "example": "L" },
           "province": { "type": "string", "example": "เชียงใหม่" },
           "motivation": { "type": "string", "description": "เฉพาะ /api/admin/*" },
+          "referralSources": { "type": "array", "items": { "type": "string" }, "description": "เฉพาะ /api/admin/*" },
+          "referralOther": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "allergies": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "medicalConditions": { "type": "string", "description": "เฉพาะ /api/admin/*" },
           "status": {
             "type": "string",
-            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"],
-            "description": "PENDING / PASSED / RESERVE / CONFIRMED ถือที่นั่งอยู่ ส่วน REJECTED, REFUND_PENDING (รอคืนเงิน) และ REFUNDED (คืนเงินแล้ว) คืนที่นั่งทันทีและไม่นับในโควตา แต่ยังอยู่ในระบบเพื่อทำบัญชี",
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED", "FORFEITED"],
+            "description": "PENDING / PASSED / RESERVE / CONFIRMED ถือที่นั่งอยู่ ส่วน REJECTED, REFUND_PENDING (รอคืนเงิน), REFUNDED (คืนเงินแล้ว) และ FORFEITED (ตัดสิทธิ์อัตโนมัติเพราะไม่ชำระเงินภายในกำหนด — เบอร์/อีเมลยังถูกจองไว้ สมัครใหม่ไม่ได้จนพี่ค่ายคืนสิทธิ์หรือลบ) คืนที่นั่งทันทีและไม่นับในโควตา แต่ยังอยู่ในระบบเพื่อทำบัญชี",
             "example": "PASSED"
           },
           "attendanceConfirmed": { "type": "boolean", "example": false },
@@ -859,6 +879,22 @@
           "confirmed": { "type": "boolean", "example": true }
         }
       },
+      "WithdrawnApplicant": {
+        "type": "object",
+        "description": "ใบสมัครที่ผู้สมัครยกเลิกเอง (เฉพาะ /api/admin/*)",
+        "properties": {
+          "id": { "type": "string", "example": "CC25-8A4B2C" },
+          "fullName": { "type": "string", "example": "สมชาย ใจดี" },
+          "nickname": { "type": "string", "example": "ชาย" },
+          "phone": { "type": "string", "example": "0812345678" },
+          "school": { "type": "string" },
+          "province": { "type": "string" },
+          "status": { "type": "string", "description": "สถานะตอนที่ยกเลิก", "example": "PASSED" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "withdrawnAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "description": "เหตุผลที่ผู้สมัครพิมพ์ตอนยกเลิก (อาจว่าง)" }
+        }
+      },
       "WithdrawRequest": {
         "type": "object",
         "description": "รหัสใบสมัครใน path และเบอร์โทรเต็มที่ใช้สมัครคือหลักฐานตัวตน เบอร์ที่ไม่ส่งหรือไม่ตรงได้ 404 NOT_FOUND เหมือนรหัสที่ไม่มีอยู่จริง",
@@ -885,6 +921,8 @@
           "motivation": { "type": "string", "description": "ไม่เกิน 1,000 ตัวอักษร ยกเว้นข้อความเดิมที่บันทึกไว้ก่อนลดเพดาน ซึ่งส่งกลับมาโดยไม่แก้ได้" },
           "allergies": { "type": "string", "maxLength": 500 },
           "medicalConditions": { "type": "string", "maxLength": 500 },
+          "referralSources": { "type": "array", "items": { "type": "string" }, "description": "แทนที่รายการทั้งหมดเมื่อส่งมา (array ว่าง = ล้าง)" },
+          "referralOther": { "type": "string", "maxLength": 50 },
           "reason": { "type": "string", "maxLength": 500, "example": "ผู้ปกครองแจ้งว่ากรอกเบอร์โทรผิด" }
         }
       },

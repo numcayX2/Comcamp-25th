@@ -91,8 +91,10 @@ export interface ApiResult<T> {
 
 /**
  * First come, first served: a new application starts as PASSED (the seat is theirs at once).
- * REJECTED, REFUND_PENDING and REFUNDED release the seat (they are not counted in the quota) but
- * stay in the staff ledger for accounting.
+ * REJECTED, REFUND_PENDING, REFUNDED and FORFEITED release the seat (they are not counted in the
+ * quota) but stay in the staff ledger for accounting. FORFEITED is the automatic cut after the
+ * payment window ran out; that phone/email cannot apply again (409 FORFEITED_APPLICATION) until
+ * staff restore the application.
  */
 export type ApplicationStatus =
   | 'PENDING'
@@ -101,7 +103,8 @@ export type ApplicationStatus =
   | 'CONFIRMED'
   | 'REJECTED'
   | 'REFUND_PENDING'
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'FORFEITED';
 
 /** Statuses that hold a seat. Mirrors the backend ApplicationStatus.IsActive. */
 export function holdsSeat(status: ApplicationStatus): boolean {
@@ -110,6 +113,48 @@ export function holdsSeat(status: ApplicationStatus): boolean {
 
 /** Official IDO IDEA shirt sizes (strictly synced with register/model.ts & ErrInvalidShirtSize; backend keeps 'XS' only for legacy DB rows). */
 export type ShirtSize = 'SSS' | 'SS' | 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL' | '4XL';
+
+/**
+ * "Where did you hear about the camp" answers, in form order. Mirrors backend referralCodes
+ * (service/referral.go): an unknown code is a 400, `other` needs `referralOther` (≤ 50 characters).
+ */
+export const REFERRAL_CODES = [
+  'social_facebook',
+  'social_instagram',
+  'social_tiktok',
+  'google',
+  'website',
+  'word_friend',
+  'word_senior',
+  'word_junior',
+  'word_teacher',
+  'parent',
+  'last_year',
+  'other',
+] as const;
+
+export type ReferralCode = (typeof REFERRAL_CODES)[number];
+
+export const REFERRAL_LABELS: Record<ReferralCode, string> = {
+  social_facebook: 'Facebook',
+  social_instagram: 'Instagram',
+  social_tiktok: 'TikTok',
+  google: 'ค้นหาใน Google',
+  website: 'เว็บไซต์มหาวิทยาลัย / สาขา',
+  word_friend: 'เพื่อนแนะนำ',
+  word_senior: 'รุ่นพี่แนะนำ',
+  word_junior: 'รุ่นน้องแนะนำ',
+  word_teacher: 'ครู / อาจารย์แนะนำ',
+  parent: 'ผู้ปกครองแนะนำ',
+  last_year: 'เคยรู้จักค่ายจากปีก่อน',
+  other: 'อื่นๆ',
+};
+
+export const REFERRAL_OTHER_MAX = 50;
+
+export function isReferralCode(value: string): value is ReferralCode {
+  return (REFERRAL_CODES as readonly string[]).includes(value);
+}
 
 export interface ApplicationPayload {
   /** Title before the name (นาย, นางสาว, ...). Stored apart from fullName; never on the public list. */
@@ -128,6 +173,10 @@ export interface ApplicationPayload {
   allergies?: string;
   medicalConditions?: string;
   province?: string;
+  /** At least one is required by the form; the API accepts none so older pages keep working. */
+  referralSources?: ReferralCode[];
+  /** Required when `referralSources` includes 'other'; dropped otherwise. */
+  referralOther?: string;
   /** Cloudflare Turnstile response token (single-use). Verified by the server, never stored. */
   turnstileToken?: string;
 }
@@ -163,6 +212,9 @@ export interface ApplicantRecord {
   allergies?: string;
   medicalConditions?: string;
   province?: string;
+  /** Admin responses only. */
+  referralSources?: string[];
+  referralOther?: string;
   status: ApplicationStatus;
   attendanceConfirmed: boolean;
   hasSlip?: boolean;
@@ -673,6 +725,9 @@ export interface AdminProfilePayload {
   motivation?: string;
   allergies?: string;
   medicalConditions?: string;
+  /** Replaces the whole list when sent. */
+  referralSources?: ReferralCode[];
+  referralOther?: string;
   reason?: string;
 }
 
@@ -878,6 +933,38 @@ export function recordCsvExport(
         body: JSON.stringify(body),
       }),
     () => ({ count: body.applicationIds.length }),
+  );
+}
+
+/** One application the applicant withdrew themselves (read-only staff list). */
+export interface WithdrawnApplicant {
+  id: string;
+  fullName: string;
+  nickname: string;
+  phone: string;
+  school: string;
+  province: string;
+  /** Status the application had when it was withdrawn. */
+  status: ApplicationStatus;
+  createdAt: string;
+  withdrawnAt: string;
+  /** What the applicant typed when withdrawing; may be empty. */
+  reason: string;
+}
+
+/**
+ * GET /admin/applications/withdrawn — applications the applicant withdrew (newest first). Admin
+ * deletions are not included. No offline fallback beyond an empty list in `astro dev`.
+ */
+export function fetchWithdrawnApplicants(token: string): Promise<ApiResult<WithdrawnApplicant[]>> {
+  return withFallback(
+    async () => {
+      const data = await fetchJson<WithdrawnApplicant[] | null>('/admin/applications/withdrawn', {
+        headers: authHeader(token),
+      });
+      return Array.isArray(data) ? data : [];
+    },
+    () => [],
   );
 }
 

@@ -29,6 +29,7 @@ func TestOpenAPISpec(t *testing.T) {
 		"/admin/applications/{id}/profile": "patch",
 		"/admin/applications/{id}":         "delete",
 		"/admin/applications/export-audit": "post",
+		"/admin/applications/withdrawn":    "get",
 	} {
 		if _, ok := spec.Paths[path][method]; !ok {
 			t.Errorf("spec is missing %s %s", method, path)
@@ -59,12 +60,12 @@ func TestOpenAPISpec(t *testing.T) {
 	for _, s := range spec.Components.Schemas["ApplicationResponse"].Properties["status"].Enum {
 		have[s] = true
 	}
-	for _, s := range []string{"PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"} {
+	for _, s := range []string{"PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED", "FORFEITED"} {
 		if !have[s] {
 			t.Errorf("ApplicationResponse.status enum is missing %s", s)
 		}
 	}
-	for _, name := range []string{"AdminProfileRequest", "WithdrawRequest"} {
+	for _, name := range []string{"AdminProfileRequest", "WithdrawRequest", "WithdrawnApplicant"} {
 		if _, ok := spec.Components.Schemas[name]; !ok {
 			t.Errorf("schema %s is missing", name)
 		}

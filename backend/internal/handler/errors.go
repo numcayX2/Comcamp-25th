@@ -33,6 +33,8 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		response.ErrorCode(w, http.StatusForbidden, response.CodeRegistrationClosed, err.Error())
 	case errors.Is(err, service.ErrQuotaExceeded):
 		response.ErrorCode(w, http.StatusConflict, response.CodeQuotaFull, err.Error())
+	case errors.Is(err, service.ErrForfeitedApplicant):
+		response.ErrorCode(w, http.StatusConflict, response.CodeForfeitedApp, err.Error())
 	case errors.Is(err, service.ErrDuplicateApplicant):
 		response.ErrorCode(w, http.StatusConflict, response.CodeDuplicateApp, err.Error())
 	case errors.Is(err, service.ErrIdempotencyKeyReused):

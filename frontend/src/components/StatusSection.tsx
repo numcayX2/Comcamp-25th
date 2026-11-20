@@ -68,6 +68,7 @@ const STATUS_DOT: Record<ApplicationStatus, string> = {
   REJECTED: 'var(--color-danger)',
   REFUND_PENDING: 'var(--color-warning)',
   REFUNDED: 'var(--color-ink-subtle)',
+  FORFEITED: 'var(--color-danger)',
 };
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -78,6 +79,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   REJECTED: 'ไม่ผ่านการคัดเลือก',
   REFUND_PENDING: 'รอคืนเงิน',
   REFUNDED: 'คืนเงินแล้ว',
+  FORFEITED: 'หมดสิทธิ์',
 };
 
 const INK = 'var(--color-ink)';
@@ -205,6 +207,15 @@ function describeHighlight(app: Application, seats: number, feeText: string, now
         badge: 'ไม่ผ่าน / ตัดสิทธิ์อัตโนมัติ',
         title: 'ใบสมัครนี้ไม่ผ่านการคัดเลือกหรือพ้นกำหนดชำระเงิน',
         body: `ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว (อาจไม่ผ่านการคัดเลือก หรือถูกตัดสิทธิ์อัตโนมัติเนื่องจากไม่ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) หากคิดว่าเกิดความผิดพลาด กรุณาติดต่อทีมงาน`,
+        contact: true,
+      };
+    case 'FORFEITED':
+      return {
+        tone: 'danger',
+        icon: CircleX,
+        badge: 'หมดสิทธิ์',
+        title: 'ใบสมัครนี้หมดสิทธิ์เนื่องจากไม่ได้ชำระเงินตามกำหนด',
+        body: `ระบบตัดสิทธิ์อัตโนมัติเพราะไม่ได้ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน (${PAYMENT_WINDOW_HOURS} ชั่วโมง) หลังสมัคร ที่นั่งจึงถูกคืนให้ผู้สมัครคนอื่นแล้ว หากชำระเงินไปแล้วหรือคิดว่าเกิดความผิดพลาด กรุณาติดต่อพี่ค่าย`,
         contact: true,
       };
     case 'RESERVE':

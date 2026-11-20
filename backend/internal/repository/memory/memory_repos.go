@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -284,6 +285,7 @@ func (m *MemoryApplicantRepo) UpdateProfile(ctx context.Context, id uuid.UUID, p
 	a.School, a.Province, a.Grade, a.ShirtSize = p.School, p.Province, p.Grade, p.ShirtSize
 	a.Motivation, a.Allergies, a.MedicalConditions = p.Motivation, p.Allergies, p.MedicalConditions
 	a.ParentName, a.ParentRelation, a.ParentPhone = p.ParentName, p.ParentRelation, p.ParentPhone
+	a.ReferralSources, a.ReferralOther = append([]string{}, p.ReferralSources...), p.ReferralOther
 	if !requireActive { // staff edits count as activity; a self-service edit must not extend the unpaid-expiry grace
 		a.UpdatedAt = time.Now().UTC()
 	}
@@ -347,6 +349,10 @@ func (m *MemoryApplicantRepo) SoftDelete(ctx context.Context, id uuid.UUID, admi
 	now := time.Now().UTC()
 	a.DeletedAt = &now
 	a.UpdatedAt = now
+	a.DeletedReason = domain.DeletedReasonAdminDeleted
+	if adminID == nil {
+		a.DeletedReason = domain.DeletedReasonSelfWithdrawn
+	}
 	// Mirrors migration 000006: the deleted applicant's slips keep their status and hash, but no
 	// longer hold the hash against a new registration sending the same slip.
 	if m.payments != nil {
@@ -388,7 +394,7 @@ func (m *MemoryApplicantRepo) UpdateAttendance(ctx context.Context, id uuid.UUID
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
 // at or before createdCutoff (now - 120h) whose updated_at and latest REJECTED slip timestamp are
-// at or before graceCutoff (now - 24h) and that have no PENDING or APPROVED slip to REJECTED under
+// at or before graceCutoff (now - 24h) and that have no PENDING or APPROVED slip to FORFEITED under
 // payments -> applicants lock ordering, writing both status logs and audit entries.
 func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error) {
 	if p := m.payments; p != nil {
@@ -415,7 +421,7 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, createdCu
 			continue
 		}
 
-		oldStatus, err := m.setStatusLocked(id, domain.StatusRejected, nil, reason)
+		oldStatus, err := m.setStatusLocked(id, domain.StatusForfeited, nil, reason)
 		if err != nil {
 			return expired, err
 		}
@@ -425,7 +431,7 @@ func (m *MemoryApplicantRepo) ExpireOverdueUnpaid(ctx context.Context, createdCu
 			TargetID:   a.ApplicationNo,
 			Details: map[string]any{
 				"oldStatus":   oldStatus,
-				"newStatus":   domain.StatusRejected,
+				"newStatus":   domain.StatusForfeited,
 				"reason":      reason,
 				"cutoff":      utcCutoff.Format(time.RFC3339),
 				"graceCutoff": graceCutoff.Format(time.RFC3339),
@@ -466,6 +472,50 @@ func (m *MemoryApplicantRepo) countActiveLocked() int {
 		}
 	}
 	return count
+}
+
+func (m *MemoryApplicantRepo) HasForfeitedIdentity(ctx context.Context, phone, email string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, a := range m.data {
+		if a.DeletedAt == nil && a.Status == domain.StatusForfeited &&
+			(a.Phone == phone || (email != "" && a.Email == email)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ListWithdrawn mirrors Postgres: the reason comes from the latest application.withdraw.self audit
+// entry of the application.
+func (m *MemoryApplicantRepo) ListWithdrawn(ctx context.Context) ([]domain.WithdrawnApplicant, error) {
+	reasons := map[string]string{}
+	for _, e := range m.audit.Entries() { // oldest first: the latest entry wins
+		if e.Action == domain.AuditApplicantWithdrawSelf {
+			r, _ := e.Details["reason"].(string)
+			reasons[e.TargetID] = r
+		}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	list := []domain.WithdrawnApplicant{}
+	for _, a := range m.data {
+		if a.DeletedAt == nil || a.DeletedReason != domain.DeletedReasonSelfWithdrawn {
+			continue
+		}
+		list = append(list, domain.WithdrawnApplicant{
+			ApplicationNo: a.ApplicationNo, Prefix: a.Prefix, FirstName: a.FirstName, LastName: a.LastName,
+			Nickname: a.Nickname, Phone: a.Phone, School: a.School, Province: a.Province, Status: a.Status,
+			CreatedAt: a.CreatedAt, WithdrawnAt: *a.DeletedAt, Reason: reasons[a.ApplicationNo],
+		})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if !list[i].WithdrawnAt.Equal(list[j].WithdrawnAt) {
+			return list[i].WithdrawnAt.After(list[j].WithdrawnAt)
+		}
+		return list[i].ApplicationNo < list[j].ApplicationNo
+	})
+	return list, nil
 }
 
 func withDetail(e *domain.AuditEntry, key string, value any) *domain.AuditEntry {

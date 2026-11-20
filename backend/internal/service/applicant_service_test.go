@@ -599,7 +599,7 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 		t.Fatalf("expected 0 expired at +119h, got %v", expired119)
 	}
 
-	// 3. At +121h (> 120h), only the unpaid applicant expires to REJECTED; slip holders stay active.
+	// 3. At +121h (> 120h), only the unpaid applicant expires to FORFEITED; slip holders stay active.
 	seatChanges.Store(0)
 	expired121, err := svc.ExpireOverdueUnpaid(ctx, now.Add(121*time.Hour))
 	if err != nil {
@@ -613,8 +613,8 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 	}
 
 	gotUnpaid, _ := appRepo.GetByApplicationNo(ctx, unpaid.ID)
-	if gotUnpaid.Status != domain.StatusRejected {
-		t.Fatalf("expected expired unpaid status REJECTED, got %s", gotUnpaid.Status)
+	if gotUnpaid.Status != domain.StatusForfeited {
+		t.Fatalf("expected expired unpaid status FORFEITED, got %s", gotUnpaid.Status)
 	}
 	gotPending, _ := appRepo.GetByApplicationNo(ctx, pendingRes.ID)
 	if gotPending.Status != domain.StatusPassed {
@@ -633,7 +633,7 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 		if sl.ApplicantID != gotUnpaid.ID {
 			continue
 		}
-		if sl.OldStatus == domain.StatusPassed && sl.NewStatus == domain.StatusRejected &&
+		if sl.OldStatus == domain.StatusPassed && sl.NewStatus == domain.StatusForfeited &&
 			sl.Reason != nil && *sl.Reason == service.UnpaidExpiryReason {
 			foundLog = true
 		}
@@ -650,6 +650,25 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 	}
 	if !foundAudit {
 		t.Fatalf("expected audit log %s for %s", domain.AuditPaymentExpired, unpaid.ID)
+	}
+
+	// A forfeited applicant cannot register again with the same phone or the same email: they are
+	// told to contact staff instead of seeing the generic duplicate answer.
+	for _, id := range []struct{ phone, email string }{{"0830000001", "new1@test.com"}, {"0830000099", "u1@test.com"}} {
+		_, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+			FullName: "สมชาย ทดสอบ", Nickname: "ชาย", Phone: id.phone, Email: id.email,
+			School: "โรงเรียนแม่โจ้วิทยาคม", Grade: "ม.5", ShirtSize: "L",
+		})
+		if !errors.Is(err, service.ErrForfeitedApplicant) {
+			t.Fatalf("re-register %s/%s: want ErrForfeitedApplicant, got %v", id.phone, id.email, err)
+		}
+	}
+	// A live duplicate that is not forfeited keeps the generic answer.
+	if _, err := svc.Submit(ctx, service.ApplicationCreateRequest{
+		FullName: "สมชาย ทดสอบ", Nickname: "ชาย", Phone: "0830000002", Email: "other@test.com",
+		School: "โรงเรียนแม่โจ้วิทยาคม", Grade: "ม.5", ShirtSize: "L",
+	}); !errors.Is(err, service.ErrDuplicateApplicant) {
+		t.Fatalf("duplicate of a live PASSED phone: want ErrDuplicateApplicant, got %v", err)
 	}
 
 	// 4. Full camp (maxCapacity = 1) with an unpaid 121h-old applicant automatically frees their
@@ -695,8 +714,8 @@ func TestApplicantService_ExpireOverdueUnpaid_120Hours(t *testing.T) {
 		t.Fatalf("expected second applicant PASSED, got %s", second.Status)
 	}
 	firstAfter, _ := capAppRepo.GetByApplicationNo(ctx, first.ID)
-	if firstAfter.Status != domain.StatusRejected {
-		t.Fatalf("expected first applicant auto-rejected after 121h, got %s", firstAfter.Status)
+	if firstAfter.Status != domain.StatusForfeited {
+		t.Fatalf("expected first applicant forfeited after 121h, got %s", firstAfter.Status)
 	}
 	if n, _ := capAppRepo.CountActive(ctx); n != 1 {
 		t.Fatalf("expected 1 active seat after swap, got %d", n)

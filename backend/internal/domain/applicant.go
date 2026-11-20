@@ -19,20 +19,30 @@ const (
 	// released straight away (see IsActive) while the row stays in the ledger for accounting.
 	StatusRefundPending ApplicationStatus = "REFUND_PENDING"
 	StatusRefunded      ApplicationStatus = "REFUNDED"
+	// StatusForfeited: the seat was released automatically because the fee was not paid in time
+	// (ExpireOverdueUnpaid). The row stays live, so its phone and email stay taken: registering
+	// again with either is refused with ErrForfeitedApplicant until staff restore or delete it.
+	StatusForfeited ApplicationStatus = "FORFEITED"
+)
+
+// Why a soft-deleted application was deleted (applicants.deleted_reason, migration 000013).
+const (
+	DeletedReasonSelfWithdrawn = "SELF_WITHDRAWN"
+	DeletedReasonAdminDeleted  = "ADMIN_DELETED"
 )
 
 func (s ApplicationStatus) IsValid() bool {
 	switch s {
 	case StatusPending, StatusPassed, StatusReserve, StatusConfirmed, StatusRejected,
-		StatusRefundPending, StatusRefunded:
+		StatusRefundPending, StatusRefunded, StatusForfeited:
 		return true
 	}
 	return false
 }
 
 // IsActive reports whether an application in this status holds a seat: every status except
-// REJECTED, REFUND_PENDING and REFUNDED. The quota count, self-service editing and slip review
-// all follow this one definition. (The SQL twin is countActiveSQL in the postgres package.)
+// REJECTED, REFUND_PENDING, REFUNDED and FORFEITED. The quota count, self-service editing and slip
+// review all follow this one definition. (The SQL twin is countActiveSQL in the postgres package.)
 func (s ApplicationStatus) IsActive() bool {
 	switch s {
 	case StatusPending, StatusPassed, StatusReserve, StatusConfirmed:
@@ -79,6 +89,12 @@ type Applicant struct {
 	CreatedAt           time.Time         `db:"created_at" json:"createdAt"`
 	UpdatedAt           time.Time         `db:"updated_at" json:"updatedAt"`
 	DeletedAt           *time.Time        `db:"deleted_at" json:"-"`
+	// ReferralSources are the allowlisted codes of where the applicant heard about the camp
+	// (service.referralCodes); ReferralOther is the free text that goes with "other".
+	ReferralSources []string `db:"referral_sources" json:"referralSources"`
+	ReferralOther   string   `db:"referral_other" json:"referralOther,omitempty"`
+	// DeletedReason is DeletedReasonSelfWithdrawn or DeletedReasonAdminDeleted on a deleted row.
+	DeletedReason string `db:"deleted_reason" json:"-"`
 }
 
 func (a *Applicant) FullName() string {
@@ -101,6 +117,23 @@ type PublicApplicant struct {
 	Status    ApplicationStatus
 }
 
+// WithdrawnApplicant is one application the applicant withdrew themselves (deleted_reason
+// SELF_WITHDRAWN), for the read-only staff list. Reason is what they typed when withdrawing.
+type WithdrawnApplicant struct {
+	ApplicationNo string
+	Prefix        string
+	FirstName     string
+	LastName      string
+	Nickname      string
+	Phone         string
+	School        string
+	Province      string
+	Status        ApplicationStatus
+	CreatedAt     time.Time
+	WithdrawnAt   time.Time
+	Reason        string
+}
+
 // ProfileFields are the applicant columns that can be edited after registration.
 type ProfileFields struct {
 	FirstName         string
@@ -120,6 +153,8 @@ type ProfileFields struct {
 	ParentPhone       *string
 	EmergencyContact  string
 	EmergencyPhone    string
+	ReferralSources   []string
+	ReferralOther     string
 }
 
 type ApplicantStatusLog struct {
@@ -158,6 +193,8 @@ type ApplicantRepository interface {
 	// refused with ErrStateConflict unless the application still holds a seat. Identifier
 	// collisions with other live rows return ErrDuplicateApplicant.
 	UpdateProfile(ctx context.Context, id uuid.UUID, p ProfileFields, requireActive bool, audit *AuditEntry) error
+	// SoftDelete hides the applicant: a staff delete (adminID set, deleted_reason ADMIN_DELETED) or the
+	// applicant's own withdrawal (adminID nil, SELF_WITHDRAWN).
 	SoftDelete(ctx context.Context, id uuid.UUID, adminID *int64, reason string, audit *AuditEntry) error
 	// UpdateAttendance records the applicant's answer and writes the audit entry (when non-nil) in
 	// one transaction. It is refused with ErrStateConflict unless the application is still PASSED
@@ -166,10 +203,16 @@ type ApplicantRepository interface {
 	// ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE)
 	// created at or before createdCutoff (now - UnpaidExpiryWindow) whose updated_at and latest
 	// REJECTED slip timestamp (verified_at, falling back to uploaded_at) are at or before
-	// graceCutoff (now - UnpaidGraceWindow) and that have no PENDING/APPROVED slip to REJECTED,
+	// graceCutoff (now - UnpaidGraceWindow) and that have no PENDING/APPROVED slip to FORFEITED,
 	// writing status and audit logs atomically and returning the expired application_no list.
 	// Both cutoffs come from the service so the repositories never re-derive one from the other.
 	ExpireOverdueUnpaid(ctx context.Context, createdCutoff, graceCutoff time.Time, reason string) ([]string, error)
+	// HasForfeitedIdentity reports whether a live FORFEITED application holds this phone or this
+	// (non-empty) email.
+	HasForfeitedIdentity(ctx context.Context, phone, email string) (bool, error)
+	// ListWithdrawn returns the applications their applicants withdrew (deleted_reason
+	// SELF_WITHDRAWN), most recent first.
+	ListWithdrawn(ctx context.Context) ([]WithdrawnApplicant, error)
 	CountActive(ctx context.Context) (int, error)
 	// ListPublic returns the public-list projection of every live (non-deleted) application whose
 	// status is PASSED or CONFIRMED, oldest first (created_at ascending, id as tiebreak).

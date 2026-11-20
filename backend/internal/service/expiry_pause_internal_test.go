@@ -13,6 +13,23 @@ import (
 	"comcamp25-backend/internal/repository/memory"
 )
 
+// settingsOpenAround returns an in-memory settings store whose registration window contains now.
+// The default store opens relative to the wall clock, which a fixed fake clock falls outside of.
+func settingsOpenAround(t *testing.T, now time.Time) *memory.MemorySettingRepo {
+	t.Helper()
+	repo := memory.NewMemorySettingRepo()
+	s, err := repo.Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RegistrationOpenAt = now.Add(-time.Hour)
+	s.RegistrationCloseAt = now.Add(14 * 24 * time.Hour)
+	if err := repo.Update(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
 // fireHardCeiling makes distinct clean clients send unknown codes until the global hard ceiling is
 // reached at the guard's current time.
 func fireHardCeiling(t *testing.T, g *CodeGuard) {
@@ -33,7 +50,7 @@ func TestExpireOverdueUnpaid_PausedWhileCodeCeilingFiredRecently(t *testing.T) {
 	payRepo := memory.NewMemoryPaymentRepo(appRepo)
 	guard, clock, audit := newTestCodeGuard(CodeGuardConfig{})
 	created := clock.Now()
-	svc := NewApplicantService(appRepo, memory.NewMemorySettingRepo(), payRepo).
+	svc := NewApplicantService(appRepo, settingsOpenAround(t, created), payRepo).
 		WithCodeGuard(guard).
 		WithNow(clock.Now)
 
@@ -43,6 +60,11 @@ func TestExpireOverdueUnpaid_PausedWhileCodeCeilingFiredRecently(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
+	}
+	// The memory repo stamps rows with the wall clock; line them up with the fake one.
+	stored, _ := appRepo.GetByApplicationNo(ctx, res.ID)
+	if err := appRepo.SetTimestampsForTest(stored.ID, created, created); err != nil {
+		t.Fatal(err)
 	}
 
 	// The flood happens on the last day of the payment window.

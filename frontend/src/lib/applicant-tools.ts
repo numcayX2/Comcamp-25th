@@ -19,6 +19,7 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   REJECTED: 'ไม่ผ่าน',
   REFUND_PENDING: 'รอคืนเงิน',
   REFUNDED: 'คืนเงินแล้ว',
+  FORFEITED: 'หมดสิทธิ์ (ไม่ชำระตามกำหนด)',
 };
 
 /** Payment-slip state as staff read it. */

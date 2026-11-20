@@ -344,7 +344,7 @@ func TestListPublicApplicants_ReleasesOverdueUnpaidBeforeReading(t *testing.T) {
 	if len(got) != 1 || got[0].No != 1 || got[0].FullName != kept.FirstName+" "+kept.LastName {
 		t.Fatalf("expected only the paid-up seat, got %+v", got)
 	}
-	if a, _ := f.apps.GetByID(ctx, overdue.ID); a.Status != domain.StatusRejected {
+	if a, _ := f.apps.GetByID(ctx, overdue.ID); a.Status != domain.StatusForfeited {
 		t.Fatalf("the overdue seat must be released by the list read, status = %s", a.Status)
 	}
 

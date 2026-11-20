@@ -77,7 +77,7 @@ import {
   AMBER_ON,
 } from './admin-ui';
 
-const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'REFUND_PENDING', 'REFUNDED'];
+const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'FORFEITED', 'REFUND_PENDING', 'REFUNDED'];
 const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE'];
 
 type FilterKey = 'ALL' | 'SLIP_PENDING' | 'AWAITING_PAY' | ApplicationStatus;
@@ -123,6 +123,7 @@ const STATUS_DOT: Record<ApplicationStatus, string> = {
   REJECTED: DANGER,
   REFUND_PENDING: WARNING,
   REFUNDED: INK_3,
+  FORFEITED: DANGER,
 };
 
 const SLIP_DOT: Record<SlipStatus, string> = {

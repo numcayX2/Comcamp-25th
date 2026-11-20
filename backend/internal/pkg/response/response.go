@@ -27,6 +27,7 @@ const (
 	CodeInvalidImageDims   = "INVALID_IMAGE_DIMENSIONS"
 	CodeSlipChanged        = "SLIP_CHANGED"
 	CodeCaptchaFailed      = "CAPTCHA_FAILED"
+	CodeForfeitedApp       = "FORFEITED_APPLICATION"
 )
 
 type ErrorResponse struct {

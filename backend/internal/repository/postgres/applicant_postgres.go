@@ -32,7 +32,7 @@ const insertApplicantSQL = `
 		parent_name, parent_relation, parent_phone, emergency_contact, emergency_phone,
 		shirt_size, allergies, medical_conditions, has_laptop, motivation, portfolio_url,
 		parent_permission_url, status, attendance_confirmed, certificate_url,
-		idempotency_key, created_at, updated_at
+		idempotency_key, created_at, updated_at, referral_sources, referral_other
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11, $12, $13,
@@ -40,7 +40,7 @@ const insertApplicantSQL = `
 		$19, $20, $21, $22, $23,
 		$24, $25, $26, $27, $28, $29,
 		$30, $31, $32, $33,
-		$34, $35, $36
+		$34, $35, $36, $37, $38
 	)
 `
 
@@ -59,7 +59,7 @@ func insertApplicant(ctx context.Context, db execer, a *domain.Applicant) error 
 		a.ParentName, a.ParentRelation, a.ParentPhone, a.EmergencyContact, a.EmergencyPhone,
 		a.ShirtSize, a.Allergies, a.MedicalConditions, a.HasLaptop, a.Motivation, a.PortfolioURL,
 		a.ParentPermissionURL, a.Status, a.AttendanceConfirmed, a.CertificateURL,
-		a.IdempotencyKey, a.CreatedAt, a.UpdatedAt,
+		a.IdempotencyKey, a.CreatedAt, a.UpdatedAt, nonNilStrings(a.ReferralSources), a.ReferralOther,
 	)
 	if err != nil {
 		if mapped := mapPgError(err); mapped != err {
@@ -68,6 +68,14 @@ func insertApplicant(ctx context.Context, db execer, a *domain.Applicant) error 
 		return fmt.Errorf("failed to insert applicant: %w", err)
 	}
 	return nil
+}
+
+// nonNilStrings keeps a TEXT[] NOT NULL column from receiving NULL: pgx encodes a nil slice as NULL.
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (r *ApplicantPostgresRepo) Create(ctx context.Context, a *domain.Applicant) error {
@@ -276,12 +284,13 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 			parent_name = $13, parent_relation = $14, parent_phone = $15,
 			emergency_contact = CASE WHEN $16 <> '' THEN $16 ELSE emergency_contact END,
 			emergency_phone = CASE WHEN $17 <> '' THEN $17 WHEN emergency_phone = phone THEN $4 ELSE emergency_phone END,
-			updated_at = CASE WHEN $20::boolean THEN updated_at ELSE $18 END
+			updated_at = CASE WHEN $20::boolean THEN updated_at ELSE $18 END,
+			referral_sources = $21, referral_other = $22
 		WHERE id = $19
 	`, p.FirstName, p.LastName, p.Nickname, p.Phone, p.Email, p.School, p.Province,
 		p.Grade, p.ShirtSize, p.Motivation, p.Allergies, p.MedicalConditions,
 		p.ParentName, p.ParentRelation, p.ParentPhone, p.EmergencyContact, p.EmergencyPhone,
-		time.Now().UTC(), id, requireActive)
+		time.Now().UTC(), id, requireActive, nonNilStrings(p.ReferralSources), p.ReferralOther)
 	if err != nil {
 		if mapped := mapPgError(err); mapped != err {
 			return mapped
@@ -381,7 +390,11 @@ func (r *ApplicantPostgresRepo) SoftDelete(ctx context.Context, id uuid.UUID, ad
 	if _, err := tx.Exec(ctx, `UPDATE payments SET applicant_deleted = true WHERE applicant_id = $1 AND NOT applicant_deleted`, id); err != nil {
 		return fmt.Errorf("release slips: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE applicants SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, id); err != nil {
+	deletedReason := domain.DeletedReasonAdminDeleted
+	if adminID == nil {
+		deletedReason = domain.DeletedReasonSelfWithdrawn
+	}
+	if _, err := tx.Exec(ctx, `UPDATE applicants SET deleted_at = $1, updated_at = $1, deleted_reason = $3 WHERE id = $2`, now, id, deletedReason); err != nil {
 		return fmt.Errorf("failed to soft delete applicant: %w", err)
 	}
 
@@ -434,7 +447,7 @@ func (r *ApplicantPostgresRepo) UpdateAttendance(ctx context.Context, id uuid.UU
 }
 
 // ExpireOverdueUnpaid transitions active unpaid applications (PENDING, PASSED, RESERVE) created
-// at or before createdCutoff (now - 120h) without a PENDING or APPROVED slip to REJECTED, while
+// at or before createdCutoff (now - 120h) without a PENDING or APPROVED slip to FORFEITED, while
 // granting a grace period up to graceCutoff (now - 24h) from applicants.updated_at and from any
 // REJECTED payment's verified_at (or uploaded_at when verified_at is null). Each candidate runs in its own
 // transaction acquiring lockApplicantSlips before the applicant row lock (matching SoftDelete /
@@ -546,7 +559,7 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 		return "", false, nil
 	}
 
-	if err := setStatusTx(ctx, tx, id, oldStatus, domain.StatusRejected, nil, reason); err != nil {
+	if err := setStatusTx(ctx, tx, id, oldStatus, domain.StatusForfeited, nil, reason); err != nil {
 		return "", false, err
 	}
 
@@ -556,7 +569,7 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 		TargetID:   appNo,
 		Details: map[string]any{
 			"oldStatus":   oldStatus,
-			"newStatus":   domain.StatusRejected,
+			"newStatus":   domain.StatusForfeited,
 			"reason":      reason,
 			"cutoff":      cutoff.Format(time.RFC3339),
 			"graceCutoff": graceCutoff.Format(time.RFC3339),
@@ -572,15 +585,63 @@ func (r *ApplicantPostgresRepo) expireSingleUnpaid(ctx context.Context, id uuid.
 	return appNo, true, nil
 }
 
-// countActiveSQL is the quota count: every live row that holds a seat. REJECTED, REFUND_PENDING
-// and REFUNDED release theirs immediately but stay in the table for the ledger. Keep in step
-// with domain.ApplicationStatus.IsActive.
-const countActiveSQL = `SELECT count(*) FROM applicants WHERE status NOT IN ('REJECTED', 'REFUND_PENDING', 'REFUNDED') AND deleted_at IS NULL`
+// countActiveSQL is the quota count: every live row that holds a seat. REJECTED, REFUND_PENDING,
+// REFUNDED and FORFEITED release theirs immediately but stay in the table for the ledger. Keep in
+// step with domain.ApplicationStatus.IsActive.
+const countActiveSQL = `SELECT count(*) FROM applicants WHERE status NOT IN ('REJECTED', 'REFUND_PENDING', 'REFUNDED', 'FORFEITED') AND deleted_at IS NULL`
 
 func (r *ApplicantPostgresRepo) CountActive(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, countActiveSQL).Scan(&count)
 	return count, err
+}
+
+// HasForfeitedIdentity uses the live phone/email unique indexes: at most one row per identifier.
+func (r *ApplicantPostgresRepo) HasForfeitedIdentity(ctx context.Context, phone, email string) (bool, error) {
+	var found bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM applicants
+			WHERE deleted_at IS NULL AND status = 'FORFEITED'
+			  AND (phone = $1 OR ($2 <> '' AND email = $2))
+		)`, phone, email).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("check forfeited identity: %w", err)
+	}
+	return found, nil
+}
+
+// ListWithdrawn reads the reason from the applicant's application.withdraw.self audit row (the
+// withdrawal writes it in the same transaction as the delete).
+func (r *ApplicantPostgresRepo) ListWithdrawn(ctx context.Context) ([]domain.WithdrawnApplicant, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT a.application_no, a.prefix, a.first_name, a.last_name, a.nickname, a.phone,
+		       a.school, a.province, a.status, a.created_at, a.deleted_at,
+		       COALESCE(l.details->>'reason', '')
+		FROM applicants a
+		LEFT JOIN LATERAL (
+			SELECT details FROM audit_logs
+			WHERE action = 'application.withdraw.self' AND target_type = 'applicant'
+			  AND target_id = a.application_no
+			ORDER BY created_at DESC, id DESC
+			LIMIT 1
+		) l ON true
+		WHERE a.deleted_at IS NOT NULL AND a.deleted_reason = 'SELF_WITHDRAWN'
+		ORDER BY a.deleted_at DESC, a.id`)
+	if err != nil {
+		return nil, fmt.Errorf("list withdrawn applicants: %w", err)
+	}
+	defer rows.Close()
+	list := []domain.WithdrawnApplicant{}
+	for rows.Next() {
+		var w domain.WithdrawnApplicant
+		if err := rows.Scan(&w.ApplicationNo, &w.Prefix, &w.FirstName, &w.LastName, &w.Nickname, &w.Phone,
+			&w.School, &w.Province, &w.Status, &w.CreatedAt, &w.WithdrawnAt, &w.Reason); err != nil {
+			return nil, fmt.Errorf("scan withdrawn applicant: %w", err)
+		}
+		list = append(list, w)
+	}
+	return list, rows.Err()
 }
 
 const applicantColumns = `
@@ -590,7 +651,8 @@ const applicantColumns = `
 	parent_name, parent_relation, parent_phone, emergency_contact, emergency_phone,
 	shirt_size, allergies, medical_conditions, has_laptop, motivation, portfolio_url,
 	parent_permission_url, status, attendance_confirmed, certificate_url,
-	idempotency_key, created_at, updated_at, deleted_at
+	idempotency_key, created_at, updated_at, deleted_at,
+	referral_sources, referral_other, deleted_reason
 `
 
 func (r *ApplicantPostgresRepo) scanSingle(row pgx.Row) (*domain.Applicant, error) {
@@ -611,6 +673,7 @@ func scanApplicant(s scannable) (*domain.Applicant, error) {
 		&a.ShirtSize, &a.Allergies, &a.MedicalConditions, &a.HasLaptop, &a.Motivation, &a.PortfolioURL,
 		&a.ParentPermissionURL, &a.Status, &a.AttendanceConfirmed, &a.CertificateURL,
 		&a.IdempotencyKey, &a.CreatedAt, &a.UpdatedAt, &a.DeletedAt,
+		&a.ReferralSources, &a.ReferralOther, &a.DeletedReason,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
