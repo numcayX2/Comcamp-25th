@@ -115,13 +115,17 @@ const tocItems = [
   <div class="gd-body">
     <nav id="guide-toc" class="gd-toc" aria-label="สารบัญ">
       <p class="gd-toc__heading" aria-hidden="true">สารบัญ</p>
-      <ul class="gd-toc__list">
-        {tocItems.map((item) => (
-          <li class="gd-toc__item">
-            <a class="gd-toc__link" href={`#${item.id}`}>{item.label}</a>
-          </li>
-        ))}
-      </ul>
+      <div class="gd-toc__track">
+        <span class="gd-toc__rail" aria-hidden="true"><span class="gd-toc__progress"></span></span>
+        <span class="gd-toc__marker" aria-hidden="true"></span>
+        <ul class="gd-toc__list">
+          {tocItems.map((item) => (
+            <li class="gd-toc__item">
+              <a class="gd-toc__link" href={`#${item.id}`}>{item.label}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
     </nav>
 
     <div class="gd-content">
@@ -581,4 +585,101 @@ const tocItems = [
 
   syncGuidePublicSettings();
   document.addEventListener('astro:page-load', syncGuidePublicSettings);
+
+  /* Table of contents: scroll-spy (aria-current), a sliding marker behind the active link and a
+     reading-progress rail on desktop; on mobile the active chip is kept in view in its scroller.
+     Enhance-only: without this script the ToC is the plain link list. */
+  function initGuideToc() {
+    const toc = document.getElementById('guide-toc');
+    if (!toc || toc.dataset.spyBound === 'true') return;
+    const track = toc.querySelector<HTMLElement>('.gd-toc__track');
+    const list = toc.querySelector<HTMLElement>('.gd-toc__list');
+    const content = document.querySelector<HTMLElement>('.gd-content');
+    if (!track || !list || !content) return;
+    const items = Array.from(toc.querySelectorAll<HTMLAnchorElement>('.gd-toc__link'))
+      .map((link) => ({ link, sec: document.getElementById(decodeURIComponent(link.hash.slice(1))) }))
+      .filter((it): it is { link: HTMLAnchorElement; sec: HTMLElement } => it.sec !== null);
+    if (!items.length) return;
+    toc.dataset.spyBound = 'true';
+
+    const wide = window.matchMedia('(min-width: 900px)');
+    let current: HTMLAnchorElement | null = null;
+    let lockUntil = 0;
+    let tick = 0;
+
+    const placeMarker = () => {
+      if (!current) return;
+      track.style.setProperty('--gd-marker-y', `${current.offsetTop}px`);
+      track.style.setProperty('--gd-marker-h', `${current.offsetHeight}px`);
+    };
+
+    const setActive = (link: HTMLAnchorElement | null) => {
+      if (link === current) return;
+      current?.removeAttribute('aria-current');
+      current = link;
+      if (!link) {
+        toc.removeAttribute('data-spy');
+        return;
+      }
+      link.setAttribute('aria-current', 'true');
+      placeMarker();
+      toc.setAttribute('data-spy', '');
+      // Mobile: the chips scroll sideways; bring the active one into view without moving the page.
+      if (!wide.matches && list.scrollWidth > list.clientWidth) {
+        const left = link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2;
+        list.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+      }
+    };
+
+    const update = () => {
+      tick = 0;
+      const probe = Math.max(120, Math.round(window.innerHeight * 0.3));
+      const box = content.getBoundingClientRect();
+      const progress = Math.min(1, Math.max(0, (probe - box.top) / Math.max(1, box.height - window.innerHeight + probe)));
+      track.style.setProperty('--gd-progress', progress.toFixed(4));
+      if (performance.now() < lockUntil) return;
+      const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      let active: HTMLAnchorElement | null = null;
+      for (const it of items) {
+        if (it.sec.getBoundingClientRect().top <= probe) active = it.link;
+      }
+      if (atEnd && box.bottom <= window.innerHeight + 2) active = items[items.length - 1].link;
+      setActive(active);
+    };
+    const request = () => {
+      if (!tick) tick = requestAnimationFrame(update);
+    };
+
+    // A ToC click marks its target right away and holds it while the smooth scroll passes the
+    // sections in between, so the marker travels once instead of stepping through each one.
+    list.addEventListener('click', (e) => {
+      const link = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.gd-toc__link');
+      if (!link) return;
+      lockUntil = performance.now() + 1200;
+      setActive(link);
+      // Browsers without `scrollend` (older Safari) re-check once the lock has run out.
+      window.setTimeout(request, 1250);
+    });
+    window.addEventListener('scrollend', () => {
+      lockUntil = 0;
+      request();
+    });
+    window.addEventListener('scroll', request, { passive: true });
+    window.addEventListener('resize', () => {
+      placeMarker();
+      request();
+    });
+    wide.addEventListener?.('change', () => {
+      placeMarker();
+      request();
+    });
+    document.fonts?.ready.then(() => {
+      placeMarker();
+      request();
+    });
+    update();
+  }
+
+  initGuideToc();
+  document.addEventListener('astro:page-load', initGuideToc);
 </script>
