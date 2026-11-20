@@ -1213,8 +1213,16 @@
   flex: 1 1 auto;
 }
 .faq-q {
+  display: block;
+  /* Room for the open question to grow (scale 1.03) without reaching the +/− mark. */
+  max-width: calc(100% / 1.03);
   letter-spacing: 0;
   min-width: 0;
+  transform-origin: left center;
+}
+/* End state of the open question; main.js (initFaqSpring) springs between 1 and this value. */
+#faq details.faq-item[open] .faq-q {
+  scale: 1.03;
 }
 @media (hover: hover) and (pointer: fine) {
   #faq details.faq-item summary:hover {

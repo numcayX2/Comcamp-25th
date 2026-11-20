@@ -1220,6 +1220,84 @@
     applyHeroState();
   })();
 
+  // FAQ: the question bar opens and closes on a stiff spring (slight overshoot, quick settle) and
+  // the open question grows a touch. Native <details> stays the source of truth: without this
+  // script, or with reduced motion, it opens instantly and the CSS end state still applies.
+  (function initFaqSpring(){
+    var items = document.querySelectorAll('#faq details.faq-item');
+    if (!items.length || typeof Element.prototype.animate !== 'function') return;
+    var reduceMq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var Q_OPEN = 1.03; // keep in step with `#faq details.faq-item[open] .faq-q { scale }` in editorial.css
+
+    // Unit spring 0 -> 1 sampled at 60 fps: stiffness 520, damping 34, mass 1 (damping ratio ~0.75).
+    var SPRING = (function(){
+      var k = 520, c = 34, dt = 1 / 240, x = 0, v = 0, t = 0, out = [0], next = 1 / 60;
+      while (t < 1.2) {
+        v += (-k * (x - 1) - c * v) * dt;
+        x += v * dt;
+        t += dt;
+        if (t >= next) { out.push(x); next += 1 / 60; }
+        if (Math.abs(1 - x) < 0.0008 && Math.abs(v) < 0.02) break;
+      }
+      out[out.length - 1] = 1;
+      return { p: out, ms: Math.round(t * 1000) };
+    })();
+
+    function frames(prop, from, to, unit){
+      return SPRING.p.map(function(p){
+        var o = {};
+        o[prop] = (from + (to - from) * p) + unit;
+        return o;
+      });
+    }
+
+    Array.prototype.forEach.call(items, function(item){
+      var summary = item.querySelector('summary');
+      var q = item.querySelector('.faq-q');
+      if (!summary || item.dataset.ccSpring) return;
+      item.dataset.ccSpring = '1';
+      var heightAnim = null;
+      var qAnim = null;
+
+      summary.addEventListener('click', function(e){
+        if (reduceMq && reduceMq.matches) return; // native toggle, no motion
+        e.preventDefault();
+        var opening = !item.open || item.dataset.closing === '1';
+        var startH = item.getBoundingClientRect().height;
+        var startQ = q ? (parseFloat(getComputedStyle(q).scale) || 1) : 1;
+        if (heightAnim) heightAnim.cancel();
+        if (qAnim) qAnim.cancel();
+
+        var endH;
+        if (opening) {
+          delete item.dataset.closing;
+          item.open = true;
+          endH = item.getBoundingClientRect().height;
+        } else {
+          item.dataset.closing = '1';
+          endH = summary.getBoundingClientRect().height;
+        }
+
+        // Both hold their last frame until the <details> state is final, so nothing flashes.
+        item.style.overflow = 'hidden';
+        heightAnim = item.animate(frames('height', startH, endH, 'px'), { duration: SPRING.ms, easing: 'linear', fill: 'forwards' });
+        if (q) qAnim = q.animate(frames('scale', startQ, opening ? Q_OPEN : 1, ''), { duration: SPRING.ms, easing: 'linear', fill: 'forwards' });
+        var run = heightAnim;
+        run.onfinish = function(){
+          if (heightAnim !== run) return;
+          if (item.dataset.closing === '1') {
+            delete item.dataset.closing;
+            item.open = false;
+          }
+          item.style.overflow = '';
+          heightAnim.cancel();
+          heightAnim = null;
+          if (qAnim) { qAnim.cancel(); qAnim = null; }
+        };
+      });
+    });
+  })();
+
   // Navbar: mobile disclosure + scroll-spy for the section in view.
   (function initNav(){
     var nav = document.querySelector('.site-nav');
