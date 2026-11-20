@@ -163,7 +163,7 @@ export function AdminSettingsPanel({
   onAuthError,
   onSettings,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   /** The server's own verdict (isOpen from /settings/public). null means the server did not answer. */
@@ -405,7 +405,7 @@ export function AdminSettingsPanel({
   const panelId = 'admin-settings-body';
 
   return (
-    <section className="mt-5 border-y" style={{ borderColor: RULE }} aria-label="ตั้งค่าการรับสมัคร">
+    <section aria-label="ตั้งค่าการรับสมัคร">
       <button
         type="button"
         aria-expanded={open}

@@ -139,7 +139,7 @@ function LogoThumb({ src, alt }: { src: string; alt: string }) {
  * delete (2-step confirm) and move up/down. Read-only list when `canEdit` is false.
  */
 export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [sponsors, setSponsors] = useState<AdminSponsor[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -559,7 +559,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
   const iconBtn = `inline-flex size-11 shrink-0 items-center justify-center rounded-full border transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-40 ${FOCUS}`;
 
   return (
-    <section className="mt-5 border-y" style={{ borderColor: RULE }} aria-label="ผู้สนับสนุน (หน้าแรก)">
+    <section aria-label="ผู้สนับสนุน (หน้าแรก)">
       <button
         type="button"
         aria-expanded={open}

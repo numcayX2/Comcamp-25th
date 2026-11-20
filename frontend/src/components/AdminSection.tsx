@@ -4,18 +4,25 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleCheck,
+  ClipboardList,
   Download,
   Eye,
   EyeOff,
+  HeartHandshake,
+  LayoutDashboard,
   LogOut,
   Maximize2,
   Pencil,
   RotateCcw,
   RotateCw,
   Search,
+  Settings2,
+  Shirt,
   Trash2,
   TriangleAlert,
+  UserX,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import {
   ApiHttpError,
@@ -51,18 +58,17 @@ import {
   matchesApplicantQuery,
   matchesWithdrawnQuery,
   slipLabel,
-  summarizeReferrals,
-  summarizeShirtSizes,
 } from '../lib/applicant-tools';
 import {
   PAYMENT_WINDOW_DAYS,
-  SHIRT_SIZES,
   describeStaffPaymentDeadline,
   type PaymentDeadlineInfo,
 } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { AdminSponsorsPanel } from './AdminSponsorsPanel';
+import { AdminOverview } from './admin/AdminOverview';
+import { AdminLogistics } from './admin/AdminLogistics';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
   BG_CANVAS,
@@ -92,6 +98,38 @@ const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE'];
 
 type FilterKey = 'ALL' | 'SLIP_PENDING' | 'AWAITING_PAY' | ApplicationStatus | 'WITHDRAWN';
 type SortKey = 'newest' | 'slip_queue' | 'updated_desc';
+
+/** Views of the staff dashboard; the active one lives in `location.hash` so refresh and Back keep it. */
+type AdminView = 'overview' | 'applications' | 'withdrawn' | 'logistics' | 'sponsors' | 'settings';
+const ADMIN_VIEWS: readonly AdminView[] = ['overview', 'applications', 'withdrawn', 'logistics', 'sponsors', 'settings'];
+
+function viewFromHash(): AdminView {
+  const h = window.location.hash.replace(/^#/, '');
+  return (ADMIN_VIEWS as readonly string[]).includes(h) ? (h as AdminView) : 'overview';
+}
+
+/** Raised panel on the warm canvas (home-page elevation tokens; no panel is nested in another). */
+const PANEL = 'rounded-[24px] bg-[var(--bg-card)] p-[clamp(20px,2.4vw,28px)] [box-shadow:var(--shadow-card)]';
+
+function ViewHeading({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <header className="mb-5">
+      <h2
+        tabIndex={-1}
+        data-view-heading
+        className="text-balance text-[1.375rem] font-bold leading-[1.3] outline-none sm:text-[1.625rem]"
+        style={{ color: INK }}
+      >
+        {title}
+      </h2>
+      {sub && (
+        <p className="mt-1 max-w-[72ch] text-sm leading-[1.7]" style={{ color: INK_2 }}>
+          {sub}
+        </p>
+      )}
+    </header>
+  );
+}
 
 type LocalSlipVerdict = {
   approved: boolean;
@@ -256,9 +294,10 @@ function sortApplications(list: Application[], sortBy: SortKey): Application[] {
   return copy.sort((x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? '') || x.id.localeCompare(y.id));
 }
 
-/** Column template shared by the sticky column header and every application row (lg and up). */
+/** Ledger columns (lg and up); the wide template applies once the ledger itself is >= 68rem, so the
+ *  xl sidebar does not squeeze the name and school columns. */
 const ROW_GRID =
-  'lg:grid-cols-[8rem_minmax(0,1.35fr)_minmax(0,1.1fr)_9rem_10.5rem_12.5rem] xl:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_10.5rem_12rem_14.5rem]';
+  'lg:grid-cols-[8rem_minmax(0,1.35fr)_minmax(0,1.1fr)_9rem_10.5rem_12.5rem] @min-[68rem]/ledger:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_10.5rem_12rem_14.5rem]';
 
 /** Column template shared by the sticky header and rows of the read-only withdrawn tab (lg and up). */
 const WITHDRAWN_GRID =
@@ -592,6 +631,32 @@ export function AdminSection() {
     },
     [resetSessionState],
   );
+
+  // Active dashboard view, mirrored in location.hash (pushState) so Back/refresh keep it.
+  const [view, setView] = useState<AdminView>('overview');
+  const [viewFocusNonce, setViewFocusNonce] = useState(0);
+  const applyView = useCallback((v: AdminView, nextFilter?: FilterKey) => {
+    setView(v);
+    setFilter((f) => (v === 'withdrawn' ? 'WITHDRAWN' : (nextFilter ?? (f === 'WITHDRAWN' ? 'ALL' : f))));
+  }, []);
+  useEffect(() => {
+    const sync = () => applyView(viewFromHash());
+    sync();
+    window.addEventListener('popstate', sync);
+    window.addEventListener('hashchange', sync);
+    return () => {
+      window.removeEventListener('popstate', sync);
+      window.removeEventListener('hashchange', sync);
+    };
+  }, [applyView]);
+  // A view switch from the menu scrolls to the top and moves focus to that view's heading.
+  useEffect(() => {
+    if (viewFocusNonce === 0) return;
+    window.scrollTo({ top: 0 });
+    document
+      .querySelector<HTMLElement>(`[data-view="${view}"]:not([hidden]) [data-view-heading]`)
+      ?.focus({ preventScroll: true });
+  }, [viewFocusNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function refresh(t: string, alsoSettings = false) {
     if (refreshBusyRef.current) return;
@@ -980,12 +1045,12 @@ export function AdminSection() {
     }
   }
 
-  /** Moves focus after a withdrawn row is purged: the next row's button, else the active tab pill. */
+  /** Moves focus after a withdrawn row is purged: the next row's button, else the view heading. */
   function focusAfterPurge(nextId: string | null) {
     window.requestAnimationFrame(() => {
       const next = nextId ? document.getElementById(`purge-btn-${nextId}`) : null;
       const target =
-        next ?? filterGroupRef.current?.querySelector<HTMLElement>('button[aria-pressed="true"]') ?? null;
+        next ?? document.querySelector<HTMLElement>('[data-view="withdrawn"] [data-view-heading]') ?? null;
       target?.focus();
     });
   }
@@ -1407,28 +1472,31 @@ export function AdminSection() {
     }
   }, [overCapOpen, quotaFull]);
 
-  // The toolbar sticks under the site nav (md and up). Its offset follows the nav height, and the
-  // page's scroll padding follows nav + toolbar, so rows and panels scrolled into view are not hidden.
+  // The toolbar sticks under the site nav (md and up) and the sidebar under it (xl and up). The nav
+  // height is published as --admin-nav-h; the page's scroll padding follows nav + toolbar, so rows
+  // and panels scrolled into view are not hidden.
   useEffect(() => {
     const nav = document.querySelector<HTMLElement>('.site-nav');
     const bar = toolbarRef.current;
-    if (!token || !bar) return;
+    if (!token) return;
     const md = window.matchMedia('(min-width: 768px)');
     const root = document.documentElement;
     const sync = () => {
       const navH = nav ? nav.getBoundingClientRect().height : 0;
-      bar.style.setProperty('--admin-sticky-top', `${navH}px`);
-      root.style.scrollPaddingTop = md.matches ? `${navH + bar.offsetHeight + 12}px` : `${navH + 12}px`;
+      root.style.setProperty('--admin-nav-h', `${navH}px`);
+      const barH = bar && md.matches ? bar.offsetHeight : 0;
+      root.style.scrollPaddingTop = `${navH + barH + 12}px`;
     };
     sync();
     const ro = new ResizeObserver(sync);
     if (nav) ro.observe(nav);
-    ro.observe(bar);
+    if (bar) ro.observe(bar);
     md.addEventListener('change', sync);
     return () => {
       ro.disconnect();
       md.removeEventListener('change', sync);
       root.style.scrollPaddingTop = '';
+      root.style.removeProperty('--admin-nav-h');
     };
   }, [token]);
 
@@ -1453,8 +1521,29 @@ export function AdminSection() {
   const countLabel = searching
     ? `พบ ${activeVisibleCount} จาก ${activeTotal} รายการ`
     : `${activeTotal} รายการ`;
-  const referralSummary = summarizeReferrals(apps);
-  const shirtSummary = summarizeShirtSizes(apps, SHIRT_SIZES);
+  const navItems: { key: AdminView; label: string; Icon: LucideIcon; n?: number; srCount?: string; alert?: boolean }[] = [
+    { key: 'overview', label: 'ภาพรวม', Icon: LayoutDashboard },
+    {
+      key: 'applications',
+      label: 'ใบสมัครและสลิป',
+      Icon: ClipboardList,
+      n: pendingSlipCount,
+      srCount: `สลิปรอตรวจ ${pendingSlipCount} รายการ`,
+      alert: pendingSlipCount > 0,
+    },
+    { key: 'withdrawn', label: 'ยกเลิกเอง', Icon: UserX, n: withdrawnApps.length, srCount: `${withdrawnApps.length} รายการ` },
+    { key: 'logistics', label: 'เตรียมงานค่าย', Icon: Shirt },
+    { key: 'sponsors', label: 'ผู้สนับสนุน', Icon: HeartHandshake },
+    { key: 'settings', label: 'ตั้งค่าค่าย', Icon: Settings2 },
+  ];
+
+  /** Menu click. Hidden views stay mounted, so unsaved edits survive a switch. */
+  function openView(v: AdminView, nextFilter?: FilterKey) {
+    resetDeleteConfirm(false);
+    applyView(v, nextFilter);
+    if (window.location.hash !== `#${v}`) window.history.pushState(null, '', `#${v}`);
+    setViewFocusNonce((n) => n + 1);
+  }
 
   const inputCls = `${INPUT_BASE} rounded-xl`;
   const pillGhost = PILL_GHOST;
@@ -1469,7 +1558,6 @@ export function AdminSection() {
     { key: 'AWAITING_PAY', label: 'รอโอน / ส่งสลิป', n: awaitingPayCount },
     ...STATUSES.map((s) => ({ key: s as FilterKey, label: STATUS_LABELS[s], n: count(s) })),
     ...legacyTabs,
-    { key: 'WITHDRAWN', label: 'ยกเลิกเอง', n: withdrawnApps.length },
   ];
 
   const visibleWithSlip = visible.filter((x) => hasSlip(x) && can.viewSlip);
@@ -1477,14 +1565,14 @@ export function AdminSection() {
 
   return (
     <div
-      className={`mx-auto w-full max-w-7xl select-text px-4 pb-28 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 ${token ? 'pt-6 sm:pt-8' : 'pt-12 sm:pt-20'}`}
+      className={`mx-auto w-full max-w-[96rem] select-text px-4 pb-28 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 ${token ? 'pt-6 sm:pt-8' : 'pt-12 sm:pt-20'}`}
     >
       {/* ── Masthead ─────────────────────────────────────────── */}
       {token ? (
         // A work screen: a one-line title with the session controls, so the queue is in the first view.
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-[1.5rem] font-bold leading-[1.3] sm:text-[1.75rem]" style={{ color: INK }}>
-            ใบสมัครและสลิป
+            ระบบพี่ค่าย
           </h1>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1711,222 +1799,119 @@ export function AdminSection() {
         </section>
       ) : (
         <>
-          <AdminSettingsPanel
-            token={token}
-            canEdit={can.editSettings}
-            currentCount={currentCount}
-            refreshSignal={settingsRefreshKey}
-            onAuthError={handleAuthError}
-            onSettings={(s: AdminSettings) => {
-              setFeeBaht(Number(s.campFee));
-              setMaxCapacity(Number.isFinite(Number(s.maxCapacity)) ? Number(s.maxCapacity) : null);
-            }}
-          />
-          <AdminSponsorsPanel token={token} canEdit={can.editSettings} onAuthError={handleAuthError} />
-
-          {/* ── Referral channel summary (all loaded applications; hidden on withdrawn tab) ── */}
-          {!isWithdrawnTab && (
-            <details className="group mt-4">
-              <summary
-                className={`inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] [&::-webkit-details-marker]:hidden ${FOCUS}`}
-                style={{ borderColor: RULE, color: INK }}
-              >
-                <ChevronDown
-                  aria-hidden="true"
-                  size={16}
-                  strokeWidth={1.5}
-                  className="shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-                />
-                <span>สรุปช่องทางที่รู้จักค่าย</span>
-                <span className="text-xs font-normal" style={{ color: INK_3 }}>
-                  <span className="font-mono tabular-nums">
-                    {referralSummary.answered}/{referralSummary.total}
-                  </span>
-                </span>
-              </summary>
-              <div className="mt-3 border-y py-3" style={{ borderColor: RULE }}>
-                <p className="text-sm leading-7" style={{ color: INK_2 }}>
-                  ตอบแล้ว{' '}
-                  <span className="font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                    {referralSummary.answered}
-                  </span>{' '}
-                  จาก{' '}
-                  <span className="font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                    {referralSummary.total}
-                  </span>{' '}
-                  ใบสมัคร
-                </p>
-                <ul className="mt-2">
-                  {referralSummary.groups.map((g) => (
-                    <li
-                      key={g.id}
-                      className="border-t py-2.5 first:border-t-0"
-                      style={{ borderColor: RULE }}
-                    >
-                      <div className="flex items-baseline justify-between gap-4 text-sm leading-6">
-                        <span className="font-semibold" style={{ color: INK }}>
-                          {g.label}
-                        </span>
-                        <span className="shrink-0 font-mono text-sm font-semibold tabular-nums" style={{ color: INK }}>
-                          {g.count}
-                        </span>
-                      </div>
-                      {g.options.length > 0 && (
-                        <ul className="mt-1.5 space-y-1 pl-4">
-                          {g.options.map((opt) => (
-                            <li
-                              key={opt.code}
-                              className="flex items-baseline justify-between gap-4 text-xs leading-6"
-                              style={{ color: INK_2 }}
-                            >
-                              <span>{opt.label}</span>
-                              <span className="shrink-0 font-mono tabular-nums" style={{ color: INK_2 }}>
-                                {opt.count}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
+          <div className="mt-6 xl:grid xl:grid-cols-[14rem_minmax(0,1fr)] xl:items-start xl:gap-8">
+            {/* ── View menu: raised pills in a scroller (< xl), a raised dock sidebar (xl and up) ── */}
+            <nav
+              aria-label="เมนูผู้ดูแลระบบ"
+              className="xl:sticky xl:top-[calc(var(--admin-nav-h,0px)+1rem)] xl:self-start"
+            >
+              <div className="-mx-4 overflow-x-auto px-4 py-2 [scrollbar-width:none] sm:-mx-8 sm:px-8 xl:mx-0 xl:overflow-visible xl:rounded-[28px] xl:bg-[var(--bg-card)] xl:p-3 xl:[box-shadow:var(--shadow-card)]">
+                <ul className="flex gap-2 xl:flex-col xl:gap-1">
+                  {navItems.map(({ key, label, Icon, n, srCount, alert }) => {
+                    const active = view === key;
+                    return (
+                      <li key={key} className="shrink-0">
+                        <button
+                          type="button"
+                          aria-current={active ? 'page' : undefined}
+                          onClick={() => openView(key)}
+                          className={`flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap rounded-full px-4 py-2 text-left text-sm transition-[background-color,box-shadow,color] duration-200 motion-reduce:transition-none ${
+                            active
+                              ? 'bg-[var(--bg-surface)] font-semibold [box-shadow:var(--shadow-well)]'
+                              : 'bg-[var(--bg-card)] font-medium [box-shadow:var(--shadow-card)] hover:bg-[var(--color-btn-ghost-hover)] xl:bg-transparent xl:[box-shadow:none]'
+                          } ${FOCUS}`}
+                          style={{ color: active ? INK : INK_2 }}
+                        >
+                          <Icon aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: active ? TECH : INK_3 }} />
+                          <span>{label}</span>
+                          {n !== undefined && n > 0 && (
+                            <span className="ml-auto inline-flex items-center gap-1.5 pl-1 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
+                              {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
+                              <span aria-hidden="true">{n}</span>
+                              {srCount && <span className="sr-only">{srCount}</span>}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
-            </details>
-          )}
+            </nav>
 
-          {/* ── Shirt sizes of seat holders (hidden on withdrawn tab) ── */}
-          {!isWithdrawnTab && (
-            <details className="group/shirt mt-2">
-              <summary
-                className={`inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] [&::-webkit-details-marker]:hidden ${FOCUS}`}
-                style={{ borderColor: RULE, color: INK }}
-              >
-                <ChevronDown
-                  aria-hidden="true"
-                  size={16}
-                  strokeWidth={1.5}
-                  className="shrink-0 transition-transform group-open/shirt:rotate-180 motion-reduce:transition-none"
-                />
-                <span>สรุปไซส์เสื้อ</span>
-                <span className="text-xs font-normal" style={{ color: INK_3 }}>
-                  <span className="font-mono tabular-nums">{shirtSummary.total}</span> ตัว
-                </span>
-              </summary>
-              <div className="mt-3 border-y py-3" style={{ borderColor: RULE }}>
-                <p className="text-sm leading-7" style={{ color: INK_2 }}>
-                  นับเฉพาะผู้ที่ถือที่นั่งอยู่ (ยืนยันสิทธิ์แล้ว และรอชำระเงิน) ไม่รวมผู้ที่หมดสิทธิ์ ไม่ผ่าน คืนเงิน หรือยกเลิก
-                </p>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[20rem] max-w-xl text-sm">
-                    <caption className="sr-only">จำนวนเสื้อแยกตามไซส์และสถานะ</caption>
-                    <thead>
-                      <tr className="border-b text-left text-xs" style={{ borderColor: RULE, color: INK_3 }}>
-                        <th scope="col" className="py-2 pr-4 font-semibold">ไซส์</th>
-                        <th scope="col" className="py-2 pr-4 text-right font-semibold">ยืนยันแล้ว</th>
-                        <th scope="col" className="py-2 pr-4 text-right font-semibold">รอชำระ</th>
-                        <th scope="col" className="py-2 text-right font-semibold">รวม</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shirtSummary.rows.map((r) => (
-                        <tr key={r.size} className="border-b" style={{ borderColor: RULE }}>
-                          <th scope="row" className="py-2 pr-4 text-left font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                            {r.size}
-                          </th>
-                          <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.confirmed ? INK : INK_3 }}>
-                            {r.confirmed}
-                          </td>
-                          <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.awaiting ? INK : INK_3 }}>
-                            {r.awaiting}
-                          </td>
-                          <td className="py-2 text-right font-mono font-semibold tabular-nums" style={{ color: r.total ? INK : INK_3 }}>
-                            {r.total}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row" className="py-2 pr-4 text-left font-semibold" style={{ color: INK }}>
-                          รวม
-                        </th>
-                        <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                          {shirtSummary.confirmed}
-                        </td>
-                        <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                          {shirtSummary.awaiting}
-                        </td>
-                        <td className="py-2 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                          {shirtSummary.total}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+            <div className="mt-6 min-w-0 xl:mt-0">
+              {view === 'overview' && (
+                <div data-view="overview">
+                  <AdminOverview
+                    apps={apps}
+                    withdrawnCount={withdrawnApps.length}
+                    maxCapacity={maxCapacity}
+                    campFee={feeBaht}
+                    pendingSlipCount={pendingSlipCount}
+                    awaitingPayCount={awaitingPayCount}
+                    overduePayCount={overduePayCount}
+                    loading={busy && apps.length === 0}
+                    onOpenQueue={(f) => openView('applications', f)}
+                  />
                 </div>
-                {shirtSummary.total > 0 && (
-                  <div className="mt-3">
-                    <p className="text-xs font-semibold leading-6" style={{ color: INK_3 }}>
-                      รายชื่อตามไซส์
-                    </p>
-                    <ul className="mt-1">
-                      {shirtSummary.rows
-                        .filter((r) => r.total > 0)
-                        .map((r) => (
-                          <li key={r.size} className="border-t first:border-t-0" style={{ borderColor: RULE }}>
-                            <details className="group/size">
-                              <summary
-                                className={`flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl py-2 text-sm [&::-webkit-details-marker]:hidden ${FOCUS}`}
-                                style={{ color: INK }}
-                              >
-                                <ChevronDown
-                                  aria-hidden="true"
-                                  size={14}
-                                  strokeWidth={1.5}
-                                  className="shrink-0 transition-transform group-open/size:rotate-180 motion-reduce:transition-none"
-                                />
-                                <span>
-                                  ไซส์ <span className="font-mono font-semibold tabular-nums">{r.size}</span>
-                                </span>
-                                <span className="text-xs" style={{ color: INK_3 }}>
-                                  <span className="font-mono tabular-nums">{r.total}</span> คน
-                                </span>
-                              </summary>
-                              <ol className="mb-2 space-y-1 pl-6">
-                                {r.people.map((p) => (
-                                  <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 text-sm leading-6" style={{ color: INK_2 }}>
-                                    <span style={{ color: INK }}>
-                                      {p.fullName}
-                                      {p.nickname ? ` (${p.nickname})` : ''}
-                                    </span>
-                                    <span className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
-                                      {p.id}
-                                    </span>
-                                    <span className="text-xs" style={{ color: p.confirmed ? SUCCESS : INK_3 }}>
-                                      {p.confirmed ? 'ยืนยันแล้ว' : 'รอชำระ'}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ol>
-                            </details>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
+              )}
 
-          {/* ── Ledger ───────────────────────────────────────────── */}
-          <section className="mt-6" aria-busy={isWithdrawnTab ? withdrawnLoading : busy}>
+              {view === 'logistics' && (
+                <div data-view="logistics">
+                  <AdminLogistics apps={apps} />
+                </div>
+              )}
+
+              {/* Settings and sponsors stay mounted while hidden: the fee/quota callback keeps feeding the
+                  other views, and unsaved edits survive a menu switch. */}
+              <div data-view="settings" hidden={view !== 'settings'}>
+                <ViewHeading title="ตั้งค่าค่าย" sub="กำหนดการรับสมัคร โควตาที่นั่ง ค่าสมัคร และการปิดรับฉุกเฉิน ทุกการบันทึกถูกเก็บใน audit" />
+                <div className={PANEL}>
+                  <AdminSettingsPanel
+                    token={token}
+                    canEdit={can.editSettings}
+                    currentCount={currentCount}
+                    refreshSignal={settingsRefreshKey}
+                    onAuthError={handleAuthError}
+                    onSettings={(s: AdminSettings) => {
+                      setFeeBaht(Number(s.campFee));
+                      setMaxCapacity(Number.isFinite(Number(s.maxCapacity)) ? Number(s.maxCapacity) : null);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div data-view="sponsors" hidden={view !== 'sponsors'}>
+                <ViewHeading title="ผู้สนับสนุน" sub="โลโก้ในแถบ “ขอบคุณผู้สนับสนุน” ท้ายหน้าแรก แถบจะซ่อนเองเมื่อยังไม่มีรายการ" />
+                <div className={PANEL}>
+                  <AdminSponsorsPanel token={token} canEdit={can.editSettings} onAuthError={handleAuthError} />
+                </div>
+              </div>
+
+          {/* ── Ledger (applications + withdrawn views) ─────────── */}
+          <div
+            className="@container/ledger"
+            data-view={isWithdrawnTab ? 'withdrawn' : 'applications'}
+            hidden={view !== 'applications' && view !== 'withdrawn'}
+          >
+          <ViewHeading
+            title={isWithdrawnTab ? 'ผู้สมัครที่ยกเลิกเอง' : 'ใบสมัครและสลิป'}
+            sub={
+              isWithdrawnTab
+                ? 'รายชื่อที่ยกเลิกใบสมัครด้วยตนเอง (อ่านอย่างเดียว ลบถาวรได้ทีละรายการ)'
+                : 'ตรวจสลิป เปลี่ยนสถานะ แก้ไขข้อมูล และส่งออก CSV'
+            }
+          />
+          <section aria-busy={isWithdrawnTab ? withdrawnLoading : busy}>
             {/* Queue chips, search and the column header stay in reach while scrolling the list (md and up). */}
             <div
               ref={toolbarRef}
               className="z-20 md:sticky"
-              style={{ top: 'var(--admin-sticky-top, 0px)', backgroundColor: BG_CANVAS }}
+              style={{ top: 'var(--admin-nav-h, 0px)', backgroundColor: BG_CANVAS }}
             >
               <div
                 ref={filterGroupRef}
+                hidden={isWithdrawnTab}
                 tabIndex={-1}
                 role="group"
                 aria-label="กรองตามสถานะ"
@@ -3438,6 +3423,9 @@ export function AdminSection() {
               </p>
             )}
           </section>
+          </div>
+            </div>
+          </div>
 
           <SlipLightbox
             src={slipImage.url}
