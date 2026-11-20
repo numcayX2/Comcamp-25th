@@ -298,10 +298,22 @@ const navLinks = isAdmin ? [] : [
     white-space: nowrap;
     padding: 6px 0;
     flex: none;
+    transition:
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
-  .brand:hover {
-    color: #121316;
-    text-decoration: none;
+  @media (hover: hover) and (pointer: fine) {
+    .brand:hover {
+      color: #121316;
+      text-decoration: none;
+    }
+    .brand:hover .brand-logo {
+      scale: 1.03;
+    }
+  }
+  .brand:active .brand-logo {
+    scale: 0.97;
   }
   .brand .font-mono {
     color: #4A4D55;
@@ -319,6 +331,7 @@ const navLinks = isAdmin ? [] : [
     border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 12px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(18, 19, 22, 0.12);
+    transition: scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
   @media (min-width: 1120px) {
     .brand { gap: 14px; font-size: 1.125rem; }
@@ -350,13 +363,18 @@ const navLinks = isAdmin ? [] : [
     text-decoration: none;
     white-space: nowrap;
     padding: 6px 0;
-    transition: color 0.15s ease;
+    transition:
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
-  .nav-links a:hover {
-    color: #121316;
-    text-decoration: underline;
-    text-decoration-color: rgba(18, 19, 22, 0.22);
-    text-underline-offset: 4px;
+  @media (hover: hover) and (pointer: fine) {
+    .nav-links a:hover {
+      color: #121316;
+      text-decoration: underline;
+      text-decoration-color: rgba(18, 19, 22, 0.22);
+      text-underline-offset: 4px;
+    }
   }
   .nav-links a[aria-current] {
     color: #121316;
@@ -382,9 +400,20 @@ const navLinks = isAdmin ? [] : [
     font-weight: 600;
     cursor: pointer;
     touch-action: manipulation;
+    transition:
+      border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
-  .nav-toggle:hover {
-    border-color: #121316;
+  .nav-toggle:active:not(:disabled) {
+    scale: 0.97;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .nav-toggle:hover {
+      border-color: #121316;
+      background: rgba(18, 19, 22, 0.05);
+    }
   }
   .nav-toggle-icon {
     position: relative;
@@ -450,13 +479,18 @@ const navLinks = isAdmin ? [] : [
     white-space: nowrap;
     padding: 6px 12px;
     border-radius: 0;
-    transition: color 0.15s ease, background-color 0.15s ease;
+    transition:
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
 
-  .nav-cta-link:hover {
-    color: #121316;
-    background: rgba(18, 19, 22, 0.05);
-    text-decoration: none;
+  @media (hover: hover) and (pointer: fine) {
+    .nav-cta-link:hover {
+      color: #121316;
+      background: rgba(18, 19, 22, 0.05);
+      text-decoration: none;
+    }
   }
 
   .nav-cta-link.is-active,
@@ -491,25 +525,23 @@ const navLinks = isAdmin ? [] : [
     text-decoration: none;
     white-space: nowrap;
     transition:
-      background 0.18s ease,
-      transform 0.18s ease,
-      box-shadow 0.18s ease,
-      color 0.18s ease,
-      border-color 0.18s ease;
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      box-shadow var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     touch-action: manipulation;
     box-sizing: border-box;
+  }
+  .btn:active:not(:disabled):not([aria-disabled="true"]) {
+    scale: 0.975;
   }
 
   .btn-secondary {
     background: #121316;
     color: #F9F8F4;
     border: 1px solid #121316;
-  }
-  .btn-secondary:hover {
-    border-color: #121316;
-    background: #2A2D33;
-    color: #F9F8F4;
-    text-decoration: none;
   }
 
   /* Primary CTA: fern pill with ink text (AGENTS.md §4), sits beside the dark status pill at the same size. */
@@ -518,18 +550,8 @@ const navLinks = isAdmin ? [] : [
     color: #121316;
     border: 1px solid #03B800;
   }
-  .btn-primary:hover {
-    background: #029E00;
-    border-color: #029E00;
-    color: #121316;
-    text-decoration: none;
-  }
-  .btn-primary:active {
-    transform: translateY(1px);
-  }
   /* Not open (yet) / full / closed: same pill, quiet outline instead of a live CTA */
-  .btn-primary.is-pre-open,
-  .btn-primary.is-pre-open:hover {
+  .btn-primary.is-pre-open {
     background: transparent;
     color: #4A4D55;
     border-color: #8A8D93;
@@ -540,10 +562,6 @@ const navLinks = isAdmin ? [] : [
     border-color: rgba(255, 255, 255, 0.3);
   }
 
-  .btn-secondary:active {
-    transform: translateY(1px);
-  }
-
   .btn-secondary.is-active,
   .btn-secondary[aria-current="page"] {
     background: #03B800;
@@ -551,10 +569,35 @@ const navLinks = isAdmin ? [] : [
     border-color: #03B800;
   }
 
-  .btn-secondary.is-active:hover {
-    background: #029E00;
-    color: #121316;
-    border-color: #029E00;
+  @media (hover: hover) and (pointer: fine) {
+    .btn-secondary:hover {
+      border-color: #121316;
+      background: #2A2D33;
+      color: #F9F8F4;
+      text-decoration: none;
+    }
+    .btn-primary:hover {
+      background: #029E00;
+      border-color: #029E00;
+      color: #121316;
+      text-decoration: none;
+    }
+    .btn-primary.is-pre-open:hover {
+      background: rgba(18, 19, 22, 0.05);
+      color: #121316;
+      border-color: #121316;
+    }
+    :global(html.dark) .btn-primary.is-pre-open:hover,
+    :global(html[data-theme="dark"]) .btn-primary.is-pre-open:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #F5F4EF;
+      border-color: rgba(255, 255, 255, 0.55);
+    }
+    .btn-secondary.is-active:hover {
+      background: #029E00;
+      color: #121316;
+      border-color: #029E00;
+    }
   }
 
   .nav-cta {
@@ -602,12 +645,27 @@ const navLinks = isAdmin ? [] : [
       pointer-events: none;
       transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.45s;
     }
+    @keyframes nav-drawer-item-in {
+      from {
+        opacity: 0.65;
+        translate: 10px 0;
+      }
+      to {
+        opacity: 1;
+        translate: 0 0;
+      }
+    }
     .nav-links.is-open {
       display: flex;
       transform: none;
       visibility: visible;
       pointer-events: auto;
-      transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 0.36s var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+    }
+    .nav-links.is-open > a,
+    .nav-links.is-open > .theme-toggle-drawer,
+    .nav-links.is-open > .nav-overlay-footer {
+      animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     }
     /* Section links: editorial Table-of-Contents rows with mono chapter index */
     .nav-links a.nav-sec {
@@ -624,9 +682,12 @@ const navLinks = isAdmin ? [] : [
       color: #121316;
       border-bottom: 1px solid rgba(18, 19, 22, 0.08);
     }
-    .nav-links a.nav-sec:hover {
-      color: #1A5FE0;
-      text-decoration: none;
+    @media (hover: hover) and (pointer: fine) {
+      .nav-links a.nav-sec:hover {
+        color: #1A5FE0;
+        text-decoration: none;
+        translate: 3px 0;
+      }
     }
     .nav-links a {
       justify-content: flex-start;
@@ -695,17 +756,31 @@ const navLinks = isAdmin ? [] : [
     cursor: pointer;
     flex: none;
     padding: 0;
-    transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+    transition:
+      scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     touch-action: manipulation;
   }
-  .theme-toggle-btn:hover {
-    border-color: #121316;
-    background: rgba(18, 19, 22, 0.05);
-    transform: scale(1.04);
+  .theme-toggle-btn svg {
+    transition:
+      rotate var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .theme-toggle-btn:hover {
+      border-color: #121316;
+      background: rgba(18, 19, 22, 0.05);
+      scale: 1.04;
+    }
+    .theme-toggle-btn:hover svg {
+      rotate: -12deg;
+    }
   }
 
-  .theme-toggle-btn:active {
-    transform: scale(0.96);
+  .theme-toggle-btn:active:not(:disabled) {
+    scale: 0.97;
   }
 
   .theme-toggle-btn:focus-visible {
@@ -741,10 +816,12 @@ const navLinks = isAdmin ? [] : [
     border-color: rgba(255, 255, 255, 0.2);
     color: #F5F4EF;
   }
-  :global(html.dark) .theme-toggle-btn:hover,
-  :global(html[data-theme="dark"]) .theme-toggle-btn:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.08);
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.dark) .theme-toggle-btn:hover,
+    :global(html[data-theme="dark"]) .theme-toggle-btn:hover {
+      border-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.08);
+    }
   }
 
   /* Mobile Controls Area */
@@ -774,9 +851,17 @@ const navLinks = isAdmin ? [] : [
     white-space: nowrap;
     cursor: pointer;
     touch-action: manipulation;
-    transition: background-color 0.18s ease;
+    transition:
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
-  .nav-quick-cta:hover:not(:disabled) { background: var(--fern-600, #029E00); }
+  .nav-quick-cta:active:not(:disabled):not([aria-disabled="true"]) { scale: 0.975; }
+  @media (hover: hover) and (pointer: fine) {
+    .nav-quick-cta:hover:not(:disabled) { background: var(--fern-600, #029E00); }
+  }
   .nav-quick-cta:focus-visible { outline: 2px solid var(--color-tech, var(--blue-600, #1A5FE0)); outline-offset: 2px; }
   /* Links and toggles share the blue focus ring (AGENTS §11.3) instead of the browser default. */
   .site-nav a:focus-visible,
@@ -818,6 +903,15 @@ const navLinks = isAdmin ? [] : [
     color: #121316;
     cursor: pointer;
     text-align: left;
+    transition:
+      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  }
+  .theme-toggle-drawer:active {
+    scale: none;
+  }
+  .theme-toggle-drawer:active .theme-drawer-badge {
+    scale: 0.97;
   }
 
   .theme-drawer-badge {
@@ -832,6 +926,16 @@ const navLinks = isAdmin ? [] : [
     letter-spacing: 0;
     font-weight: 500;
     background: rgba(18, 19, 22, 0.04);
+    transition:
+      border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      scale var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .theme-toggle-drawer:hover .theme-drawer-badge {
+      border-color: #121316;
+      background: rgba(18, 19, 22, 0.08);
+    }
   }
 
   /* Dark Mode Navbar Overrides */
@@ -856,10 +960,12 @@ const navLinks = isAdmin ? [] : [
     color: #9A9CA1;
   }
 
-  :global(html.dark) .nav-links a:hover,
-  :global(html[data-theme="dark"]) .nav-links a:hover {
-    color: #F5F4EF;
-    text-decoration-color: rgba(255, 255, 255, 0.35);
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.dark) .nav-links a:hover,
+    :global(html[data-theme="dark"]) .nav-links a:hover {
+      color: #F5F4EF;
+      text-decoration-color: rgba(255, 255, 255, 0.35);
+    }
   }
 
   :global(html.dark) .nav-links a[aria-current],
@@ -873,10 +979,12 @@ const navLinks = isAdmin ? [] : [
     color: #C3C4C7;
   }
 
-  :global(html.dark) .nav-cta-link:hover,
-  :global(html[data-theme="dark"]) .nav-cta-link:hover {
-    color: #F5F4EF;
-    background: rgba(255, 255, 255, 0.08);
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.dark) .nav-cta-link:hover,
+    :global(html[data-theme="dark"]) .nav-cta-link:hover {
+      color: #F5F4EF;
+      background: rgba(255, 255, 255, 0.08);
+    }
   }
 
   :global(html.dark) .nav-toggle,
@@ -891,11 +999,18 @@ const navLinks = isAdmin ? [] : [
     color: #121316;
     border-color: #F5F4EF;
   }
-  :global(html.dark) .btn-secondary:hover,
-  :global(html[data-theme="dark"]) .btn-secondary:hover {
-    background: #FFFFFF;
-    color: #121316;
-    border-color: #FFFFFF;
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.dark) .nav-toggle:hover,
+    :global(html[data-theme="dark"]) .nav-toggle:hover {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    :global(html.dark) .btn-secondary:hover,
+    :global(html[data-theme="dark"]) .btn-secondary:hover {
+      background: #FFFFFF;
+      color: #121316;
+      border-color: #FFFFFF;
+    }
   }
 
   @media (max-width: 899px) {
@@ -914,9 +1029,16 @@ const navLinks = isAdmin ? [] : [
       color: #F5F4EF;
       border-bottom-color: rgba(255, 255, 255, 0.08);
     }
-    :global(html.dark) .nav-links a.nav-sec:hover,
-    :global(html[data-theme="dark"]) .nav-links a.nav-sec:hover {
-      color: #337AFF;
+    @media (hover: hover) and (pointer: fine) {
+      :global(html.dark) .nav-links a.nav-sec:hover,
+      :global(html[data-theme="dark"]) .nav-links a.nav-sec:hover {
+        color: #337AFF;
+      }
+      :global(html.dark) .theme-toggle-drawer:hover .theme-drawer-badge,
+      :global(html[data-theme="dark"]) .theme-toggle-drawer:hover .theme-drawer-badge {
+        border-color: rgba(255, 255, 255, 0.45);
+        background: rgba(255, 255, 255, 0.14);
+      }
     }
     :global(html.dark) .nav-overlay-label,
     :global(html[data-theme="dark"]) .nav-overlay-label {
@@ -1046,13 +1168,25 @@ const navLinks = isAdmin ? [] : [
   @media (prefers-reduced-motion: reduce) {
     .site-nav,
     .nav-inner,
+    .brand,
+    .brand-logo,
     .nav-links,
     .nav-links > *,
     .nav-links a,
+    .nav-toggle,
+    .nav-quick-cta,
     .btn,
+    .theme-toggle-btn,
+    .theme-toggle-btn svg,
+    .theme-toggle-drawer,
+    .theme-drawer-badge,
     .nav-toggle-icon::before,
     .nav-toggle-icon::after {
       transition: none !important;
+      animation: none !important;
+      translate: none !important;
+      scale: none !important;
+      rotate: none !important;
     }
     .nav-links,
     .nav-links > *,

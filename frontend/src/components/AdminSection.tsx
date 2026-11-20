@@ -23,6 +23,7 @@ import {
   adminPermissions,
   deleteApplication,
   fetchAdminSlipInfo,
+  fetchWithdrawnApplicants,
   hasSlip,
   holdsSeat,
   isAdminRole,
@@ -37,6 +38,7 @@ import {
   type ApplicationStatus,
   type ApiSource,
   type SlipStatus,
+  type WithdrawnApplicant,
 } from '../lib/api';
 import {
   SLIP_LABELS,
@@ -44,8 +46,11 @@ import {
   buildApplicantsCsv,
   csvFileName,
   downloadCsv,
+  formatReferralLabels,
   matchesApplicantQuery,
+  matchesWithdrawnQuery,
   slipLabel,
+  summarizeReferrals,
 } from '../lib/applicant-tools';
 import {
   PAYMENT_WINDOW_DAYS,
@@ -67,6 +72,7 @@ import {
   INK_3,
   INPUT_BASE,
   INPUT_BORDER,
+  PILL_DANGER,
   PILL_GHOST,
   RULE,
   SUCCESS,
@@ -80,7 +86,7 @@ import {
 const STATUSES: ApplicationStatus[] = ['PASSED', 'CONFIRMED', 'REJECTED', 'FORFEITED', 'REFUND_PENDING', 'REFUNDED'];
 const LEGACY_STATUSES: ApplicationStatus[] = ['PENDING', 'RESERVE'];
 
-type FilterKey = 'ALL' | 'SLIP_PENDING' | 'AWAITING_PAY' | ApplicationStatus;
+type FilterKey = 'ALL' | 'SLIP_PENDING' | 'AWAITING_PAY' | ApplicationStatus | 'WITHDRAWN';
 type SortKey = 'newest' | 'slip_queue' | 'updated_desc';
 
 type LocalSlipVerdict = {
@@ -247,7 +253,12 @@ function sortApplications(list: Application[], sortBy: SortKey): Application[] {
 }
 
 /** Column template shared by the sticky column header and every application row (lg and up). */
-const ROW_GRID = 'lg:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_11rem_12rem_10rem]';
+const ROW_GRID =
+  'lg:grid-cols-[8rem_minmax(0,1.35fr)_minmax(0,1.1fr)_9rem_10.5rem_12.5rem] xl:grid-cols-[9rem_minmax(0,1.4fr)_minmax(0,1.15fr)_10.5rem_12rem_14.5rem]';
+
+/** Column template shared by the sticky header and rows of the read-only withdrawn tab (lg and up). */
+const WITHDRAWN_GRID =
+  'lg:grid-cols-[7.5rem_minmax(0,1.2fr)_6.75rem_minmax(0,1.15fr)_7.5rem_7.5rem_7.5rem_minmax(0,1.1fr)]';
 
 /**
  * Seat-releasing changes, leaving CONFIRMED, and confirming without a slip review get a warning
@@ -410,6 +421,9 @@ export function AdminSection() {
   const [role, setRole] = useState<string | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
+  const [withdrawnApps, setWithdrawnApps] = useState<WithdrawnApplicant[]>([]);
+  const [withdrawnError, setWithdrawnError] = useState<string | null>(null);
+  const [withdrawnLoading, setWithdrawnLoading] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [sortBy, setSortBy] = useState<SortKey>('newest');
   const [query, setQuery] = useState('');
@@ -426,7 +440,7 @@ export function AdminSection() {
   const [exporting, setExporting] = useState(false);
   const [patching, setPatching] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ appId: string; step: 1 | 2 | 3 } | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -466,9 +480,11 @@ export function AdminSection() {
   // Focus bookkeeping: avoid ever dropping focus to <body> when panels close or rows filter out.
   const prevSlipId = useRef<string | null>(null);
   const prevDetailId = useRef<string | null>(null);
-  const prevConfirmId = useRef<string | null>(null);
   const prevEditId = useRef<string | null>(null);
   const prevPendingId = useRef<string | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
+  const lastDeleteStepAtRef = useRef(0);
+  const refocusDeleteBtnIdRef = useRef<string | null>(null);
   const focusListAfterDelete = useRef(false);
   const focusSlipPanelAfterAdvance = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
@@ -489,12 +505,34 @@ export function AdminSection() {
   /* Fail closed when role is not `'admin'`. */
   const can = adminPermissions(role);
 
+  const resetDeleteConfirm = useCallback((refocusButton = false) => {
+    if (deleteTimerRef.current !== null) {
+      window.clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setDeleteConfirm((cur) => {
+      if (cur && refocusButton) {
+        refocusDeleteBtnIdRef.current = cur.appId;
+      }
+      return null;
+    });
+    setDeleteReason('');
+  }, []);
+
   const resetSessionState = useCallback(() => {
     tokenStore.clear();
+    if (deleteTimerRef.current !== null) {
+      window.clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    refocusDeleteBtnIdRef.current = null;
     setToken(null);
     setRole(null);
     setSource(null);
     setApps([]);
+    setWithdrawnApps([]);
+    setWithdrawnError(null);
+    setWithdrawnLoading(false);
     setFeeBaht(null);
     setFilter('ALL');
     setSortBy('newest');
@@ -505,7 +543,7 @@ export function AdminSection() {
     setEditingId(null);
     setEditingDirty(false);
     setPendingDiscardSwitch(null);
-    setConfirmDeleteId(null);
+    setDeleteConfirm(null);
     setDeleteReason('');
     setPendingStatus(null);
     setStatusReason('');
@@ -541,20 +579,44 @@ export function AdminSection() {
     if (refreshBusyRef.current) return;
     refreshBusyRef.current = true;
     setBusy(true);
+    setWithdrawnLoading(true);
     if (alsoSettings) {
       setSettingsRefreshKey((k) => k + 1);
     }
     try {
-      const res = await listApplications(t);
-      setApps(Array.isArray(res.data) ? res.data : []);
-      setSource(res.source);
-      setError(null);
-    } catch (err) {
-      if (handleAuthError(err)) return;
-      setError(describeAdminError(err, 'โหลดรายการใบสมัครไม่สำเร็จ'));
+      const [appsRes, withdrawnRes] = await Promise.allSettled([
+        listApplications(t),
+        fetchWithdrawnApplicants(t),
+      ]);
+
+      if (appsRes.status === 'rejected') {
+        if (handleAuthError(appsRes.reason)) return;
+        setError(describeAdminError(appsRes.reason, 'โหลดรายการใบสมัครไม่สำเร็จ'));
+      } else {
+        setApps(Array.isArray(appsRes.value.data) ? appsRes.value.data : []);
+        setSource(appsRes.value.source);
+        setError(null);
+      }
+
+      if (withdrawnRes.status === 'fulfilled') {
+        setWithdrawnApps(Array.isArray(withdrawnRes.value.data) ? withdrawnRes.value.data : []);
+        setWithdrawnError(null);
+      } else {
+        if (
+          withdrawnRes.reason instanceof ApiHttpError &&
+          withdrawnRes.reason.status === 401 &&
+          handleAuthError(withdrawnRes.reason)
+        ) {
+          return;
+        }
+        setWithdrawnError(
+          describeAdminError(withdrawnRes.reason, 'โหลดรายชื่อผู้สมัครที่ยกเลิกเองไม่สำเร็จ'),
+        );
+      }
     } finally {
       refreshBusyRef.current = false;
       setBusy(false);
+      setWithdrawnLoading(false);
     }
   }
 
@@ -613,8 +675,7 @@ export function AdminSection() {
       setStatusReason('');
       return;
     }
-    setConfirmDeleteId(null);
-    setDeleteReason('');
+    resetDeleteConfirm(false);
     if (pendingStatus?.appId !== app.id) setStatusReason('');
     setPendingStatus({ appId: app.id, from: app.status, to });
   }
@@ -642,6 +703,7 @@ export function AdminSection() {
   }
 
   /* Compute sorted & filtered lists before handlers that need next-pending navigation. */
+  const isWithdrawnTab = filter === 'WITHDRAWN';
   const sorted = sortApplications(apps, sortBy);
   const byTab =
     filter === 'ALL'
@@ -650,8 +712,11 @@ export function AdminSection() {
         ? sorted.filter((a) => isSlipPending(a))
         : filter === 'AWAITING_PAY'
           ? sorted.filter((a) => isAwaitingPayment(a))
-          : sorted.filter((a) => a.status === filter);
+          : filter === 'WITHDRAWN'
+            ? []
+            : sorted.filter((a) => a.status === filter);
   const visible = byTab.filter((a) => matchesApplicantQuery(a, query));
+  const visibleWithdrawn = withdrawnApps.filter((w) => matchesWithdrawnQuery(w, query));
   const searching = stripZeroWidth(query).trim() !== '';
 
   function findNextPendingSlip(afterId: string, list: Application[]): Application | null {
@@ -666,6 +731,7 @@ export function AdminSection() {
     if (switchFilterToPending) {
       setFilter('SLIP_PENDING');
     }
+    resetDeleteConfirm(false);
     setEditingId(null);
     setDetailId(null);
     setLightboxOpen(false);
@@ -845,8 +911,7 @@ export function AdminSection() {
         setEditingDirty(false);
       }
       if (pendingStatus?.appId === id) setPendingStatus(null);
-      setConfirmDeleteId(null);
-      setDeleteReason('');
+      resetDeleteConfirm(false);
       setSource(res.source);
       setActionSuccess(`ลบใบสมัคร ${id} (${name}) สำเร็จ`);
     } catch (err) {
@@ -858,8 +923,37 @@ export function AdminSection() {
     }
   }
 
+  /** Minimum gap between delete steps, so a double or triple click cannot run all three confirmations. */
+  const DELETE_STEP_GAP_MS = 400;
+
+  function onDeleteButtonClick(a: Application) {
+    if (deletingRef.current === a.id || deletingId === a.id) return;
+    const now = Date.now();
+    if (now - lastDeleteStepAtRef.current < DELETE_STEP_GAP_MS) return;
+    lastDeleteStepAtRef.current = now;
+    if (!deleteConfirm || deleteConfirm.appId !== a.id) {
+      guardProfileEditSwitch(`ลบใบสมัคร ${a.id}`, () => {
+        setPendingStatus(null);
+        setStatusReason('');
+        setDeleteReason('');
+        setDeleteConfirm({ appId: a.id, step: 1 });
+      });
+      return;
+    }
+    if (deleteConfirm.step === 1) {
+      setDeleteConfirm({ appId: a.id, step: 2 });
+      return;
+    }
+    if (deleteConfirm.step === 2) {
+      setDeleteConfirm({ appId: a.id, step: 3 });
+      return;
+    }
+    void handleDeleteApp(a.id, a.fullName);
+  }
+
   function openSlip(a: Application) {
     const run = () => {
+      resetDeleteConfirm(false);
       setEditingId(null);
       setEditingDirty(false);
       setDetailId(null);
@@ -875,6 +969,7 @@ export function AdminSection() {
 
   function toggleDetail(a: Application) {
     const run = () => {
+      resetDeleteConfirm(false);
       setInspectingId(null);
       setLightboxOpen(false);
       setEditingId(null);
@@ -901,11 +996,10 @@ export function AdminSection() {
       return;
     }
     const run = () => {
+      resetDeleteConfirm(false);
       setInspectingId(null);
       setLightboxOpen(false);
       setDetailId(null);
-      setConfirmDeleteId(null);
-      setDeleteReason('');
       setPendingStatus(null);
       setEditingDirty(false);
       setEditingId(a.id);
@@ -932,7 +1026,7 @@ export function AdminSection() {
 
   /** Records the export in audit_logs first; the file is built only once that succeeded. */
   async function exportCsv() {
-    if (!token || exporting || exportBusyRef.current || visible.length === 0) return;
+    if (!token || exporting || exportBusyRef.current || isWithdrawnTab || visible.length === 0) return;
     const rows = visible;
     exportBusyRef.current = true;
     setExporting(true);
@@ -940,7 +1034,9 @@ export function AdminSection() {
     setError(null);
     try {
       const apiStatusFilter: ApplicationStatus | undefined =
-        filter === 'ALL' || filter === 'SLIP_PENDING' || filter === 'AWAITING_PAY' ? undefined : filter;
+        filter === 'ALL' || filter === 'SLIP_PENDING' || filter === 'AWAITING_PAY'
+          ? undefined
+          : filter;
       await recordCsvExport(token, {
         applicationIds: rows.map((a) => a.id),
         statusFilter: apiStatusFilter,
@@ -1043,9 +1139,76 @@ export function AdminSection() {
     };
   }, [token, inspectingId, slipRetryNonce, handleAuthError]);
 
+  /* 3-step row delete: 8s idle reset (restarted by click/keydown/input inside button or strip) + outside pointerdown reset. */
+  useEffect(() => {
+    if (!deleteConfirm || deletingId === deleteConfirm.appId) {
+      if (deleteTimerRef.current !== null) {
+        window.clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+      }
+      return;
+    }
+    const appId = deleteConfirm.appId;
+    const isInside = (node: Node | null): boolean => {
+      if (!node) return false;
+      const btn = document.getElementById(`delete-btn-${appId}`);
+      const strip = document.getElementById(`delete-strip-${appId}`);
+      return Boolean(btn?.contains(node) || strip?.contains(node));
+    };
+    const schedule = () => {
+      if (deleteTimerRef.current !== null) {
+        window.clearTimeout(deleteTimerRef.current);
+      }
+      deleteTimerRef.current = window.setTimeout(() => {
+        deleteTimerRef.current = null;
+        const active = document.activeElement;
+        const shouldRefocus = !active || active === document.body || isInside(active);
+        resetDeleteConfirm(shouldRefocus);
+      }, 8000);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (deletingRef.current === appId) return;
+      const target = e.target as Node | null;
+      if (isInside(target)) {
+        schedule();
+        return;
+      }
+      const active = document.activeElement;
+      const strip = document.getElementById(`delete-strip-${appId}`);
+      const focusWasInStrip = Boolean(active && strip?.contains(active));
+      const targetIsFocusable =
+        target instanceof Element &&
+        Boolean(target.closest('button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'));
+      resetDeleteConfirm(focusWasInStrip && !targetIsFocusable);
+    };
+    const onActivity = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key === 'Escape') return;
+      if (isInside(e.target as Node | null)) {
+        schedule();
+      }
+    };
+
+    schedule();
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('click', onActivity);
+    document.addEventListener('keydown', onActivity);
+    document.addEventListener('input', onActivity);
+
+    return () => {
+      if (deleteTimerRef.current !== null) {
+        window.clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+      }
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('click', onActivity);
+      document.removeEventListener('keydown', onActivity);
+      document.removeEventListener('input', onActivity);
+    };
+  }, [deleteConfirm, deletingId, resetDeleteConfirm]);
+
   /* Escape closes open inline panels or confirmations (when lightbox/mutation is not active). */
   useEffect(() => {
-    if (!inspectingId && !detailId && !confirmDeleteId && !pendingStatus && !pendingDiscardSwitch) return;
+    if (!inspectingId && !detailId && !deleteConfirm && !pendingStatus && !pendingDiscardSwitch) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (lightboxOpen) return;
@@ -1057,11 +1220,16 @@ export function AdminSection() {
           setConfirmRejectSlip(false);
           return;
         }
-        // A delete or status confirmation is the innermost layer: Escape cancels just that.
-        if (confirmDeleteId && !deletingId) {
-          setConfirmDeleteId(null);
-          setDeleteReason('');
-          return;
+        // Delete confirmation resets on Escape only when focus is inside the delete button or strip.
+        if (deleteConfirm && !deletingId) {
+          const btn = document.getElementById(`delete-btn-${deleteConfirm.appId}`);
+          const strip = document.getElementById(`delete-strip-${deleteConfirm.appId}`);
+          const active = document.activeElement;
+          if (active && (btn?.contains(active) || strip?.contains(active))) {
+            e.preventDefault();
+            resetDeleteConfirm(true);
+            return;
+          }
         }
         if (pendingStatus && !patching) {
           setPendingStatus(null);
@@ -1077,7 +1245,7 @@ export function AdminSection() {
   }, [
     inspectingId,
     detailId,
-    confirmDeleteId,
+    deleteConfirm,
     pendingStatus,
     pendingDiscardSwitch,
     confirmRejectSlip,
@@ -1085,6 +1253,7 @@ export function AdminSection() {
     verifying,
     deletingId,
     patching,
+    resetDeleteConfirm,
   ]);
 
   /* Keyboard focus should never fall to <body>: returning from closed panels or moving into the next slip. */
@@ -1108,17 +1277,22 @@ export function AdminSection() {
     if (prevDetailId.current && !detailId) {
       document.getElementById(`detail-btn-${prevDetailId.current}`)?.focus();
     }
-    if (prevConfirmId.current && !confirmDeleteId) {
-      document.getElementById(`delete-btn-${prevConfirmId.current}`)?.focus();
-    }
     if (prevEditId.current && !editingId) {
       document.getElementById(`edit-btn-${prevEditId.current}`)?.focus();
     }
     prevSlipId.current = inspectingId;
     prevDetailId.current = detailId;
-    prevConfirmId.current = confirmDeleteId;
     prevEditId.current = editingId;
-  }, [inspectingId, detailId, confirmDeleteId, editingId, visible.length]);
+  }, [inspectingId, detailId, editingId, visible.length]);
+
+  /* After a 3-step delete reset (Escape, Cancel, timeout, non-focusable outside click), keep focus on the delete button. */
+  useEffect(() => {
+    if (!deleteConfirm && refocusDeleteBtnIdRef.current && !focusListAfterDelete.current) {
+      const id = refocusDeleteBtnIdRef.current;
+      refocusDeleteBtnIdRef.current = null;
+      document.getElementById(`delete-btn-${id}`)?.focus();
+    }
+  }, [deleteConfirm]);
 
   // A saved or cancelled status confirmation unmounts its buttons: put focus back on that row's select.
   useEffect(() => {
@@ -1170,9 +1344,12 @@ export function AdminSection() {
   const overduePayCount = apps.filter((a) => isPaymentOverdue(a, nowMs)).length;
   /** Same rule the server uses for the seat quota: REJECTED, REFUND_PENDING and REFUNDED released theirs. */
   const currentCount = apps.filter((a) => holdsSeat(a.status)).length;
+  const activeTotal = isWithdrawnTab ? withdrawnApps.length : byTab.length;
+  const activeVisibleCount = isWithdrawnTab ? visibleWithdrawn.length : visible.length;
   const countLabel = searching
-    ? `พบ ${visible.length} จาก ${byTab.length} รายการ`
-    : `${byTab.length} รายการ`;
+    ? `พบ ${activeVisibleCount} จาก ${activeTotal} รายการ`
+    : `${activeTotal} รายการ`;
+  const referralSummary = summarizeReferrals(apps);
 
   const inputCls = `${INPUT_BASE} rounded-xl`;
   const pillGhost = PILL_GHOST;
@@ -1187,6 +1364,7 @@ export function AdminSection() {
     { key: 'AWAITING_PAY', label: 'รอโอน / ส่งสลิป', n: awaitingPayCount },
     ...STATUSES.map((s) => ({ key: s as FilterKey, label: STATUS_LABELS[s], n: count(s) })),
     ...legacyTabs,
+    { key: 'WITHDRAWN', label: 'ยกเลิกเอง', n: withdrawnApps.length },
   ];
 
   const visibleWithSlip = visible.filter((x) => hasSlip(x) && can.viewSlip);
@@ -1437,8 +1615,78 @@ export function AdminSection() {
             onSettings={(s: AdminSettings) => setFeeBaht(Number(s.campFee))}
           />
 
+          {/* ── Referral channel summary (all loaded applications; hidden on withdrawn tab) ── */}
+          {!isWithdrawnTab && (
+            <details className="group mt-4">
+              <summary
+                className={`inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] [&::-webkit-details-marker]:hidden ${FOCUS}`}
+                style={{ borderColor: RULE, color: INK }}
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  size={16}
+                  strokeWidth={1.5}
+                  className="shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                />
+                <span>สรุปช่องทางที่รู้จักค่าย</span>
+                <span className="text-xs font-normal" style={{ color: INK_3 }}>
+                  <span className="font-mono tabular-nums">
+                    {referralSummary.answered}/{referralSummary.total}
+                  </span>
+                </span>
+              </summary>
+              <div className="mt-3 border-y py-3" style={{ borderColor: RULE }}>
+                <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                  ตอบแล้ว{' '}
+                  <span className="font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                    {referralSummary.answered}
+                  </span>{' '}
+                  จาก{' '}
+                  <span className="font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                    {referralSummary.total}
+                  </span>{' '}
+                  ใบสมัคร
+                </p>
+                <ul className="mt-2">
+                  {referralSummary.groups.map((g) => (
+                    <li
+                      key={g.id}
+                      className="border-t py-2.5 first:border-t-0"
+                      style={{ borderColor: RULE }}
+                    >
+                      <div className="flex items-baseline justify-between gap-4 text-sm leading-6">
+                        <span className="font-semibold" style={{ color: INK }}>
+                          {g.label}
+                        </span>
+                        <span className="shrink-0 font-mono text-sm font-semibold tabular-nums" style={{ color: INK }}>
+                          {g.count}
+                        </span>
+                      </div>
+                      {g.options.length > 0 && (
+                        <ul className="mt-1.5 space-y-1 pl-4">
+                          {g.options.map((opt) => (
+                            <li
+                              key={opt.code}
+                              className="flex items-baseline justify-between gap-4 text-xs leading-6"
+                              style={{ color: INK_2 }}
+                            >
+                              <span>{opt.label}</span>
+                              <span className="shrink-0 font-mono tabular-nums" style={{ color: INK_2 }}>
+                                {opt.count}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          )}
+
           {/* ── Ledger ───────────────────────────────────────────── */}
-          <section className="mt-6" aria-busy={busy}>
+          <section className="mt-6" aria-busy={isWithdrawnTab ? withdrawnLoading : busy}>
             {/* Queue chips, search and the column header stay in reach while scrolling the list (md and up). */}
             <div
               ref={toolbarRef}
@@ -1462,7 +1710,10 @@ export function AdminSection() {
                       key={t.key}
                       type="button"
                       aria-pressed={active}
-                      onClick={() => setFilter(t.key)}
+                      onClick={() => {
+                        resetDeleteConfirm(false);
+                        setFilter(t.key);
+                      }}
                       className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm transition-colors ${active ? '' : 'hover:bg-[var(--color-btn-ghost-hover)]'} ${FOCUS}`}
                       style={{
                         backgroundColor: active ? BTN_DARK : 'transparent',
@@ -1497,7 +1748,7 @@ export function AdminSection() {
                 <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:flex-1">
                   <div className="relative w-full sm:max-w-md">
                     <label htmlFor="applicant-search" className="sr-only">
-                      ค้นหาผู้สมัคร
+                      {isWithdrawnTab ? 'ค้นหาผู้สมัครที่ยกเลิกเอง' : 'ค้นหาผู้สมัคร'}
                     </label>
                     <Search
                       aria-hidden="true"
@@ -1511,7 +1762,11 @@ export function AdminSection() {
                       type="text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      placeholder="ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน จังหวัด"
+                      placeholder={
+                        isWithdrawnTab
+                          ? 'ค้นหารหัส ชื่อ ชื่อเล่น เบอร์ โรงเรียน'
+                          : 'ค้นหารหัส ชื่อ เบอร์ อีเมล โรงเรียน จังหวัด'
+                      }
                       autoComplete="off"
                       spellCheck={false}
                       enterKeyHint="search"
@@ -1531,36 +1786,38 @@ export function AdminSection() {
                     )}
                   </div>
 
-                  <div className="relative w-full sm:w-auto sm:min-w-[14.5rem]">
-                    <label htmlFor="applicant-sort" className="sr-only">
-                      เรียงลำดับรายการ
-                    </label>
-                    <select
-                      id="applicant-sort"
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as SortKey)}
-                      className={`min-h-11 w-full cursor-pointer appearance-none rounded-full border bg-[var(--bg-card)] py-2 pl-4 pr-10 text-sm font-medium ${FOCUS}`}
-                      style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
-                    >
-                      <option value="newest">เรียง: สมัครล่าสุดก่อน</option>
-                      <option value="slip_queue">เรียง: ส่งสลิปก่อน–หลัง / คิวตรวจ</option>
-                      <option value="updated_desc">เรียง: อัปเดตล่าสุดก่อน</option>
-                    </select>
-                    <ChevronDown
-                      aria-hidden="true"
-                      strokeWidth={1.5}
-                      size={16}
-                      className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
-                      style={{ color: INK_3 }}
-                    />
-                  </div>
+                  {!isWithdrawnTab && (
+                    <div className="relative w-full sm:w-auto sm:min-w-[14.5rem]">
+                      <label htmlFor="applicant-sort" className="sr-only">
+                        เรียงลำดับรายการ
+                      </label>
+                      <select
+                        id="applicant-sort"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortKey)}
+                        className={`min-h-11 w-full cursor-pointer appearance-none rounded-full border bg-[var(--bg-card)] py-2 pl-4 pr-10 text-sm font-medium ${FOCUS}`}
+                        style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
+                      >
+                        <option value="newest">เรียง: สมัครล่าสุดก่อน</option>
+                        <option value="slip_queue">เรียง: ส่งสลิปก่อน–หลัง / คิวตรวจ</option>
+                        <option value="updated_desc">เรียง: อัปเดตล่าสุดก่อน</option>
+                      </select>
+                      <ChevronDown
+                        aria-hidden="true"
+                        strokeWidth={1.5}
+                        size={16}
+                        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
+                        style={{ color: INK_3 }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-start">
                   <p role="status" aria-live="polite" className="text-sm tabular-nums" style={{ color: INK_2 }}>
                     {countLabel}
                   </p>
-                  {can.exportCsv && (
+                  {!isWithdrawnTab && can.exportCsv && (
                     <button
                       type="button"
                       onClick={exportCsv}
@@ -1576,10 +1833,10 @@ export function AdminSection() {
                 </div>
               </div>
 
-              {visible.length > 0 && (
+              {!isWithdrawnTab && visible.length > 0 && (
                 <div
                   aria-hidden="true"
-                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-4 ${ROW_GRID}`}
+                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-3 xl:gap-4 ${ROW_GRID}`}
                   style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
                 >
                   <span>รหัส / วันที่สมัคร</span>
@@ -1587,13 +1844,30 @@ export function AdminSection() {
                   <span>โรงเรียน / ชั้น / เสื้อ</span>
                   <span>หลักฐานการโอน</span>
                   <span>สถานะใบสมัคร</span>
-                  <span>การจัดการ</span>
+                  <span className="lg:text-right">การจัดการ</span>
+                </div>
+              )}
+
+              {isWithdrawnTab && !withdrawnError && visibleWithdrawn.length > 0 && (
+                <div
+                  aria-hidden="true"
+                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-3 xl:gap-4 ${WITHDRAWN_GRID}`}
+                  style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
+                >
+                  <span>รหัส</span>
+                  <span>ชื่อ–นามสกุล (ชื่อเล่น)</span>
+                  <span>เบอร์</span>
+                  <span>โรงเรียน · จังหวัด</span>
+                  <span>สถานะก่อนยกเลิก</span>
+                  <span>สมัครเมื่อ</span>
+                  <span>ยกเลิกเมื่อ</span>
+                  <span>เหตุผล</span>
                 </div>
               )}
             </div>
 
             {/* Applications */}
-            {visible.length > 0 && (
+            {!isWithdrawnTab && visible.length > 0 && (
               <div
                 className="overflow-hidden rounded-2xl border lg:rounded-t-none lg:border-t-0"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
@@ -1606,6 +1880,10 @@ export function AdminSection() {
                     const editing = editingId === a.id;
                     const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
                     const risky = pendingChange ? isRiskyTransition(pendingChange.from, pendingChange.to) : false;
+                    const restoringForfeited = pendingChange
+                      ? pendingChange.from === 'FORFEITED' && holdsSeat(pendingChange.to)
+                      : false;
+                    const deleteStep = deleteConfirm?.appId === a.id ? deleteConfirm.step : 0;
                     // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
                     const slipLocked = !holdsSeat(a.status);
                     const slipPending = (a.slipStatus ?? 'PENDING') === 'PENDING';
@@ -1632,7 +1910,7 @@ export function AdminSection() {
 
                     return (
                       <li key={a.id} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
-                        <div className={`flex flex-col gap-3 px-5 py-3.5 lg:grid lg:items-center lg:gap-4 ${ROW_GRID}`}>
+                        <div className={`flex flex-col gap-3 px-5 py-3.5 lg:grid lg:items-center lg:gap-3 xl:gap-4 ${ROW_GRID}`}>
                           {/* Col 1: ID + createdAt */}
                           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
                             <span
@@ -1724,17 +2002,32 @@ export function AdminSection() {
                             )}
                           </div>
 
-                          {/* Col 5 + 6: status and row actions share one line on small screens */}
-                          <div className="flex min-w-0 items-center gap-2 lg:contents">
-                          <div className="min-w-0 flex-1">
+                          {/* Col 5 + 6: status and row actions wrap cleanly on small screens */}
+                          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:contents">
+                          <div className="min-w-0 flex-1 basis-40">
                             {can.changeStatus ? (
-                              <StatusSelect
-                                app={a}
-                                value={pendingChange?.to ?? a.status}
-                                pending={Boolean(pendingChange)}
-                                disabled={patching === a.id || deletingId === a.id}
-                                onChange={(status) => requestStatusChange(a, status)}
-                              />
+                              <div className="flex flex-col items-start gap-1.5">
+                                <StatusSelect
+                                  app={a}
+                                  value={pendingChange?.to ?? a.status}
+                                  pending={Boolean(pendingChange)}
+                                  disabled={patching === a.id || deletingId === a.id}
+                                  onChange={(status) => requestStatusChange(a, status)}
+                                />
+                                {a.status === 'FORFEITED' && (
+                                  <button
+                                    type="button"
+                                    disabled={patching === a.id || deletingId === a.id}
+                                    aria-pressed={pendingChange?.from === 'FORFEITED' && pendingChange?.to === 'PASSED'}
+                                    onClick={() => requestStatusChange(a, 'PASSED')}
+                                    className={`gap-1.5 ${pillGhost}`}
+                                    style={{ borderColor: RULE, color: INK }}
+                                  >
+                                    <RotateCcw aria-hidden="true" size={16} strokeWidth={1.5} />
+                                    กู้สิทธิ์
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <p
                                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium leading-6 lg:min-h-9"
@@ -1746,7 +2039,7 @@ export function AdminSection() {
                             )}
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-1.5 lg:flex-wrap">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5 lg:justify-end">
                             <button
                               id={`detail-btn-${a.id}`}
                               type="button"
@@ -1779,9 +2072,93 @@ export function AdminSection() {
                                 <span className="sr-only sm:not-sr-only">{editing ? 'ซ่อนการแก้ไข' : 'แก้ไข'}</span>
                               </button>
                             )}
+                            {can.deleteApplication && (
+                              <button
+                                id={`delete-btn-${a.id}`}
+                                type="button"
+                                disabled={deletingId === a.id}
+                                aria-busy={deletingId === a.id || undefined}
+                                aria-expanded={deleteStep > 0}
+                                aria-controls={deleteStep > 0 ? `delete-strip-${a.id}` : undefined}
+                                aria-label={
+                                  deleteStep === 0 && deletingId !== a.id
+                                    ? `ลบใบสมัคร ${a.id} (${a.fullName})`
+                                    : undefined
+                                }
+                                onClick={() => onDeleteButtonClick(a)}
+                                className={`max-w-full text-left ${PILL_DANGER}`}
+                                style={{
+                                  borderColor: DANGER,
+                                  color: DANGER,
+                                  backgroundColor:
+                                    deleteStep > 0
+                                      ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
+                                      : undefined,
+                                }}
+                              >
+                                <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+                                <span className="min-w-0 break-words">
+                                  {deletingId === a.id
+                                    ? 'กำลังลบ…'
+                                    : deleteStep === 1
+                                      ? 'ยืนยันลบ? (1/3)'
+                                      : deleteStep === 2
+                                        ? 'แน่ใจหรือไม่? (2/3)'
+                                        : deleteStep === 3
+                                          ? `ลบ ${a.fullName} ถาวร (3/3)`
+                                          : 'ลบ'}
+                                </span>
+                              </button>
+                            )}
                           </div>
                           </div>
                         </div>
+
+                    {/* 3-step delete confirmation strip: expands under the row, separated by a 1px danger hairline. */}
+                    {can.deleteApplication && deleteStep > 0 && (
+                      <div
+                        id={`delete-strip-${a.id}`}
+                        role="region"
+                        aria-label={`ยืนยันการลบ ${a.id}`}
+                        className="border-t px-5 py-4"
+                        style={{ borderColor: DANGER }}
+                      >
+                        <p aria-live="polite" className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
+                          ขั้นตอน <span className="font-mono tabular-nums">{deleteStep}/3</span> · ลบใบสมัคร{' '}
+                          <span className="font-mono tabular-nums">{a.id}</span> ({a.fullName})
+                        </p>
+                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                          การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
+                          {(slip || a.status === 'CONFIRMED') &&
+                            ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
+                        </p>
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
+                            เหตุผลการลบ (ไม่บังคับ)
+                          </label>
+                          <input
+                            id={`delete-reason-${a.id}`}
+                            type="text"
+                            maxLength={500}
+                            disabled={deletingId === a.id}
+                            value={deleteReason}
+                            onChange={(e) => setDeleteReason(e.target.value)}
+                            placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
+                            className={`${inputCls} sm:max-w-sm`}
+                            style={{ borderColor: INPUT_BORDER, color: INK }}
+                          />
+                          <button
+                            type="button"
+                            disabled={deletingId === a.id}
+                            onClick={() => resetDeleteConfirm(true)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                            style={{ color: INK_2 }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Every status change waits for a confirm: picking a value only proposes it. */}
                     {pendingChange && (
@@ -1794,18 +2171,26 @@ export function AdminSection() {
                         <p className="text-sm font-semibold leading-7" style={{ color: INK }}>
                           เปลี่ยนสถานะ {a.fullName} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
                         </p>
-                        <p className="mt-0.5 text-sm leading-7" style={{ color: risky ? DANGER : INK_2 }}>
-                          {!risky
-                            ? 'ระบบจะบันทึกการเปลี่ยนแปลงนี้ในประวัติพร้อมเหตุผล (ถ้ามี)'
-                            : !holdsSeat(pendingChange.to)
-                              ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
-                              : pendingChange.to === 'CONFIRMED'
-                                ? 'การเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ด้วยตนเองจะข้ามขั้นตอนตรวจสลิป (ควรใช้เมื่อตรวจสอบการชำระเงินเรียบร้อยแล้ว)'
-                                : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
-                          {a.slipStatus === 'APPROVED' && pendingChange.to === 'REJECTED'
-                            ? ' (ผู้สมัครมีสลิปที่อนุมัติแล้ว หากต้องคืนเงินแนะนำให้เลือก “รอคืนเงิน”)'
-                            : ''}
-                        </p>
+                        {restoringForfeited && (
+                          <p className="mt-0.5 text-sm font-medium leading-7" style={{ color: AMBER_TEXT }}>
+                            กู้สิทธิ์จะคืนที่นั่งให้ผู้สมัครคนนี้ (ถ้ายังมีที่นั่งว่าง) และให้เวลาชำระเงินอีกอย่างน้อย{' '}
+                            <span className="font-mono tabular-nums">24</span> ชั่วโมงนับจากตอนนี้ หากยังไม่ส่งสลิปภายในกำหนด ระบบจะตัดสิทธิ์อัตโนมัติอีกครั้ง
+                          </p>
+                        )}
+                        {(!restoringForfeited || risky) && (
+                          <p className="mt-0.5 text-sm leading-7" style={{ color: risky ? DANGER : INK_2 }}>
+                            {!risky
+                              ? 'ระบบจะบันทึกการเปลี่ยนแปลงนี้ในประวัติพร้อมเหตุผล (ถ้ามี)'
+                              : !holdsSeat(pendingChange.to)
+                                ? 'การเปลี่ยนเป็นสถานะนี้จะคืนที่นั่งทันที และอาจคืนกลับมาไม่ได้หากโควตาเต็มแล้ว'
+                                : pendingChange.to === 'CONFIRMED'
+                                  ? 'การเปลี่ยนเป็น “ยืนยันสิทธิ์สมบูรณ์” ด้วยตนเองจะข้ามขั้นตอนตรวจสลิป (ควรใช้เมื่อตรวจสอบการชำระเงินเรียบร้อยแล้ว)'
+                                  : 'การเปลี่ยนสถานะออกจาก “ยืนยันสิทธิ์สมบูรณ์” อาจต้องตรวจสอบหลักฐานการชำระเงินใหม่'}
+                            {a.slipStatus === 'APPROVED' && pendingChange.to === 'REJECTED'
+                              ? ' (ผู้สมัครมีสลิปที่อนุมัติแล้ว หากต้องคืนเงินแนะนำให้เลือก “รอคืนเงิน”)'
+                              : ''}
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
                           <label htmlFor={`status-reason-${a.id}`} className="sr-only">
                             เหตุผลการเปลี่ยนสถานะ (ไม่บังคับ)
@@ -1925,98 +2310,28 @@ export function AdminSection() {
                             </p>
                           </div>
                           <div className="sm:col-span-2 lg:col-span-3">
+                            <p className="text-xs font-semibold" style={{ color: INK_3 }}>รู้จักค่ายจาก</p>
+                            <p className="mt-1 break-words text-sm leading-7" style={{ color: INK }}>
+                              {formatReferralLabels(a.referralSources, a.referralOther)}
+                            </p>
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-3">
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>เหตุผลการสมัคร / แรงบันดาลใจ</p>
                             <p className="mt-1 whitespace-pre-wrap text-sm leading-7" style={{ color: INK_2 }}>
                               {a.motivation?.trim() ? a.motivation : '— ไม่ได้ระบุ —'}
                             </p>
                           </div>
                         </div>
-                        {can.deleteApplication && confirmDeleteId === a.id ? (
-                          <div
-                            role="region"
-                            aria-label={`ยืนยันการลบ ${a.id}`}
-                            className="mt-6 border-t pt-4"
-                            style={{ borderColor: DANGER }}
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setDetailId(null)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+                            style={{ borderColor: RULE, color: INK }}
                           >
-                            <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
-                              ยืนยันลบใบสมัคร {a.id} ({a.fullName})?
-                            </p>
-                            <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                              การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
-                              {(slip || a.status === 'CONFIRMED') &&
-                                ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
-                            </p>
-                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                              <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
-                                เหตุผลการลบ (ไม่บังคับ)
-                              </label>
-                              <input
-                                id={`delete-reason-${a.id}`}
-                                type="text"
-                                maxLength={500}
-                                value={deleteReason}
-                                onChange={(e) => setDeleteReason(e.target.value)}
-                                placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
-                                className={`${inputCls} sm:max-w-sm`}
-                                style={{ borderColor: INPUT_BORDER, color: INK }}
-                              />
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  disabled={deletingId === a.id}
-                                  aria-busy={deletingId === a.id || undefined}
-                                  onClick={() => handleDeleteApp(a.id, a.fullName)}
-                                  className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                                  style={{ borderColor: DANGER, color: DANGER }}
-                                >
-                                  {deletingId === a.id ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={deletingId === a.id}
-                                  onClick={() => {
-                                    setConfirmDeleteId(null);
-                                    setDeleteReason('');
-                                  }}
-                                  className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                                  style={{ color: INK_2 }}
-                                >
-                                  ยกเลิก
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setDetailId(null)}
-                              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
-                              style={{ borderColor: RULE, color: INK }}
-                            >
-                              ปิด
-                            </button>
-                            {can.deleteApplication && (
-                              <button
-                                id={`delete-btn-${a.id}`}
-                                type="button"
-                                disabled={deletingId === a.id}
-                                onClick={() => {
-                                  guardProfileEditSwitch(`ลบใบสมัคร ${a.id}`, () => {
-                                    setPendingStatus(null);
-                                    setDeleteReason('');
-                                    setConfirmDeleteId(a.id);
-                                  });
-                                }}
-                                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium underline-offset-4 hover:underline disabled:opacity-50 ${FOCUS}`}
-                                style={{ color: DANGER }}
-                              >
-                                <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
-                                ลบใบสมัครนี้
-                              </button>
-                            )}
-                          </div>
-                        )}
+                            ปิด
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -2510,8 +2825,115 @@ export function AdminSection() {
               </div>
             )}
 
-            {/* Loading skeleton (first load only) */}
-            {busy && apps.length === 0 && (
+            {/* Read-only withdrawn applicants tab */}
+            {isWithdrawnTab && withdrawnError && (
+              <div
+                role="alert"
+                className="mt-4 flex items-start gap-2.5 border-y py-4 text-sm leading-7"
+                style={{ borderColor: DANGER, color: INK }}
+              >
+                <TriangleAlert
+                  aria-hidden="true"
+                  size={18}
+                  strokeWidth={1.5}
+                  className="mt-1 shrink-0"
+                  style={{ color: DANGER }}
+                />
+                <span>{withdrawnError}</span>
+              </div>
+            )}
+
+            {isWithdrawnTab && !withdrawnError && visibleWithdrawn.length > 0 && (
+              <div
+                className="overflow-hidden rounded-2xl border lg:rounded-t-none lg:border-t-0"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
+                <ul>
+                  {visibleWithdrawn.map((w) => (
+                    <li key={`${w.id}-${w.withdrawnAt}`} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
+                      <div className={`flex flex-col gap-2 px-5 py-3.5 lg:grid lg:items-center lg:gap-3 xl:gap-4 ${WITHDRAWN_GRID}`}>
+                        {/* Col 1: Code */}
+                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
+                          <span
+                            className="inline-block rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
+                            style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
+                          >
+                            {w.id}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1.5 text-xs font-medium lg:hidden"
+                            style={{ color: INK_2 }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="size-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: STATUS_DOT[w.status] }}
+                            />
+                            {STATUS_LABELS[w.status]}
+                          </span>
+                        </div>
+
+                        {/* Col 2: Name (nickname) */}
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold leading-6" style={{ color: INK }}>
+                            {w.fullName}
+                            {w.nickname ? (
+                              <span className="font-normal" style={{ color: INK_3 }}>
+                                {' '}
+                                ({w.nickname})
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
+
+                        {/* Col 3: Phone */}
+                        <p className="font-mono text-xs leading-5 tabular-nums" style={{ color: INK_2 }}>
+                          {w.phone}
+                        </p>
+
+                        {/* Col 4: School · Province */}
+                        <p className="min-w-0 break-words text-sm leading-6" style={{ color: INK_2 }}>
+                          <span className="font-medium" style={{ color: INK }}>
+                            {w.school}
+                          </span>
+                          {w.province ? ` · ${w.province}` : ''}
+                        </p>
+
+                        {/* Col 5: Status before withdrawal (lg; mobile shows next to code) */}
+                        <p className="hidden items-center gap-1.5 text-xs font-medium leading-5 lg:inline-flex" style={{ color: INK }}>
+                          <span
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: STATUS_DOT[w.status] }}
+                          />
+                          <span className="min-w-0 break-words">{STATUS_LABELS[w.status]}</span>
+                        </p>
+
+                        {/* Col 6: Created at */}
+                        <p className="text-xs leading-5" style={{ color: INK_3 }}>
+                          <span className="font-semibold lg:hidden">สมัครเมื่อ: </span>
+                          {formatBangkokDateTime(w.createdAt)}
+                        </p>
+
+                        {/* Col 7: Withdrawn at */}
+                        <p className="text-xs leading-5" style={{ color: INK_2 }}>
+                          <span className="font-semibold lg:hidden">ยกเลิกเมื่อ: </span>
+                          {formatBangkokDateTime(w.withdrawnAt)}
+                        </p>
+
+                        {/* Col 8: Reason */}
+                        <p className="min-w-0 break-words text-xs leading-6" style={{ color: w.reason?.trim() ? INK_2 : INK_3 }}>
+                          <span className="font-semibold lg:hidden">เหตุผล: </span>
+                          {w.reason?.trim() ? w.reason.trim() : '— ไม่ได้ระบุ —'}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {isWithdrawnTab && withdrawnLoading && withdrawnApps.length === 0 && !withdrawnError && (
               <div
                 aria-hidden="true"
                 className="mt-4 overflow-hidden rounded-2xl border"
@@ -2532,7 +2954,42 @@ export function AdminSection() {
               </div>
             )}
 
-            {!busy && visible.length === 0 && (
+            {isWithdrawnTab && !withdrawnLoading && !withdrawnError && visibleWithdrawn.length === 0 && (
+              <div
+                className="mt-4 rounded-2xl border px-6 py-16 text-center"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
+                <p className="text-base leading-[1.75]" style={{ color: searching ? INK_2 : INK_3 }}>
+                  {searching
+                    ? `ไม่พบผู้สมัครที่ตรงกับคำค้นหา '${stripZeroWidth(query).trim()}'`
+                    : 'ยังไม่มีผู้สมัครที่ยกเลิกเอง'}
+                </p>
+              </div>
+            )}
+
+            {/* Loading skeleton (first load only) */}
+            {!isWithdrawnTab && busy && apps.length === 0 && (
+              <div
+                aria-hidden="true"
+                className="mt-4 overflow-hidden rounded-2xl border"
+                style={{ borderColor: RULE, backgroundColor: BG_CARD }}
+              >
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="border-b px-5 py-5 last:border-b-0" style={{ borderColor: RULE }}>
+                    <div
+                      className="h-3 w-24 animate-pulse rounded-sm motion-reduce:animate-none"
+                      style={{ backgroundColor: SURFACE_SUBTLE }}
+                    />
+                    <div
+                      className="mt-3 h-4 w-56 animate-pulse rounded-sm motion-reduce:animate-none"
+                      style={{ backgroundColor: SURFACE_SUBTLE }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isWithdrawnTab && !busy && visible.length === 0 && (
               <div
                 ref={emptyStateRef}
                 tabIndex={-1}

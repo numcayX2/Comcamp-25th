@@ -29,3 +29,6 @@ export const INPUT_BASE = `w-full border bg-[var(--bg-card)] px-3.5 py-3 text-ba
 
 /** Quiet full-pill button with a hairline border (min 44px touch target). */
 export const PILL_GHOST = `inline-flex min-h-11 items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`;
+
+/** Destructive full-pill button with danger border/text and subtle danger hover tint (min 44px touch target). */
+export const PILL_DANGER = `inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] disabled:opacity-50 ${FOCUS}`;

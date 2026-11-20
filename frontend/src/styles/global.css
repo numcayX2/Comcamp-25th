@@ -42,6 +42,11 @@
   --rule: rgba(18, 19, 22, 0.14);
   --rule-strong: rgba(18, 19, 22, 0.24);
   --border-input: #8A8D93;
+
+  /* Motion tokens (matches public/theme/styles.css) */
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --dur-fast: .16s;
+  --dur-base: .26s;
 }
 
 html.dark,
@@ -109,6 +114,54 @@ html, body {
 }
 
 /* ============================================================
+   Interactive motion (BaseLayout pages: /register, /status, /applicants, /admin, /guide)
+   Low-specificity :where() hooks; includes colour + opacity so Tailwind utility transitions
+   are extended rather than dropped. Never touches .rw-chip scale (GSAP owns it).
+   ============================================================ */
+:where(button, a, [role="button"], summary, [aria-pressed]) {
+  transition-property: color, background-color, border-color, box-shadow, opacity, outline-offset, translate, scale;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+:where(input, select, textarea) {
+  transition-property: color, background-color, border-color, box-shadow, outline-offset;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+:where(a) > svg:last-child:not(:first-child) {
+  transition: translate var(--dur-fast) var(--ease-out);
+}
+
+:where(button, [role="button"], a.rounded-full, [aria-pressed]):active:not(:disabled):not([aria-disabled="true"]) {
+  scale: 0.975;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :where(button.rounded-full[aria-pressed="false"]:not(:disabled):not([aria-disabled="true"])):hover {
+    background-color: var(--color-btn-ghost-hover) !important;
+    color: var(--color-ink) !important;
+  }
+
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not(.rw-input):not(:disabled):not(:focus):not([aria-invalid="true"]),
+    select:not(.rw-input):not(:disabled):not(:focus):not([aria-invalid="true"]),
+    textarea:not(.rw-input):not(:disabled):not(:focus):not([aria-invalid="true"])
+  ):hover {
+    border-color: var(--color-ink) !important;
+  }
+
+  :where(a:not([aria-disabled="true"])):hover > svg:last-child:not(:first-child) {
+    translate: 2px 0;
+  }
+
+  :where(a[target="_blank"]:not([aria-disabled="true"])):hover > svg:last-child:not(:first-child) {
+    translate: 2px -2px;
+  }
+}
+
+/* ============================================================
    Form select & option theme consistency (Fixes dark mode popups)
    ============================================================ */
 select {
@@ -151,6 +204,31 @@ a[href^="tel:"] { white-space: nowrap; }
   transform: translateY(-50%);
   color: var(--color-ink-subtle);
   pointer-events: none;
+  transition: rotate var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.pcb > input[aria-expanded="true"] + .pcb__chevron {
+  rotate: 180deg;
+  color: var(--color-ink);
+}
+@keyframes pcb-list-in {
+  from {
+    opacity: 0.7;
+    translate: 0 -4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes pcb-list-in-up {
+  from {
+    opacity: 0.7;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 .pcb__list {
   position: absolute;
@@ -170,6 +248,7 @@ a[href^="tel:"] { white-space: nowrap; }
     0 2px 6px rgba(18, 19, 22, 0.04),
     0 18px 36px -16px rgba(18, 19, 22, 0.12),
     0 0 0 1px var(--color-border);
+  animation: pcb-list-in var(--dur-fast) var(--ease-out);
 }
 .pcb__list[hidden] { display: none; }
 .pcb__opt,
@@ -184,8 +263,38 @@ a[href^="tel:"] { white-space: nowrap; }
   letter-spacing: 0;
   color: var(--color-ink);
 }
-.pcb__opt { cursor: pointer; }
+.pcb__opt {
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+}
+.pcb__opt:active { scale: 0.985; }
 .pcb__opt.is-active { background: var(--color-btn-ghost-hover); }
-.pcb__list--up { top: auto; bottom: calc(100% + 6px); }
+.pcb__list--up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  animation-name: pcb-list-in-up;
+}
 .pcb__opt[aria-selected='true'] { font-weight: 600; color: var(--color-tech); }
 .pcb__empty { color: var(--color-ink-subtle); }
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, [role="button"], summary, [aria-pressed], input, select, textarea) {
+    transition-property: color, background-color, border-color, opacity;
+    transition-duration: 0.01ms;
+  }
+  :where(button, [role="button"], a.rounded-full, [aria-pressed]):active,
+  :where(a) > svg:last-child:not(:first-child),
+  .pcb__chevron,
+  .pcb > input[aria-expanded="true"] + .pcb__chevron,
+  .pcb__opt,
+  .pcb__opt:active {
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
+    transition: none !important;
+  }
+  .pcb__list,
+  .pcb__list--up {
+    animation: none !important;
+  }
+}

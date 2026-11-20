@@ -88,3 +88,45 @@
 @media (min-width: 640px) {
   .st-card--compact { padding: 20px 24px; }
 }
+
+@keyframes st-in {
+  from {
+    opacity: 0.72;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.st-highlight,
+.st-card[data-lookup="phone"],
+.st-alert {
+  animation: st-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .st-card a.rounded-full.border:hover,
+  .st-card button.rounded-full.border:not(:disabled):not([aria-disabled="true"]):hover,
+  .st-highlight a.rounded-full.border:hover,
+  .st-highlight button.rounded-full.border:not(:disabled):not([aria-disabled="true"]):hover {
+    background-color: var(--color-btn-ghost-hover) !important;
+  }
+  .st-card button[type="submit"].rounded-full:not(:disabled):not([aria-disabled="true"]):hover {
+    opacity: 0.9;
+  }
+  .st-card a:not(.rounded-full):hover,
+  .st-highlight a:not(.rounded-full):hover {
+    color: var(--color-tech) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-card, .st-highlight, .st-notice, .st-alert, .st-warning {
+    transition: none !important;
+    animation: none !important;
+    translate: none !important;
+    scale: none !important;
+  }
+}

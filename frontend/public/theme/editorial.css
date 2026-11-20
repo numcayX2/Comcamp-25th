@@ -227,11 +227,25 @@
   text-decoration-color: var(--rule-strong);
   text-decoration-thickness: 1px;
   text-underline-offset: 5px;
-  transition: color 0.16s ease, text-decoration-color 0.16s ease;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
-.ed-inline-link:hover {
-  color: var(--blue-600);
-  text-decoration-color: var(--blue-600);
+.ed-inline-link > [aria-hidden="true"] {
+  display: inline-block;
+  transition: translate var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ed-inline-link:hover {
+    color: var(--blue-600);
+    text-decoration-color: var(--blue-600);
+  }
+  .ed-inline-link:hover > [aria-hidden="true"] {
+    translate: 3px 0;
+  }
+  .ed-inline-link[target="_blank"]:hover > [aria-hidden="true"] {
+    translate: 2px -2px;
+  }
 }
 .ed-inline-link:focus-visible {
   outline: 2px solid var(--blue-600);
@@ -374,10 +388,20 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   background: var(--sec-bg);
   border-radius: 24px;
   box-shadow: var(--nm-out);
-  transition: box-shadow 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    box-shadow 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    translate var(--dur-base) var(--ease-out);
 }
 #experience .step.is-active .step-content {
   box-shadow: var(--nm-in);
+}
+@media (hover: hover) and (pointer: fine) {
+  #experience .step:not(.is-active) .step-content:hover {
+    translate: 0 -2px;
+  }
+  #experience .step:not(.is-active):hover .step-node {
+    border-color: var(--blue-600);
+  }
 }
 #experience .step-num {
   margin: 0 0 6px;
@@ -622,6 +646,19 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border-radius: 24px !important;
   box-shadow: var(--nm-out) !important;
   color: var(--ink);
+  transition:
+    translate var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  #essentials .bento .card:hover {
+    translate: 0 -2px;
+  }
+  #essentials .bento .card.bento-feature:hover,
+  #essentials .bento .card.ed-cell--ledger:hover,
+  #essentials .bento .card.ed-cell--full:hover {
+    translate: 0 -3px;
+  }
 }
 #essentials .bento .card h3 {
   margin: 0 !important;
@@ -897,6 +934,9 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border-radius: 12px;
   background: var(--canvas-1);
   box-shadow: var(--nm-out-sm);
+  transition:
+    translate var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 @media (min-width: 640px) {
   .ed-photo-card__frame {
@@ -908,11 +948,15 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: scale 0.55s var(--ease-out);
 }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+@media (hover: hover) and (pointer: fine) {
+  .ed-photo-card:hover .ed-photo-card__frame {
+    translate: 0 -2px;
+    box-shadow: var(--nm-out);
+  }
   .ed-photo-card:hover .ed-photo-card__frame img {
-    transform: scale(1.03);
+    scale: 1.03;
   }
 }
 .ed-photo-card__cap {
@@ -992,6 +1036,10 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border-radius: 9999px;
   background: var(--sec-bg);
   border: 2px solid var(--ink);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out);
 }
 #timeline .tm-bento--steps .tm-tile.tm-tile--feature {
   padding: var(--ed-card-pad) !important;
@@ -999,11 +1047,23 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border: 0 !important;
   border-radius: 24px;
   box-shadow: var(--nm-out);
+  transition:
+    translate var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 #timeline .tm-bento--steps .tm-tile.tm-tile--feature::before {
   top: calc(var(--ed-card-pad) + 5px);
   background: var(--fern-500);
   border-color: var(--fern-500);
+}
+@media (hover: hover) and (pointer: fine) {
+  #timeline .tm-bento--steps .tm-tile:not(.tm-tile--feature):hover::before {
+    border-color: var(--blue-600);
+    scale: 1.15;
+  }
+  #timeline .tm-bento--steps .tm-tile.tm-tile--feature:hover {
+    translate: 0 -3px;
+  }
 }
 #timeline .tm-tile__lead,
 #timeline .tm-tile__detail {
@@ -1153,6 +1213,12 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
 .tm-care-icon {
   flex: none;
   color: var(--ink);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  #timeline .tm-bento--care .tm-tile:hover .tm-care-icon {
+    color: var(--blue-600);
+  }
 }
 #timeline .tm-contact-list {
   display: flex;
@@ -1196,7 +1262,9 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border: 0;
   border-radius: 24px;
   box-shadow: var(--nm-out-sm);
-  transition: box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    translate var(--dur-base) var(--ease-out);
 }
 #faq details.faq-item[open] {
   box-shadow: var(--nm-in);
@@ -1210,7 +1278,13 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   line-height: 1.5;
   letter-spacing: 0;
   color: var(--ink);
-  transition: color 0.18s ease;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+#faq details.faq-item summary:active {
+  scale: 0.985;
 }
 .faq-head {
   display: block;
@@ -1221,8 +1295,17 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   letter-spacing: 0;
   min-width: 0;
 }
-#faq details.faq-item summary:hover {
-  color: var(--blue-600);
+@media (hover: hover) and (pointer: fine) {
+  #faq details.faq-item:not([open]):hover {
+    translate: 0 -2px;
+    box-shadow: var(--nm-out);
+  }
+  #faq details.faq-item summary:hover {
+    color: var(--blue-600);
+  }
+  #faq details.faq-item summary:hover::after {
+    color: var(--blue-600);
+  }
 }
 #faq details.faq-item summary:focus-visible {
   outline: 2px solid var(--blue-600);
@@ -1231,6 +1314,22 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
 #faq details.faq-item summary::after {
   font-size: 1.25rem;
   color: var(--ink);
+  transition:
+    rotate var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+#faq details.faq-item[open] summary::after {
+  rotate: 180deg;
+}
+@keyframes ed-faq-in {
+  from {
+    opacity: 0.65;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 #faq .faq-body {
   max-width: 62ch;
@@ -1240,16 +1339,22 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   letter-spacing: 0;
   color: var(--ink-2);
 }
+#faq details.faq-item[open] .faq-body {
+  animation: ed-faq-in var(--dur-base) var(--ease-out);
+}
 #faq .faq-body a {
   color: var(--ink);
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
+  transition: color var(--dur-fast) var(--ease-out), outline-offset var(--dur-fast) var(--ease-out);
 }
-#faq .faq-body a:hover {
-  color: var(--blue-600);
-  text-decoration-color: var(--blue-600);
+@media (hover: hover) and (pointer: fine) {
+  #faq .faq-body a:hover {
+    color: var(--blue-600);
+    text-decoration-color: var(--blue-600);
+  }
 }
 
 /* ==========================================================================
@@ -1320,10 +1425,19 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   text-decoration: none;
   white-space: nowrap;
   touch-action: manipulation;
-  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out);
 }
-.ed-pill:active {
-  transform: translateY(1px);
+.ed-pill svg {
+  transition: translate var(--dur-fast) var(--ease-out);
+}
+.ed-pill:active:not(:disabled):not([aria-disabled="true"]) {
+  scale: 0.975;
 }
 .ed-pill:focus-visible {
   outline: 2px solid var(--blue-600);
@@ -1336,21 +1450,10 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border: 1px solid var(--fern-500);
   color: #121316;
 }
-.ed-pill--primary:hover {
-  background: var(--fern-600);
-  border-color: var(--fern-600);
-  color: #121316;
-  text-decoration: none;
-}
 /* Pre-open / full / closed quiet surface while staying clearly clickable */
 .ed-pill--primary.is-pre-open {
   background: var(--canvas-1);
   border-color: var(--rule-strong);
-  color: var(--ink);
-}
-.ed-pill--primary.is-pre-open:hover {
-  background: var(--canvas-1);
-  border-color: var(--ink);
   color: var(--ink);
 }
 .ed-pill--secondary {
@@ -1358,11 +1461,27 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   border: 1px solid var(--rule-strong);
   color: var(--ink);
 }
-.ed-pill--secondary:hover {
-  background: var(--canvas-1);
-  border-color: var(--ink);
-  color: var(--ink);
-  text-decoration: none;
+@media (hover: hover) and (pointer: fine) {
+  .ed-pill--primary:hover {
+    background: var(--fern-600);
+    border-color: var(--fern-600);
+    color: #121316;
+    text-decoration: none;
+  }
+  .ed-pill--primary.is-pre-open:hover {
+    background: var(--canvas-1);
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+  .ed-pill--secondary:hover {
+    background: var(--canvas-1);
+    border-color: var(--ink);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .ed-pill:hover svg {
+    translate: 2px -2px;
+  }
 }
 @media (max-width: 459px) {
   .ed-cta-band__actions .ed-pill {
@@ -1484,11 +1603,21 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
-  transition: color 0.16s ease, text-decoration-color 0.16s ease;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
-.ed-footer .footer-links a:hover {
-  color: var(--blue-600);
-  text-decoration-color: var(--blue-600);
+.ed-footer .footer-links a .ed-ico {
+  transition: translate var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ed-footer .footer-links a:hover {
+    color: var(--blue-600);
+    text-decoration-color: var(--blue-600);
+  }
+  .ed-footer .footer-links a:hover .ed-ico {
+    translate: 2px 0;
+  }
 }
 .ed-footer .footer-links a:focus-visible {
   outline: 2px solid var(--blue-600);
@@ -1636,15 +1765,31 @@ html[data-theme="dark"] #faq details.faq-item summary::after {
   .ed-progress { display: none; }
   #faq details.faq-item,
   #faq details.faq-item summary,
+  #faq details.faq-item summary::after,
+  #faq .faq-body,
+  #faq .faq-body a,
   .ed-inline-link,
+  .ed-inline-link > [aria-hidden="true"],
   .ed-pill,
+  .ed-pill svg,
+  .ed-photo-card__frame,
   .ed-photo-card__frame img,
+  #essentials .bento .card,
+  #timeline .tm-bento--steps .tm-tile::before,
+  #timeline .tm-bento--steps .tm-tile.tm-tile--feature,
+  #timeline .tm-care-icon,
+  .ed-footer .footer-links a,
+  .ed-footer .footer-links a .ed-ico,
   #experience .step-node,
   #experience .step-big-num,
   #experience .step-content,
   #experience .step-num {
     transition: none !important;
+    animation: none !important;
     transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
   }
 }
 

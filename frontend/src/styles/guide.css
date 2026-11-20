@@ -214,9 +214,15 @@
   letter-spacing: 0;
   text-decoration: none;
   touch-action: manipulation;
-  transition: background-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+.gd-btn .gd-ico {
+  transition: translate var(--dur-fast) var(--ease-out);
 }
 @media (max-width: 479px) {
   .gd-btn {
@@ -246,10 +252,13 @@
     background: var(--color-btn-ghost-hover);
     border-color: var(--color-ink);
   }
+  .gd-btn:hover .gd-ico:last-child:not(:first-child) {
+    translate: 3px 0;
+  }
 }
 
-.gd-btn:active {
-  transform: translateY(1px);
+.gd-btn:active:not(:disabled):not([aria-disabled="true"]) {
+  scale: 0.975;
 }
 
 .gd-btn:focus-visible,
@@ -327,9 +336,17 @@
   letter-spacing: 0;
   text-decoration: none;
   white-space: nowrap;
-  transition: background-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    translate var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+
+.gd-toc__link:active:not([aria-disabled="true"]) {
+  scale: 0.98;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -378,6 +395,7 @@
     background: var(--color-btn-ghost-hover);
     border-color: transparent;
     color: var(--color-ink);
+    translate: 2px 0;
   }
 }
 
@@ -452,8 +470,9 @@
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
-  transition: color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    text-decoration-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
 .gd-inline-link--icon {
   display: inline-flex;
@@ -462,10 +481,16 @@
   gap: 6px;
   min-height: 44px;
 }
+.gd-inline-link .gd-ico:last-child:not(:first-child) {
+  transition: translate var(--dur-fast) var(--ease-out);
+}
 @media (hover: hover) and (pointer: fine) {
   .gd-inline-link:hover {
     color: var(--color-tech);
     text-decoration-color: var(--color-tech);
+  }
+  .gd-inline-link[target="_blank"]:hover .gd-ico:last-child:not(:first-child) {
+    translate: 2px -2px;
   }
 }
 
@@ -580,8 +605,15 @@
   letter-spacing: 0;
   text-decoration: none;
   touch-action: manipulation;
-  transition: background-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+.gd-pill-link .gd-ico:last-child:not(:first-child) {
+  transition: translate var(--dur-fast) var(--ease-out);
 }
 
 .gd-pill-link__text {
@@ -593,10 +625,17 @@
   color: var(--color-ink-muted);
 }
 
+.gd-pill-link:active:not([aria-disabled="true"]) {
+  scale: 0.975;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .gd-pill-link:hover {
     background: var(--color-btn-ghost-hover);
     border-color: var(--color-ink);
+  }
+  .gd-pill-link[target="_blank"]:hover .gd-ico:last-child:not(:first-child) {
+    translate: 2px -2px;
   }
 }
 
@@ -646,7 +685,10 @@
   letter-spacing: 0;
   color: var(--color-ink);
   touch-action: manipulation;
-  transition: color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
 
 .gd-faq__summary > span {
@@ -658,8 +700,15 @@
   display: none;
 }
 
+.gd-faq__summary:active {
+  scale: 0.99;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .gd-faq__summary:hover {
+    color: var(--color-tech);
+  }
+  .gd-faq__summary:hover .gd-faq__chev {
     color: var(--color-tech);
   }
 }
@@ -667,16 +716,33 @@
 .gd-faq__chev {
   flex: none;
   color: var(--color-ink-subtle);
-  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    rotate var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 .gd-faq__item[open] .gd-faq__chev {
-  transform: rotate(180deg);
+  rotate: 180deg;
+}
+
+@keyframes gd-faq-in {
+  from {
+    opacity: 0.65;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 
 .gd-faq__body {
   padding: 0 0 20px;
   max-width: 60ch;
+}
+
+.gd-faq__item[open] .gd-faq__body {
+  animation: gd-faq-in var(--dur-base) var(--ease-out);
 }
 
 .gd-faq__body p {
@@ -711,7 +777,9 @@
   line-height: 1.6;
   letter-spacing: 0;
   text-decoration: none;
-  transition: color 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
 
 .gd-contact-link__text {
@@ -722,6 +790,10 @@
   min-width: 0;
 }
 
+.gd-contact-link__text > .gd-ico {
+  transition: translate var(--dur-fast) var(--ease-out);
+}
+
 .gd-contact-link__name {
   font-weight: 400;
   color: var(--color-ink-muted);
@@ -730,6 +802,9 @@
 @media (hover: hover) and (pointer: fine) {
   .gd-contact-link:hover {
     color: var(--color-tech);
+  }
+  .gd-contact-link[target="_blank"]:hover .gd-contact-link__text > .gd-ico {
+    translate: 2px -2px;
   }
 }
 
@@ -756,12 +831,23 @@
 /* ── Reduced motion ───────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .gd-btn,
+  .gd-btn .gd-ico,
   .gd-toc__link,
   .gd-inline-link,
+  .gd-inline-link .gd-ico,
   .gd-pill-link,
+  .gd-pill-link .gd-ico,
   .gd-faq__summary,
   .gd-faq__chev,
-  .gd-contact-link {
+  .gd-faq__item[open] .gd-faq__chev,
+  .gd-contact-link,
+  .gd-contact-link__text > .gd-ico {
     transition: none;
+    translate: none;
+    scale: none;
+    rotate: none;
+  }
+  .gd-faq__item[open] .gd-faq__body {
+    animation: none;
   }
 }

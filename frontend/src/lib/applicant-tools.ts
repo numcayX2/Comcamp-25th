@@ -3,12 +3,17 @@
  * Kept out of the component so they can be checked without rendering React.
  */
 import {
+  REFERRAL_CODES,
+  REFERRAL_GROUPS,
+  REFERRAL_LABELS,
   hasSlip,
   sanitizeDigits,
   stripZeroWidth,
   type Application,
   type ApplicationStatus,
+  type ReferralCode,
   type SlipStatus,
+  type WithdrawnApplicant,
 } from './api.ts';
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -74,6 +79,98 @@ export function matchesApplicantQuery(app: Application, rawQuery: string): boole
   return false;
 }
 
+/**
+ * Search matching for the read-only withdrawn tab: matches id, fullName, nickname, phone and
+ * school, with the same zero-width and digit normalisation as matchesApplicantQuery.
+ */
+export function matchesWithdrawnQuery(w: WithdrawnApplicant, rawQuery: string): boolean {
+  const q = stripZeroWidth(rawQuery).trim().toLowerCase();
+  if (!q) return true;
+
+  const fields = [w.id, w.fullName, w.nickname ?? '', w.phone, w.school];
+  if (fields.some((f) => stripZeroWidth(f).toLowerCase().includes(q))) return true;
+
+  const digits = sanitizeDigits(q);
+  if (digits.length > 0 && /^[\d๐-๙\s-]+$/.test(q)) {
+    return sanitizeDigits(w.phone).includes(digits);
+  }
+  return false;
+}
+
+/* ── Referral helpers ─────────────────────────────────────────────────── */
+
+/** Keeps only known referral codes, deduplicated and ordered by REFERRAL_CODES. */
+export function normalizeReferralCodes(raw?: readonly string[] | null): ReferralCode[] {
+  if (!raw || raw.length === 0) return [];
+  const seen = new Set<string>(raw);
+  return REFERRAL_CODES.filter((code) => seen.has(code));
+}
+
+export const EMPTY_REFERRAL_LABEL = '— ไม่ได้ระบุ (สมัครก่อนมีคำถามนี้) —';
+
+/** Formats referral answers for the admin detail view in REFERRAL_CODES order. */
+export function formatReferralLabels(sources?: readonly string[] | null, other?: string | null): string {
+  const codes = normalizeReferralCodes(sources);
+  if (codes.length === 0) return EMPTY_REFERRAL_LABEL;
+  const otherText = stripZeroWidth(other ?? '').trim();
+  return codes
+    .map((code) => (code === 'other' && otherText ? `อื่นๆ: ${otherText}` : REFERRAL_LABELS[code]))
+    .join(', ');
+}
+
+export interface ReferralGroupSummary {
+  id: string;
+  label: string;
+  count: number;
+  options: { code: ReferralCode; label: string; count: number }[];
+}
+
+export interface ReferralSummary {
+  total: number;
+  answered: number;
+  groups: ReferralGroupSummary[];
+}
+
+/** Summarizes referral answers across all loaded applications (every status included). */
+export function summarizeReferrals(apps: readonly Application[]): ReferralSummary {
+  const codeCounts = new Map<ReferralCode, number>();
+  const groupCounts = new Map<string, number>();
+  let answered = 0;
+
+  for (const app of apps) {
+    const codes = normalizeReferralCodes(app.referralSources);
+    if (codes.length === 0) continue;
+    answered += 1;
+    const codeSet = new Set<ReferralCode>(codes);
+    for (const code of codeSet) {
+      codeCounts.set(code, (codeCounts.get(code) ?? 0) + 1);
+    }
+    for (const group of REFERRAL_GROUPS) {
+      if (group.options.some((opt) => codeSet.has(opt.code))) {
+        groupCounts.set(group.id, (groupCounts.get(group.id) ?? 0) + 1);
+      }
+    }
+  }
+
+  return {
+    total: apps.length,
+    answered,
+    groups: REFERRAL_GROUPS.map((group) => ({
+      id: group.id,
+      label: group.label,
+      count: groupCounts.get(group.id) ?? 0,
+      options:
+        group.options.length > 1
+          ? group.options.map((opt) => ({
+              code: opt.code,
+              label: opt.label,
+              count: codeCounts.get(opt.code) ?? 0,
+            }))
+          : [],
+    })),
+  };
+}
+
 /* ── CSV export ───────────────────────────────────────────────────────── */
 
 export const CSV_HEADERS = [
@@ -96,6 +193,8 @@ export const CSV_HEADERS = [
   'เหตุผลการสมัคร',
   'การแพ้อาหาร',
   'โรคประจำตัว',
+  'รู้จักค่ายจาก',
+  'รู้จักค่ายจาก (อื่นๆ)',
 ] as const;
 
 /**
@@ -152,6 +251,9 @@ function formatCreated(iso: string): string {
 export function buildApplicantsCsv(rows: Application[]): string {
   const lines: string[] = [CSV_HEADERS.map(csvField).join(',')];
   for (const a of rows) {
+    const referralLabels = normalizeReferralCodes(a.referralSources)
+      .map((code) => REFERRAL_LABELS[code])
+      .join('; ');
     lines.push(
       [
         csvField(a.id),
@@ -173,6 +275,8 @@ export function buildApplicantsCsv(rows: Application[]): string {
         csvField(a.motivation ?? ''),
         csvField(a.allergies ?? ''),
         csvField(a.medicalConditions ?? ''),
+        csvField(referralLabels),
+        csvField(a.referralOther ?? ''),
       ].join(','),
     );
   }

@@ -76,16 +76,28 @@
   line-height: 1.7;
   vertical-align: top;
   overflow-wrap: anywhere;
+  transition: background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 .ap-table th:last-child,
 .ap-table td:last-child {
   padding-right: 0;
 }
-.ap-table tbody tr:hover td {
-  background: var(--color-btn-ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ap-table tbody tr:hover td {
+    background: var(--color-btn-ghost-hover);
+  }
+  .ap-note a:hover {
+    color: var(--color-tech) !important;
+  }
 }
 
 .ap-note {
   border-top: 1px solid var(--color-border);
   padding-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-table td {
+    transition: none;
+  }
 }
