@@ -885,7 +885,7 @@
           "fullName": { "type": "string", "example": "ส*** ใ***", "description": "เหลือเพียงอักษรแรกของแต่ละส่วนของชื่อ" },
           "phone": { "type": "string", "example": "XXX-XXX-XX78" },
           "email": { "type": "string", "example": "s***@example.com" },
-          "status": { "type": "string", "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"], "example": "PASSED" },
+          "status": { "type": "string", "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED", "FORFEITED"], "example": "PASSED" },
           "hasSlip": { "type": "boolean", "example": false },
           "slipStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "nullable": true },
           "createdAt": { "type": "string", "format": "date-time" },
@@ -977,7 +977,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED"],
+            "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED", "FORFEITED"],
             "example": "PASSED"
           },
           "reason": { "type": "string", "example": "คะแนนคัดกรองผ่านเกณฑ์" }
@@ -999,7 +999,7 @@
           "code": {
             "type": "string",
             "description": "รหัสข้อผิดพลาดสำหรับโปรแกรม",
-            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_IMAGE_DIMENSIONS", "CAPTCHA_FAILED", "SLIP_CHANGED"]
+            "enum": ["VALIDATION_ERROR", "REGISTRATION_CLOSED", "QUOTA_FULL", "DUPLICATE_APPLICATION", "IDEMPOTENCY_KEY_REUSED", "DUPLICATE_SLIP", "ALREADY_VERIFIED", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "PAYLOAD_TOO_LARGE", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "INTERNAL_ERROR", "INVALID_IMAGE_DIMENSIONS", "CAPTCHA_FAILED", "SLIP_CHANGED", "FORFEITED_APPLICATION"]
           }
         }
       },

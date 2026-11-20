@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000012`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000013`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000012_canonical_province.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000013_referral_forfeit_withdraw.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011` — วันปิดจริงปรับต่อได้ใน `/admin`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว และต้องมีคอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` พร้อม CHECK สถานะที่รวม `FORFEITED` (จาก `000013`)
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -190,8 +190,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f backend e
 
 - [ ] ตรวจเส้นทางหลัก **`/`**, `/register`, `/status`, `/admin` *(หมายเหตุ: เว็บใช้ **`/`** เป็นหน้าหลัก ไม่มีเส้นทาง `/home`)*
 - [ ] หน้า `/register` **ต้องไม่มีแถบ `[DEV MODE]`** และวิดเจ็ต Turnstile โหลดขึ้นปกติ (กรณีเปิดรับสมัครแล้ว)
-- [ ] แท็บ **Console** ไม่มี Error เรื่อง `Content-Security-Policy` (ฟอนต์, โมเดล 3D `/draco/gltf/`, GSAP CDN, Turnstile และรูปแกลเลอรีทำงานครบ)
-- [ ] แท็บ **Network** หน้า `/register`, `/status`, `/admin` และ `/api/*` มี Header `Cache-Control: no-store` ส่วนไฟล์ใน `/_astro/*` มี `Cache-Control: public, max-age=31536000, immutable`
+- [ ] แท็บ **Console** ไม่มี Error เรื่อง `Content-Security-Policy` (ฟอนต์, โมเดล 3D `/draco/gltf/`, Turnstile และรูปแกลเลอรีทำงานครบ; GSAP bundle มากับเว็บแล้ว ไม่โหลดจาก CDN) *(ถ้าเปิด Cloudflare Web Analytics ไว้ จะเห็น Error ว่าบล็อก `static.cloudflareinsights.com` — ปิด Web Analytics ใน Cloudflare หรือเพิ่มโดเมนนี้ใน CSP)*
+- [ ] แท็บ **Network** หน้า `/register`, `/status`, `/admin`, `/applicants`, `/guide` และ `/api/*` มี Header `Cache-Control: no-store` ส่วนไฟล์ใน `/_astro/*` มี `Cache-Control: public, max-age=31536000, immutable`
 - [ ] ทดสอบเปิด `/swagger`, `/docs`, `/api/swagger`, `/api/docs` ต้องคืน `404 Not Found`
 - [ ] ทดสอบล็อกอิน `/admin` ด้วยบัญชีที่สร้างจาก `create-admin` สำเร็จ
 
@@ -282,7 +282,7 @@ git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อก Phase 5 ด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -340,6 +340,73 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db   psql
 docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT application_no, province FROM applicants WHERE deleted_at IS NULL ORDER BY province;"
 ```
 
+### Migration `000013` (ช่องทางที่รู้จักค่าย, สถานะ `FORFEITED`, `deleted_reason`)
+
+`000013_referral_forfeit_withdraw.up.sql` **เพิ่มอย่างเดียว (additive)** และรันซ้ำได้ (idempotent): เพิ่มคอลัมน์ `applicants.referral_sources` (`TEXT[]`, ค่าเริ่มต้น `'{}'`), `referral_other` (`VARCHAR(50)`, ค่าเริ่มต้น `''`), `deleted_reason` (`VARCHAR(20)`, ค่าเริ่มต้น `''`, CHECK `'' | SELF_WITHDRAWN | ADMIN_DELETED`), ขยาย CHECK `status` ให้รับ `FORFEITED`, เติม `deleted_reason` ให้แถวที่ถูกลบไปแล้วจาก `audit_logs` (มี `application.withdraw.self` ที่ไม่มีแอดมิน → `SELF_WITHDRAWN`, ที่เหลือ → `ADMIN_DELETED`) และแปลงแถว `REJECTED` ที่มาจากการตัดสิทธิ์อัตโนมัติ (สถานะล่าสุดไม่มีแอดมินและเหตุผลขึ้นต้น `ตัดสิทธิ์อัตโนมัติ`) เป็น `FORFEITED` พร้อมบันทึกใน `applicant_status_logs` — **ไม่มี DROP/RENAME ข้อมูลเดิม** ทั้งไฟล์เป็น `BEGIN`/`COMMIT` เดียว (ล้มเหลว = ไม่มีอะไรเปลี่ยน)
+
+**หลักการ migration ตั้งแต่ `000013` เป็นต้นไป:** เพิ่มอย่างเดียว (คอลัมน์ใหม่ต้องมี default หรือ nullable, ขยาย CHECK ได้, ห้าม DROP/RENAME ข้อมูลเดิม) เพื่อให้ backend ตัวเดิมทำงานบน schema ใหม่ได้ระหว่าง deploy, **ทำ `pg_dump` ก่อนทุกครั้ง**, และรัน migration **ก่อน** build backend ตัวใหม่ (ต่างจาก `000011` ที่ต้องหยุด backend ก่อน)
+
+```bash
+cd /path/to/Comcamp-site
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a   # ให้ $DB_USER / $DB_NAME ใช้ได้ใน shell นี้
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"       # rootful ใช้ /opt/cc25-backups/db
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ (backend เดิมรับสมัครต่อได้ระหว่างนี้)
+mkdir -p "$B"
+F="$B/cc25_db_pre000013_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"
+# ต้องไม่ใช่ไฟล์ว่าง และต้องอ่านสารบัญได้ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000013 up ขณะ backend เดิมยังทำงาน
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000013_referral_forfeit_withdraw.up.sql
+
+# 3. ตรวจผล: ต้องได้ 3 แถว (คอลัมน์ใหม่), CHECK ต้องมี 'FORFEITED', และแถวที่ถูกลบต้องไม่มี deleted_reason ว่าง
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'applicants' AND column_name IN ('referral_sources','referral_other','deleted_reason');"
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'applicants_status_check';"
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT deleted_reason, count(*) FROM applicants WHERE deleted_at IS NOT NULL GROUP BY deleted_reason;"
+
+# 4. Build และเปิด backend + frontend ตัวใหม่ทันที
+$C up -d --build backend frontend
+
+# 5. รัน 000013 up ซ้ำอีกรอบ เพื่อแปลงการตัดสิทธิ์อัตโนมัติที่ backend เดิมเขียนเป็น REJECTED ระหว่างข้อ 2–4 (รอบนี้ปกติได้ UPDATE 0 / INSERT 0 0)
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000013_referral_forfeit_withdraw.up.sql
+
+# 6. ตรวจ API
+curl -sS https://<โดเมนจริง>/api/health
+curl -sS https://<โดเมนจริง>/api/settings/public
+```
+
+**ทำไมต้องเรียงแบบนี้:**
+- **Build เก่าบน Schema ใหม่ (ปลอดภัย):** backend เดิมไม่เขียนคอลัมน์ใหม่และอ่านคอลัมน์แบบระบุชื่อ จึงทำงานต่อได้หลังข้อ 2 ข้อจำกัดเดียวคือมันนับแถว `FORFEITED` เป็นผู้ถือที่นั่ง (ทิศทางที่ปลอดภัย: ที่นั่งว่างน้อยลง ไม่มีทางเกิน) จึงต้อง deploy backend ใหม่ต่อทันที (ข้อ 4)
+- **Build ใหม่บน Schema เก่า (ห้าม):** backend ใหม่อ่าน/เขียน `referral_sources`, `referral_other`, `deleted_reason` และสถานะ `FORFEITED` ทุก Query ที่แตะ `applicants` จะล้มเหลว และ **ไม่มีการตรวจ schema ตอนสตาร์ตแบบ `000011`** (`schema_check.go` ตรวจเฉพาะ `national_id`) จึงต้องรันข้อ 2 ก่อนข้อ 4 เสมอ
+- **ย้อนกลับ:** `000013_referral_forfeit_withdraw.down.sql` แปลง `FORFEITED` กลับเป็น `REJECTED` และ **DROP คอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` (คำตอบช่องทางที่รู้จักค่ายหายถาวร)** — ต้อง deploy backend รุ่นก่อนหน้า **ก่อน** รัน down และใช้เมื่อจำเป็นเท่านั้น; ถ้าต้องการข้อมูลกลับมาครบ ให้กู้จากไฟล์ในข้อ 1 ตามขั้นตอนที่ 7.2
+
+### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
+
+ตอนนี้ `frontend/public/assets/docs/parent-consent.pdf` เป็น **placeholder ขนาด 0 byte** และ `DOCS_READY = false` ใน `frontend/src/lib/camp-facts.ts` ทำให้ปุ่ม/ลิงก์ดาวน์โหลดถูกซ่อนทั้ง 3 จุด (ใบตอบรับ Step 06 ของ `/register`, ผลค้นด้วยรหัสใน `/status` เฉพาะใบที่ถือที่นั่ง, และหัวข้อ `เอกสารดาวน์โหลด` ใน `/guide`) ไฟล์ใน `public/` ถูกฝังใน image ของ `frontend` ตอน build จึงต้อง build ใหม่ทุกครั้งที่แทนไฟล์:
+
+1. **บนเครื่องพัฒนา:** วางไฟล์ PDF จริงทับ `frontend/public/assets/docs/parent-consent.pdf` (**ชื่อไฟล์เดิม**)
+2. แก้ `frontend/src/lib/camp-facts.ts`:
+   - `export const DOCS_READY = true;`
+   - เพิ่มเลข `?v=` ใน `PARENT_CONSENT_PDF` ทุกครั้งที่แทนไฟล์ (เช่น `'/assets/docs/parent-consent.pdf?v=1'` → `'?v=2'`) — Cloudflare แคช `/assets` หลายชั่วโมง และ nginx ไม่ได้ตั้ง `no-store` ให้ไฟล์นี้ URL ใหม่จึงเลี่ยงไฟล์ 0 byte ที่ค้างในแคชได้
+3. `npm --prefix frontend run build` ต้องผ่านด้วย 0 error แล้ว commit (แปลง CRLF เป็น LF ก่อน) และ push ขึ้น `main`
+4. **บนเซิร์ฟเวอร์:** build เฉพาะ `frontend` ใหม่ (ไม่ต้องหยุด backend/db):
+   ```bash
+   cd /path/to/Comcamp-site
+   git pull --ff-only origin main
+   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build frontend
+   ```
+5. **ตรวจ:** ไฟล์ต้องได้ `200` และ `Content-Length` มากกว่า 0 (แทน `v=2` ด้วยเลขที่ตั้งในข้อ 2):
+   ```bash
+   curl -sSI 'https://<โดเมนจริง>/assets/docs/parent-consent.pdf?v=2' | grep -iE '^(HTTP|content-type|content-length)'
+   ```
+   แล้วเปิด `/guide` ต้องเห็นหัวข้อ `เอกสารดาวน์โหลด` ใน ToC และปุ่มดาวน์โหลดเปิดไฟล์ได้ (หน้า `/guide` เป็น `no-store` จึงเห็นผลทันทีโดยไม่ต้อง purge)
+
 ## เฝ้าระวังการเดารหัสใบสมัคร (CodeGuard) และการหยุดตัดสิทธิ์อัตโนมัติ
 
 รหัสใบสมัคร `CC25-XXXXXX` คือหลักฐานของผู้สมัครบนหน้า `/status` (ค้นด้วยรหัส, ส่งสลิป, ยืนยันสิทธิ์) ส่วนการยกเลิกเองต้องใช้รหัสคู่กับเบอร์โทรที่ใช้สมัคร ระบบนับรหัสที่ไม่มีอยู่จริง (และเบอร์ที่ไม่ตรงตอนยกเลิก) ต่อ IP และรวมทั้งระบบ ถ้าครบเพดานรวม 10 ครั้งใน 5 นาที ทุกคำขอที่ใช้รหัสจะถูกตอบ `429` จนจบช่วง 5 นาทีนั้น
@@ -353,7 +420,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "
     ```bash
     docker compose -f docker-compose.prod.yml --env-file .env.prod logs backend | grep "unpaid expiry paused"
     ```
-  - **สิ่งที่พี่ค่ายต้องทำระหว่างหยุด:** ที่นั่งของผู้ที่ค้างชำระเกินกำหนดจะไม่ถูกคืนเอง ให้ตรวจรายชื่อค้างชำระเองอย่างน้อยวันละครั้ง (ไม่มีสลิปที่รอตรวจหรืออนุมัติแล้ว และเลยกำหนด = `max(สมัคร + 120 ชม., แก้ไขล่าสุด + 24 ชม., สลิปที่ถูกปฏิเสธล่าสุด + 24 ชม.)`) แล้วเปลี่ยนสถานะเป็น `REJECTED` ใน `/admin` ทีละราย ควรติดต่อผู้สมัครก่อน เพราะเขาอาจส่งสลิปไม่ได้เพราะการก่อกวน (ถ้าต้องการขยายเวลาให้ ดูข้อถัดไป) คำสั่งนี้แสดงรายชื่อที่เข้าเงื่อนไขเดียวกับที่ระบบใช้ตัดสิทธิ์อัตโนมัติ:
+  - **สิ่งที่พี่ค่ายต้องทำระหว่างหยุด:** ที่นั่งของผู้ที่ค้างชำระเกินกำหนดจะไม่ถูกคืนเอง ให้ตรวจรายชื่อค้างชำระเองอย่างน้อยวันละครั้ง (ไม่มีสลิปที่รอตรวจหรืออนุมัติแล้ว และเลยกำหนด = `max(สมัคร + 120 ชม., แก้ไขล่าสุด + 24 ชม., สลิปที่ถูกปฏิเสธล่าสุด + 24 ชม.)`) แล้วเปลี่ยนสถานะเป็น `FORFEITED` (`หมดสิทธิ์ (ไม่ชำระตามกำหนด)` — สถานะเดียวกับที่ระบบตั้งเองตั้งแต่ `000013`) ใน `/admin` ทีละราย ควรติดต่อผู้สมัครก่อน เพราะเขาอาจส่งสลิปไม่ได้เพราะการก่อกวน (ถ้าต้องการขยายเวลาให้ ดูข้อถัดไป; ถ้าตัดสิทธิ์ไปแล้วภายหลังพบว่าชำระจริง ใช้ปุ่ม `กู้สิทธิ์` ใน `/admin`) คำสั่งนี้แสดงรายชื่อที่เข้าเงื่อนไขเดียวกับที่ระบบใช้ตัดสิทธิ์อัตโนมัติ:
     ```bash
     docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT application_no, status, created_at, updated_at FROM applicants a WHERE deleted_at IS NULL AND status IN ('PENDING','PASSED','RESERVE') AND created_at <= now() - interval '120 hours' AND updated_at <= now() - interval '24 hours' AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.applicant_id = a.id AND NOT p.applicant_deleted AND (p.status IN ('PENDING','APPROVED') OR (p.status = 'REJECTED' AND COALESCE(p.verified_at, p.uploaded_at) > now() - interval '24 hours'))) ORDER BY created_at;"
     ```
@@ -363,7 +430,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "
 **ข้อควรรู้เพิ่มเติม (ต้องอ่าน):**
 - **(a) สถานะ CodeGuard อยู่ในหน่วยความจำของ backend เท่านั้น:** การรีสตาร์ต backend (รวมถึง `up -d --build`) จะล้างการล็อก IP ทั้งหมดและเวลาที่เพดานรวมทำงานล่าสุด (`lastHard`) ทำให้ **การหยุดตัดสิทธิ์อัตโนมัติสิ้นสุดก่อนครบ 24 ชั่วโมงทันที** และระบบจะคืนที่นั่งค้างชำระที่เลยกำหนดในรอบถัดไป (ภายใน 1 นาที) ถ้ากำลังอยู่ในช่วงหยุด ให้ตรวจรายชื่อค้างชำระ (คำสั่งด้านบน) และขยายเวลาให้ผู้ที่ควรได้รับก่อนรีสตาร์ต
 - **(b) รหัสของใบสมัครที่ถูกลบหรือยกเลิกแล้วนับเป็นการเดาผิด:** ผู้ที่เปิดใบตอบรับเก่าหรือลิงก์ในอีเมลเดิมหลังยกเลิกจะถูกนับเป็น miss เหมือนรหัสที่ไม่มีอยู่จริง ไม่เป็นปัญหาที่ขนาด 40 ที่นั่ง แต่ถ้าเห็น lockout จาก IP ของผู้สมัครที่เพิ่งยกเลิก ให้ถือว่าเป็นกรณีนี้
-- **(c) ผู้ก่อกวนทำให้การหยุดตัดสิทธิ์อยู่ต่อได้ง่าย:** ใช้การเดาผิดเพียงราว 10 ครั้งต่อ 24 ชั่วโมงก็ทำให้การหยุดไม่สิ้นสุด ดังนั้นตลอดเวลาที่การหยุดยังทำงาน **พี่ค่ายต้องตรวจรายชื่อค้างชำระเกินกำหนดและเปลี่ยนเป็น `REJECTED` ด้วยตนเองทุกวัน** (ขั้นตอนด้านบน) ห้ามรอให้ระบบตัดสิทธิ์เอง
+- **(c) ผู้ก่อกวนทำให้การหยุดตัดสิทธิ์อยู่ต่อได้ง่าย:** ใช้การเดาผิดเพียงราว 10 ครั้งต่อ 24 ชั่วโมงก็ทำให้การหยุดไม่สิ้นสุด ดังนั้นตลอดเวลาที่การหยุดยังทำงาน **พี่ค่ายต้องตรวจรายชื่อค้างชำระเกินกำหนดและเปลี่ยนเป็น `FORFEITED` ด้วยตนเองทุกวัน** (ขั้นตอนด้านบน) ห้ามรอให้ระบบตัดสิทธิ์เอง
 - **(d) เฝ้าดูการไล่เดาเบอร์โทร:** แถว `application.code.lockout` ที่ `details->>'endpoint' = 'status-phone'` แปลว่ามี IP ค้นด้วยเบอร์ที่ไม่พบซ้ำๆ (อาจกำลังไล่หาเบอร์ของผู้สมัคร) ให้ตรวจ IP และพิจารณาบล็อกที่ reverse proxy
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.prod exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT created_at, ip_address, details FROM audit_logs WHERE action = 'application.code.lockout' AND details->>'endpoint' = 'status-phone' ORDER BY created_at DESC LIMIT 20;"
