@@ -106,7 +106,7 @@ const {
       </span>
     </p>
 
-    <a class="hero__explore" href="#experience" aria-label="เลื่อนลงเพื่อดูกิจกรรมในค่าย">
+    <a class="hero__explore" href="#experience" aria-label="เลื่อนลง ดูกิจกรรมในค่าย">
       <span>เลื่อนลง</span>
       <i class="hero__explore-line" aria-hidden="true"></i>
     </a>
@@ -170,6 +170,17 @@ const {
       const totalChars = targets.reduce((acc, s) => acc + s.length, 0);
       if (totalChars === 0) return;
 
+      // Scrambled glyphs are wider/narrower than the real letters; pin each word's box so
+      // "25th" does not jitter sideways (that movement was counted as layout shift).
+      spans.forEach((el) => {
+        el.style.display = 'inline-block';
+        el.style.width = `${el.getBoundingClientRect().width}px`;
+      });
+      const release = () => spans.forEach((el) => {
+        el.style.removeProperty('display');
+        el.style.removeProperty('width');
+      });
+
       const t0 = performance.now();
       let lastTick = 0;
 
@@ -181,6 +192,7 @@ const {
           spans.forEach((el, i) => {
             el.textContent = targets[i];
           });
+          release();
           return;
         }
 

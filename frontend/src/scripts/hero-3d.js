@@ -299,12 +299,20 @@ function init(stage, canvas) {
       it.shadow.visible = true;
       return name;
     })
-  ).then((results) => {
+  ).then(async (results) => {
     disposeDraco();
     results.forEach((r) => r.status === 'rejected' && console.warn('[hero-3d] model failed:', r.reason));
     if (!results.some((r) => r.status === 'fulfilled')) {
       setState('fallback');
       return;
+    }
+    // ~36 physical materials (clearcoat/transmission): compiling them inside the first render
+    // blocked the main thread for 1.5–2s on mid-range phones. compileAsync uses
+    // KHR_parallel_shader_compile where available, so the page stays responsive meanwhile.
+    try {
+      await renderer.compileAsync(scene, camera);
+    } catch (err) {
+      console.warn('[hero-3d] async shader compile failed; compiling on first render.', err);
     }
     ready = true;
     setState('ready');

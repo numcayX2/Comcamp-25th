@@ -103,7 +103,10 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 </script>
 <style is:global>
   html.veil-skip #veil{display:none!important}
-  html[data-home-page="1"]:not([data-reg-open="true"]) [data-register-link]{display:none!important}
+  /* Before /api/settings/public answers, keep register links' space (no hero layout shift when
+     they appear); once the server says not open, remove them from the layout. */
+  html[data-home-page="1"]:not([data-reg-open]) [data-register-link]{visibility:hidden!important}
+  html[data-home-page="1"][data-reg-open="false"] [data-register-link]{display:none!important}
 </style>
 <link rel="stylesheet" href={themeAsset('styles.css')}>
 <link rel="stylesheet" href={themeAsset('page.css')}>

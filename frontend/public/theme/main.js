@@ -176,8 +176,14 @@
     var extraCtas = document.querySelectorAll('[data-register-cta]');
     var registerHref = (primary && primary.dataset && primary.dataset.registerHref) || '/register';
     // Nobody can have applied before opening, so the status check has nothing to look up.
-    if (secondary) secondary.style.display = (s === 'LOADING' || s === 'PRE_OPEN') ? 'none' : '';
-    document.documentElement.setAttribute('data-reg-open', (s === 'OPEN' || s === 'ALMOST_FULL') ? 'true' : 'false');
+    if (secondary) {
+      // LOADING keeps the link's box (no layout shift when settings arrive); PRE_OPEN removes it.
+      secondary.style.visibility = s === 'LOADING' ? 'hidden' : '';
+      secondary.style.display = s === 'PRE_OPEN' ? 'none' : '';
+    }
+    // No attribute while LOADING: HomePage.astro then reserves the register links' space instead of collapsing it.
+    if (s === 'LOADING') document.documentElement.removeAttribute('data-reg-open');
+    else document.documentElement.setAttribute('data-reg-open', (s === 'OPEN' || s === 'ALMOST_FULL') ? 'true' : 'false');
 
     var maxCap = state.maxCapacity || MAX;
     var seatsLeft = Math.max(0, maxCap - state.currentCount);
