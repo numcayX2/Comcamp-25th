@@ -18,12 +18,15 @@ const openTime = formatBangkokTime(REGISTRATION_OPEN_AT);
 const openNoYear = formatThaiDateNoYear(REGISTRATION_OPEN_AT);
 const isAdmin = active === 'admin';
 // Staff work on one page: the camp's marketing anchors, the sign-up CTA and the status lookup are noise there.
-const navLinks = isAdmin ? [] : [
+// On desktop the home-section anchors sit in one "เกี่ยวกับค่าย" disclosure; the mobile drawer lists them flat.
+const sectionLinks = isAdmin ? [] : [
   { href: isHome ? '#experience' : '/#experience', label: 'หลักสูตร' },
   { href: isHome ? '#essentials' : '/#essentials', label: 'ข้อมูล' },
   { href: isHome ? '#timeline' : '/#timeline', label: 'ไทม์ไลน์' },
   { href: isHome ? '#faq' : '/#faq', label: 'คำถามที่พบบ่อย' },
   { href: isHome ? '#gallery' : '/#gallery', label: 'แกลเลอรี' },
+];
+const pageLinks = isAdmin ? [] : [
   { href: '/guide', label: 'คู่มือผู้สมัคร', current: active === 'guide' },
   { href: '/applicants', label: 'รายชื่อผู้สมัคร', current: active === 'applicants' },
 ];
@@ -56,7 +59,22 @@ const navLinks = isAdmin ? [] : [
 
     <!-- Navigation Links -->
     <nav class="nav-links" id="site-menu" aria-label="ส่วนต่าง ๆ ของหน้า">
-      {navLinks.map((link) => (
+      {sectionLinks.length > 0 && (
+        <div class="nav-group" data-nav-group>
+          <button type="button" class="nav-group__btn" aria-expanded="false" aria-controls="nav-about-panel">
+            <span>เกี่ยวกับค่าย</span>
+            <svg class="nav-group__chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6"></path>
+            </svg>
+          </button>
+          <div class="nav-group__panel" id="nav-about-panel">
+            {sectionLinks.map((link) => (
+              <a class="nav-sec" href={link.href}>{link.label}</a>
+            ))}
+          </div>
+        </div>
+      )}
+      {pageLinks.map((link) => (
         <a class="nav-sec" href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
       ))}
 
@@ -667,6 +685,17 @@ const navLinks = isAdmin ? [] : [
     .nav-links.is-open > .nav-overlay-footer {
       animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     }
+    /* The desktop disclosure dissolves in the drawer: its anchors render as plain drawer rows. */
+    .nav-group,
+    .nav-group__panel {
+      display: contents;
+    }
+    .nav-group__btn {
+      display: none;
+    }
+    .nav-links.is-open > .nav-group a {
+      animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+    }
     /* Section links: editorial Table-of-Contents rows with mono chapter index */
     .nav-links a.nav-sec {
       display: grid;
@@ -978,6 +1007,36 @@ const navLinks = isAdmin ? [] : [
     text-decoration-color: #F5F4EF;
   }
 
+  :global(html.dark) .nav-group__btn,
+  :global(html[data-theme="dark"]) .nav-group__btn {
+    color: #9A9CA1;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.dark) .nav-group__btn:hover,
+    :global(html[data-theme="dark"]) .nav-group__btn:hover {
+      color: #F5F4EF;
+    }
+  }
+  :global(html.dark) .nav-group__btn[aria-expanded="true"],
+  :global(html[data-theme="dark"]) .nav-group__btn[aria-expanded="true"],
+  :global(html.dark) .nav-group:has(a[aria-current]) .nav-group__btn,
+  :global(html[data-theme="dark"]) .nav-group:has(a[aria-current]) .nav-group__btn {
+    color: #F5F4EF;
+  }
+  :global(html.dark) .nav-group:has(a[aria-current]) .nav-group__btn span,
+  :global(html[data-theme="dark"]) .nav-group:has(a[aria-current]) .nav-group__btn span {
+    text-decoration-color: #F5F4EF;
+  }
+  @media (min-width: 900px) {
+    :global(html.dark) .nav-group__panel,
+    :global(html[data-theme="dark"]) .nav-group__panel {
+      background: var(--surface, #1A1D22);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.14),
+        0 18px 36px -16px rgba(0, 0, 0, 0.6);
+    }
+  }
+
   :global(html.dark) .nav-cta-link,
   :global(html[data-theme="dark"]) .nav-cta-link {
     color: #C3C4C7;
@@ -1112,6 +1171,90 @@ const navLinks = isAdmin ? [] : [
     }
   }
 
+  /* Desktop "เกี่ยวกับค่าย" disclosure: click/tap to open (no hover-open), panel drops below the trigger. */
+  @media (min-width: 900px) {
+    .nav-group {
+      position: relative;
+      display: flex;
+    }
+    .nav-group__btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 44px;
+      padding: 6px 0;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      font-size: 0.9375rem;
+      color: #4A4D55;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+    }
+    .nav-group__chev {
+      flex: none;
+      transition: rotate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+    }
+    .nav-group__btn[aria-expanded="true"] .nav-group__chev {
+      rotate: 180deg;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .nav-group__btn:hover {
+        color: #121316;
+      }
+    }
+    .nav-group__btn[aria-expanded="true"],
+    .nav-group:has(a[aria-current]) .nav-group__btn {
+      color: #121316;
+    }
+    /* The section in view (scroll-spy) is hidden in the closed panel, so the trigger carries it. */
+    .nav-group:has(a[aria-current]) .nav-group__btn span {
+      font-weight: 600;
+      text-decoration: underline;
+      text-decoration-color: #121316;
+      text-underline-offset: 6px;
+    }
+    .nav-group__panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: -14px;
+      z-index: 80;
+      display: flex;
+      flex-direction: column;
+      min-width: 13rem;
+      padding: 8px;
+      background: var(--surface, #FFFFFF);
+      border-radius: var(--r-card, 24px);
+      box-shadow: var(--shadow-float,
+        0 2px 6px rgba(18, 19, 22, 0.04),
+        0 18px 36px -16px rgba(18, 19, 22, 0.12),
+        0 0 0 1px rgba(18, 19, 22, 0.07));
+      opacity: 0;
+      translate: 0 -4px;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        visibility 0s linear var(--dur-fast, .16s);
+    }
+    .nav-group__btn[aria-expanded="true"] + .nav-group__panel {
+      opacity: 1;
+      translate: 0 0;
+      visibility: visible;
+      pointer-events: auto;
+      transition:
+        opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+    }
+    .nav-links .nav-group__panel a.nav-sec {
+      min-height: 44px;
+      padding: 8px 14px;
+      font-size: 0.9375rem;
+    }
+  }
+
   /* Compact desktop tier (900px–1119px): keeps 6 numbered links + CTAs on one row without wrap or collision */
   @media (min-width: 900px) and (max-width: 1119px) {
     .nav-inner {
@@ -1147,6 +1290,9 @@ const navLinks = isAdmin ? [] : [
       width: 38px;
       height: 38px;
     }
+    .nav-group__btn {
+      font-size: 0.8125rem;
+    }
   }
 
   /* Mid desktop tier (1120px–1259px) */
@@ -1158,6 +1304,9 @@ const navLinks = isAdmin ? [] : [
       gap: 14px;
     }
     .nav-links a {
+      font-size: 0.875rem;
+    }
+    .nav-group__btn {
       font-size: 0.875rem;
     }
     .nav-actions {
@@ -1197,6 +1346,11 @@ const navLinks = isAdmin ? [] : [
     .nav-links.is-open > * {
       opacity: 1 !important;
       transform: none !important;
+    }
+    .nav-group__chev,
+    .nav-group__panel {
+      transition: none !important;
+      translate: none !important;
     }
   }
 </style>
@@ -1275,6 +1429,60 @@ const navLinks = isAdmin ? [] : [
           (wide as any).addListener(onWide);
         }
       }
+    }
+
+    // Desktop "เกี่ยวกับค่าย" disclosure (WAI-ARIA disclosure pattern). In the mobile drawer the
+    // trigger is display:none and the links render flat, so none of this runs there.
+    const group = document.querySelector<HTMLElement>('.site-nav [data-nav-group]');
+    const groupBtn = group?.querySelector<HTMLButtonElement>('.nav-group__btn');
+    const panel = group?.querySelector<HTMLElement>('.nav-group__panel');
+    if (group && groupBtn && panel && group.dataset.ccGroupBound !== 'true') {
+      group.dataset.ccGroupBound = 'true';
+      const links = () => Array.from(panel.querySelectorAll<HTMLAnchorElement>('a'));
+      const isOpen = () => groupBtn.getAttribute('aria-expanded') === 'true';
+      const setGroup = (open: boolean) => groupBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+      groupBtn.addEventListener('click', () => setGroup(!isOpen()));
+      groupBtn.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        setGroup(true);
+        const list = links();
+        (e.key === 'ArrowDown' ? list[0] : list[list.length - 1])?.focus();
+      });
+      panel.addEventListener('keydown', (e) => {
+        const list = links();
+        const i = list.indexOf(document.activeElement as HTMLAnchorElement);
+        if (i < 0) return;
+        const next =
+          e.key === 'ArrowDown' ? (i + 1) % list.length
+          : e.key === 'ArrowUp' ? (i - 1 + list.length) % list.length
+          : e.key === 'Home' ? 0
+          : e.key === 'End' ? list.length - 1
+          : -1;
+        if (next < 0) return;
+        e.preventDefault();
+        list[next].focus();
+      });
+      panel.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement | null)?.closest('a')) setGroup(false);
+      });
+      group.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isOpen()) {
+          e.stopPropagation();
+          setGroup(false);
+          groupBtn.focus();
+        }
+      });
+      // Tabbing out closes it; a click on the panel's padding (relatedTarget null) does not.
+      group.addEventListener('focusout', (e) => {
+        const to = e.relatedTarget as Node | null;
+        if (to && !group.contains(to)) setGroup(false);
+      });
+      document.addEventListener('pointerdown', (e) => {
+        if (isOpen() && !group.contains(e.target as Node)) setGroup(false);
+      });
+      window.matchMedia('(min-width: 900px)').addEventListener?.('change', () => setGroup(false));
     }
 
     if (nav && nav.dataset.ccScrollBound !== 'true') {
