@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronDown, CircleCheck, RotateCcw, TriangleAlert } from 'lucide-react';
+import { CircleCheck, RotateCcw, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   fetchAdminSettings,
@@ -163,7 +163,6 @@ export function AdminSettingsPanel({
   onAuthError,
   onSettings,
 }: Props) {
-  const [open, setOpen] = useState(true);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   /** The server's own verdict (isOpen from /settings/public). null means the server did not answer. */
@@ -190,8 +189,6 @@ export function AdminSettingsPanel({
   const statusLabel =
     acceptingNow === null ? 'ไม่ทราบสถานะ' : acceptingNow ? 'เปิดรับสมัคร' : 'ปิดรับสมัคร';
   const statusDot = acceptingNow === null ? INK_3 : acceptingNow ? SUCCESS : DANGER;
-  const feeNum = settings ? Number(settings.campFee) : NaN;
-  const feeShown = settings && Number.isFinite(feeNum) ? numberFmt.format(feeNum) : '–';
 
   const openPreview = formatBangkokPreview(openAtInput);
   const closePreview = formatBangkokPreview(closeAtInput);
@@ -406,47 +403,7 @@ export function AdminSettingsPanel({
 
   return (
     <section aria-label="ตั้งค่าการรับสมัคร">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className={`flex min-h-11 w-full flex-col gap-2 rounded-none py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-6 ${FOCUS}`}
-      >
-        <span className="text-base font-semibold leading-7" style={{ color: INK }}>
-          ตั้งค่าการรับสมัคร
-        </span>
-        <span className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm leading-7" style={{ color: INK_2 }}>
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: statusDot }} />
-            {statusLabel}
-            {closed ? <span style={{ color: DANGER }}>(ปิดฉุกเฉิน)</span> : null}
-          </span>
-          <span>
-            ที่นั่ง{' '}
-            <span className="font-mono tabular-nums" style={{ color: INK }}>
-              {currentCount} / {settings?.maxCapacity ?? '–'}
-            </span>
-          </span>
-          <span>
-            ค่าสมัคร{' '}
-            <span className="font-mono tabular-nums" style={{ color: INK }}>
-              {feeShown}
-            </span>{' '}
-            บาท
-          </span>
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          strokeWidth={1.5}
-          size={18}
-          className={`hidden shrink-0 transition-transform sm:block motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
-          style={{ color: INK_3 }}
-        />
-      </button>
-
-      {open && (
-        <div id={panelId} className="grid gap-x-12 gap-y-6 pb-8 md:grid-cols-2">
+        <div id={panelId} className="grid gap-x-12 gap-y-6 md:grid-cols-2">
           {loadError && (
             <p role="alert" className="text-sm leading-7 md:col-span-2" style={{ color: DANGER }}>
               {loadError}
@@ -791,7 +748,6 @@ export function AdminSettingsPanel({
 
           {notice && <NoticeBanner notice={notice} announced={false} />}
         </div>
-      )}
     </section>
   );
 }

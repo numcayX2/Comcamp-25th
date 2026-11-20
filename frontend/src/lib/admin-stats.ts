@@ -38,11 +38,16 @@ export interface DailyPoint {
   cumulative: number;
 }
 
+/** Minimum number of consecutive days returned (ending today, Bangkok) so the chart never looks empty. */
+const MIN_DAILY_DAYS = 7;
+
 /**
- * Contiguous days from the first createdAt (Bangkok) to max(today Bangkok, last createdAt),
- * zero-filled. Returns [] when there are no valid applications. Invalid dates are skipped.
+ * Contiguous Bangkok days from the first createdAt to max(today Bangkok, last createdAt),
+ * zero-filled, and always at least MIN_DAILY_DAYS long (earlier days are zero-padded, counted back
+ * from the end day). Returns [] when there are no valid applications. Invalid dates are skipped.
+ * `now` defaults to the current time; pass it explicitly for deterministic tests.
  */
-export function dailyApplications(apps: readonly Application[], nowMs: number): DailyPoint[] {
+export function dailyApplications(apps: readonly Application[], now: Date | number = new Date()): DailyPoint[] {
   const counts = new Map<string, number>();
   let firstDay: string | null = null;
   let lastDay: string | null = null;
@@ -60,11 +65,11 @@ export function dailyApplications(apps: readonly Application[], nowMs: number): 
 
   if (firstDay === null || lastDay === null) return [];
 
-  const today = toBangkokDay(nowMs);
+  const today = toBangkokDay(typeof now === 'number' ? now : now.getTime());
   const endDay = today !== null && today > lastDay ? today : lastDay;
 
-  const startMs = utcDayStartMs(firstDay);
   const endMs = utcDayStartMs(endDay);
+  const startMs = Math.min(utcDayStartMs(firstDay), endMs - (MIN_DAILY_DAYS - 1) * DAY_MS);
   const points: DailyPoint[] = [];
   let cumulative = 0;
 

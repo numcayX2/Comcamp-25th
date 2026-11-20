@@ -289,6 +289,17 @@ const pageLinks = isAdmin ? [] : [
       width: min(1240px, calc(100% - 48px));
     }
   }
+  /* /admin content is a 96rem container with px-4 / sm:px-8 gutters; the bar follows it so logo and page share one left edge. */
+  .site-nav.is-admin .wrap {
+    width: calc(100% - 32px);
+    max-width: calc(96rem - 32px);
+  }
+  @media (min-width: 640px) {
+    .site-nav.is-admin .wrap {
+      width: calc(100% - 64px);
+      max-width: calc(96rem - 64px);
+    }
+  }
   /* Bar content row — plain flex. The hairline lives on the header so it can
      span the full viewport width. */
   .nav-inner {

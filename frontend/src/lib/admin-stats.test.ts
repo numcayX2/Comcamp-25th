@@ -55,6 +55,11 @@ test('dailyApplications skips invalid dates and returns empty when none are vali
       nowMs,
     ),
     [
+      { date: '2026-11-15', count: 0, cumulative: 0 },
+      { date: '2026-11-16', count: 0, cumulative: 0 },
+      { date: '2026-11-17', count: 0, cumulative: 0 },
+      { date: '2026-11-18', count: 0, cumulative: 0 },
+      { date: '2026-11-19', count: 0, cumulative: 0 },
       { date: '2026-11-20', count: 1, cumulative: 1 },
       { date: '2026-11-21', count: 0, cumulative: 1 },
     ],
@@ -73,6 +78,11 @@ test('dailyApplications handles Asia/Bangkok midnight boundary accurately', () =
   const nowMs = Date.parse('2026-11-18T17:30:00Z'); // 2026-11-19 in Bangkok
 
   assert.deepEqual(dailyApplications(apps, nowMs), [
+    { date: '2026-11-13', count: 0, cumulative: 0 },
+    { date: '2026-11-14', count: 0, cumulative: 0 },
+    { date: '2026-11-15', count: 0, cumulative: 0 },
+    { date: '2026-11-16', count: 0, cumulative: 0 },
+    { date: '2026-11-17', count: 0, cumulative: 0 },
     { date: '2026-11-18', count: 1, cumulative: 1 },
     { date: '2026-11-19', count: 2, cumulative: 3 },
   ]);
@@ -87,6 +97,7 @@ test('dailyApplications zero-fills gaps, computes cumulative counts, and handles
   const nowMs = Date.parse('2026-11-23T05:00:00Z');
 
   assert.deepEqual(dailyApplications(apps, nowMs), [
+    { date: '2026-11-17', count: 0, cumulative: 0 },
     { date: '2026-11-18', count: 2, cumulative: 2 },
     { date: '2026-11-19', count: 0, cumulative: 2 },
     { date: '2026-11-20', count: 0, cumulative: 2 },
@@ -98,17 +109,60 @@ test('dailyApplications zero-fills gaps, computes cumulative counts, and handles
 
 test('dailyApplications extends to last createdAt when later than today and crosses year boundaries', () => {
   const apps = [
-    sampleApplication({ id: 'CC25-000001', createdAt: '2026-12-30T03:00:00Z' }),
+    sampleApplication({ id: 'CC25-000001', createdAt: '2026-12-26T03:00:00Z' }),
     sampleApplication({ id: 'CC25-000002', createdAt: '2027-01-02T03:00:00Z' }),
   ];
-  const nowMs = Date.parse('2026-12-31T03:00:00Z');
+  const now = new Date('2026-12-31T03:00:00Z');
 
-  assert.deepEqual(dailyApplications(apps, nowMs), [
-    { date: '2026-12-30', count: 1, cumulative: 1 },
+  assert.deepEqual(dailyApplications(apps, now), [
+    { date: '2026-12-26', count: 1, cumulative: 1 },
+    { date: '2026-12-27', count: 0, cumulative: 1 },
+    { date: '2026-12-28', count: 0, cumulative: 1 },
+    { date: '2026-12-29', count: 0, cumulative: 1 },
+    { date: '2026-12-30', count: 0, cumulative: 1 },
     { date: '2026-12-31', count: 0, cumulative: 1 },
     { date: '2027-01-01', count: 0, cumulative: 1 },
     { date: '2027-01-02', count: 1, cumulative: 2 },
   ]);
+});
+
+test('dailyApplications pads to at least 7 consecutive days ending today with leading zeros', () => {
+  const apps = [sampleApplication({ id: 'CC25-000001', createdAt: '2026-11-20T03:00:00Z' })];
+  const now = Date.parse('2026-11-21T05:00:00Z');
+
+  assert.deepEqual(dailyApplications(apps, now), [
+    { date: '2026-11-15', count: 0, cumulative: 0 },
+    { date: '2026-11-16', count: 0, cumulative: 0 },
+    { date: '2026-11-17', count: 0, cumulative: 0 },
+    { date: '2026-11-18', count: 0, cumulative: 0 },
+    { date: '2026-11-19', count: 0, cumulative: 0 },
+    { date: '2026-11-20', count: 1, cumulative: 1 },
+    { date: '2026-11-21', count: 0, cumulative: 1 },
+  ]);
+});
+
+test('dailyApplications pads across a month boundary when only today has data', () => {
+  const apps = [sampleApplication({ id: 'CC25-000001', createdAt: '2026-12-02T03:00:00Z' })];
+  const dates = dailyApplications(apps, new Date('2026-12-02T05:00:00Z')).map((p) => p.date);
+
+  assert.deepEqual(dates, [
+    '2026-11-26',
+    '2026-11-27',
+    '2026-11-28',
+    '2026-11-29',
+    '2026-11-30',
+    '2026-12-01',
+    '2026-12-02',
+  ]);
+});
+
+test('dailyApplications does not pad when the span already exceeds 7 days', () => {
+  const apps = [sampleApplication({ id: 'CC25-000001', createdAt: '2026-11-10T03:00:00Z' })];
+  const points = dailyApplications(apps, Date.parse('2026-11-21T05:00:00Z'));
+
+  assert.equal(points.length, 12);
+  assert.equal(points[0]?.date, '2026-11-10');
+  assert.equal(points[11]?.date, '2026-11-21');
 });
 
 test('topCounts returns empty array for empty input', () => {

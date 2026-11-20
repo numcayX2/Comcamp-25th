@@ -246,33 +246,49 @@ export function AdminLogistics({ apps }: AdminLogisticsProps): JSX.Element {
               <tbody>
                 {shirt.rows.map((r) => {
                   const pct = shirt.total > 0 ? Math.round((r.total / shirt.total) * 100) : 0;
+                  const empty = r.total === 0;
+                  const cell = (n: number, bold: boolean) =>
+                    empty ? (
+                      <>
+                        <span aria-hidden="true">–</span>
+                        <span className="sr-only">0</span>
+                      </>
+                    ) : (
+                      <span className={bold ? 'font-semibold' : undefined} style={{ color: n ? INK : INK_3 }}>{n}</span>
+                    );
                   return (
                     <tr key={r.size} className="border-b" style={{ borderColor: RULE }}>
-                      <th scope="row" className="py-2 pr-4 text-left font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                      <th
+                        scope="row"
+                        className={`py-2 pr-4 text-left font-mono tabular-nums ${empty ? 'font-normal' : 'font-semibold'}`}
+                        style={{ color: empty ? INK_3 : INK }}
+                      >
                         {r.size}
                       </th>
-                      <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.confirmed ? INK : INK_3 }}>
-                        {r.confirmed}
+                      <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: INK_3 }}>
+                        {cell(r.confirmed, false)}
                       </td>
-                      <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.awaiting ? INK : INK_3 }}>
-                        {r.awaiting}
+                      <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: INK_3 }}>
+                        {cell(r.awaiting, false)}
                       </td>
-                      <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums" style={{ color: r.total ? INK : INK_3 }}>
-                        {r.total}
+                      <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: INK_3 }}>
+                        {cell(r.total, true)}
                       </td>
                       <td className="py-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            aria-hidden="true"
-                            className="h-2 min-w-[3rem] flex-1 overflow-hidden rounded-full"
-                            style={{ background: RULE }}
-                          >
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: TECH }} />
+                        {!empty && (
+                          <div className="flex items-center gap-2">
+                            <div
+                              aria-hidden="true"
+                              className="h-2 min-w-[3rem] flex-1 overflow-hidden rounded-full"
+                              style={{ background: RULE }}
+                            >
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: TECH }} />
+                            </div>
+                            <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
+                              {pct}%
+                            </span>
                           </div>
-                          <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
-                            {pct}%
-                          </span>
-                        </div>
+                        )}
                       </td>
                     </tr>
                   );

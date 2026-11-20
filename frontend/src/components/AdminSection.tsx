@@ -68,7 +68,7 @@ import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { AdminSponsorsPanel } from './AdminSponsorsPanel';
 import { AdminOverview } from './admin/AdminOverview';
-import { AdminLogistics } from './admin/AdminLogistics';
+import { AdminLogistics, isMeaningfulNote } from './admin/AdminLogistics';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
   BG_CANVAS,
@@ -301,7 +301,7 @@ const ROW_GRID =
 
 /** Column template shared by the sticky header and rows of the read-only withdrawn tab (lg and up). */
 const WITHDRAWN_GRID =
-  'lg:grid-cols-[7.5rem_minmax(0,1.2fr)_6.75rem_minmax(0,1.15fr)_7.5rem_7.5rem_7.5rem_minmax(0,1.1fr)_7rem]';
+  'lg:grid-cols-[6.75rem_minmax(0,1.3fr)_minmax(0,1fr)_7.5rem_9.25rem_minmax(0,1fr)_6.5rem] @min-[68rem]/ledger:grid-cols-[6.75rem_minmax(0,1.3fr)_minmax(0,1fr)_8.5rem_9.5rem_minmax(12rem,1fr)_6.75rem]';
 
 /**
  * Seat-releasing changes, leaving CONFIRMED, and confirming without a slip review get a warning
@@ -1560,38 +1560,22 @@ export function AdminSection() {
     ...legacyTabs,
   ];
 
+  /** Zero-count status tabs are noise: keep the work queues and the active filter, hide the rest. */
+  const visibleTabs = tabs.filter(
+    (t) => t.n > 0 || t.key === filter || t.key === 'ALL' || t.key === 'SLIP_PENDING' || t.key === 'AWAITING_PAY',
+  );
+
   const visibleWithSlip = visible.filter((x) => hasSlip(x) && can.viewSlip);
   const approvePresets = approveNoteTemplates(feeBaht);
 
   return (
     <div
-      className={`mx-auto w-full max-w-[96rem] select-text px-4 pb-28 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 ${token ? 'pt-6 sm:pt-8' : 'pt-12 sm:pt-20'}`}
+      className={`mx-auto w-full max-w-[96rem] select-text px-4 pb-28 selection:bg-[color-mix(in_srgb,var(--color-tech)_25%,transparent)] sm:px-8 ${token ? 'pt-3 sm:pt-5' : 'pt-12 sm:pt-20'}`}
     >
       {/* ── Masthead ─────────────────────────────────────────── */}
       {token ? (
-        // A work screen: a one-line title with the session controls, so the queue is in the first view.
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-[1.5rem] font-bold leading-[1.3] sm:text-[1.75rem]" style={{ color: INK }}>
-            ระบบพี่ค่าย
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true))}
-              disabled={busy}
-              aria-busy={busy || undefined}
-              className={`gap-2 ${pillGhost}`}
-              style={{ borderColor: RULE, color: INK }}
-            >
-              <RotateCw aria-hidden="true" size={15} strokeWidth={1.5} className={busy ? 'motion-safe:animate-spin' : undefined} />
-              {busy ? 'กำลังโหลด…' : 'รีเฟรช'}
-            </button>
-            <button type="button" onClick={logout} className={`gap-2 ${pillGhost}`} style={{ borderColor: RULE, color: INK_2 }}>
-              <LogOut aria-hidden="true" size={15} strokeWidth={1.5} />
-              ออกจากระบบ
-            </button>
-          </div>
-        </header>
+        // A work screen: the title is for assistive tech only; refresh/log-out live with the view menu.
+        <h1 className="sr-only">ระบบพี่ค่าย</h1>
       ) : (
         <header>
           <h1 className="text-balance text-[2rem] font-bold leading-[1.22] sm:text-[3.25rem]" style={{ color: INK }}>
@@ -1646,7 +1630,7 @@ export function AdminSection() {
           {error && (
             <div
               role="alert"
-              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 shadow-lg"
+              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
               style={{ backgroundColor: DANGER, borderColor: DANGER, color: 'var(--bg-canvas)' }}
             >
               <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
@@ -1666,8 +1650,8 @@ export function AdminSection() {
           {actionSuccess && (
             <div
               role="status"
-              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 shadow-lg"
-              style={{ backgroundColor: SUCCESS, borderColor: SUCCESS, color: '#121316' }}
+              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
+              style={{ backgroundColor: SUCCESS, borderColor: SUCCESS, color: 'var(--color-on-success)' }}
             >
               <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
                 <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" />
@@ -1690,7 +1674,7 @@ export function AdminSection() {
         <div
           role="alertdialog"
           aria-label="ยืนยันการทิ้งการแก้ไขข้อมูลผู้สมัคร"
-          className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-lg rounded-xl border p-4 shadow-lg"
+          className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-lg rounded-xl border p-4 [box-shadow:var(--shadow-float)]"
           style={{ backgroundColor: BG_CARD, borderColor: WARNING }}
         >
           <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
@@ -1799,45 +1783,68 @@ export function AdminSection() {
         </section>
       ) : (
         <>
-          <div className="mt-6 xl:grid xl:grid-cols-[14rem_minmax(0,1fr)] xl:items-start xl:gap-8">
+          <div className="mt-3 xl:mt-4 xl:grid xl:grid-cols-[14rem_minmax(0,1fr)] xl:items-start xl:gap-8">
             {/* ── View menu: raised pills in a scroller (< xl), a raised dock sidebar (xl and up) ── */}
-            <nav
-              aria-label="เมนูผู้ดูแลระบบ"
-              className="xl:sticky xl:top-[calc(var(--admin-nav-h,0px)+1rem)] xl:self-start"
-            >
-              <div className="-mx-4 overflow-x-auto px-4 py-2 [scrollbar-width:none] sm:-mx-8 sm:px-8 xl:mx-0 xl:overflow-visible xl:rounded-[28px] xl:bg-[var(--bg-card)] xl:p-3 xl:[box-shadow:var(--shadow-card)]">
-                <ul className="flex gap-2 xl:flex-col xl:gap-1">
-                  {navItems.map(({ key, label, Icon, n, srCount, alert }) => {
-                    const active = view === key;
-                    return (
-                      <li key={key} className="shrink-0">
-                        <button
-                          type="button"
-                          aria-current={active ? 'page' : undefined}
-                          onClick={() => openView(key)}
-                          className={`flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap rounded-full px-4 py-2 text-left text-sm transition-[background-color,box-shadow,color] duration-200 motion-reduce:transition-none ${
-                            active
-                              ? 'bg-[var(--bg-surface)] font-semibold [box-shadow:var(--shadow-well)]'
-                              : 'bg-[var(--bg-card)] font-medium [box-shadow:var(--shadow-card)] hover:bg-[var(--color-btn-ghost-hover)] xl:bg-transparent xl:[box-shadow:none]'
-                          } ${FOCUS}`}
-                          style={{ color: active ? INK : INK_2 }}
-                        >
-                          <Icon aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: active ? TECH : INK_3 }} />
-                          <span>{label}</span>
-                          {n !== undefined && n > 0 && (
-                            <span className="ml-auto inline-flex items-center gap-1.5 pl-1 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
-                              {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
-                              <span aria-hidden="true">{n}</span>
-                              {srCount && <span className="sr-only">{srCount}</span>}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+            <div className="flex items-center gap-2 xl:sticky xl:top-[calc(var(--admin-nav-h,0px)+1rem)] xl:flex-col xl:items-stretch xl:gap-0 xl:self-start xl:rounded-[28px] xl:bg-[var(--bg-card)] xl:p-3 xl:[box-shadow:var(--shadow-card)]">
+              <nav aria-label="เมนูผู้ดูแลระบบ" className="-ml-4 min-w-0 flex-1 sm:-ml-8 xl:ml-0 xl:flex-none">
+                <div className="overflow-x-auto py-2 pl-4 pr-2 [scrollbar-width:none] sm:pl-8 xl:overflow-visible xl:p-0">
+                  <ul className="flex gap-2 xl:flex-col xl:gap-1">
+                    {navItems.map(({ key, label, Icon, n, srCount, alert }) => {
+                      const active = view === key;
+                      return (
+                        <li key={key} className="shrink-0">
+                          <button
+                            type="button"
+                            aria-current={active ? 'page' : undefined}
+                            onClick={() => openView(key)}
+                            className={`flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap rounded-full px-4 py-2 text-left text-sm transition-[background-color,box-shadow,color] duration-200 motion-reduce:transition-none ${
+                              active
+                                ? 'bg-[var(--bg-surface)] font-semibold [box-shadow:var(--shadow-well)]'
+                                : 'bg-[var(--bg-card)] font-medium [box-shadow:var(--shadow-card)] hover:bg-[var(--color-btn-ghost-hover)] xl:bg-transparent xl:[box-shadow:none]'
+                            } ${FOCUS}`}
+                            style={{ color: active ? INK : INK_2 }}
+                          >
+                            <Icon aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: active ? TECH : INK_3 }} />
+                            <span>{label}</span>
+                            {n !== undefined && n > 0 && (
+                              <span className="ml-auto inline-flex items-center gap-1.5 pl-1 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
+                                {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
+                                <span aria-hidden="true">{n}</span>
+                                {srCount && <span className="sr-only">{srCount}</span>}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </nav>
+
+              {/* Session controls: icon buttons beside the menu (< xl), labelled rows under the dock menu (xl and up). */}
+              <div className="flex shrink-0 items-center gap-2 xl:mt-2 xl:flex-col xl:items-stretch xl:gap-1 xl:border-t xl:pt-2" style={{ borderColor: RULE }}>
+                <button
+                  type="button"
+                  onClick={() => guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true))}
+                  disabled={busy}
+                  aria-busy={busy || undefined}
+                  className={`inline-flex h-11 w-11 items-center justify-center gap-2.5 rounded-full bg-[var(--bg-card)] text-sm font-medium [box-shadow:var(--shadow-card)] transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-60 xl:h-auto xl:min-h-11 xl:w-full xl:justify-start xl:bg-transparent xl:px-4 xl:py-2 xl:[box-shadow:none] ${FOCUS}`}
+                  style={{ color: INK_2 }}
+                >
+                  <RotateCw aria-hidden="true" size={17} strokeWidth={1.5} className={`shrink-0 ${busy ? 'motion-safe:animate-spin' : ''}`} style={{ color: INK_3 }} />
+                  <span className="sr-only xl:not-sr-only">{busy ? 'กำลังโหลด…' : 'รีเฟรช'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className={`inline-flex h-11 w-11 items-center justify-center gap-2.5 rounded-full bg-[var(--bg-card)] text-sm font-medium [box-shadow:var(--shadow-card)] transition-colors hover:bg-[var(--color-btn-ghost-hover)] xl:h-auto xl:min-h-11 xl:w-full xl:justify-start xl:bg-transparent xl:px-4 xl:py-2 xl:[box-shadow:none] ${FOCUS}`}
+                  style={{ color: INK_2 }}
+                >
+                  <LogOut aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: INK_3 }} />
+                  <span className="sr-only xl:not-sr-only">ออกจากระบบ</span>
+                </button>
               </div>
-            </nav>
+            </div>
 
             <div className="mt-6 min-w-0 xl:mt-0">
               {view === 'overview' && (
@@ -1909,16 +1916,45 @@ export function AdminSection() {
               className="z-20 md:sticky"
               style={{ top: 'var(--admin-nav-h, 0px)', backgroundColor: BG_CANVAS }}
             >
+              {/* Phones: one select instead of a second horizontal scroller */}
+              <div hidden={isWithdrawnTab} className="relative border-b py-3 md:hidden" style={{ borderColor: INK }}>
+                <label htmlFor="status-filter-select" className="sr-only">
+                  กรองตามสถานะ
+                </label>
+                <select
+                  id="status-filter-select"
+                  value={filter}
+                  onChange={(e) => {
+                    resetDeleteConfirm(false);
+                    setFilter(e.target.value as FilterKey);
+                  }}
+                  className={`min-h-11 w-full cursor-pointer appearance-none rounded-full border bg-[var(--bg-card)] py-2 pl-4 pr-10 text-sm font-semibold ${FOCUS}`}
+                  style={{ borderColor: INPUT_BORDER, color: INK, colorScheme: 'inherit' }}
+                >
+                  {visibleTabs.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label} ({t.n}){t.key === 'AWAITING_PAY' && overduePayCount > 0 ? ` · เกินกำหนด ${overduePayCount}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  aria-hidden="true"
+                  strokeWidth={1.5}
+                  size={16}
+                  className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
+                  style={{ color: INK_3 }}
+                />
+              </div>
               <div
                 ref={filterGroupRef}
                 hidden={isWithdrawnTab}
                 tabIndex={-1}
                 role="group"
                 aria-label="กรองตามสถานะ"
-                className={`-mx-4 flex gap-2 overflow-x-auto border-b px-4 py-3 [scrollbar-width:thin] sm:-mx-8 sm:px-8 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 ${FOCUS}`}
+                className={`-mx-4 hidden gap-2 overflow-x-auto border-b px-4 py-3 [scrollbar-width:thin] sm:-mx-8 sm:px-8 md:flex lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 ${FOCUS}`}
                 style={{ borderColor: INK }}
               >
-                {tabs.map((t) => {
+                {visibleTabs.map((t) => {
                   const active = filter === t.key;
                   const isSlipQueue = t.key === 'SLIP_PENDING';
                   const overdue = t.key === 'AWAITING_PAY' ? overduePayCount : 0;
@@ -2053,12 +2089,12 @@ export function AdminSection() {
               {!isWithdrawnTab && visible.length > 0 && (
                 <div
                   aria-hidden="true"
-                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-3 xl:gap-4 ${ROW_GRID}`}
+                  className={`hidden rounded-t-[24px] border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-3 xl:gap-4 ${ROW_GRID}`}
                   style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
                 >
                   <span>รหัส / วันที่สมัคร</span>
                   <span>ผู้สมัคร</span>
-                  <span>โรงเรียน / ชั้น / เสื้อ</span>
+                  <span>โรงเรียน</span>
                   <span>หลักฐานการโอน</span>
                   <span>สถานะใบสมัคร</span>
                   <span className="lg:text-right">การจัดการ</span>
@@ -2068,16 +2104,14 @@ export function AdminSection() {
               {isWithdrawnTab && !withdrawnError && visibleWithdrawn.length > 0 && (
                 <div
                   aria-hidden="true"
-                  className={`hidden rounded-t-2xl border px-5 py-2.5 text-xs font-semibold lg:grid lg:items-center lg:gap-3 xl:gap-4 ${WITHDRAWN_GRID}`}
+                  className={`hidden rounded-t-[24px] border px-5 py-2.5 text-xs font-semibold whitespace-nowrap lg:grid lg:items-center lg:gap-3 xl:gap-4 ${WITHDRAWN_GRID}`}
                   style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK_3 }}
                 >
                   <span>รหัส</span>
-                  <span>ชื่อ–นามสกุล (ชื่อเล่น)</span>
-                  <span>เบอร์</span>
-                  <span>โรงเรียน · จังหวัด</span>
+                  <span>ผู้สมัคร</span>
+                  <span>โรงเรียน</span>
                   <span>สถานะก่อนยกเลิก</span>
-                  <span>สมัครเมื่อ</span>
-                  <span>ยกเลิกเมื่อ</span>
+                  <span className="whitespace-nowrap">สมัคร → ยกเลิก</span>
                   <span>เหตุผล</span>
                   <span className="sr-only">จัดการ</span>
                 </div>
@@ -2087,10 +2121,10 @@ export function AdminSection() {
             {/* Applications */}
             {!isWithdrawnTab && visible.length > 0 && (
               <div
-                className="overflow-hidden rounded-2xl border lg:rounded-t-none lg:border-t-0"
+                className="overflow-hidden rounded-[24px] border lg:rounded-t-none lg:border-t-0"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
-                <ul ref={listRef} tabIndex={-1} className={`rounded-sm ${FOCUS}`}>
+                <ul ref={listRef} tabIndex={-1} className={`rounded-xl ${FOCUS}`}>
                   {visible.map((a) => {
                     const slip = hasSlip(a);
                     const open = inspectingId === a.id;
@@ -2137,6 +2171,8 @@ export function AdminSection() {
                     const savedVerifiedAt = localVerdict?.verifiedAt || a.verifiedAt || null;
                     const allergyText = a.allergies?.trim();
                     const medicalText = a.medicalConditions?.trim();
+                    const showAllergy = Boolean(allergyText) && isMeaningfulNote(allergyText);
+                    const showMedical = Boolean(medicalText) && isMeaningfulNote(medicalText);
 
                     return (
                       <li key={a.id} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
@@ -2144,7 +2180,7 @@ export function AdminSection() {
                           {/* Col 1: ID + createdAt */}
                           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
                             <span
-                              className="inline-block rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
+                              className="inline-block rounded-full border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
                               style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
                             >
                               {a.id}
@@ -2168,9 +2204,9 @@ export function AdminSection() {
                             <p className="mt-0.5 font-mono text-xs leading-5 tabular-nums" style={{ color: INK_2 }}>
                               {a.phone}
                             </p>
-                            {(allergyText || medicalText) && (
+                            {(showAllergy || showMedical) && (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                {allergyText && (
+                                {showAllergy && (
                                   <span
                                     className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
                                     style={{ borderColor: WARNING, color: AMBER_TEXT, backgroundColor: SURFACE_SUBTLE }}
@@ -2179,7 +2215,7 @@ export function AdminSection() {
                                     <span className="truncate">แพ้อาหาร: {allergyText}</span>
                                   </span>
                                 )}
-                                {medicalText && (
+                                {showMedical && (
                                   <span
                                     className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
                                     style={{ borderColor: TECH, color: INK, backgroundColor: SURFACE_SUBTLE }}
@@ -2260,7 +2296,7 @@ export function AdminSection() {
                               </div>
                             ) : (
                               <p
-                                className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium leading-6 lg:min-h-9"
+                                className="inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium leading-6 lg:min-h-9"
                                 style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
                               >
                                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: STATUS_DOT[a.status] }} />
@@ -2302,93 +2338,9 @@ export function AdminSection() {
                                 <span className="sr-only sm:not-sr-only">{editing ? 'ซ่อนการแก้ไข' : 'แก้ไข'}</span>
                               </button>
                             )}
-                            {can.deleteApplication && (
-                              <button
-                                id={`delete-btn-${a.id}`}
-                                type="button"
-                                disabled={deletingId === a.id}
-                                aria-busy={deletingId === a.id || undefined}
-                                aria-expanded={deleteStep > 0}
-                                aria-controls={deleteStep > 0 ? `delete-strip-${a.id}` : undefined}
-                                aria-label={
-                                  deleteStep === 0 && deletingId !== a.id
-                                    ? `ลบใบสมัคร ${a.id} (${a.fullName})`
-                                    : undefined
-                                }
-                                onClick={() => onDeleteButtonClick(a)}
-                                className={`max-w-full text-left ${PILL_DANGER}`}
-                                style={{
-                                  borderColor: DANGER,
-                                  color: DANGER,
-                                  backgroundColor:
-                                    deleteStep > 0
-                                      ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
-                                      : undefined,
-                                }}
-                              >
-                                <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
-                                <span className="min-w-0 break-words">
-                                  {deletingId === a.id
-                                    ? 'กำลังลบ…'
-                                    : deleteStep === 1
-                                      ? 'ยืนยันลบ? (1/3)'
-                                      : deleteStep === 2
-                                        ? 'แน่ใจหรือไม่? (2/3)'
-                                        : deleteStep === 3
-                                          ? `ลบ ${a.fullName} ถาวร (3/3)`
-                                          : 'ลบ'}
-                                </span>
-                              </button>
-                            )}
                           </div>
                           </div>
                         </div>
-
-                    {/* 3-step delete confirmation strip: expands under the row, separated by a 1px danger hairline. */}
-                    {can.deleteApplication && deleteStep > 0 && (
-                      <div
-                        id={`delete-strip-${a.id}`}
-                        role="region"
-                        aria-label={`ยืนยันการลบ ${a.id}`}
-                        className="border-t px-5 py-4"
-                        style={{ borderColor: DANGER }}
-                      >
-                        <p aria-live="polite" className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
-                          ขั้นตอน <span className="font-mono tabular-nums">{deleteStep}/3</span> · ลบใบสมัคร{' '}
-                          <span className="font-mono tabular-nums">{a.id}</span> ({a.fullName})
-                        </p>
-                        <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
-                          การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
-                          {(slip || a.status === 'CONFIRMED') &&
-                            ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
-                        </p>
-                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                          <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
-                            เหตุผลการลบ (ไม่บังคับ)
-                          </label>
-                          <input
-                            id={`delete-reason-${a.id}`}
-                            type="text"
-                            maxLength={500}
-                            disabled={deletingId === a.id}
-                            value={deleteReason}
-                            onChange={(e) => setDeleteReason(e.target.value)}
-                            placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
-                            className={`${inputCls} sm:max-w-sm`}
-                            style={{ borderColor: INPUT_BORDER, color: INK }}
-                          />
-                          <button
-                            type="button"
-                            disabled={deletingId === a.id}
-                            onClick={() => resetDeleteConfirm(true)}
-                            className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                            style={{ color: INK_2 }}
-                          >
-                            ยกเลิก
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Every status change waits for a confirm: picking a value only proposes it. */}
                     {pendingChange && (
@@ -2643,6 +2595,95 @@ export function AdminSection() {
                             ปิด
                           </button>
                         </div>
+                        {can.deleteApplication && (
+                          <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                                ลบใบสมัครถาวร คืนที่นั่งและเบอร์/อีเมลให้สมัครใหม่ได้
+                              </p>
+                              <button
+                                id={`delete-btn-${a.id}`}
+                                type="button"
+                                disabled={deletingId === a.id}
+                                aria-busy={deletingId === a.id || undefined}
+                                aria-expanded={deleteStep > 0}
+                                aria-controls={deleteStep > 0 ? `delete-strip-${a.id}` : undefined}
+                                aria-label={
+                                  deleteStep === 0 && deletingId !== a.id
+                                    ? `ลบใบสมัคร ${a.id} (${a.fullName})`
+                                    : undefined
+                                }
+                                onClick={() => onDeleteButtonClick(a)}
+                                className={`max-w-full text-left ${PILL_DANGER}`}
+                                style={{
+                                  borderColor: DANGER,
+                                  color: DANGER,
+                                  backgroundColor:
+                                    deleteStep > 0
+                                      ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
+                                      : undefined,
+                                }}
+                              >
+                                <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+                                <span className="min-w-0 break-words">
+                                  {deletingId === a.id
+                                    ? 'กำลังลบ…'
+                                    : deleteStep === 1
+                                      ? 'ยืนยันลบ? (1/3)'
+                                      : deleteStep === 2
+                                        ? 'แน่ใจหรือไม่? (2/3)'
+                                        : deleteStep === 3
+                                          ? `ลบ ${a.fullName} ถาวร (3/3)`
+                                          : 'ลบ'}
+                                </span>
+                              </button>
+                            </div>
+                            {deleteStep > 0 && (
+                              <div
+                                id={`delete-strip-${a.id}`}
+                                role="region"
+                                aria-label={`ยืนยันการลบ ${a.id}`}
+                                className="mt-4 border-t pt-4"
+                                style={{ borderColor: DANGER }}
+                              >
+                                <p aria-live="polite" className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
+                                  ขั้นตอน <span className="font-mono tabular-nums">{deleteStep}/3</span> · ลบใบสมัคร{' '}
+                                  <span className="font-mono tabular-nums">{a.id}</span> ({a.fullName})
+                                </p>
+                                <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                                  การลบจะคืนที่นั่งและปล่อยเบอร์โทรและอีเมลให้สมัครใหม่ได้
+                                  {(slip || a.status === 'CONFIRMED') &&
+                                    ' — หมายเหตุ: ใบสมัครนี้มีข้อมูลสลิป/การยืนยันสิทธิ์ หากจ่ายเงินแล้วให้ใช้สถานะ “รอคืนเงิน” แทนเพื่อไม่ให้หายจากบัญชี'}
+                                </p>
+                                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                                  <label htmlFor={`delete-reason-${a.id}`} className="sr-only">
+                                    เหตุผลการลบ (ไม่บังคับ)
+                                  </label>
+                                  <input
+                                    id={`delete-reason-${a.id}`}
+                                    type="text"
+                                    maxLength={500}
+                                    disabled={deletingId === a.id}
+                                    value={deleteReason}
+                                    onChange={(e) => setDeleteReason(e.target.value)}
+                                    placeholder="เหตุผลการลบ (ไม่บังคับ เช่น ข้อมูลซ้ำ/ผู้สมัครขอยกเลิก)"
+                                    className={`${inputCls} sm:max-w-sm`}
+                                    style={{ borderColor: INPUT_BORDER, color: INK }}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === a.id}
+                                    onClick={() => resetDeleteConfirm(true)}
+                                    className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                                    style={{ color: INK_2 }}
+                                  >
+                                    ยกเลิก
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2725,7 +2766,7 @@ export function AdminSection() {
                             <button
                               type="button"
                               onClick={() => setLightboxOpen(true)}
-                              className={`mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-sm py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
+                              className={`mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-xl py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS}`}
                               style={{ color: TECH }}
                             >
                               <Maximize2 aria-hidden="true" size={15} strokeWidth={1.75} />
@@ -3156,7 +3197,7 @@ export function AdminSection() {
 
             {isWithdrawnTab && !withdrawnError && visibleWithdrawn.length > 0 && (
               <div
-                className="overflow-hidden rounded-2xl border lg:rounded-t-none lg:border-t-0"
+                className="overflow-hidden rounded-[24px] border lg:rounded-t-none lg:border-t-0"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 <ul>
@@ -3170,7 +3211,7 @@ export function AdminSection() {
                         {/* Col 1: Code */}
                         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:block">
                           <span
-                            className="inline-block rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
+                            className="inline-block rounded-full border px-2 py-0.5 font-mono text-xs font-semibold tabular-nums"
                             style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE, color: INK }}
                           >
                             {w.id}
@@ -3188,7 +3229,7 @@ export function AdminSection() {
                           </span>
                         </div>
 
-                        {/* Col 2: Name (nickname) */}
+                        {/* Col 2: Name (nickname) and phone */}
                         <div className="min-w-0">
                           <p className="break-words text-sm font-semibold leading-6" style={{ color: INK }}>
                             {w.fullName}
@@ -3199,12 +3240,10 @@ export function AdminSection() {
                               </span>
                             ) : null}
                           </p>
+                          <p className="font-mono text-xs leading-5 tabular-nums" style={{ color: INK_2 }}>
+                            {w.phone}
+                          </p>
                         </div>
-
-                        {/* Col 3: Phone */}
-                        <p className="font-mono text-xs leading-5 tabular-nums" style={{ color: INK_2 }}>
-                          {w.phone}
-                        </p>
 
                         {/* Col 4: School · Province */}
                         <p className="min-w-0 break-words text-sm leading-6" style={{ color: INK_2 }}>
@@ -3224,17 +3263,18 @@ export function AdminSection() {
                           <span className="min-w-0 break-words">{STATUS_LABELS[w.status]}</span>
                         </p>
 
-                        {/* Col 6: Created at */}
-                        <p className="text-xs leading-5" style={{ color: INK_3 }}>
-                          <span className="font-semibold lg:hidden">สมัครเมื่อ: </span>
-                          {formatBangkokDateTime(w.createdAt)}
-                        </p>
-
-                        {/* Col 7: Withdrawn at */}
-                        <p className="text-xs leading-5" style={{ color: INK_2 }}>
-                          <span className="font-semibold lg:hidden">ยกเลิกเมื่อ: </span>
-                          {formatBangkokDateTime(w.withdrawnAt)}
-                        </p>
+                        {/* Col 6: Applied → withdrawn (stacked) */}
+                        <div className="text-xs leading-5" style={{ color: INK_3 }}>
+                          <p>
+                            <span className="font-semibold lg:hidden">สมัครเมื่อ: </span>
+                            {formatBangkokDateTime(w.createdAt)}
+                          </p>
+                          <p style={{ color: INK_2 }}>
+                            <span className="font-semibold lg:hidden">ยกเลิกเมื่อ: </span>
+                            <span className="hidden lg:inline" aria-hidden="true">→ </span>
+                            {formatBangkokDateTime(w.withdrawnAt)}
+                          </p>
+                        </div>
 
                         {/* Col 8: Reason */}
                         <p className="min-w-0 break-words text-xs leading-6" style={{ color: w.reason?.trim() ? INK_2 : INK_3 }}>
@@ -3329,17 +3369,17 @@ export function AdminSection() {
             {isWithdrawnTab && withdrawnLoading && withdrawnApps.length === 0 && !withdrawnError && (
               <div
                 aria-hidden="true"
-                className="mt-4 overflow-hidden rounded-2xl border"
+                className="mt-4 overflow-hidden rounded-[24px] border"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="border-b px-5 py-5 last:border-b-0" style={{ borderColor: RULE }}>
                     <div
-                      className="h-3 w-24 animate-pulse rounded-sm motion-reduce:animate-none"
+                      className="h-3 w-24 animate-pulse rounded-full motion-reduce:animate-none"
                       style={{ backgroundColor: SURFACE_SUBTLE }}
                     />
                     <div
-                      className="mt-3 h-4 w-56 animate-pulse rounded-sm motion-reduce:animate-none"
+                      className="mt-3 h-4 w-56 animate-pulse rounded-full motion-reduce:animate-none"
                       style={{ backgroundColor: SURFACE_SUBTLE }}
                     />
                   </div>
@@ -3349,7 +3389,7 @@ export function AdminSection() {
 
             {isWithdrawnTab && !withdrawnLoading && !withdrawnError && visibleWithdrawn.length === 0 && (
               <div
-                className="mt-4 rounded-2xl border px-6 py-16 text-center"
+                className="mt-4 rounded-[24px] border px-6 py-16 text-center"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 <p className="text-base leading-[1.75]" style={{ color: searching ? INK_2 : INK_3 }}>
@@ -3364,17 +3404,17 @@ export function AdminSection() {
             {!isWithdrawnTab && busy && apps.length === 0 && (
               <div
                 aria-hidden="true"
-                className="mt-4 overflow-hidden rounded-2xl border"
+                className="mt-4 overflow-hidden rounded-[24px] border"
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="border-b px-5 py-5 last:border-b-0" style={{ borderColor: RULE }}>
                     <div
-                      className="h-3 w-24 animate-pulse rounded-sm motion-reduce:animate-none"
+                      className="h-3 w-24 animate-pulse rounded-full motion-reduce:animate-none"
                       style={{ backgroundColor: SURFACE_SUBTLE }}
                     />
                     <div
-                      className="mt-3 h-4 w-56 animate-pulse rounded-sm motion-reduce:animate-none"
+                      className="mt-3 h-4 w-56 animate-pulse rounded-full motion-reduce:animate-none"
                       style={{ backgroundColor: SURFACE_SUBTLE }}
                     />
                   </div>
@@ -3386,7 +3426,7 @@ export function AdminSection() {
               <div
                 ref={emptyStateRef}
                 tabIndex={-1}
-                className={`mt-4 rounded-2xl border px-6 py-16 text-center ${FOCUS}`}
+                className={`mt-4 rounded-[24px] border px-6 py-16 text-center ${FOCUS}`}
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 {searching ? (
@@ -3417,7 +3457,7 @@ export function AdminSection() {
               </div>
             )}
 
-            {source && (
+            {source && (import.meta.env.DEV || source !== 'LIVE GO API') && (
               <p className="mt-8 text-xs" style={{ color: INK_3 }}>
                 แหล่งข้อมูล <span className="font-mono tabular-nums">{source}</span>
               </p>

@@ -13,6 +13,8 @@ import { dailyApplications, seatBreakdown, topCounts, type CountRow } from '../.
 import {
   AMBER_TEXT,
   BG_CARD,
+  BTN_DARK,
+  BTN_DARK_TEXT,
   DANGER,
   INK,
   INK_2,
@@ -391,18 +393,32 @@ function Kpi({
   value,
   sub,
   action,
+  primary = false,
+  accent = false,
+  className = '',
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   action?: ReactNode;
+  /** Larger number; used for the one tile that needs staff attention. */
+  primary?: boolean;
+  /** Amber dot beside the label (decorative; the sub text carries the meaning). */
+  accent?: boolean;
+  className?: string;
 }) {
   return (
-    <div className={`${PANEL_CLASS} flex flex-col gap-1`} style={PANEL_STYLE}>
-      <span className="text-sm leading-[1.6]" style={{ color: INK_2 }}>
+    <div className={`${PANEL_CLASS} flex flex-col gap-1 ${className}`} style={PANEL_STYLE}>
+      <span className="flex items-center gap-2 text-sm leading-[1.6]" style={{ color: INK_2 }}>
+        {accent ? (
+          <span aria-hidden="true" className="inline-block size-2 shrink-0 rounded-full" style={{ background: WARNING }} />
+        ) : null}
         {label}
       </span>
-      <span className="font-mono text-3xl font-semibold leading-[1.22] tabular-nums" style={{ color: INK }}>
+      <span
+        className={`font-mono font-semibold leading-[1.22] tabular-nums ${primary ? 'text-5xl' : 'text-3xl'}`}
+        style={{ color: INK }}
+      >
         {value}
       </span>
       {sub ? <span className="text-sm leading-[1.6]">{sub}</span> : null}
@@ -707,7 +723,35 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
       {heading}
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5">
+        <Kpi
+          primary
+          className="col-span-2 md:row-span-2 xl:row-span-1"
+          label="สลิปรอตรวจ"
+          accent={pendingSlipCount > 0}
+          value={fmt(pendingSlipCount)}
+          sub={
+            pendingSlipCount > 0 ? (
+              <span style={{ color: AMBER_TEXT }}>รอเจ้าหน้าที่ตรวจสอบ</span>
+            ) : (
+              <span style={{ color: INK_3 }}>ไม่มีสลิปรอตรวจ</span>
+            )
+          }
+          action={
+            <button
+              type="button"
+              className={`${PILL_GHOST} w-full sm:w-fit sm:px-6`}
+              style={
+                pendingSlipCount > 0
+                  ? { background: BTN_DARK, borderColor: BTN_DARK, color: BTN_DARK_TEXT }
+                  : { borderColor: RULE, color: INK }
+              }
+              onClick={() => onOpenQueue('SLIP_PENDING')}
+            >
+              ตรวจสลิป
+            </button>
+          }
+        />
         <Kpi
           label="ที่นั่งที่ใช้"
           value={
@@ -717,17 +761,26 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             </>
           }
           sub={
-            seats.over > 0 ? (
-              <span style={{ color: DANGER }}>
-                เกินโควตา <span className="font-mono tabular-nums">{fmt(seats.over)}</span>
-              </span>
-            ) : seats.capacity == null ? (
-              <span style={{ color: INK_3 }}>กำลังโหลดโควตา…</span>
-            ) : (
-              <span style={{ color: INK_3 }}>
-                ว่าง <span className="font-mono tabular-nums">{fmt(seats.free)}</span>
-              </span>
-            )
+            <>
+              {seats.over > 0 ? (
+                <span className="block" style={{ color: DANGER }}>
+                  เกินโควตา <span className="font-mono tabular-nums">{fmt(seats.over)}</span>
+                </span>
+              ) : seats.capacity == null ? (
+                <span className="block" style={{ color: INK_3 }}>
+                  กำลังโหลดโควตา…
+                </span>
+              ) : (
+                <span className="block" style={{ color: INK_3 }}>
+                  ว่าง <span className="font-mono tabular-nums">{fmt(seats.free)}</span>
+                </span>
+              )}
+              {withdrawnCount > 0 ? (
+                <span className="block" style={{ color: INK_3 }}>
+                  ยกเลิกเอง <span className="font-mono tabular-nums">{fmt(withdrawnCount)}</span>
+                </span>
+              ) : null}
+            </>
           }
         />
         <Kpi
@@ -738,24 +791,13 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
               <span style={{ color: INK_3 }}>
                 ค่าสมัครรวม <span className="font-mono tabular-nums">{fmt(confirmedCount * campFee)}</span> บาท
               </span>
-            ) : undefined
+            ) : (
+              <span style={{ color: INK_3 }}>ยังไม่มีผู้ยืนยันสิทธิ์</span>
+            )
           }
         />
         <Kpi
-          label="สลิปรอตรวจ"
-          value={fmt(pendingSlipCount)}
-          action={
-            <button
-              type="button"
-              className={`${PILL_GHOST} w-full`}
-              style={{ borderColor: RULE, color: INK }}
-              onClick={() => onOpenQueue('SLIP_PENDING')}
-            >
-              ตรวจสลิป
-            </button>
-          }
-        />
-        <Kpi
+          className="col-span-2 md:col-span-2 xl:col-span-1"
           label="รอโอน/ส่งสลิป"
           value={fmt(awaitingPayCount)}
           sub={
@@ -763,7 +805,9 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
               <span style={{ color: AMBER_TEXT }}>
                 เกินกำหนด <span className="font-mono tabular-nums">{fmt(overduePayCount)}</span>
               </span>
-            ) : undefined
+            ) : (
+              <span style={{ color: INK_3 }}>ไม่มีรายการเกินกำหนด</span>
+            )
           }
           action={
             <button
@@ -776,7 +820,6 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             </button>
           }
         />
-        <Kpi label="ยกเลิกเอง" value={fmt(withdrawnCount)} />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

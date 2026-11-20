@@ -27,6 +27,7 @@
   --color-on-warning: #FFFFFF;
   --color-danger: #C62828;
   --color-success: #029E00;
+  --color-on-success: #121316; /* ink on the success fill: AGENTS §4.1 forbids white text on fern */
   --color-btn-dark: #121316;
   --color-btn-dark-text: #F9F8F4;
   --color-btn-ghost-hover: #F2F0E8;
@@ -71,6 +72,7 @@ html[data-theme="dark"] {
   --color-on-warning: #0B0F19;
   --color-danger: #F87171;
   --color-success: #3DDC3A;
+  --color-on-success: #121316;
   --color-btn-dark: #F5F4EF;
   --color-btn-dark-text: #121316;
   --color-btn-ghost-hover: rgba(255, 255, 255, 0.08);

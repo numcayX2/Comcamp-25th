@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, CircleCheck, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleCheck, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import {
   ApiHttpError,
   SPONSOR_LOGO_MAX_BYTES,
@@ -47,12 +47,16 @@ interface Props {
   onAuthError: (err: unknown) => boolean;
 }
 
-function errorText(err: unknown, fallback: string): string {
+function errorText(err: unknown, fallback: string, context: 'list' | 'item' = 'item'): string {
   if (err instanceof ApiHttpError) {
     if (err.status === 401 || err.status === 403) return 'เซสชันหมดอายุหรือไม่เพียงพอ กรุณาเข้าสู่ระบบใหม่';
     if (err.code === 'PAYLOAD_TOO_LARGE' || err.status === 413) return 'ไฟล์ใหญ่เกิน 2 MB';
     if (err.code === 'INVALID_IMAGE_DIMENSIONS') return 'รูปใหญ่เกิน 4096×4096 px';
-    if (err.code === 'NOT_FOUND' || err.status === 404) return 'ไม่พบผู้สนับสนุนรายการนี้ อาจถูกลบไปแล้ว';
+    if (err.code === 'NOT_FOUND' || err.status === 404) {
+      return context === 'list'
+        ? 'โหลดรายการผู้สนับสนุนไม่สำเร็จ (เซิร์ฟเวอร์ยังไม่รองรับหรือบริการไม่พร้อม) ลองรีเฟรชหน้าหรือแจ้งผู้ดูแลระบบ'
+        : 'ไม่พบผู้สนับสนุนรายการนี้ อาจถูกลบไปแล้ว';
+    }
     if (err.status === 429) {
       return err.retryAfterSeconds
         ? `ส่งคำขอบ่อยเกินไป กรุณารอ ${err.retryAfterSeconds} วินาทีแล้วลองใหม่`
@@ -139,7 +143,6 @@ function LogoThumb({ src, alt }: { src: string; alt: string }) {
  * delete (2-step confirm) and move up/down. Read-only list when `canEdit` is false.
  */
 export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
-  const [open, setOpen] = useState(true);
   const [sponsors, setSponsors] = useState<AdminSponsor[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -173,7 +176,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
       setLoadError(null);
     } catch (err) {
       if (signal?.cancelled || onAuthError(err)) return;
-      setLoadError(errorText(err, 'โหลดรายชื่อผู้สนับสนุนไม่สำเร็จ'));
+      setLoadError(errorText(err, 'โหลดรายชื่อผู้สนับสนุนไม่สำเร็จ', 'list'));
     }
   }
 
@@ -560,42 +563,35 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
 
   return (
     <section aria-label="ผู้สนับสนุน (หน้าแรก)">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen((v) => !v)}
-        className={`flex min-h-11 w-full flex-col gap-2 rounded-none py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-6 ${FOCUS}`}
-      >
-        <span className="text-base font-semibold leading-7" style={{ color: INK }}>
-          ผู้สนับสนุน (หน้าแรก)
-        </span>
-        <span className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm leading-7" style={{ color: INK_2 }}>
-          {count === null ? (
-            loadError ? 'โหลดไม่สำเร็จ' : 'กำลังโหลด…'
-          ) : count === 0 ? (
-            'ยังไม่มี · ไม่แสดงบนหน้าแรก'
-          ) : (
-            <span>
-              <span className="font-mono tabular-nums" style={{ color: INK }}>
-                {count}
-              </span>{' '}
-              โลโก้
-            </span>
-          )}
-          {!canEdit && <span style={{ color: INK_3 }}>ดูอย่างเดียว</span>}
-        </span>
-        <ChevronDown
-          aria-hidden="true"
-          strokeWidth={1.5}
-          size={18}
-          className={`hidden shrink-0 transition-transform sm:block motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
-          style={{ color: INK_3 }}
-        />
-      </button>
-
-      {open && (
-        <div id={panelId} className="flex flex-col gap-5 pb-8">
+      <div id={panelId} className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm leading-7" style={{ color: INK_2 }}>
+              {count === null ? (
+                loadError ? null : 'กำลังโหลด…'
+              ) : (
+                <>
+                  <span className="font-mono tabular-nums" style={{ color: INK }}>
+                    {count}
+                  </span>{' '}
+                  รายการ
+                </>
+              )}
+              {!canEdit && <span style={{ color: INK_3 }}> · ดูอย่างเดียว</span>}
+            </p>
+            {canEdit && sponsors && formTarget !== 'new' && (
+              <button
+                id="sponsor-add-button"
+                type="button"
+                disabled={busy}
+                onClick={() => openForm('new')}
+                className={`${PILL_GHOST} gap-1.5`}
+                style={{ borderColor: RULE, color: INK }}
+              >
+                <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
+                เพิ่มผู้สนับสนุน
+              </button>
+            )}
+          </div>
           {loadError && (
             <div className="flex flex-wrap items-center gap-3">
               <p role="alert" className="text-sm leading-7" style={{ color: DANGER }}>
@@ -648,7 +644,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
                               href={s.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className={`inline-block max-w-full break-all rounded-sm font-mono text-xs leading-6 underline underline-offset-4 ${FOCUS}`}
+                              className={`inline-block max-w-full break-all rounded-xl font-mono text-xs leading-6 underline underline-offset-4 ${FOCUS}`}
                               style={{ color: INK_2 }}
                             >
                               {s.url}
@@ -780,27 +776,8 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
             </ol>
           )}
 
-          {canEdit && sponsors && (
-            formTarget === 'new' ? (
-              renderForm()
-            ) : (
-              <div>
-                <button
-                  id="sponsor-add-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => openForm('new')}
-                  className={`${PILL_GHOST} gap-1.5`}
-                  style={{ borderColor: RULE, color: INK }}
-                >
-                  <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-                  เพิ่มผู้สนับสนุน
-                </button>
-              </div>
-            )
-          )}
+          {canEdit && sponsors && formTarget === 'new' && renderForm()}
         </div>
-      )}
     </section>
   );
 }
