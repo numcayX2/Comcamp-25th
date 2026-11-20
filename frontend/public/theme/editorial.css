@@ -335,7 +335,7 @@
   line-height: 1;
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  color: var(--border-input);
+  color: var(--ink-3);
   user-select: none;
   transition: color 0.35s ease;
 }
@@ -343,15 +343,6 @@
   color: var(--blue-600);
 }
 #experience .step.is-done .step-big-num {
-  color: var(--ink-3);
-}
-/* Dark: the inactive numeral used the form-border grey (2.7:1); lift it to the readable muted ink. */
-html.dark #experience .step:not(.is-active):not(.is-done) .step-big-num,
-html[data-theme="dark"] #experience .step:not(.is-active):not(.is-done) .step-big-num {
-  color: var(--ink-3);
-}
-html.dark #experience .step.is-done .step-big-num,
-html[data-theme="dark"] #experience .step.is-done .step-big-num {
   color: var(--ink-2);
 }
 #experience .step .day {
@@ -790,7 +781,7 @@ html[data-theme="dark"] #experience .step.is-done .step-big-num {
   padding: 9px 0;
   border-top: 1px solid var(--rule);
   font-size: 0.9375rem;
-  line-height: 1.6;
+  line-height: 1.7;
   letter-spacing: 0;
   color: var(--ink-2);
 }

@@ -316,7 +316,7 @@ function init(stage, canvas) {
   /* ==========================================================================
      6. UPDATE + RENDER
      ========================================================================== */
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
   let raf = 0;
 
   function update(dt, t) {
@@ -359,14 +359,15 @@ function init(stage, canvas) {
   }
 
   function renderNow() {
-    update(0.016, reduced ? 0 : clock.elapsedTime);
+    update(0.016, reduced ? 0 : timer.getElapsed());
     renderer.render(scene, camera);
   }
 
   function tick() {
     raf = requestAnimationFrame(tick);
-    const dt = Math.min(clock.getDelta(), 0.05);
-    update(dt, clock.elapsedTime);
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 0.05);
+    update(dt, timer.getElapsed());
     renderer.render(scene, camera);
   }
 
@@ -378,7 +379,7 @@ function init(stage, canvas) {
   function syncLoop() {
     const shouldRun = ready && inView && !document.hidden && !reduced;
     if (shouldRun && !raf) {
-      clock.getDelta(); // discard the paused gap
+      timer.update(); // discard the paused gap
       raf = requestAnimationFrame(tick);
     } else if (!shouldRun && raf) {
       cancelAnimationFrame(raf);

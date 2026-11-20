@@ -1496,12 +1496,12 @@ export function StatusSection() {
                 <li key={c.tel}>
                   <a
                     href={`tel:${c.tel}`}
-                    className={`inline-flex min-h-11 items-center gap-1.5 underline underline-offset-4 ${FOCUS_RING}`}
+                    className={`inline-flex min-h-11 max-w-full flex-wrap items-center gap-x-1.5 underline underline-offset-4 ${FOCUS_RING}`}
                     style={{ color: INK }}
                   >
                     <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                    <span className="font-mono font-semibold tabular-nums">{c.phone}</span>
-                    <span style={{ color: INK_MUTED }}>· {c.name}</span>
+                    <span className="whitespace-nowrap font-mono font-semibold tabular-nums">{c.phone}</span>
+                    <span className="min-w-0" style={{ color: INK_MUTED }}>· {c.name}</span>
                   </a>
                 </li>
               ))}

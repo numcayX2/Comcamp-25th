@@ -324,7 +324,7 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   line-height: 1.6;
   color: var(--rw-ink);
 }
-.rw-subsection__note { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--rw-ink-3); }
+.rw-subsection__note { margin: 0; font-size: 0.8125rem; line-height: 1.7; color: var(--rw-ink-3); }
 
 .rw-input {
   display: block;
