@@ -3,8 +3,6 @@
    Left: dark sticky sidebar with a vertical stepper (≥768px).
    Right: paper canvas showing one step at a time.
    <768px: the sidebar becomes a sticky top bar with a progress meter.
-  --rw-fern-text: #027F00;
-  --rw-fern-text: #03B800;
 
    Colours are existing master hexes (AGENTS.md §4.1 + the nav's dark set);
    nothing new is introduced. Thai text never uses letter-spacing or the mono
@@ -29,6 +27,7 @@ body.rw-page { overflow: visible; overflow-x: clip; }
   --rw-danger: #C62828;
   --rw-warn: #B45309;
   --rw-warn-text: #9A4608;
+  --rw-fern-text: #027F00;
   --rw-ok: #047857;
   --rw-fern: #03B800;
   --rw-fern-hover: #029E00;
@@ -76,6 +75,7 @@ html[data-theme="dark"] .rw {
   --rw-danger: #F87171;
   --rw-warn: #F59E0B;
   --rw-warn-text: #F59E0B;
+  --rw-fern-text: #03B800;
   --rw-ok: #10B981;
   --rw-btn-hover: #FFFFFF;
   --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23F5F4EF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
