@@ -224,6 +224,18 @@ func (m *MemoryApplicantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, ne
 // UpdateStatusWithinCapacity mirrors the Postgres version: one lock covers the status read, the
 // seat count and the write, so a restore can never exceed maxCapacity.
 func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	return m.updateStatusWithCapacity(ctx, id, newStatus, adminID, reason, audit, maxCapacity, false)
+}
+
+// UpdateStatusOverCapacity mirrors the Postgres version: under the same lock it checks whether
+// the camp is full, permits a seat-retaking restore past maxCapacity when it is, and records
+// overCapacity, currentCount and maxCapacity in the audit entry. When seats are free it behaves
+// identically to UpdateStatusWithinCapacity.
+func (m *MemoryApplicantRepo) UpdateStatusOverCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	return m.updateStatusWithCapacity(ctx, id, newStatus, adminID, reason, audit, maxCapacity, true)
+}
+
+func (m *MemoryApplicantRepo) updateStatusWithCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int, allowOverCapacity bool) error {
 	if err := checkAuditDetails(audit); err != nil {
 		return err
 	}
@@ -234,15 +246,32 @@ func (m *MemoryApplicantRepo) UpdateStatusWithinCapacity(ctx context.Context, id
 	if !ok || a.DeletedAt != nil {
 		return domain.ErrNotFound
 	}
-	if maxCapacity > 0 && !a.Status.IsActive() && newStatus.IsActive() && m.countActiveLocked() >= maxCapacity {
-		return domain.ErrCapacityReached
+	var (
+		overCapUsed  bool
+		overCapCount int
+	)
+	if maxCapacity > 0 && !a.Status.IsActive() && newStatus.IsActive() {
+		count := m.countActiveLocked()
+		if count >= maxCapacity {
+			if !allowOverCapacity {
+				return domain.ErrCapacityReached
+			}
+			overCapUsed = true
+			overCapCount = count + 1
+		}
 	}
 	oldStatus, err := m.setStatusLocked(id, newStatus, adminID, reason)
 	if err != nil {
 		return err
 	}
 	if audit != nil {
-		return m.audit.Log(ctx, withDetail(audit, "oldStatus", oldStatus))
+		entry := withDetail(audit, "oldStatus", oldStatus)
+		if overCapUsed {
+			entry.Details["overCapacity"] = true
+			entry.Details["currentCount"] = overCapCount
+			entry.Details["maxCapacity"] = maxCapacity
+		}
+		return m.audit.Log(ctx, entry)
 	}
 	return nil
 }

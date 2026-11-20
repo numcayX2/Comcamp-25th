@@ -196,8 +196,9 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 	}
 
 	var body struct {
-		Status string `json:"status"`
-		Reason string `json:"reason,omitempty"`
+		Status       string `json:"status"`
+		Reason       string `json:"reason,omitempty"`
+		OverCapacity bool   `json:"overCapacity,omitempty"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -208,7 +209,9 @@ func (h *ApplicantHandler) AdminUpdateStatus(w http.ResponseWriter, r *http.Requ
 		adminID = &claims.AdminID
 	}
 
-	app, err := h.appService.UpdateStatus(r.Context(), id, domain.ApplicationStatus(body.Status), adminID, body.Reason, middleware.RemoteIP(r))
+	app, err := h.appService.UpdateStatus(r.Context(), id, domain.ApplicationStatus(body.Status), adminID, body.Reason, middleware.RemoteIP(r), service.UpdateStatusOptions{
+		OverCapacity: body.OverCapacity,
+	})
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

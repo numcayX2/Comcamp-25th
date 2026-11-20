@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"comcamp25-backend/internal/domain"
@@ -178,18 +179,27 @@ func (r *ApplicantPostgresRepo) ListAll(ctx context.Context, status *domain.Appl
 // UpdateStatus changes the status and writes applicant_status_logs and audit_logs in the same
 // transaction (AGENTS.md §13.6): either everything is recorded or nothing changes.
 func (r *ApplicantPostgresRepo) UpdateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry) error {
-	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, 0, false)
+	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, 0, false, false)
 }
 
 // UpdateStatusWithinCapacity is UpdateStatus for a change that may take a seat back. It takes the
-// same advisory lock as CreateWithinCapacity (before the count, AGENTS.md §13.7) so a refunded or
-// rejected applicant being restored can never push the camp past maxCapacity while new
+// same advisory lock as CreateWithinCapacity (before the count, AGENTS.md §13.7) so a refunded,
+// rejected or forfeited applicant being restored can never push the camp past maxCapacity while new
 // applicants are registering.
 func (r *ApplicantPostgresRepo) UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
-	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, maxCapacity, true)
+	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, maxCapacity, true, false)
 }
 
-func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int, takeQuotaLock bool) error {
+// UpdateStatusOverCapacity is UpdateStatusWithinCapacity with over-capacity restore allowed. It
+// runs under the same quota advisory lock and lock_timeout: when seats are free it behaves like
+// UpdateStatusWithinCapacity, and when the camp is already full (count >= maxCapacity) it still
+// applies the status update and records overCapacity, currentCount and maxCapacity in the audit
+// row in the same transaction.
+func (r *ApplicantPostgresRepo) UpdateStatusOverCapacity(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int) error {
+	return r.updateStatus(ctx, id, newStatus, adminID, reason, audit, maxCapacity, true, true)
+}
+
+func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, newStatus domain.ApplicationStatus, adminID *int64, reason string, audit *domain.AuditEntry, maxCapacity int, takeQuotaLock, allowOverCapacity bool) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -221,22 +231,30 @@ func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, 
 	}
 
 	// The caller picked UpdateStatus on an unlocked read that said the change keeps the seat count.
-	// If another admin released the seat in the meantime (REJECTED, REFUND_PENDING, REFUNDED), this
-	// change would now take a seat back without the quota check: refuse, and let the caller redo it
-	// with UpdateStatusWithinCapacity (quota lock first, then this row).
+	// If another admin released the seat in the meantime (REJECTED, REFUND_PENDING, REFUNDED,
+	// FORFEITED), this change would now take a seat back without the quota check: refuse, and let
+	// the caller redo it with UpdateStatusWithinCapacity (quota lock first, then this row).
 	if !takeQuotaLock && !oldStatus.IsActive() && newStatus.IsActive() {
 		return domain.ErrStateConflict
 	}
 
 	// Only a change that takes a seat back is checked: moving between active statuses (or into a
 	// non-counting one) never changes the count.
+	var (
+		overCapUsed  bool
+		overCapCount int
+	)
 	if takeQuotaLock && maxCapacity > 0 && !oldStatus.IsActive() && newStatus.IsActive() {
 		var count int
 		if err := tx.QueryRow(ctx, countActiveSQL).Scan(&count); err != nil {
 			return fmt.Errorf("count active applicants: %w", err)
 		}
 		if count >= maxCapacity {
-			return domain.ErrCapacityReached
+			if !allowOverCapacity {
+				return domain.ErrCapacityReached
+			}
+			overCapUsed = true
+			overCapCount = count + 1
 		}
 	}
 
@@ -245,7 +263,13 @@ func (r *ApplicantPostgresRepo) updateStatus(ctx context.Context, id uuid.UUID, 
 	}
 
 	if audit != nil {
-		if err := insertAudit(ctx, tx, withAuditDetail(audit, "oldStatus", oldStatus)); err != nil {
+		entry := withAuditDetail(audit, "oldStatus", oldStatus)
+		if overCapUsed {
+			entry.Details["overCapacity"] = true
+			entry.Details["currentCount"] = overCapCount
+			entry.Details["maxCapacity"] = maxCapacity
+		}
+		if err := insertAudit(ctx, tx, entry); err != nil {
 			return err
 		}
 	}
@@ -307,17 +331,24 @@ func (r *ApplicantPostgresRepo) UpdateProfile(ctx context.Context, id uuid.UUID,
 }
 
 // setStatusTx updates applicants.status and appends the status log inside an open transaction.
-// Transitioning to CONFIRMED also marks attendance_confirmed = true atomically.
+// Transitioning to CONFIRMED also marks attendance_confirmed = true atomically. The WHERE clause
+// keeps an optimistic status check on top of the caller's FOR UPDATE lock.
 func setStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, oldStatus, newStatus domain.ApplicationStatus, adminID *int64, reason string) error {
 	now := time.Now().UTC()
-	var err error
+	var (
+		tag pgconn.CommandTag
+		err error
+	)
 	if newStatus == domain.StatusConfirmed {
-		_, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, attendance_confirmed = true, updated_at = $2 WHERE id = $3`, newStatus, now, id)
+		tag, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, attendance_confirmed = true, updated_at = $2 WHERE id = $3 AND status = $4 AND deleted_at IS NULL`, newStatus, now, id, oldStatus)
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, updated_at = $2 WHERE id = $3`, newStatus, now, id)
+		tag, err = tx.Exec(ctx, `UPDATE applicants SET status = $1, updated_at = $2 WHERE id = $3 AND status = $4 AND deleted_at IS NULL`, newStatus, now, id, oldStatus)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return domain.ErrStateConflict
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO applicant_status_logs (applicant_id, changed_by_admin_id, old_status, new_status, reason, created_at)

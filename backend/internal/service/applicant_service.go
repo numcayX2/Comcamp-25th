@@ -897,15 +897,33 @@ func (s *ApplicantService) ListAll(ctx context.Context, status *domain.Applicati
 	return responses, nil
 }
 
+// ErrOverCapacityReasonRequired is returned when an admin requests an over-capacity restore
+// without providing a non-empty reason.
+var ErrOverCapacityReasonRequired = newValidationError("reason is required for over-capacity restore")
+
+// UpdateStatusOptions configures optional behaviour on ApplicantService.UpdateStatus.
+type UpdateStatusOptions struct {
+	// OverCapacity allows a seat-retaking status change (e.g. FORFEITED -> PASSED) to proceed even
+	// when the camp quota is full. Requires a non-empty reason; ignored when no seat is retaken.
+	OverCapacity bool
+}
+
 // UpdateStatus is the admin status change. The status log and the audit_logs row are written in
 // the same transaction as the change (AGENTS.md §13.6).
-func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo string, newStatus domain.ApplicationStatus, adminID *int64, reason, ip string) (*ApplicationResponse, error) {
+func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo string, newStatus domain.ApplicationStatus, adminID *int64, reason, ip string, opts ...UpdateStatusOptions) (*ApplicationResponse, error) {
 	if !newStatus.IsValid() {
 		return nil, ErrInvalidStatus
 	}
-	reason = strings.TrimSpace(reason)
+	reason = strings.TrimSpace(stripZeroWidth(reason))
 	if utf8.RuneCountInString(reason) > maxReasonRunes {
 		return nil, newValidationError(fmt.Sprintf("reason is too long (max %d characters)", maxReasonRunes))
+	}
+
+	var overCapacity bool
+	for _, o := range opts {
+		if o.OverCapacity {
+			overCapacity = true
+		}
 	}
 
 	applicant, err := s.appRepo.GetByApplicationNo(ctx, normalizeAppNo(applicationNo))
@@ -921,9 +939,10 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 		Details:    map[string]any{"newStatus": newStatus, "reason": reason},
 		IPAddress:  ip,
 	}
-	// Taking a seat back (REJECTED / REFUND_PENDING / REFUNDED -> an active status) must respect
-	// the quota: those statuses released their seat, and someone else may have taken it. The
-	// repository re-checks under the quota lock, so this holds against concurrent registrations.
+	// Taking a seat back (REJECTED / REFUND_PENDING / REFUNDED / FORFEITED -> an active status)
+	// must respect the quota: those statuses released their seat, and someone else may have taken
+	// it. The repository re-checks under the quota lock, so this holds against concurrent
+	// registrations.
 	retakesSeat := !applicant.Status.IsActive() && newStatus.IsActive()
 	if !retakesSeat {
 		err := s.appRepo.UpdateStatus(ctx, applicant.ID, newStatus, adminID, reason, audit)
@@ -938,11 +957,18 @@ func (s *ApplicantService) UpdateStatus(ctx context.Context, applicationNo strin
 		}
 	}
 	if retakesSeat {
+		if overCapacity && reason == "" {
+			return nil, ErrOverCapacityReasonRequired
+		}
 		settings, err := s.settingRepo.Get(ctx)
 		if err != nil || settings == nil {
 			return nil, fmt.Errorf("%w: %v", ErrSettingsUnavailable, err)
 		}
-		err = s.appRepo.UpdateStatusWithinCapacity(ctx, applicant.ID, newStatus, adminID, reason, audit, settings.MaxCapacity)
+		if overCapacity {
+			err = s.appRepo.UpdateStatusOverCapacity(ctx, applicant.ID, newStatus, adminID, reason, audit, settings.MaxCapacity)
+		} else {
+			err = s.appRepo.UpdateStatusWithinCapacity(ctx, applicant.ID, newStatus, adminID, reason, audit, settings.MaxCapacity)
+		}
 		switch {
 		case err == nil:
 		case errors.Is(err, domain.ErrCapacityReached):

@@ -184,10 +184,16 @@ type ApplicantRepository interface {
 	// (when non-nil) in one transaction.
 	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry) error
 	// UpdateStatusWithinCapacity is UpdateStatus for a change that may take a seat back (from
-	// REJECTED / REFUND_PENDING / REFUNDED to an active status). Under the same advisory lock as
-	// CreateWithinCapacity it re-reads the status and returns ErrCapacityReached when the camp is
-	// full. maxCapacity <= 0 means unlimited.
+	// REJECTED / REFUND_PENDING / REFUNDED / FORFEITED to an active status). Under the same
+	// advisory lock as CreateWithinCapacity it re-reads the status and returns ErrCapacityReached
+	// when the camp is full. maxCapacity <= 0 means unlimited.
 	UpdateStatusWithinCapacity(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry, maxCapacity int) error
+	// UpdateStatusOverCapacity is UpdateStatusWithinCapacity with over-capacity restore allowed.
+	// Under the same quota advisory lock as CreateWithinCapacity it checks the active count: when
+	// seats are free it behaves like UpdateStatusWithinCapacity, and when the camp is already full
+	// (count >= maxCapacity) it still applies the restore and records overCapacity, currentCount
+	// and maxCapacity in the audit entry in the same transaction.
+	UpdateStatusOverCapacity(ctx context.Context, id uuid.UUID, newStatus ApplicationStatus, adminID *int64, reason string, audit *AuditEntry, maxCapacity int) error
 	// UpdateProfile rewrites the editable profile columns, bumps updated_at and writes the audit
 	// entry in one transaction. With requireActive the row is locked first and the write is
 	// refused with ErrStateConflict unless the application still holds a seat. Identifier
