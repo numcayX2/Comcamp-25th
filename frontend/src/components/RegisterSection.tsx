@@ -357,7 +357,7 @@ function Stepper({
           </span>
         );
         return (
-          <li key={label} className="rw-step" data-state={state}>
+          <li key={label} className="rw-step" data-state={state} data-line={current >= 0 && i < current ? 'on' : undefined}>
             {clickable ? (
               <button type="button" className="rw-step__row" onClick={() => onJump(i)}>
                 {dot}
@@ -417,6 +417,8 @@ export function RegisterSection() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [consent, setConsent] = useState(false);
   const [step, setStep] = useState(0);
+  /** Which way the last move went, so the next step body slides in from that side. */
+  const [dir, setDir] = useState<'next' | 'back'>('next');
   const [furthest, setFurthest] = useState(0);
   const [returnTo, setReturnTo] = useState<number | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -615,6 +617,7 @@ export function RegisterSection() {
   function show(next: number, focus: { field?: FieldKey; heading?: boolean }) {
     pending.current = focus;
     setTyping(false);
+    setDir(next >= step ? 'next' : 'back');
     setStep(next);
     window.scrollTo({ top: 0 });
   }
@@ -1844,7 +1847,7 @@ export function RegisterSection() {
             {devBar}
             {noticeBanner}
             {errorBanner}
-            <div className="rw-step-view" key={step}>
+            <div className="rw-step-view" key={step} data-dir={dir}>
               <StepHeader no={stepNo + 1} title={STEPS[stepNo].title} lead={STEPS[stepNo].lead} headingRef={headingRef} />
               <div className="rw-body">{renderStep()}</div>
             </div>
