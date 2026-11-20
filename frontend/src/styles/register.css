@@ -3,6 +3,8 @@
    Left: dark sticky sidebar with a vertical stepper (≥768px).
    Right: paper canvas showing one step at a time.
    <768px: the sidebar becomes a sticky top bar with a progress meter.
+  --rw-fern-text: #027F00;
+  --rw-fern-text: #03B800;
 
    Colours are existing master hexes (AGENTS.md §4.1 + the nav's dark set);
    nothing new is introduced. Thai text never uses letter-spacing or the mono

@@ -7,7 +7,10 @@
   --fern-500:#03B800; --fern-600:#029E00; --forest:#162615;
   --blue-600:#1A5FE0; --blue-50:#EAF1FF;
   --amber:#B45309; --danger:#C62828;
-  --particle-ink:#141615; --particle-blue:#1D4ED8; --particle-green:#027F00; --green-text:#027F00;
+  --particle-ink:#141615; --particle-blue:#1D4ED8; --particle-green:#027F00;
+  /* Text-safe fern for green text/icons: #03B800 is only ~2.5:1 on light canvases;
+     #027F00 holds >=4.56:1 on canvas-0, canvas-1 and surface (WCAG 2.2 AA). */
+  --green-text:#027F00;
   --gallery-bg:#0a0a0b;
   --radius-input:12px; --radius-pill:9999px;
   --r-pill:9999px; --r-card:24px; --r-dock:28px; --r-input:12px;
@@ -42,6 +45,7 @@ html[data-theme="dark"] {
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-input: #5A5D63;
   --forest: #0C0D0F;
+  --green-text: #03B800;
   --shadow-card:
     0 1px 2px rgba(0, 0, 0, 0.30),
     0 6px 18px -6px rgba(0, 0, 0, 0.45),

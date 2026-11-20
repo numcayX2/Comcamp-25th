@@ -1,6 +1,8 @@
 /* ComCamp #25 · Warm Alabaster canvas · self-hosted IBM Plex */
 @import "tailwindcss";
 @import "./fonts.css";
+  --color-fern-text: #027F00; /* text/icons in green; #03B800 is ~2.5:1 on light canvases */
+  --color-fern-text: #03B800;
 
 @theme {
   --font-sans: 'IBM Plex Sans Thai', 'Noto Sans Thai', 'Leelawadee UI', Tahoma, system-ui, sans-serif;
