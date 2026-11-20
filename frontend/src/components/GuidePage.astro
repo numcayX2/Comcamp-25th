@@ -595,6 +595,7 @@ const tocItems = [
     const track = toc.querySelector<HTMLElement>('.gd-toc__track');
     const list = toc.querySelector<HTMLElement>('.gd-toc__list');
     const content = document.querySelector<HTMLElement>('.gd-content');
+    const rail = toc.querySelector<HTMLElement>('.gd-toc__rail');
     if (!track || !list || !content) return;
     const items = Array.from(toc.querySelectorAll<HTMLAnchorElement>('.gd-toc__link'))
       .map((link) => ({ link, sec: document.getElementById(decodeURIComponent(link.hash.slice(1))) }))
@@ -607,10 +608,18 @@ const tocItems = [
     let lockUntil = 0;
     let tick = 0;
 
+    // The rail fills down to the dot beside the active link, so the line always ends at the dot.
     const placeMarker = () => {
-      if (!current) return;
+      if (!current) {
+        track.style.setProperty('--gd-progress', '0');
+        return;
+      }
       track.style.setProperty('--gd-marker-y', `${current.offsetTop}px`);
       track.style.setProperty('--gd-marker-h', `${current.offsetHeight}px`);
+      if (rail && rail.offsetHeight > 0) {
+        const dot = current.offsetTop + current.offsetHeight / 2 - rail.offsetTop;
+        track.style.setProperty('--gd-progress', Math.min(1, Math.max(0, dot / rail.offsetHeight)).toFixed(4));
+      }
     };
 
     const setActive = (link: HTMLAnchorElement | null) => {
@@ -619,6 +628,7 @@ const tocItems = [
       current = link;
       if (!link) {
         toc.removeAttribute('data-spy');
+        placeMarker();
         return;
       }
       link.setAttribute('aria-current', 'true');
@@ -635,8 +645,6 @@ const tocItems = [
       tick = 0;
       const probe = Math.max(120, Math.round(window.innerHeight * 0.3));
       const box = content.getBoundingClientRect();
-      const progress = Math.min(1, Math.max(0, (probe - box.top) / Math.max(1, box.height - window.innerHeight + probe)));
-      track.style.setProperty('--gd-progress', progress.toFixed(4));
       if (performance.now() < lockUntil) return;
       const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       let active: HTMLAnchorElement | null = null;

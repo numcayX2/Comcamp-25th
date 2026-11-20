@@ -429,6 +429,7 @@
     background: var(--color-tech);
     transform: scaleY(var(--gd-progress, 0));
     transform-origin: top;
+    transition: transform var(--dur-base) var(--ease-out);
   }
   .gd-toc[data-spy] .gd-toc__marker {
     position: absolute;
@@ -917,6 +918,7 @@
   .gd-btn,
   .gd-btn .gd-ico,
   .gd-toc__link,
+  .gd-toc__progress,
   .gd-toc[data-spy] .gd-toc__marker,
   .gd-inline-link,
   .gd-inline-link .gd-ico,
