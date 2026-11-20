@@ -62,6 +62,7 @@ import {
 } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
+import { AdminSponsorsPanel } from './AdminSponsorsPanel';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
   BG_CANVAS,
@@ -432,6 +433,8 @@ export function AdminSection() {
   const [query, setQuery] = useState('');
   /** Camp fee in baht from the settings panel; used in the note templates. */
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
+  /** Seat quota from the settings panel; null until loaded (the over-capacity warning then omits numbers). */
+  const [maxCapacity, setMaxCapacity] = useState<number | null>(null);
   /** Minute clock for the 5-day transfer countdowns. */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -469,6 +472,10 @@ export function AdminSection() {
   // Confirmation for risky / seat-releasing status transitions.
   const [pendingStatus, setPendingStatus] = useState<{ appId: string; from: ApplicationStatus; to: ApplicationStatus } | null>(null);
   const [statusReason, setStatusReason] = useState('');
+  /** The pending change that just failed with QUOTA_FULL (it retakes a seat); offers the over-capacity restore. */
+  const [quotaFull, setQuotaFull] = useState<{ appId: string; from: ApplicationStatus; to: ApplicationStatus } | null>(null);
+  const [overCapOpen, setOverCapOpen] = useState(false);
+  const [overCapReason, setOverCapReason] = useState('');
 
   // Slip decision & note state: reject uses two-step inline confirmation; approve submits immediately.
   const [verificationNote, setVerificationNote] = useState('');
@@ -541,6 +548,10 @@ export function AdminSection() {
     setWithdrawnError(null);
     setWithdrawnLoading(false);
     setFeeBaht(null);
+    setMaxCapacity(null);
+    setQuotaFull(null);
+    setOverCapOpen(false);
+    setOverCapReason('');
     setFilter('ALL');
     setSortBy('newest');
     setQuery('');
@@ -677,6 +688,9 @@ export function AdminSection() {
 
   /** Proposes a status; it is saved only from the confirmation under the row. Picking the current one cancels. */
   function requestStatusChange(app: Application, to: ApplicationStatus) {
+    setQuotaFull(null);
+    setOverCapOpen(false);
+    setOverCapReason('');
     if (to === app.status) {
       setPendingStatus(null);
       setStatusReason('');
@@ -687,21 +701,57 @@ export function AdminSection() {
     setPendingStatus({ appId: app.id, from: app.status, to });
   }
 
-  async function onStatus(id: string, status: ApplicationStatus, reason?: string) {
+  /** Closes the row's status confirmation (and the over-capacity step); focus returns to the status select. */
+  function cancelPendingStatus() {
+    setPendingStatus(null);
+    setStatusReason('');
+    setQuotaFull(null);
+    setOverCapOpen(false);
+    setOverCapReason('');
+  }
+
+  /** Opens the over-capacity warning, prefilled with the reason already typed in the confirm. */
+  function openOverCapacity() {
+    setOverCapReason(statusReason);
+    setOverCapOpen(true);
+  }
+
+  async function onStatus(id: string, status: ApplicationStatus, reason?: string, overCapacity = false) {
     if (!token || patchingRef.current === id) return;
+    if (overCapacity && !reason) return;
     patchingRef.current = id;
     setPatching(id);
     setError(null);
     setActionSuccess(null);
+    const from = apps.find((a) => a.id === id)?.status;
     try {
-      const res = await updateApplicationStatus(token, id, status, reason);
+      const res = await updateApplicationStatus(token, id, status, reason, overCapacity);
       setApps((prev) => prev.map((a) => (a.id === id ? res.data : a)));
       setSource(res.source);
       setPendingStatus(null);
       setStatusReason('');
-      setActionSuccess(`เปลี่ยนสถานะของ ${id} เป็น ${STATUS_LABELS[status]} สำเร็จ`);
+      setQuotaFull(null);
+      setOverCapOpen(false);
+      setOverCapReason('');
+      setActionSuccess(
+        `เปลี่ยนสถานะของ ${id} เป็น ${STATUS_LABELS[status]} สำเร็จ${overCapacity ? ' (รับกลับเกินโควตา)' : ''}`,
+      );
     } catch (err) {
       if (handleAuthError(err)) return;
+      const retakesSeat = from !== undefined && !holdsSeat(from) && holdsSeat(status);
+      if (
+        !overCapacity &&
+        retakesSeat &&
+        can.changeStatus &&
+        err instanceof ApiHttpError &&
+        err.code === 'QUOTA_FULL'
+      ) {
+        setQuotaFull({ appId: id, from, to: status });
+        setError(
+          'ที่นั่งเต็มแล้ว ใบสมัครนี้จึงยังคงสถานะเดิม เพิ่มโควตาก่อน หรือใช้ “รับกลับ (เกินโควตา)” ใต้แถวนี้ (ต้องระบุเหตุผล และจะถูกบันทึกใน audit)',
+        );
+        return;
+      }
       setError(describeAdminError(err, 'เปลี่ยนสถานะไม่สำเร็จ'));
     } finally {
       patchingRef.current = null;
@@ -1278,6 +1328,9 @@ export function AdminSection() {
         if (pendingStatus && !patching) {
           setPendingStatus(null);
           setStatusReason('');
+          setQuotaFull(null);
+          setOverCapOpen(false);
+          setOverCapReason('');
           return;
         }
         if (!verifying) setInspectingId(null);
@@ -1346,6 +1399,13 @@ export function AdminSection() {
     }
     prevPendingId.current = id;
   }, [pendingStatus]);
+
+  // Opening the over-capacity warning moves focus to its required reason field.
+  useEffect(() => {
+    if (overCapOpen && quotaFull) {
+      document.getElementById(`overcap-reason-${quotaFull.appId}`)?.focus();
+    }
+  }, [overCapOpen, quotaFull]);
 
   // The toolbar sticks under the site nav (md and up). Its offset follows the nav height, and the
   // page's scroll padding follows nav + toolbar, so rows and panels scrolled into view are not hidden.
@@ -1657,8 +1717,12 @@ export function AdminSection() {
             currentCount={currentCount}
             refreshSignal={settingsRefreshKey}
             onAuthError={handleAuthError}
-            onSettings={(s: AdminSettings) => setFeeBaht(Number(s.campFee))}
+            onSettings={(s: AdminSettings) => {
+              setFeeBaht(Number(s.campFee));
+              setMaxCapacity(Number.isFinite(Number(s.maxCapacity)) ? Number(s.maxCapacity) : null);
+            }}
           />
+          <AdminSponsorsPanel token={token} canEdit={can.editSettings} onAuthError={handleAuthError} />
 
           {/* ── Referral channel summary (all loaded applications; hidden on withdrawn tab) ── */}
           {!isWithdrawnTab && (
@@ -2053,6 +2117,17 @@ export function AdminSection() {
                     const restoringForfeited = pendingChange
                       ? pendingChange.from === 'FORFEITED' && pendingChange.to === 'PASSED'
                       : false;
+                    // The seat-retaking change on this row just failed with QUOTA_FULL: offer the audited over-capacity restore.
+                    const overCapOffered = Boolean(
+                      can.changeStatus &&
+                        pendingChange &&
+                        quotaFull &&
+                        quotaFull.appId === a.id &&
+                        quotaFull.from === pendingChange.from &&
+                        quotaFull.to === pendingChange.to &&
+                        a.status === quotaFull.from,
+                    );
+                    const overCapShown = overCapOffered && overCapOpen;
                     const deleteStep = deleteConfirm?.appId === a.id ? deleteConfirm.step : 0;
                     // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
                     const slipLocked = !holdsSeat(a.status);
@@ -2361,6 +2436,7 @@ export function AdminSection() {
                               : ''}
                           </p>
                         )}
+                        {!overCapShown && (
                         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
                           <label htmlFor={`status-reason-${a.id}`} className="sr-only">
                             เหตุผลการเปลี่ยนสถานะ (ไม่บังคับ)
@@ -2392,13 +2468,22 @@ export function AdminSection() {
                             >
                               {patching === a.id ? 'กำลังบันทึก…' : 'ยืนยันเปลี่ยนสถานะ'}
                             </button>
+                            {overCapOffered && (
+                              <button
+                                type="button"
+                                disabled={patching === a.id}
+                                onClick={openOverCapacity}
+                                className={PILL_DANGER}
+                                style={{ borderColor: DANGER, color: DANGER }}
+                              >
+                                <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0" />
+                                รับกลับ (เกินโควตา)
+                              </button>
+                            )}
                             <button
                               type="button"
                               disabled={patching === a.id}
-                              onClick={() => {
-                                setPendingStatus(null);
-                                setStatusReason('');
-                              }}
+                              onClick={cancelPendingStatus}
                               className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
                               style={{ color: INK_2 }}
                             >
@@ -2406,6 +2491,77 @@ export function AdminSection() {
                             </button>
                           </div>
                         </div>
+                        )}
+
+                        {/* Over-capacity restore: explicit, reason required, audited by the server. */}
+                        {overCapShown && (
+                          <div
+                            id={`overcap-${a.id}`}
+                            className="mt-3 border-t pt-3"
+                            style={{ borderColor: DANGER }}
+                          >
+                            <p
+                              role="alert"
+                              className="flex items-start gap-1.5 text-sm font-semibold leading-7"
+                              style={{ color: DANGER }}
+                            >
+                              <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1.5 shrink-0" />
+                              <span>
+                                ที่นั่งเต็มแล้ว การรับกลับจะทำให้จำนวนผู้ถือที่นั่งเกินโควตา
+                                {maxCapacity !== null && (
+                                  <>
+                                    {' '}(เป็น <span className="font-mono tabular-nums">{currentCount + 1}</span> จาก{' '}
+                                    <span className="font-mono tabular-nums">{maxCapacity}</span>)
+                                  </>
+                                )}{' '}
+                                และจะถูกบันทึกใน audit
+                              </span>
+                            </p>
+                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <label htmlFor={`overcap-reason-${a.id}`} className="sr-only">
+                                เหตุผลการรับกลับเกินโควตา (จำเป็น)
+                              </label>
+                              <input
+                                id={`overcap-reason-${a.id}`}
+                                type="text"
+                                aria-required="true"
+                                maxLength={500}
+                                value={overCapReason}
+                                onChange={(e) => setOverCapReason(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && patching !== a.id && overCapReason.trim()) {
+                                    e.preventDefault();
+                                    void onStatus(a.id, pendingChange.to, overCapReason.trim(), true);
+                                  }
+                                }}
+                                placeholder="เหตุผลการรับกลับเกินโควตา (จำเป็น)"
+                                className={`${inputCls} sm:max-w-sm`}
+                                style={{ borderColor: DANGER, color: INK }}
+                              />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={patching === a.id || !overCapReason.trim()}
+                                  aria-busy={patching === a.id || undefined}
+                                  onClick={() => void onStatus(a.id, pendingChange.to, overCapReason.trim(), true)}
+                                  className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-[opacity,background-color] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] disabled:opacity-50 ${FOCUS}`}
+                                  style={{ borderColor: DANGER, color: DANGER }}
+                                >
+                                  {patching === a.id ? 'กำลังบันทึก…' : 'ยืนยันรับกลับเกินโควตา'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={patching === a.id}
+                                  onClick={cancelPendingStatus}
+                                  className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                                  style={{ color: INK_2 }}
+                                >
+                                  ยกเลิก
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -1410,6 +1410,125 @@
     }
   })();
 
+  // Sponsor band (#sponsors, after the gallery). Fetched only once the visitor nears the gallery, so
+  // the launch-morning burst on /settings/public never pays for it, and revealed only when at least
+  // one valid logo arrives; no JS, an error or an empty list leaves it hidden. Server data goes into
+  // the DOM through createElement / textContent / properties only (never innerHTML).
+  (function initSponsors(){
+    var section = $('sponsors');
+    var list = section ? section.querySelector('[data-sponsor-list]') : null;
+    if (!section || !list || typeof fetch !== 'function') return;
+    var LOGO_PATH = /^\/api\/sponsors\/\d+\/logo(\?v=[0-9a-f]+)?$/;
+    // Cross-origin API in dev (absolute base): logo paths need its origin. Same-origin '/api' in prod.
+    var logoOrigin = '';
+    if (/^https?:\/\//i.test(API_BASE)) {
+      try { logoOrigin = new URL(API_BASE).origin; } catch (e) { return; }
+    }
+
+    var refreshTriggers = function(){
+      try { if (gsapBooted && typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh(); } catch (e) {}
+    };
+    var safeLink = function(v){
+      if (typeof v !== 'string' || !v) return '';
+      try {
+        var u = new URL(v);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
+      } catch (e) { return ''; }
+    };
+    // A logo that fails to load drops its cell; the band hides again if none remain.
+    var dropItem = function(li){
+      if (li.parentNode) li.parentNode.removeChild(li);
+      if (!list.firstChild) section.hidden = true;
+      refreshTriggers();
+    };
+    var buildItem = function(s){
+      if (!s || typeof s.name !== 'string' || typeof s.logoUrl !== 'string' || !LOGO_PATH.test(s.logoUrl)) return null;
+      var name = s.name.trim();
+      if (!name) return null;
+      var href = safeLink(s.url);
+      var li = document.createElement('li');
+      li.className = 'ed-sponsors__item';
+      var cell = document.createElement(href ? 'a' : 'div');
+      cell.className = 'ed-sponsors__cell';
+      if (href) {
+        cell.href = href;
+        cell.target = '_blank';
+        cell.rel = 'noopener noreferrer';
+        // One clean accessible name (no "name name" when the caption is shown); it still contains the visible label.
+        cell.setAttribute('aria-label', name + ' (เปิดในแท็บใหม่)');
+      }
+      var img = document.createElement('img');
+      img.className = 'ed-sponsors__logo';
+      img.alt = name;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.width = 180;
+      img.height = 72;
+      img.addEventListener('error', function(){ dropItem(li); }, { once: true });
+      img.src = logoOrigin + s.logoUrl;
+      cell.appendChild(img);
+      if (s.showName === true) {
+        var caption = document.createElement('span');
+        caption.className = 'ed-sponsors__name';
+        caption.textContent = name;
+        // The img alt already names it; keep screen readers from reading it twice.
+        caption.setAttribute('aria-hidden', 'true');
+        cell.appendChild(caption);
+      }
+      li.appendChild(cell);
+      return li;
+    };
+
+    var load = function(){
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timeoutId = setTimeout(function(){ if (controller) controller.abort(); }, 8000);
+      fetch(API_BASE.replace(/\/$/, '') + '/sponsors', {
+        signal: controller ? controller.signal : undefined,
+        headers: { 'Accept': 'application/json' }
+      })
+        .then(function(res){
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function(data){
+          var items = data && Array.isArray(data.sponsors) ? data.sponsors : [];
+          var frag = document.createDocumentFragment();
+          for (var i = 0; i < items.length; i++) {
+            var li = buildItem(items[i]);
+            if (li) frag.appendChild(li);
+          }
+          if (!frag.firstChild) return;
+          list.appendChild(frag);
+          section.hidden = false;
+          refreshTriggers();
+        })
+        .catch(function(){ /* stays hidden */ })
+        .then(function(){ clearTimeout(timeoutId); });
+    };
+
+    // Start when the gallery top is within two viewports (also catches jumps past it, e.g. #gallery
+    // links or restored scroll). Rect-based on purpose: IntersectionObserver under-reports on this
+    // ~1400vh section in some in-app WebViews (see MemoryTunnel._tick).
+    var gallery = $('gallery');
+    if (!gallery) { load(); return; }
+    var started = false;
+    var tick = 0;
+    var onScroll = function(){ if (!tick) tick = requestAnimationFrame(check); };
+    function check(){
+      tick = 0;
+      if (started) return;
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      if (gallery.getBoundingClientRect().top >= vh * 2) return;
+      started = true;
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      load();
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    check();
+  })();
+
   var gsapBooted = false;
   function bootGsapOnce(){
     if (gsapBooted) return;

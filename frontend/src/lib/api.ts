@@ -1004,11 +1004,13 @@ export async function updateApplicationStatus(
   id: string,
   status: ApplicationStatus,
   reason?: string,
+  /** Take the seat back even when the quota is full (reason required; audited). */
+  overCapacity = false,
 ): Promise<ApiResult<Application>> {
   const data = await fetchJson<Application>(`/admin/applications/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: authHeader(token),
-    body: JSON.stringify({ status, reason }),
+    body: JSON.stringify(overCapacity ? { status, reason, overCapacity: true } : { status, reason }),
   });
   return { data, source: 'LIVE GO API' };
 }
@@ -1198,4 +1200,133 @@ export function fetchPublicApplicants(): Promise<ApiResult<PublicApplicant[]>> {
       { no: 3, fullName: 'ปิยะ รักเรียน (Mock)', nickname: 'ปิยะ', school: 'โรงเรียนลำพูนวิทยา', province: 'ลำพูน', status: 'รอชำระเงิน' },
     ],
   );
+}
+
+/* ── Sponsors ─────────────────────────────────────────────────────────────── */
+
+/** One logo in GET /sponsors. `url` is '' or an absolute http(s) link; `name` is always the alt text. */
+export interface Sponsor {
+  id: number;
+  name: string;
+  url: string;
+  showName: boolean;
+  /** Same-origin `/api/sponsors/:id/logo?v=…` path (prefix with API_BASE origin when cross-origin). */
+  logoUrl: string;
+}
+
+export interface AdminSponsor extends Sponsor {
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Fields for create/update; `logo` is required on create, optional (= keep) on update. */
+export interface SponsorPayload {
+  name?: string;
+  url?: string;
+  showName?: boolean;
+  logo?: File | Blob | null;
+}
+
+export const SPONSOR_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+export const SPONSOR_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+/** Only http(s) links ever reach an href; anything else is dropped. */
+function safeSponsorUrl(v: unknown): string {
+  if (typeof v !== 'string' || !v) return '';
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function pickSponsor(raw: unknown): Sponsor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'number' || typeof r.name !== 'string' || typeof r.logoUrl !== 'string') return null;
+  // The logo is always served by our API; refuse anything that is not a same-API path.
+  if (!/^\/api\/sponsors\/\d+\/logo(\?v=[0-9a-f]+)?$/.test(r.logoUrl)) return null;
+  return { id: r.id, name: r.name, url: safeSponsorUrl(r.url), showName: r.showName === true, logoUrl: r.logoUrl };
+}
+
+function pickAdminSponsor(raw: unknown): AdminSponsor | null {
+  const base = pickSponsor(raw);
+  if (!base) return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    ...base,
+    sortOrder: typeof r.sortOrder === 'number' ? r.sortOrder : 0,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : '',
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : '',
+  };
+}
+
+/** Absolute URL for a sponsor logo path, honouring a cross-origin PUBLIC_API_URL in dev. */
+export function sponsorLogoSrc(logoUrl: string): string {
+  return API_BASE.replace(/\/api\/?$/, '') + logoUrl;
+}
+
+/** GET /sponsors — public; an empty list hides the home section. No mock fallback. */
+export async function fetchSponsors(): Promise<Sponsor[]> {
+  const data = await fetchJson<{ sponsors?: unknown }>('/sponsors', { method: 'GET' });
+  const list = Array.isArray(data?.sponsors) ? data.sponsors : [];
+  return list.map(pickSponsor).filter((s): s is Sponsor => s !== null);
+}
+
+export async function fetchAdminSponsors(token: string): Promise<AdminSponsor[]> {
+  const data = await fetchJson<{ sponsors?: unknown }>('/admin/sponsors', { method: 'GET', headers: authHeader(token) });
+  const list = Array.isArray(data?.sponsors) ? data.sponsors : [];
+  return list.map(pickAdminSponsor).filter((s): s is AdminSponsor => s !== null);
+}
+
+async function sponsorMultipart(token: string, path: string, method: 'POST' | 'PATCH', p: SponsorPayload): Promise<AdminSponsor> {
+  const form = new FormData();
+  if (p.name !== undefined) form.append('name', p.name);
+  if (p.url !== undefined) form.append('url', p.url);
+  if (p.showName !== undefined) form.append('showName', p.showName ? 'true' : 'false');
+  if (p.logo) form.append('logo', p.logo);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    // No Content-Type header: the browser sets the multipart boundary.
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      body: form,
+      signal: controller.signal,
+      headers: { Accept: 'application/json', ...authHeader(token) },
+    });
+    if (!res.ok) throw await toApiError(res);
+    const s = pickAdminSponsor(await res.json());
+    if (!s) throw new Error('invalid sponsor response');
+    return s;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** POST /admin/sponsors (multipart). PNG/JPG/WebP ≤ 2 MB; SVG is refused by the server. */
+export function createSponsor(token: string, p: SponsorPayload & { name: string; logo: File | Blob }): Promise<AdminSponsor> {
+  return sponsorMultipart(token, '/admin/sponsors', 'POST', p);
+}
+
+/** PATCH /admin/sponsors/:id (multipart); omitted fields keep their value, a logo replaces the image. */
+export function updateSponsor(token: string, id: number, p: SponsorPayload): Promise<AdminSponsor> {
+  return sponsorMultipart(token, `/admin/sponsors/${id}`, 'PATCH', p);
+}
+
+export async function deleteSponsor(token: string, id: number): Promise<void> {
+  await fetchJson<void>(`/admin/sponsors/${id}`, { method: 'DELETE', headers: authHeader(token) });
+}
+
+/** PUT /admin/sponsors/order — `ids` must be every sponsor id, in the new order. */
+export async function reorderSponsors(token: string, ids: number[]): Promise<AdminSponsor[]> {
+  const data = await fetchJson<{ sponsors?: unknown }>('/admin/sponsors/order', {
+    method: 'PUT',
+    headers: authHeader(token),
+    body: JSON.stringify({ ids }),
+  });
+  const list = Array.isArray(data?.sponsors) ? data.sponsors : [];
+  return list.map(pickAdminSponsor).filter((s): s is AdminSponsor => s !== null);
 }

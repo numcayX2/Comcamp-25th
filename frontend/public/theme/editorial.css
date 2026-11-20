@@ -75,12 +75,14 @@
 
 .ed-sec > .wrap,
 .ed-cta-band > .wrap,
+.ed-sponsors > .wrap,
 .ed-footer > .wrap {
   width: min(1240px, calc(100% - 40px));
 }
 @media (min-width: 768px) {
   .ed-sec > .wrap,
   .ed-cta-band > .wrap,
+  .ed-sponsors > .wrap,
   .ed-footer > .wrap {
     width: min(1240px, calc(100% - 48px));
   }
@@ -1407,6 +1409,125 @@
 }
 
 /* ==========================================================================
+   Sponsors (#sponsors) — Hairline Logo Band after the gallery
+   Hidden in the markup; main.js reveals it only with at least one logo.
+   Equal cells in a centred wrapping row, so 1–12 logos stay balanced.
+   ========================================================================== */
+.ed-sponsors {
+  padding: clamp(56px, 8vw, 104px) 0;
+  border-top: 1px solid var(--rule);
+  background: var(--canvas-0);
+}
+.ed-sponsors__title {
+  margin: 0;
+  font-family: var(--font-thai);
+  font-size: clamp(1rem, 0.4vw + 0.9rem, 1.125rem);
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  text-align: center;
+  text-wrap: balance;
+}
+.ed-sponsors__list {
+  --sp-cols: 2;
+  --sp-gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(28px, 3.6vw, 44px) var(--sp-gap);
+  margin: clamp(24px, 3vw, 36px) 0 0;
+  padding: clamp(28px, 4vw, 48px) 0 0;
+  border-top: 1px solid var(--rule);
+  list-style: none;
+}
+@media (min-width: 640px) {
+  .ed-sponsors__list { --sp-cols: 3; --sp-gap: 24px; }
+}
+@media (min-width: 900px) {
+  .ed-sponsors__list { --sp-cols: 4; --sp-gap: 32px; }
+}
+@media (min-width: 1200px) {
+  .ed-sponsors__list { --sp-cols: 6; }
+}
+.ed-sponsors__item {
+  display: flex;
+  width: calc((100% - (var(--sp-cols) - 1) * var(--sp-gap)) / var(--sp-cols));
+  min-width: 0;
+}
+.ed-sponsors__cell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px;
+  border-radius: 12px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+/* width:auto keeps the box at the logo's own aspect (the dark plate hugs it); wide logos stop at
+   180px or the cell and letterbox inside via object-fit. */
+.ed-sponsors__logo {
+  display: block;
+  width: auto;
+  max-width: min(100%, 180px);
+  height: 56px;
+  object-fit: contain;
+}
+@media (min-width: 768px) {
+  .ed-sponsors__logo { height: 72px; }
+}
+.ed-sponsors__name {
+  max-width: 100%;
+  font-family: var(--font-thai);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+a.ed-sponsors__cell .ed-sponsors__name {
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  a.ed-sponsors__cell:hover .ed-sponsors__name {
+    color: var(--blue-600);
+    text-decoration-color: var(--blue-600);
+  }
+}
+a.ed-sponsors__cell:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 4px;
+}
+a.ed-sponsors__cell:focus-visible .ed-sponsors__name {
+  color: var(--blue-600);
+  text-decoration-color: var(--blue-600);
+}
+/* Dark: logos are drawn for light paper, so each sits on a light 12px plate (dark --ink = #F5F4EF). */
+html.dark .ed-sponsors__logo,
+html[data-theme="dark"] .ed-sponsors__logo {
+  height: 72px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--ink);
+}
+@media (min-width: 768px) {
+  html.dark .ed-sponsors__logo,
+  html[data-theme="dark"] .ed-sponsors__logo { height: 88px; }
+}
+
+/* ==========================================================================
    07. FOOTER — Oversized Wordmark Colophon
    ========================================================================== */
 .ed-footer {
@@ -1604,9 +1725,11 @@
 /* Dark theme tokens scoped to editorial bands + footer (hero/gallery untouched) */
 html.dark .ed-sec,
 html.dark .ed-cta-band,
+html.dark .ed-sponsors,
 html.dark .ed-footer,
 html[data-theme="dark"] .ed-sec,
 html[data-theme="dark"] .ed-cta-band,
+html[data-theme="dark"] .ed-sponsors,
 html[data-theme="dark"] .ed-footer {
   --canvas-1: #121724;
   --amber: #F5A524;
@@ -1682,6 +1805,7 @@ html[data-theme="dark"] #faq details.faq-item summary::after {
   .ed-pill,
   .ed-photo-card__frame img,
   .ed-footer .footer-links a,
+  a.ed-sponsors__cell .ed-sponsors__name,
   #experience .step-node,
   #experience .step-big-num,
   #experience .step-content,
