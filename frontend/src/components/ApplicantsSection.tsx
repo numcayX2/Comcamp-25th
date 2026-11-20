@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { gsap } from 'gsap';
 import '../styles/applicants.css';
 import { ChevronDown, Info, Loader2, RotateCcw, Search, TriangleAlert, Users, X } from 'lucide-react';
 import {
@@ -68,6 +69,117 @@ function StatusPill({ status }: { status: PublicApplicantStatus }) {
       <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       {status}
     </span>
+  );
+}
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Status filter: aria-pressed pill buttons with one dark "selected" pill that GSAP slides between
+ * them, the same feel as the shirt-size chips in /register (SizeChips.tsx). Until the pill is
+ * placed, the pressed button paints its own dark background, so nothing depends on the script.
+ */
+function StatusChips({
+  value,
+  onChange,
+  counts,
+}: {
+  value: StatusFilter;
+  onChange: (value: StatusFilter) => void;
+  counts: Record<StatusFilter, number> | null;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const thumb = useRef<HTMLSpanElement>(null);
+  const placed = useRef(false);
+
+  /** Geometry of the pressed button, relative to the row (the buttons' offsetParent). */
+  function target(): { x: number; y: number; width: number; height: number } | null {
+    const btn = box.current?.querySelector<HTMLElement>('.ap-seg__btn[aria-pressed="true"]');
+    return btn ? { x: btn.offsetLeft, y: btn.offsetTop, width: btn.offsetWidth, height: btn.offsetHeight } : null;
+  }
+
+  useLayoutEffect(() => {
+    const el = thumb.current;
+    const root = box.current;
+    const to = target();
+    if (!el || !root || !to) return;
+    root.setAttribute('data-thumb', '');
+    if (!placed.current || prefersReducedMotion()) {
+      gsap.killTweensOf(el);
+      gsap.set(el, { ...to, autoAlpha: 1, scaleX: 1 });
+      placed.current = true;
+      return;
+    }
+    // Moving between filters: slide, with a small stretch while in motion.
+    gsap.to(el, { ...to, autoAlpha: 1, duration: 0.5, ease: 'back.out(1.25)', overwrite: 'auto' });
+    gsap.fromTo(el, { scaleX: 1.06 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' });
+  }, [value]);
+
+  // Counts arrive after the first paint and widen the buttons; wrapping can move them too.
+  useEffect(() => {
+    const root = box.current;
+    const el = thumb.current;
+    if (!root || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const to = target();
+      if (to && placed.current) gsap.set(el, to);
+    });
+    ro.observe(root);
+    root.querySelectorAll('.ap-seg__btn').forEach((b) => ro.observe(b));
+    return () => {
+      ro.disconnect();
+      gsap.killTweensOf(el);
+    };
+  }, []);
+
+  /** Tactile press: shrinks while held, springs back. */
+  function press(btn: HTMLElement, down: boolean) {
+    if (prefersReducedMotion()) return;
+    gsap.to(btn, down
+      ? { scale: 0.93, duration: 0.12, ease: 'power2.out', overwrite: 'auto' }
+      : { scale: 1, duration: 0.55, ease: 'elastic.out(1, 0.45)', overwrite: 'auto' });
+  }
+
+  return (
+    <div className="ap-seg flex flex-wrap gap-2" ref={box}>
+      <span className="ap-seg__thumb" ref={thumb} aria-hidden="true" />
+      {STATUS_FILTERS.map((f) => {
+        const selected = value === f.value;
+        return (
+          <button
+            key={f.value}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(f.value)}
+            onPointerDown={(e) => press(e.currentTarget, true)}
+            onPointerUp={(e) => press(e.currentTarget, false)}
+            onPointerLeave={(e) => press(e.currentTarget, false)}
+            onPointerCancel={(e) => press(e.currentTarget, false)}
+            className={`ap-seg__btn inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold ${FOCUS_RING}`}
+            style={
+              selected
+                ? { backgroundColor: BTN_DARK, color: BTN_DARK_TEXT, borderColor: BTN_DARK }
+                : { backgroundColor: 'transparent', color: INK, borderColor: BORDER_INPUT }
+            }
+          >
+            {f.value !== 'ALL' && (
+              <span
+                aria-hidden="true"
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: STATUS_DOT[f.value] }}
+              />
+            )}
+            {f.label}
+            {counts && (
+              <span className="font-mono text-xs tabular-nums" aria-hidden="true">
+                {counts[f.value]}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -260,39 +372,11 @@ export function ApplicantsSection() {
           <legend className="mb-1.5 text-sm font-semibold" style={{ color: INK }}>
             สถานะ
           </legend>
-          <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((f) => {
-              const selected = status === f.value;
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setStatus(f.value)}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${FOCUS_RING}`}
-                  style={
-                    selected
-                      ? { backgroundColor: BTN_DARK, color: BTN_DARK_TEXT, borderColor: BTN_DARK }
-                      : { backgroundColor: 'transparent', color: INK, borderColor: BORDER_INPUT }
-                  }
-                >
-                  {f.value !== 'ALL' && (
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: STATUS_DOT[f.value] }}
-                    />
-                  )}
-                  {f.label}
-                  {state === 'ready' && (
-                    <span className="font-mono text-xs tabular-nums" aria-hidden="true">
-                      {statusCounts[f.value]}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <StatusChips
+            value={status}
+            onChange={setStatus}
+            counts={state === 'ready' ? statusCounts : null}
+          />
         </fieldset>
       </form>
 

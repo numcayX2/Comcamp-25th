@@ -96,8 +96,44 @@
   padding-top: 16px;
 }
 
+/* Status filter: one dark pill slides behind the pressed button (StatusChips in ApplicantsSection.tsx).
+   Decorative and empty; until the script places it the pressed button keeps its own background. */
+.ap-seg {
+  position: relative;
+}
+.ap-seg__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: var(--color-btn-dark);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.ap-seg__btn {
+  position: relative;
+  z-index: 1;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    color 0.2s ease 0.06s,
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+/* GSAP owns the press scale here (global.css :active scale would stack on it). */
+.ap-seg__btn:active {
+  scale: none;
+}
+.ap-seg[data-thumb] .ap-seg__btn[aria-pressed='true'] {
+  background-color: transparent !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ap-table td {
+  .ap-table td,
+  .ap-seg__btn {
     transition: none;
   }
 }
