@@ -7,6 +7,8 @@
  *           Allowlist only: personal, parent contact, education, shirt size, and motivation. Never
  *           stored: health data (allergies, medicalConditions) and the PDPA tick. The national
  *           ID is no longer collected at all (Phase 5.1).
+ * Referral → localStorage, no TTL ("how did you hear about the camp": not personal data, owner
+ *           decision 2026-11-21). Cleared with the draft (submit, clear, withdraw).
  * Idempotency key → sessionStorage (this tab only), §9.2.4: written before POST /applications,
  *           reused by every retry after a timeout / dropped connection / 5xx, and removed only
  *           after a successful response (201, or 200 replay) or when the user starts over.
@@ -15,11 +17,19 @@
  *
  * Every access is wrapped: in-app browsers and private modes can throw on storage.
  */
-import type { ApiSource } from '../../lib/api';
+import { REFERRAL_GROUPS, REFERRAL_OTHER_MAX, type ApiSource, type ReferralCode } from '../../lib/api';
 import { EMPTY_FORM, SHIRT_SIZES, type FormState } from './model';
 
 const DRAFT_KEY = 'comcamp25-register-draft';
 const RECEIPT_KEY = 'comcamp25-register-receipt';
+/**
+ * "How did you hear about the camp" → localStorage, no TTL (owner decision 2026-11-21): it is
+ * not personal data, and it should survive closing the tab. Removed on successful submit,
+ * "ล้างข้อมูลร่าง" and withdraw (clearDraft).
+ */
+const REFERRAL_KEY = 'comcamp25-register-referral';
+const GROUP_IDS = new Set(REFERRAL_GROUPS.map((g) => g.id));
+const REFERRAL_CODES = new Set<string>(REFERRAL_GROUPS.flatMap((g) => g.options.map((o) => o.code)));
 const IDEMPOTENCY_KEY = 'cc25_register_idempotency_key';
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -90,9 +100,52 @@ function purgeLegacyDraft(): void {
   }
 }
 
-/** Restores a ≤24h draft saved earlier in this tab. */
-export function loadDraft(): { form: FormState; savedAt: number } | null {
-  purgeLegacyDraft();
+type ReferralFields = Pick<FormState, 'referralGroups' | 'referralSources' | 'referralOther'>;
+
+function loadReferral(): ReferralFields | null {
+  try {
+    const raw = localStorage.getItem(REFERRAL_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { v?: number; groups?: unknown; sources?: unknown; other?: unknown };
+    if (p.v !== 1 || !Array.isArray(p.groups) || !Array.isArray(p.sources)) throw new Error('bad referral');
+    // Allowlist on read: codes from an older form version are dropped.
+    const referralGroups = p.groups.filter((g): g is string => typeof g === 'string' && GROUP_IDS.has(g));
+    const referralSources = p.sources.filter(
+      (c): c is ReferralCode => typeof c === 'string' && REFERRAL_CODES.has(c),
+    );
+    const referralOther = typeof p.other === 'string' ? p.other.slice(0, REFERRAL_OTHER_MAX) : '';
+    if (referralGroups.length === 0 && referralSources.length === 0 && !referralOther.trim()) return null;
+    return { referralGroups, referralSources, referralOther };
+  } catch {
+    clearReferral();
+    return null;
+  }
+}
+
+function saveReferral(form: FormState): void {
+  try {
+    if (form.referralGroups.length === 0 && form.referralSources.length === 0 && !form.referralOther.trim()) {
+      clearReferral();
+      return;
+    }
+    localStorage.setItem(
+      REFERRAL_KEY,
+      JSON.stringify({ v: 1, groups: form.referralGroups, sources: form.referralSources, other: form.referralOther }),
+    );
+  } catch {
+    /* storage blocked: the answer just won't survive a refresh */
+  }
+}
+
+function clearReferral(): void {
+  try {
+    localStorage.removeItem(REFERRAL_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readSessionDraft(): { form: FormState; savedAt: number } | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
@@ -112,12 +165,30 @@ export function loadDraft(): { form: FormState; savedAt: number } | null {
     if (form.shirtSize && !SHIRT_SIZES.includes(form.shirtSize)) form.shirtSize = '';
     return { form, savedAt: parsed.savedAt };
   } catch {
-    clearDraft();
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 }
 
+/**
+ * Restores a ≤24h draft saved earlier in this tab, plus the referral answer (no TTL). When only
+ * the referral answer survives (new tab / draft expired), it comes back on an otherwise empty form.
+ */
+export function loadDraft(): { form: FormState; savedAt: number | null } | null {
+  purgeLegacyDraft();
+  const draft = readSessionDraft();
+  const referral = loadReferral();
+  if (!draft && !referral) return null;
+  const form: FormState = { ...(draft?.form ?? EMPTY_FORM), ...(referral ?? {}) };
+  return { form, savedAt: draft?.savedAt ?? null };
+}
+
 export function saveDraft(form: FormState): void {
+  saveReferral(form);
   try {
     const picked = {} as Record<string, string>;
     let any = false;
@@ -125,15 +196,20 @@ export function saveDraft(form: FormState): void {
       picked[key] = form[key];
       if (form[key].trim()) any = true;
     }
-    if (!any) return clearDraft();
+    if (!any) {
+      sessionStorage.removeItem(DRAFT_KEY);
+      return;
+    }
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), form: picked }));
   } catch {
     /* storage full or blocked: the form still works, it just won't survive a refresh */
   }
 }
 
+/** Removes the tab draft and the referral answer (successful submit, "ล้างข้อมูลร่าง", withdraw). */
 export function clearDraft(): void {
   purgeLegacyDraft();
+  clearReferral();
   try {
     sessionStorage.removeItem(DRAFT_KEY);
   } catch {

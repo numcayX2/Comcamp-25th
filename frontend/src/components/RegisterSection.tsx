@@ -1109,7 +1109,7 @@ export function RegisterSection() {
             <TextField
               id="phone"
               required
-              label="เบอร์โทรศัพท์มือถือ"
+              label={'เบอร์โทรศัพท์มือ\u2060ถือ' /* U+2060 keeps a compound word on one line (.rw-label) */}
               hint={<span className={form.phone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.phone.length}/10</span> หลัก</span>}
               groups={[3, 3, 4]}
               span={3}
@@ -1149,7 +1149,7 @@ export function RegisterSection() {
             <TextField
               id="parentName"
               required
-              label="ชื่อ-นามสกุลผู้ปกครอง"
+              label={'ชื่อ-นามสกุลผู้\u2060ปกครอง'}
               span={4}
               value={form.parentName}
               error={errors.parentName}
@@ -1160,7 +1160,7 @@ export function RegisterSection() {
             <TextField
               id="parentRelation"
               required
-              label="ความสัมพันธ์ผู้ปกครอง"
+              label={'ความ\u2060สัมพันธ์ผู้\u2060ปกครอง'}
               span={2}
               value={form.parentRelation}
               error={errors.parentRelation}
@@ -1171,7 +1171,7 @@ export function RegisterSection() {
             <TextField
               id="parentPhone"
               required
-              label="เบอร์โทรศัพท์ผู้ปกครอง"
+              label={'เบอร์โทรศัพท์ผู้\u2060ปกครอง'}
               hint={<span className={form.parentPhone.length === 10 ? 'rw-hint--ok' : undefined}><span className="font-mono">{form.parentPhone.length}/10</span> หลัก</span>}
               groups={[3, 3, 4]}
               span={3}
@@ -1277,13 +1277,13 @@ export function RegisterSection() {
                 id="gradeOther"
                 required
                 label="ระบุระดับชั้น"
-                hint={<span className="font-mono">{cleanSingleLine(form.gradeOther).length}/{GRADE_OTHER_MAX}</span>}
+                hint={<>เทียบเท่า ม.4–ม.6 หรือ ปวช. · <span className="font-mono">{cleanSingleLine(form.gradeOther).length}/{GRADE_OTHER_MAX}</span></>}
                 span={6}
                 value={form.gradeOther}
                 error={errors.gradeOther}
                 onChange={(v) => set('gradeOther', v)}
                 onBlur={() => blur('gradeOther')}
-                placeholder="เช่น กศน. ม.ปลาย, เทียบเท่า ม.4–ม.6 / ปวช.1–ปวช.3"
+                placeholder="เช่น กศน. ม.ปลาย"
               />
             )}
           </div>

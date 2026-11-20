@@ -32,7 +32,8 @@ body.rw-page { overflow: visible; overflow-x: clip; }
   --rw-fern: #03B800;
   --rw-fern-hover: #029E00;
   --rw-btn-hover: #2A2D33;
-  --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23121316' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  /* Same colour (--color-ink-subtle / --rw-ink-3), size and inset as the province combobox chevron. */
+  --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2362666E' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 
   /* sidebar (dark in both themes) */
   --rw-side-bg: #121316;
@@ -78,7 +79,7 @@ html[data-theme="dark"] .rw {
   --rw-fern-text: #03B800;
   --rw-ok: #10B981;
   --rw-btn-hover: #FFFFFF;
-  --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23F5F4EF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  --rw-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239A9CA1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
 
 .rw ::selection { background: color-mix(in srgb, var(--rw-focus) 30%, transparent); color: inherit; }
@@ -302,11 +303,14 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   }
 }
 
+/* The label text wraps only between words (labels join compound words with U+2060); the hint or
+   counter stays on one line and drops under the label, right-aligned, when both don't fit. */
 .rw-label {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0 12px;
   margin-bottom: 4px;
   padding: 0;
   font-size: 0.9375rem;
@@ -314,6 +318,7 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   line-height: 1.6;
   color: var(--rw-ink);
 }
+.rw-label > .rw-hint { flex: none; margin-left: auto; white-space: nowrap; }
 .rw-hint { font-size: 0.8125rem; font-weight: 400; color: var(--rw-ink-3); transition: color 0.18s ease; }
 .rw-hint--ok { color: var(--rw-ok); font-weight: 600; }
 .rw-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -369,6 +374,13 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 }
 .rw-input:focus-visible { outline: none; } /* the underline is the focus indicator; no second ring on top of it */
 .rw-input[aria-invalid='true']:not(:focus) { border-bottom-color: var(--rw-danger); box-shadow: 0 1px 0 0 var(--rw-danger); }
+/* Focused and invalid: keep the red error underline and add the focus ring around the field. */
+.rw-input[aria-invalid='true']:focus {
+  border-bottom-color: var(--rw-danger);
+  box-shadow: 0 1px 0 0 var(--rw-danger);
+  outline: 2px solid var(--rw-focus);
+  outline-offset: 3px;
+}
 /* Browser autofill must not paint a light/yellow field over the dark theme. */
 .rw-input:-webkit-autofill,
 .rw-input:-webkit-autofill:hover,
@@ -383,10 +395,10 @@ html.dark .rw .rw-input::placeholder,
 html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 
 .rw-select {
-  padding-right: 32px;
+  padding-right: 40px;
   background-image: var(--rw-chevron);
   background-repeat: no-repeat;
-  background-position: right 4px center;
+  background-position: right 12px center;
   background-size: 16px 16px;
   cursor: pointer;
 }
@@ -402,6 +414,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   line-height: 1.75;
 }
 .rw-textarea:focus { border-color: var(--rw-focus); box-shadow: 0 0 0 1px var(--rw-focus); }
+.rw-textarea[aria-invalid='true']:focus { border-color: var(--rw-danger); box-shadow: 0 0 0 1px var(--rw-danger); }
 
 .rw-err {
   display: flex;
@@ -1384,6 +1397,10 @@ html[data-theme="dark"] .rw-due {
 .rw-ref-other__input:focus {
   border-color: var(--rw-focus);
   box-shadow: 0 0 0 1px var(--rw-focus);
+}
+.rw-ref-other__input[aria-invalid='true']:focus {
+  border-color: var(--rw-danger);
+  box-shadow: 0 0 0 1px var(--rw-danger);
 }
 .rw-ref-other__input[aria-invalid='true']:not(:focus) {
   border-color: var(--rw-danger);
