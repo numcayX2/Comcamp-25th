@@ -1,9 +1,12 @@
 (function(){
   'use strict';
   var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var OPEN_AT = '2026-11-19T09:00:00+07:00';
-  var CLOSE_AT = '2026-12-18T23:59:59+07:00';
-  var MAX = 40;
+  // Build-time fallbacks from src/lib/camp-facts.ts (injected by HomePage.astro); the live values
+  // come from GET /api/settings/public.
+  var DEFAULTS = window.__CC25_DEFAULTS__;
+  var OPEN_AT = DEFAULTS.openAt;
+  var CLOSE_AT = DEFAULTS.closeAt;
+  var MAX = DEFAULTS.maxCapacity;
   var API_BASE = (typeof window !== 'undefined' && window.__CC25_API_BASE_URL__) || 'http://localhost:8000/api';
   var GALLERY_BASE = (typeof window !== 'undefined' && window.__CC25_GALLERY_BASE_URL__) || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
   if (GALLERY_BASE && GALLERY_BASE.slice(-1) !== '/') GALLERY_BASE += '/';
@@ -209,6 +212,10 @@
     });
     document.querySelectorAll('[data-open-date-full]').forEach(function(el){
       if (el.textContent !== openDateFull) el.textContent = openDateFull;
+    });
+    var closeDateFull = formatOpenDateFull(state.registrationCloseAt || CLOSE_AT);
+    document.querySelectorAll('[data-close-date-full]').forEach(function(el){
+      if (el.textContent !== closeDateFull) el.textContent = closeDateFull;
     });
     document.querySelectorAll('[data-open-date-dot]').forEach(function(el){
       if (el.textContent !== openDateDot) el.textContent = openDateDot;

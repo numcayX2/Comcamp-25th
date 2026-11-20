@@ -5,12 +5,10 @@
 import { stripZeroWidth, type ApplicationPayload, type ShirtSize } from '../../lib/api';
 import { canonicalProvince } from '../../lib/provinces';
 
-export const SEATS = 40;
-/**
- * Official confirmed camp fee in THB.
- * /register and /status read settings.campFee dynamically; FEE_TEXT is the offline fallback.
- */
-export const FEE_TEXT = '1,200';
+// Camp facts (seats, fee) live in lib/camp-facts — the one fallback shared with the home page.
+// /register and /status read settings.maxCapacity / settings.campFee live; these are offline fallbacks.
+import { CAMP_FEE_TEXT } from '../../lib/camp-facts';
+export { CAMP_FEE_TEXT, MAX_CAPACITY } from '../../lib/camp-facts';
 export const FB_URL = 'https://www.facebook.com/CCCSMJU';
 export const LINE_OPENCHAT_URL =
   'https://line.me/ti/g2/SqThbtY8Q_FiT7AA61RNn5LrFsjz9bHjYvmcIQ?utm_source=invitation&utm_medium=QR_code&utm_campaign=default';
@@ -37,11 +35,11 @@ export {
   type PaymentDeadlineInfo,
 } from '../../lib/payment';
 
-/** Format campFee from PublicSettings into Thai locale text, falling back to FEE_TEXT. */
+/** Format campFee from PublicSettings into Thai locale text, falling back to CAMP_FEE_TEXT. */
 export function formatCampFee(fee: number | string | null | undefined): string {
-  if (fee === null || fee === undefined || fee === '') return FEE_TEXT;
+  if (fee === null || fee === undefined || fee === '') return CAMP_FEE_TEXT;
   const n = typeof fee === 'number' ? fee : Number(fee);
-  if (!Number.isFinite(n) || n < 0) return FEE_TEXT;
+  if (!Number.isFinite(n) || n < 0) return CAMP_FEE_TEXT;
   return n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
 }
 

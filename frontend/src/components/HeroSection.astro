@@ -7,6 +7,7 @@
  *   <HeroSection titleStyle="pixel" />   → Pixel / dot-matrix title (Figma draft)
  */
 import '@fontsource/space-grotesk/700.css';
+import { CAMP_FEE_TEXT, REGISTRATION_OPEN_AT, formatBangkokTime, formatThaiDateShort } from '../lib/camp-facts';
 
 interface Props {
   titleStyle?: 'sans' | 'pixel';
@@ -44,13 +45,13 @@ const {
         3 วัน 2 คืน ลงมือต่อวงจรจริง อ่านค่าเซนเซอร์ Ultrasonic และ LDR แล้วสร้าง Web Dashboard สั่งงานผ่านสมาร์ตโฟน — เริ่มจากศูนย์ได้ มี AI ช่วยขึ้นโครงและดีบักโค้ด
       </p>
       <p class="hero__fee">
-        <span class="hero__fee-amount"><span class="font-mono" data-camp-fee-num>1,200</span> บาท</span>
+        <span class="hero__fee-amount"><span class="font-mono" data-camp-fee-num>{CAMP_FEE_TEXT}</span> บาท</span>
         <span class="hero__fee-label"><span class="ed-nw">ค่าสมัครเข้าร่วมค่าย 3 วัน 2 คืน</span> <span class="ed-nw">รวมที่พัก อาหาร เสื้อค่าย และเอกสารอบรม</span></span>
       </p>
 
       <div class="hero__actions">
         <a class="hero__cta" id="cta-primary" href="#essentials" data-register-href={registerHref}>
-          <span>ลงทะเบียนวันที่ 19 พ.ย. 69 (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.)</span>
+          <span>ลงทะเบียนวันที่ {formatThaiDateShort(REGISTRATION_OPEN_AT)} (<span class="font-mono tabular-nums" data-open-time>{formatBangkokTime(REGISTRATION_OPEN_AT)}</span> น.)</span>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square">
             <path d="M4 12 12 4M5.5 4H12v6.5" />
           </svg>

@@ -3,6 +3,7 @@
  * Aligns client countdown with authentic server time to prevent clock tampering.
  */
 import { fetchSharedPublicSettings } from './public-settings-cache.ts';
+import { CAMP_FEE, MAX_CAPACITY, REGISTRATION_CLOSE_AT, REGISTRATION_OPEN_AT } from './camp-facts.ts';
 
 export interface PublicSettings {
   serverTime: string;
@@ -15,17 +16,14 @@ export interface PublicSettings {
   isCertificateReleased?: boolean;
 }
 
-export const DEFAULT_TARGET_DATE = "2026-11-19T09:00:00+07:00";
-export const DEFAULT_CLOSE_DATE = "2026-12-18T23:59:59+07:00";
-
 export const DEFAULT_PUBLIC_SETTINGS: PublicSettings = {
   serverTime: new Date().toISOString(),
-  registrationOpenAt: DEFAULT_TARGET_DATE,
-  registrationCloseAt: DEFAULT_CLOSE_DATE,
+  registrationOpenAt: REGISTRATION_OPEN_AT,
+  registrationCloseAt: REGISTRATION_CLOSE_AT,
   isOpen: false,
   currentCount: 0,
-  maxCapacity: 40,
-  campFee: 1200,
+  maxCapacity: MAX_CAPACITY,
+  campFee: CAMP_FEE,
   isCertificateReleased: false,
 };
 
@@ -746,10 +744,10 @@ export interface UpdateAdminSettingsPayload {
 const MOCK_ADMIN_SETTINGS: AdminSettings = {
   id: 1,
   campName: 'ComCamp #25 (Mock)',
-  registrationOpenAt: DEFAULT_TARGET_DATE,
-  registrationCloseAt: DEFAULT_CLOSE_DATE,
-  maxCapacity: 40,
-  campFee: 1200,
+  registrationOpenAt: REGISTRATION_OPEN_AT,
+  registrationCloseAt: REGISTRATION_CLOSE_AT,
+  maxCapacity: MAX_CAPACITY,
+  campFee: CAMP_FEE,
   isManualClosed: false,
   updatedAt: new Date().toISOString(),
 };

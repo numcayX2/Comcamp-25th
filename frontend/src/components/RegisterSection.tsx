@@ -29,7 +29,7 @@ import {
   DIETARY_QUICK_OPTIONS,
   EMPTY_FORM,
   FB_URL,
-  FEE_TEXT,
+  CAMP_FEE_TEXT,
   GRADES,
   NAME_PREFIXES,
   GRADE_OTHER,
@@ -42,7 +42,7 @@ import {
   NICKNAME_MAX,
   RECEIPT_META,
   RECEIPT_STEP,
-  SEATS,
+  MAX_CAPACITY,
   SHIRT_SIZES,
   SIZE_CHEST,
   SIZE_LENGTH,
@@ -83,7 +83,7 @@ type GateState = 'checking' | 'open' | 'pre_open' | 'full' | 'closed' | 'error';
 
 const GATE_COPY: Record<Exclude<GateState, 'checking' | 'open'>, { title: string; body: string }> = {
   pre_open: {
-    title: 'ยังไม่เปิดรับสมัคร — เปิดรับ 19 พ.ย. 2569 เวลา 09:00 น.',
+    title: 'ยังไม่เปิดรับสมัคร',
     body: 'แบบฟอร์มจะเปิดให้กรอกทันทีเมื่อถึงกำหนด ระหว่างนี้สามารถอ่านรายละเอียดค่ายและเตรียมข้อมูลส่วนตัวไว้ล่วงหน้าได้',
   },
   full: {
@@ -423,8 +423,8 @@ export function RegisterSection() {
   const noticeRef = useRef<HTMLDivElement>(null);
   const rulesRef = useRef<HTMLElement>(null);
   const noticeFocus = useRef(false);
-  const [seats, setSeats] = useState(SEATS);
-  const [feeText, setFeeText] = useState(FEE_TEXT);
+  const [seats, setSeats] = useState(MAX_CAPACITY);
+  const [feeText, setFeeText] = useState(CAMP_FEE_TEXT);
   const [opensAtMs, setOpensAtMs] = useState<number | null>(null);
   const [offsetMs, setOffsetMs] = useState(0);
   const [countdownMs, setCountdownMs] = useState<number | null>(null);
@@ -457,7 +457,7 @@ export function RegisterSection() {
         const serverNow = Date.now() + serverOffset;
         const parsedOpens = new Date(settings.registrationOpenAt).getTime();
         const opensAt = Number.isFinite(parsedOpens) ? parsedOpens : null;
-        const capacity = settings.maxCapacity && settings.maxCapacity > 0 ? settings.maxCapacity : SEATS;
+        const capacity = settings.maxCapacity && settings.maxCapacity > 0 ? settings.maxCapacity : MAX_CAPACITY;
         const remaining = Math.max(0, capacity - (settings.currentCount ?? 0));
 
         setSeats(capacity);

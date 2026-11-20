@@ -18,7 +18,7 @@ import {
   DORM_MAPS_URL,
   DORM_NAME,
   FB_URL,
-  FEE_TEXT,
+  CAMP_FEE_TEXT,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
   PAYMENT_WINDOW_DAYS,
@@ -222,7 +222,7 @@ export function Receipt({
   appId,
   source,
   showSource,
-  feeText = FEE_TEXT,
+  feeText = CAMP_FEE_TEXT,
   headingRef,
   onWithdrawn,
 }: {

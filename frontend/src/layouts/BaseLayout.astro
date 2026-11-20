@@ -3,6 +3,7 @@ import { ClientRouter } from 'astro:transitions';
 import '../styles/fonts.css';
 import '../styles/global.css';
 import BackToTop from '../components/BackToTop.astro';
+import { REGISTRATION_OPEN_AT, formatBangkokTime, formatThaiDateFull } from '../lib/camp-facts';
 
 interface Props {
   title?: string;
@@ -19,7 +20,7 @@ interface Props {
 
 const {
   title = 'ComCamp #25 // ค่ายวิทยาการคอมพิวเตอร์ มหาวิทยาลัยแม่โจ้',
-  description = 'เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (เปิดรับ 19 พ.ย. 2569 เวลา 09:00 น.)',
+  description = `เว็บไซต์รับสมัครค่าย ComCamp ครั้งที่ 25 สาขาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ (เปิดรับ ${formatThaiDateFull(REGISTRATION_OPEN_AT)} เวลา ${formatBangkokTime(REGISTRATION_OPEN_AT)} น.)`,
   backToTop = true,
   bodyClass,
   themeColor = '#F9F8F4',

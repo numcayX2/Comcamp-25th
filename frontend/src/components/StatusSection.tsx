@@ -41,11 +41,11 @@ import {
   DORM_MAPS_URL,
   DORM_NAME,
   FB_URL,
-  FEE_TEXT,
+  CAMP_FEE_TEXT,
   LINE_OPENCHAT_QR_SRC,
   LINE_OPENCHAT_URL,
   PROJECT_ADVISOR,
-  SEATS,
+  MAX_CAPACITY,
   SIZE_CHEST,
   SIZE_LENGTH,
   PAYMENT_WINDOW_DAYS,
@@ -540,8 +540,8 @@ export function StatusSection() {
   /** Answer to a phone search: masked, without the code, and never enables a write action. */
   const [phoneResult, setPhoneResult] = useState<PhoneLookupResult | null>(null);
   const [source, setSource] = useState<ApiSource | null>(null);
-  const [seats, setSeats] = useState(SEATS);
-  const [feeText, setFeeText] = useState(FEE_TEXT);
+  const [seats, setSeats] = useState(MAX_CAPACITY);
+  const [feeText, setFeeText] = useState(CAMP_FEE_TEXT);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   /** Seconds left before the per-IP lookup limit allows another search (after a short 429). */
@@ -641,7 +641,7 @@ export function StatusSection() {
         if (settings.campFee !== null && settings.campFee !== undefined) setFeeText(formatCampFee(settings.campFee));
       })
       .catch(() => {
-        /* Fallback to SEATS / FEE_TEXT constants when offline. */
+        /* Fallback to MAX_CAPACITY / CAMP_FEE_TEXT constants when offline. */
       });
 
     const params = new URLSearchParams(window.location.search);

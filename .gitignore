@@ -52,3 +52,10 @@ backend/api
 *.exe~
 *~
 *.log
+
+# Upgrade request & AI planning notes (local only)
+upgrade_rq.md
+upgrade_plan.md
+sponsor_questions.md
+DESIGN.md
+PRODUCT.md

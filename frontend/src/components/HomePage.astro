@@ -16,9 +16,32 @@ import Smartphone from '@lucide/astro/icons/smartphone';
 import Phone from '@lucide/astro/icons/phone';
 import MessageCircle from '@lucide/astro/icons/message-circle';
 import ScanLine from '@lucide/astro/icons/scan-line';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  CAMP_FEE,
+  CAMP_FEE_TEXT,
+  MAX_CAPACITY,
+  REGISTRATION_CLOSE_AT,
+  REGISTRATION_OPEN_AT,
+  formatBangkokTime,
+  formatThaiDateDot,
+  formatThaiDateFull,
+  formatThaiDateShort,
+} from '../lib/camp-facts';
 const rawGalleryBase = import.meta.env.PUBLIC_GALLERY_BASE_URL || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
 const galleryBaseUrl = rawGalleryBase.endsWith('/') ? rawGalleryBase : `${rawGalleryBase}/`;
 const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api';
+// Cloudflare caches /theme/* for 4 hours: a content hash in the query string makes each deploy's
+// theme files load at once, while unchanged files keep their cached copy.
+const themeAsset = (file: string) =>
+  `/theme/${file}?v=${createHash('sha256').update(readFileSync(join(process.cwd(), 'public/theme', file))).digest('hex').slice(0, 10)}`;
+// Server-rendered fallbacks; main.js replaces them with GET /api/settings/public values.
+const campDefaults = { openAt: REGISTRATION_OPEN_AT, closeAt: REGISTRATION_CLOSE_AT, maxCapacity: MAX_CAPACITY, campFee: CAMP_FEE };
+const openShort = formatThaiDateShort(REGISTRATION_OPEN_AT);
+const openTime = formatBangkokTime(REGISTRATION_OPEN_AT);
+const closeFull = formatThaiDateFull(REGISTRATION_CLOSE_AT);
 // Absolute origin for canonical / og:url / og:image. Injected at build time from FRONTEND_URL (see docker-compose.prod.yml);
 // when unset (local dev) the absolute-URL tags are omitted instead of guessing a domain.
 const siteUrl = (import.meta.env.PUBLIC_SITE_URL || '').replace(/\/+$/, '');
@@ -82,13 +105,14 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
   html.veil-skip #veil{display:none!important}
   html[data-home-page="1"]:not([data-reg-open="true"]) [data-register-link]{display:none!important}
 </style>
-<link rel="stylesheet" href="/theme/styles.css">
-<link rel="stylesheet" href="/theme/page.css">
-<link rel="stylesheet" href="/theme/editorial.css">
+<link rel="stylesheet" href={themeAsset('styles.css')}>
+<link rel="stylesheet" href={themeAsset('page.css')}>
+<link rel="stylesheet" href={themeAsset('editorial.css')}>
 <noscript><style>.veil{display:none!important}</style></noscript>
-<script is:inline define:vars={{ galleryBaseUrl, apiBaseUrl }}>
+<script is:inline define:vars={{ galleryBaseUrl, apiBaseUrl, campDefaults }}>
   window.__CC25_GALLERY_BASE_URL__ = galleryBaseUrl;
   window.__CC25_API_BASE_URL__ = apiBaseUrl;
+  window.__CC25_DEFAULTS__ = campDefaults;
 </script>
 </head>
 <body>
@@ -102,7 +126,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
       <p class="veil-kicker">สาขาวิชาวิทยาการคอมพิวเตอร์ · มหาวิทยาลัยแม่โจ้</p>
       <p class="veil-display"><span class="vl"><i>Comcamp</i></span><span class="vl"><i class="ol">25th</i></span></p>
       <p class="veil-thai">ค่ายยุวชนคอมพิวเตอร์ <span class="nowrap">ครั้งที่ <span class="veil-mono">25</span></span></p>
-      <p class="veil-sub"><span class="nowrap">ลงทะเบียนวันที่ <span class="veil-mono" data-open-date-dot>19.11.69</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
+      <p class="veil-sub"><span class="nowrap">ลงทะเบียนวันที่ <span class="veil-mono" data-open-date-dot>{formatThaiDateDot(REGISTRATION_OPEN_AT)}</span></span> · สมัครผ่านเว็บไซต์ค่าย</p>
     </div>
     <span class="veil-ghost veil-mono">25</span>
     <div class="veil-foot">
@@ -267,7 +291,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
             </div>
             <div class="ed-metric">
               <dt class="ed-metric__label th-label">ลงทะเบียน</dt>
-              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>19 พ.ย. 69</span> (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.) – <span class="tabular-nums">18 ธ.ค. 2569</span> · ปิดรับทันทีเมื่อที่นั่งเต็ม</dd>
+              <dd class="ed-metric__val"><span class="tabular-nums" data-open-date-short>{openShort}</span> (<span class="font-mono tabular-nums" data-open-time>{openTime}</span> น.) – <span class="tabular-nums" data-close-date-full>{closeFull}</span> · ปิดรับทันทีเมื่อที่นั่งเต็ม</dd>
             </div>
           </dl>
         </div>
@@ -300,7 +324,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 
             <div role="listitem" class="card bento-feature">
               <div class="bento-feature__left">
-                <div id="bento-seats-num" class="bento-big">40<small>ที่นั่ง</small></div>
+                <div id="bento-seats-num" class="bento-big">{MAX_CAPACITY}<small>ที่นั่ง</small></div>
               </div>
               <div class="bento-feature__right">
                 <p id="bento-seats-caption">จำนวนจำกัด คัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</p>
@@ -310,7 +334,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 
             <div role="listitem" class="card ed-cell--ledger">
               <div class="ed-ledger__info">
-                <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>1,200</span> บาท</span></h3>
+                <h3>ค่าใช้จ่ายในการเข้าร่วม <span class="ed-ledger__price"><span class="font-mono tabular-nums fee-num" data-camp-fee-num>{CAMP_FEE_TEXT}</span> บาท</span></h3>
                 <p class="ed-ledger__lead">ค่าสมัครรวม</p>
                 <ul class="ed-incl">
                   <li>ที่พัก <span class="font-mono">2</span> คืน ณ เรือนพักสมาคมศิษย์เก่าแม่โจ้</li>
@@ -433,10 +457,10 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
             <div role="listitem" class="tm-tile tm-tile--01">
               <div class="tm-tile__lead">
                 <span class="tm-num"><span class="font-mono tabular-nums">01</span> · ลงทะเบียน</span>
-                <p class="tm-figure"><span class="tabular-nums ed-nw" data-open-date-short>19 พ.ย. 69</span> – <span class="tabular-nums ed-nw">18 ธ.ค. 2569</span> <small><span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · ปิดรับทันทีเมื่อที่นั่งเต็ม</small></p>
+                <p class="tm-figure"><span class="tabular-nums ed-nw" data-open-date-short>{openShort}</span> – <span class="tabular-nums ed-nw" data-close-date-full>{closeFull}</span> <small><span class="font-mono tabular-nums" data-max-capacity>{MAX_CAPACITY}</span> ที่นั่ง · ปิดรับทันทีเมื่อที่นั่งเต็ม</small></p>
               </div>
               <div class="tm-tile__detail">
-                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ เปิดรับเวลา <span class="font-mono tabular-nums" data-open-time>09:00</span> น. <span class="ed-nw">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์</p>
+                <p>สมัครออนไลน์ผ่านหน้าเว็บไซต์ เปิดรับเวลา <span class="font-mono tabular-nums" data-open-time>{openTime}</span> น. <span class="ed-nw">(เวลาไทย)</span> คัดเลือกตามลำดับการส่งใบสมัครและยืนยันสิทธิ์</p>
                 <p class="tm-tile-link" data-register-link><a class="ed-inline-link" href="/register"><span>ไปหน้าสมัครค่าย</span><span aria-hidden="true">→</span></a></p>
               </div>
             </div>
@@ -444,7 +468,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
             <div role="listitem" class="tm-tile tm-tile--02">
               <span class="tm-num"><span class="font-mono tabular-nums">02</span> · ชำระเงิน</span>
               <h3>โอนและแนบสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน</h3>
-              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (ตามลำดับการสมัคร) โอนผ่านเลขบัญชีเท่านั้น จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
+              <p>ผู้สมัครที่ได้รับสิทธิ์ชั่วคราว (ตามลำดับการสมัคร) โอนผ่านเลขบัญชีเท่านั้น จำนวน <span class="font-mono tabular-nums" data-camp-fee-num>{CAMP_FEE_TEXT}</span> บาท และอัปโหลดรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร เกิน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันระบบคืนที่นั่งว่างอัตโนมัติ</p>
               <p class="tm-tile-link"><a class="ed-inline-link" href="/status"><span>ไปหน้าตรวจสอบสถานะ</span><span aria-hidden="true">→</span></a></p>
             </div>
 
@@ -554,7 +578,7 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-q">รับกี่คน และคัดเลือกอย่างไร</span></span></summary>
-            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</div>
+            <div class="faq-body">เปิดรับ <span class="font-mono tabular-nums" data-max-capacity>{MAX_CAPACITY}</span> ที่นั่ง และคัดเลือกตามลำดับการสมัครและยืนยันสิทธิ์แบบใครสมัครก่อนได้สิทธิ์ก่อน</div>
           </details>
           <details class="faq-item">
             <summary><span class="faq-head"><span class="faq-q">ต้องเตรียมโน้ตบุ๊กส่วนตัวหรือไม่</span></span></summary>
@@ -578,10 +602,10 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
         <div class="ed-cta-band__body">
           <p class="ed-cta-band__eyebrow th-label">ComCamp #25 · รับสมัคร</p>
           <h2 id="pre-gallery-cta-title" class="ed-cta-band__title">พร้อมร่วมค่าย <span class="ed-nw">ComCamp <span class="font-mono tabular-nums">#25</span></span> <span class="ed-nw">แล้วหรือยัง?</span></h2>
-          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>40</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>1,200</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
+          <p class="ed-cta-band__sub">รับจำกัด <span class="font-mono tabular-nums" data-max-capacity>{MAX_CAPACITY}</span> ที่นั่ง · ค่าสมัคร <span class="font-mono tabular-nums" data-camp-fee-num>{CAMP_FEE_TEXT}</span> บาท · ไม่มีพื้นฐานก็เริ่มได้</p>
           <div class="ed-cta-band__actions">
             <a id="faq-cta-register" class="ed-pill ed-pill--primary" href="/register" data-register-cta data-register-link>
-              <span data-register-cta-label>ลงทะเบียนวันที่ 19 พ.ย. 69 (<span class="font-mono tabular-nums" data-open-time>09:00</span> น.)</span>
+              <span data-register-cta-label>ลงทะเบียนวันที่ {openShort} (<span class="font-mono tabular-nums" data-open-time>{openTime}</span> น.)</span>
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square">
                 <path d="M4 12 12 4M5.5 4H12v6.5" />
               </svg>
@@ -694,6 +718,6 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 <!-- GSAP ships from our own bundle (same-origin; no third-party CDN in FB/LINE in-app browsers).
      main.js boots the editorial motion as soon as window.gsap + ScrollTrigger exist (DOMContentLoaded / load). -->
 <script>import '../scripts/gsap-global';</script>
-<script is:inline src="/theme/main.js" defer></script>
+<script is:inline src={themeAsset('main.js')} defer></script>
 </body>
 </html>
