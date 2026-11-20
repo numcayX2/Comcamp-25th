@@ -43,6 +43,11 @@ type RateLimits struct {
 
 	// PublicList guards GET /api/applications/public (see PublicListRatePerMinute).
 	PublicList *middleware.RateLimiter
+
+	// SponsorsPublic guards GET /api/sponsors (see SponsorListRatePerMinute).
+	SponsorsPublic *middleware.RateLimiter
+	// SponsorLogo guards GET /api/sponsors/{id}/logo (see SponsorLogoRatePerMinute).
+	SponsorLogo *middleware.RateLimiter
 }
 
 // PublicListRatePerMinute is the per-IP allowance for the public applicants list. The answer is
@@ -50,11 +55,15 @@ type RateLimits struct {
 // page load costs one request (plus a manual retry), and 60/min still lets a whole classroom
 // behind one school or carrier NAT open /applicants at the same moment, while capping a scraper
 // at one request a second. It has its own bucket, separate from the status lookup.
-const PublicListRatePerMinute = 60
+const (
+	PublicListRatePerMinute  = 60
+	SponsorListRatePerMinute = 60
+	SponsorLogoRatePerMinute = 300
+)
 
 func DefaultRateLimits() RateLimits {
 	return RateLimits{
-		Login:       middleware.NewRateLimiter(10, 5*time.Minute),
+		Login: middleware.NewRateLimiter(10, 5*time.Minute),
 		// 30/min: a student retrying a lookup never gets near it, a small group sharing one school
 		// or carrier IP still fits, and a scraper of phone numbers is slowed to one every 2s.
 		StatusQuery: middleware.NewRateLimiter(30, time.Minute),
@@ -65,7 +74,9 @@ func DefaultRateLimits() RateLimits {
 		Withdraw: middleware.NewRateLimiter(20, time.Minute),
 		Profile:  middleware.NewRateLimiter(20, time.Minute),
 
-		PublicList: middleware.NewRateLimiter(PublicListRatePerMinute, time.Minute),
+		PublicList:     middleware.NewRateLimiter(PublicListRatePerMinute, time.Minute),
+		SponsorsPublic: middleware.NewRateLimiter(SponsorListRatePerMinute, time.Minute),
+		SponsorLogo:    middleware.NewRateLimiter(SponsorLogoRatePerMinute, time.Minute),
 	}
 }
 
@@ -83,6 +94,7 @@ type Services struct {
 	Applicant *service.ApplicantService
 	Setting   *service.SettingService
 	Payment   *service.PaymentService
+	Sponsor   *service.SponsorService
 }
 
 func NewRouter(svc Services, opt Options) http.Handler {
@@ -91,8 +103,15 @@ func NewRouter(svc Services, opt Options) http.Handler {
 	appHandler := handler.NewApplicantHandler(svc.Applicant)
 	settingHandler := handler.NewSettingHandler(svc.Setting)
 	paymentHandler := handler.NewPaymentHandler(svc.Payment)
+	sponsorHandler := handler.NewSponsorHandler(svc.Sponsor)
 	swaggerHandler := handler.NewSwaggerHandler(opt.OpenAPISpec)
 	limits := opt.RateLimits
+	if limits.SponsorsPublic == nil {
+		limits.SponsorsPublic = middleware.NewRateLimiter(SponsorListRatePerMinute, time.Minute)
+	}
+	if limits.SponsorLogo == nil {
+		limits.SponsorLogo = middleware.NewRateLimiter(SponsorLogoRatePerMinute, time.Minute)
+	}
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
@@ -109,13 +128,22 @@ func NewRouter(svc Services, opt Options) http.Handler {
 	}
 
 	// Note: there is deliberately no public /uploads file server. Slips are personal financial
-	// documents and are only served through GET /api/admin/applications/{id}/slip.
+	// documents and are only served through GET /api/admin/applications/{id}/slip. Sponsor logos
+	// are served through GET /api/sponsors/{id}/logo with DB-resolved paths only.
 
 	r.Route("/api", func(api chi.Router) {
 		api.Use(middleware.APIHeaders)
 
 		// Slip upload carries its own 5 MB cap; everything else is small JSON.
 		api.With(limits.Slip.Middleware).Post("/applications/{id}/slip", paymentHandler.UploadSlip)
+
+		// Sponsor logo uploads carry their own 2 MB multipart cap, outside the 64 KB JSON limit.
+		api.Group(func(adminMultipart chi.Router) {
+			adminMultipart.Use(middleware.RequireAuth(svc.Auth))
+			super := middleware.RequireRoles(rolesSuper...)
+			adminMultipart.With(super).Post("/admin/sponsors", sponsorHandler.AdminCreate)
+			adminMultipart.With(super).Patch("/admin/sponsors/{id}", sponsorHandler.AdminUpdate)
+		})
 
 		api.Group(func(json chi.Router) {
 			json.Use(middleware.LimitBody(middleware.MaxJSONBodyBytes))
@@ -126,6 +154,8 @@ func NewRouter(svc Services, opt Options) http.Handler {
 			}
 
 			json.Get("/settings/public", settingHandler.GetPublic)
+			json.With(limits.SponsorsPublic.Middleware).Get("/sponsors", sponsorHandler.ListPublic)
+			json.With(limits.SponsorLogo.Middleware).Get("/sponsors/{id}/logo", sponsorHandler.GetLogo)
 
 			json.With(limits.Submit.Middleware).Post("/applications", appHandler.Submit)
 			json.With(limits.StatusQuery.Middleware).Get("/applications/status", appHandler.GetStatus)
@@ -154,6 +184,9 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				admin.With(payments).Patch("/admin/applications/{id}/verify-slip", paymentHandler.VerifySlip)
 				admin.With(anyAdmin).Get("/admin/settings", settingHandler.GetAdmin)
 				admin.With(super).Patch("/admin/settings", settingHandler.UpdateAdmin)
+				admin.With(anyAdmin).Get("/admin/sponsors", sponsorHandler.AdminList)
+				admin.With(super).Put("/admin/sponsors/order", sponsorHandler.AdminReorder)
+				admin.With(super).Delete("/admin/sponsors/{id}", sponsorHandler.AdminDelete)
 			})
 		})
 	})

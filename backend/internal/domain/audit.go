@@ -41,6 +41,12 @@ const (
 	AuditTargetApplicant                = "applicant"
 	AuditTargetAdmin                    = "admin"
 	AuditTargetSettings                 = "settings"
+	// Sponsor management events (written in the same transaction as the sponsor change).
+	AuditSponsorCreate  AuditAction = "sponsor.create"
+	AuditSponsorUpdate  AuditAction = "sponsor.update"
+	AuditSponsorDelete  AuditAction = "sponsor.delete"
+	AuditSponsorReorder AuditAction = "sponsor.reorder"
+	AuditTargetSponsor              = "sponsor"
 )
 
 // AuditSlipSuperseded is an applicant uploading a new slip that replaced one still waiting for

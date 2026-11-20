@@ -35,6 +35,7 @@ func main() {
 		adminRepo   domain.AdminRepository
 		paymentRepo domain.PaymentRepository
 		auditRepo   domain.AuditRepository
+		sponsorRepo domain.SponsorRepository
 	)
 
 	ctxPing, cancelPing := context.WithTimeout(context.Background(), 3*time.Second)
@@ -59,6 +60,7 @@ func main() {
 		adminRepo = postgres.NewAdminPostgresRepo(pool)
 		paymentRepo = postgres.NewPaymentPostgresRepo(pool)
 		auditRepo = postgres.NewAuditPostgresRepo(pool)
+		sponsorRepo = postgres.NewSponsorPostgresRepo(pool)
 		defer pool.Close()
 
 	case cfg.IsProduction():
@@ -94,6 +96,7 @@ func main() {
 		adminRepo = memAdm
 		paymentRepo = memory.NewMemoryPaymentRepo(memApp)
 		auditRepo = memApp.Audit()
+		sponsorRepo = memory.NewMemorySponsorRepo(memApp.Audit())
 	}
 
 	// 2. Initialize Services
@@ -129,11 +132,13 @@ func main() {
 		WithOnSeatChange(settingSvc.InvalidatePublicCache).
 		WithMailer(mailer).
 		WithSlipFileRemover(paymentSvc.RemoveSlipFile)
+	sponsorSvc := service.NewSponsorService(sponsorRepo, cfg.UploadDir)
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
 		Payment:   paymentSvc,
+		Sponsor:   sponsorSvc,
 	}
 
 	// 3. Router (all security middleware lives in internal/server)

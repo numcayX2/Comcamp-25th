@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000013`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000014`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000013_referral_forfeit_withdraw.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011` — วันปิดจริงปรับต่อได้ใน `/admin`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว และต้องมีคอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` พร้อม CHECK สถานะที่รวม `FORFEITED` (จาก `000013`)
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000014_sponsors.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011` — วันปิดจริงปรับต่อได้ใน `/admin`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว และต้องมีคอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` พร้อม CHECK สถานะที่รวม `FORFEITED` (จาก `000013`)
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -282,7 +282,7 @@ git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -385,6 +385,40 @@ curl -sS https://<โดเมนจริง>/api/settings/public
 - **Build เก่าบน Schema ใหม่ (ปลอดภัย):** backend เดิมไม่เขียนคอลัมน์ใหม่และอ่านคอลัมน์แบบระบุชื่อ จึงทำงานต่อได้หลังข้อ 2 ข้อจำกัดเดียวคือมันนับแถว `FORFEITED` เป็นผู้ถือที่นั่ง (ทิศทางที่ปลอดภัย: ที่นั่งว่างน้อยลง ไม่มีทางเกิน) จึงต้อง deploy backend ใหม่ต่อทันที (ข้อ 4)
 - **Build ใหม่บน Schema เก่า (ห้าม):** backend ใหม่อ่าน/เขียน `referral_sources`, `referral_other`, `deleted_reason` และสถานะ `FORFEITED` ทุก Query ที่แตะ `applicants` จะล้มเหลว และ **ไม่มีการตรวจ schema ตอนสตาร์ตแบบ `000011`** (`schema_check.go` ตรวจเฉพาะ `national_id`) จึงต้องรันข้อ 2 ก่อนข้อ 4 เสมอ
 - **ย้อนกลับ:** `000013_referral_forfeit_withdraw.down.sql` แปลง `FORFEITED` กลับเป็น `REJECTED` และ **DROP คอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` (คำตอบช่องทางที่รู้จักค่ายหายถาวร)** — ต้อง deploy backend รุ่นก่อนหน้า **ก่อน** รัน down และใช้เมื่อจำเป็นเท่านั้น; ถ้าต้องการข้อมูลกลับมาครบ ให้กู้จากไฟล์ในข้อ 1 ตามขั้นตอนที่ 7.2
+
+### Migration `000014` (โลโก้ผู้สนับสนุน `sponsors`)
+
+`000014_sponsors.up.sql` **เพิ่มอย่างเดียว** และรันซ้ำได้ (`CREATE TABLE/INDEX IF NOT EXISTS`): สร้างตาราง `sponsors` (ชื่อ ≤ 120, ลิงก์ว่างหรือ `http(s)://` ≤ 500, `show_name`, `sort_order`, path/MIME/SHA-256 ของโลโก้; CHECK MIME เฉพาะ JPEG/PNG/WebP) ไม่แตะตารางเดิม ไฟล์โลโก้เก็บใน volume `uploads_data` ที่ `/var/lib/cc25/uploads/sponsors/` (backend สร้างโฟลเดอร์ `0700` เองตอนสตาร์ต) และเปิดดูได้ผ่าน `GET /api/sponsors/{id}/logo` เท่านั้น
+
+```bash
+cd /path/to/Comcamp-site
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"       # rootful ใช้ /opt/cc25-backups/db
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+mkdir -p "$B"
+F="$B/cc25_db_pre000014_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"; ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000014 up ขณะ backend เดิมยังทำงาน (backend เดิมไม่รู้จักตารางนี้ จึงไม่กระทบ)
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000014_sponsors.up.sql
+
+# 3. ตรวจ: ต้องเห็นตาราง sponsors (0 แถว)
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT count(*) FROM sponsors;"
+
+# 4. Build และเปิด backend + frontend ตัวใหม่
+$C up -d --build backend frontend
+
+# 5. ตรวจ API: ต้องได้ {"sponsors":[]} — แล้ว Purge Cache ใน Cloudflare (ไฟล์ /theme/*.js|css ไม่มี hash)
+curl -sS https://<โดเมนจริง>/api/sponsors
+```
+
+- **Build ใหม่บน Schema เก่า:** `GET /api/sponsors` และเมนูผู้สนับสนุนใน `/admin` ตอบ `500` (ส่วนอื่นทำงานปกติ หน้าแรกซ่อนแถบผู้สนับสนุนเอง) — แก้โดยรันข้อ 2
+- **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000014_sponsors.down.sql` (DROP ตาราง `sponsors` — รายการผู้สนับสนุนหายถาวร ไฟล์โลโก้ใน volume ต้องลบเองถ้าต้องการ)
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 

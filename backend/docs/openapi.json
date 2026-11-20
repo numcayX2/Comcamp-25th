@@ -21,7 +21,8 @@
     { "name": "Applications", "description": "ระบบรับสมัคร ตรวจสอบสถานะ และยืนยันสิทธิ์" },
     { "name": "Payments", "description": "ระบบอัปโหลดและตรวจสอบสลิปโอนเงิน" },
     { "name": "Admin Auth", "description": "การเข้าสู่ระบบสำหรับผู้ดูแลและพี่ค่าย" },
-    { "name": "Admin Management", "description": "ระบบจัดการใบสมัครและอนุมัติสลิป" }
+    { "name": "Admin Management", "description": "ระบบจัดการใบสมัครและอนุมัติสลิป" },
+    { "name": "Sponsors", "description": "ระบบแสดงและจัดการโลโก้ผู้สนับสนุนค่าย" }
   ],
   "paths": {
     "/health": {
@@ -552,7 +553,7 @@
           },
           "400": { "description": "สถานะไม่ถูกต้อง (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "404": { "description": "ไม่พบใบสมัคร", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "409": { "description": "code QUOTA_FULL = ที่นั่งเต็ม ไม่สามารถคืนใบสมัครที่ REJECTED / REFUND_PENDING / REFUNDED กลับเป็นสถานะที่ถือที่นั่งได้", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "code QUOTA_FULL = ที่นั่งเต็ม ไม่สามารถคืนใบสมัครที่ REJECTED / REFUND_PENDING / REFUNDED / FORFEITED กลับเป็นสถานะที่ถือที่นั่งได้ (เว้นแต่ส่ง overCapacity: true พร้อม reason)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
@@ -778,6 +779,192 @@
           "500": { "description": "ข้อผิดพลาดภายในเซิร์ฟเวอร์ (code INTERNAL_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
+    },
+    "/sponsors": {
+      "get": {
+        "tags": ["Sponsors"],
+        "summary": "Public Sponsors List",
+        "description": "รายชื่อผู้สนับสนุนค่ายสำหรับหน้าแรก เรียงตาม sort_order, id ไม่มี logoPath, logoHash เต็ม, timestamp หรือฟิลด์ของแอดมิน ฝั่งเซิร์ฟเวอร์ cache 5 วินาที (singleflight) และล้าง cache ทันทีเมื่อแอดมินเพิ่ม/แก้ไข/ลบ/เรียงลำดับใหม่ ตอบ Cache-Control: no-store",
+        "responses": {
+          "200": {
+            "description": "รายการผู้สนับสนุน (อาจเป็นรายการว่าง)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PublicSponsorsResponse" },
+                "example": {
+                  "sponsors": [
+                    { "id": 1, "name": "Acme Tech", "url": "https://acme.example.com", "showName": true, "logoUrl": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "description": "เรียกถี่เกินไป (60 ครั้ง/นาที/IP) (code RATE_LIMITED, มี Retry-After)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "ข้อผิดพลาดภายในเซิร์ฟเวอร์ (code INTERNAL_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/sponsors/{id}/logo": {
+      "get": {
+        "tags": ["Sponsors"],
+        "summary": "Get Sponsor Logo Image",
+        "description": "ส่งไฟล์รูปโลโก้ของผู้สนับสนุนตาม path ที่เก็บในฐานข้อมูลเท่านั้น (จำกัดอยู่ใต้ UPLOAD_DIR/sponsors/ เสมอ) พร้อม Content-Type จริง, X-Content-Type-Options: nosniff, Content-Disposition: inline และ Cache-Control: public, max-age=86400",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "รหัสผู้สนับสนุน",
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "รูปโลโก้ผู้สนับสนุน",
+            "headers": {
+              "Cache-Control": { "schema": { "type": "string", "example": "public, max-age=86400" } },
+              "Content-Disposition": { "schema": { "type": "string", "example": "inline" } },
+              "X-Content-Type-Options": { "schema": { "type": "string", "example": "nosniff" } }
+            },
+            "content": {
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "404": { "description": "ไม่พบผู้สนับสนุน (code NOT_FOUND)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "เรียกถี่เกินไป (300 ครั้ง/นาที/IP) (code RATE_LIMITED, มี Retry-After)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/sponsors": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin List Sponsors",
+        "description": "ดูรายการผู้สนับสนุนทั้งหมดพร้อมลำดับและเวลาสร้าง/แก้ไข สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "รายการผู้สนับสนุน",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSponsorsResponse" } } }
+          },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Create Sponsor",
+        "description": "เพิ่มผู้สนับสนุนใหม่ต่อท้ายลำดับปัจจุบัน (sortOrder = max + 1) รับ multipart/form-data สูงสุด 2 MB ตรวจ magic bytes เฉพาะ JPEG/PNG/WebP (ปฏิเสธ SVG/GIF), ตรวจขนาดภาพจาก header ไม่เกิน 4096×4096 px, ลบ JPEG EXIF, เขียนและ fsync ก่อนบันทึก DB และบันทึก audit sponsor.create ใน transaction เดียวกัน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "logo"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120, "description": "ชื่อผู้สนับสนุน (1-120 ตัวอักษร บรรทัดเดียว ไม่มีอักขระควบคุม)" },
+                  "url": { "type": "string", "maxLength": 500, "description": "ลิงก์เว็บไซต์ http:// หรือ https:// (เว้นว่างได้)" },
+                  "showName": { "type": "string", "enum": ["true", "false"], "description": "แสดงชื่อใต้โลโก้บนหน้าแรก (ไม่ส่ง = false)" },
+                  "logo": { "type": "string", "format": "binary", "description": "ไฟล์รูปโลโก้ JPG, PNG หรือ WebP สูงสุด 2 MB ไม่เกิน 4096×4096 px" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "เพิ่มผู้สนับสนุนสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSponsor" } } }
+          },
+          "400": { "description": "ข้อมูลไม่ถูกต้อง, ชนิดไฟล์ไม่ใช่ JPEG/PNG/WebP (VALIDATION_ERROR) หรือขนาดภาพเกิน 4096×4096 px (INVALID_IMAGE_DIMENSIONS)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "413": { "description": "ไฟล์หรือ request body เกิน 2 MB (code PAYLOAD_TOO_LARGE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/sponsors/order": {
+      "put": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Reorder Sponsors",
+        "description": "จัดลำดับผู้สนับสนุนใหม่ ids ต้องตรงกับชุดรหัสผู้สนับสนุนที่มีอยู่ทั้งหมดพอดี (ห้ามขาด ห้ามซ้ำ ห้ามมีรหัสอื่น) บันทึก audit sponsor.reorder ใน transaction เดียวกัน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReorderSponsorsRequest" },
+              "example": { "ids": [3, 1, 2] }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "จัดลำดับสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSponsorsResponse" } } }
+          },
+          "400": { "description": "ids ไม่ตรงกับชุดรหัสที่มีอยู่ทั้งหมด (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/sponsors/{id}": {
+      "patch": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Update Sponsor",
+        "description": "แก้ไขข้อมูลผู้สนับสนุนบางส่วนหรือแทนที่โลโก้ (ทุกฟิลด์เป็นทางเลือก ฟิลด์ที่ไม่ส่งคงค่าเดิม หากส่ง logo ไฟล์เก่าจะถูกลบหลัง commit) บันทึก audit sponsor.update พร้อม old→new และ logoReplaced ใน transaction เดียวกัน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64", "minimum": 1 } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "url": { "type": "string", "maxLength": 500 },
+                  "showName": { "type": "string", "enum": ["true", "false"] },
+                  "logo": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "แก้ไขสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSponsor" } } }
+          },
+          "400": { "description": "ข้อมูลหรือไฟล์ไม่ถูกต้อง (VALIDATION_ERROR / INVALID_IMAGE_DIMENSIONS)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบผู้สนับสนุน (code NOT_FOUND)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "413": { "description": "ไฟล์หรือ request body เกิน 2 MB (code PAYLOAD_TOO_LARGE)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Delete Sponsor",
+        "description": "ลบผู้สนับสนุนพร้อมบันทึก audit sponsor.delete ใน transaction เดียวกัน และลบไฟล์โลโก้หลัง commit สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64", "minimum": 1 } }
+        ],
+        "responses": {
+          "204": { "description": "ลบสำเร็จ" },
+          "400": { "description": "รหัสไม่ถูกต้อง (code VALIDATION_ERROR)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบผู้สนับสนุน (code NOT_FOUND)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -980,7 +1167,8 @@
             "enum": ["PENDING", "PASSED", "RESERVE", "CONFIRMED", "REJECTED", "REFUND_PENDING", "REFUNDED", "FORFEITED"],
             "example": "PASSED"
           },
-          "reason": { "type": "string", "example": "คะแนนคัดกรองผ่านเกณฑ์" }
+          "reason": { "type": "string", "example": "คะแนนคัดกรองผ่านเกณฑ์" },
+          "overCapacity": { "type": "boolean", "description": "true = รับกลับเกินโควตา (ข้ามการตรวจที่นั่งเต็ม) ใช้ได้เฉพาะการคืนใบสมัครที่ไม่ถือที่นั่งกลับเป็นสถานะที่ถือที่นั่ง ต้องระบุ reason (ไม่ระบุ → 400 VALIDATION_ERROR) และบันทึก audit พร้อม overCapacity/currentCount/maxCapacity", "example": false }
         }
       },
       "VerifySlipRequest": {
@@ -1061,6 +1249,59 @@
         "required": ["applicants"],
         "properties": {
           "applicants": { "type": "array", "items": { "$ref": "#/components/schemas/PublicApplicant" } }
+        }
+      },
+      "PublicSponsor": {
+        "type": "object",
+        "description": "ข้อมูลผู้สนับสนุนสำหรับหน้าสาธารณะ มีเฉพาะ id, name, url, showName และ logoUrl เท่านั้น",
+        "additionalProperties": false,
+        "required": ["id", "name", "url", "showName", "logoUrl"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 1 },
+          "name": { "type": "string", "maxLength": 120, "example": "Acme Tech" },
+          "url": { "type": "string", "maxLength": 500, "example": "https://acme.example.com" },
+          "showName": { "type": "boolean", "example": true },
+          "logoUrl": { "type": "string", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" }
+        }
+      },
+      "PublicSponsorsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sponsors"],
+        "properties": {
+          "sponsors": { "type": "array", "items": { "$ref": "#/components/schemas/PublicSponsor" } }
+        }
+      },
+      "AdminSponsor": {
+        "type": "object",
+        "required": ["id", "name", "url", "showName", "logoUrl", "sortOrder", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 1 },
+          "name": { "type": "string", "maxLength": 120, "example": "Acme Tech" },
+          "url": { "type": "string", "maxLength": 500, "example": "https://acme.example.com" },
+          "showName": { "type": "boolean", "example": true },
+          "logoUrl": { "type": "string", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" },
+          "sortOrder": { "type": "integer", "example": 0 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AdminSponsorsResponse": {
+        "type": "object",
+        "required": ["sponsors"],
+        "properties": {
+          "sponsors": { "type": "array", "items": { "$ref": "#/components/schemas/AdminSponsor" } }
+        }
+      },
+      "ReorderSponsorsRequest": {
+        "type": "object",
+        "required": ["ids"],
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": { "type": "integer", "format": "int64", "minimum": 1 },
+            "description": "รายการรหัสผู้สนับสนุนตามลำดับใหม่ ต้องครบทุกตัวและไม่ซ้ำ"
+          }
         }
       }
     }
