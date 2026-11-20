@@ -6,7 +6,8 @@
  * fallback. public/theme/main.js receives them through window.__CC25_DEFAULTS__ (HomePage.astro).
  */
 export const REGISTRATION_OPEN_AT = '2026-11-19T09:00:00+07:00';
-export const REGISTRATION_CLOSE_AT = '2026-12-18T23:59:59+07:00';
+// Owner extended the close date in /admin on 2026-11-20 (was 18 ธ.ค. 23:59:59).
+export const REGISTRATION_CLOSE_AT = '2026-12-19T23:59:00+07:00';
 export const MAX_CAPACITY = 40;
 export const CAMP_FEE = 1200;
 /** "1,200" — fallback text until the live campFee arrives. */
@@ -62,7 +63,7 @@ export function formatThaiDateShort(at: string | number): string {
   return `${p.day} ${THAI_MONTHS_SHORT[p.month - 1]} ${pad2(p.beYear % 100)}`;
 }
 
-/** "18 ธ.ค. 2569" */
+/** "19 ธ.ค. 2569" */
 export function formatThaiDateFull(at: string | number): string {
   const p = bangkokParts(at);
   return `${p.day} ${THAI_MONTHS_SHORT[p.month - 1]} ${p.beYear}`;
