@@ -190,7 +190,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f backend e
 
 - [ ] ตรวจเส้นทางหลัก **`/`**, `/register`, `/status`, `/admin` *(หมายเหตุ: เว็บใช้ **`/`** เป็นหน้าหลัก ไม่มีเส้นทาง `/home`)*
 - [ ] หน้า `/register` **ต้องไม่มีแถบ `[DEV MODE]`** และวิดเจ็ต Turnstile โหลดขึ้นปกติ (กรณีเปิดรับสมัครแล้ว)
-- [ ] แท็บ **Console** ไม่มี Error เรื่อง `Content-Security-Policy` (ฟอนต์, โมเดล 3D `/draco/gltf/`, Turnstile และรูปแกลเลอรีทำงานครบ; GSAP bundle มากับเว็บแล้ว ไม่โหลดจาก CDN) *(ถ้าเปิด Cloudflare Web Analytics ไว้ จะเห็น Error ว่าบล็อก `static.cloudflareinsights.com` — ปิด Web Analytics ใน Cloudflare หรือเพิ่มโดเมนนี้ใน CSP)*
+- [ ] แท็บ **Console** ไม่มี Error เรื่อง `Content-Security-Policy` (ฟอนต์, โมเดล 3D `/draco/gltf/`, Turnstile, รูปแกลเลอรี และ Cloudflare Web Analytics ที่ Cloudflare ฝังให้เอง (`static.cloudflareinsights.com` อนุญาตใน CSP แล้ว) ทำงานครบ; GSAP bundle มากับเว็บแล้ว ไม่โหลดจาก CDN)
 - [ ] แท็บ **Network** หน้า `/register`, `/status`, `/admin`, `/applicants`, `/guide` และ `/api/*` มี Header `Cache-Control: no-store` ส่วนไฟล์ใน `/_astro/*` มี `Cache-Control: public, max-age=31536000, immutable`
 - [ ] ทดสอบเปิด `/swagger`, `/docs`, `/api/swagger`, `/api/docs` ต้องคืน `404 Not Found`
 - [ ] ทดสอบล็อกอิน `/admin` ด้วยบัญชีที่สร้างจาก `create-admin` สำเร็จ
