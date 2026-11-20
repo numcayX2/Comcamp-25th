@@ -188,6 +188,9 @@ type ApplicantService struct {
 	pauseLogged atomic.Int64
 	// publicList caches GET /api/applications/public (see public_applicants.go).
 	publicList publicListCache
+	// removeSlipFile deletes a stored slip image by its slip_url (PaymentService.RemoveSlipFile,
+	// set with WithSlipFileRemover). Nil leaves purged slips' files on disk.
+	removeSlipFile func(slipURL string)
 }
 
 const (
@@ -254,6 +257,13 @@ func (s *ApplicantService) WithOnSeatChange(fn func()) *ApplicantService {
 // WithMailer configures the asynchronous transactional mailer and returns the service.
 func (s *ApplicantService) WithMailer(m EmailNotifier) *ApplicantService {
 	s.mailer = m
+	return s
+}
+
+// WithSlipFileRemover sets how PurgeWithdrawn deletes the slip images of the rows it removes and
+// returns the service.
+func (s *ApplicantService) WithSlipFileRemover(fn func(slipURL string)) *ApplicantService {
+	s.removeSlipFile = fn
 	return s
 }
 
@@ -1088,6 +1098,33 @@ func (s *ApplicantService) ListWithdrawn(ctx context.Context) ([]WithdrawnEntry,
 		})
 	}
 	return out, nil
+}
+
+// PurgeWithdrawn permanently deletes an application its applicant withdrew (staff clearing test or
+// duplicate sign-ups from the withdrawn list), with its payments, status history and slip files.
+// Only self-withdrawn rows qualify: a live application must be withdrawn or deleted first, and a
+// staff-deleted row is not offered. Seats are unaffected (a withdrawn row holds none). The audit
+// entry names only the code: the personal data it would repeat is what is being erased.
+func (s *ApplicantService) PurgeWithdrawn(ctx context.Context, applicationNo string, adminID int64, ip string) error {
+	code := normalizeAppNo(applicationNo)
+	audit := &domain.AuditEntry{
+		AdminID:    &adminID,
+		Action:     domain.AuditApplicantPurge,
+		TargetType: domain.AuditTargetApplicant,
+		TargetID:   code,
+		Details:    map[string]any{"deletedReason": domain.DeletedReasonSelfWithdrawn},
+		IPAddress:  ip,
+	}
+	slipURLs, err := s.appRepo.PurgeWithdrawn(ctx, code, audit)
+	if err != nil {
+		return notFoundOr(err)
+	}
+	if s.removeSlipFile != nil {
+		for _, u := range slipURLs {
+			s.removeSlipFile(u)
+		}
+	}
+	return nil
 }
 
 // AdminProfileRequest is the staff edit. A nil field keeps its stored value, so a client may send

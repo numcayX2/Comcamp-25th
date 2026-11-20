@@ -439,7 +439,7 @@
       "get": {
         "tags": ["Admin Management"],
         "summary": "Admin List Self-Withdrawn Applications",
-        "description": "รายการใบสมัครที่ผู้สมัครยกเลิกเอง (POST /applications/{id}/withdraw, deleted_reason SELF_WITHDRAWN) ล่าสุดก่อน อ่านอย่างเดียว ไม่รวมใบสมัครที่พี่ค่ายลบ สิทธิ์: admin",
+        "description": "รายการใบสมัครที่ผู้สมัครยกเลิกเอง (POST /applications/{id}/withdraw, deleted_reason SELF_WITHDRAWN) ล่าสุดก่อน ไม่รวมใบสมัครที่พี่ค่ายลบ ลบถาวรได้ด้วย DELETE /admin/applications/withdrawn/{id} สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "responses": {
           "200": {
@@ -448,6 +448,26 @@
           },
           "401": { "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/admin/applications/withdrawn/{id}": {
+      "delete": {
+        "tags": ["Admin Management"],
+        "summary": "Admin Permanently Delete a Self-Withdrawn Application",
+        "description": "ลบใบสมัครที่ผู้สมัครยกเลิกเองออกจากฐานข้อมูลถาวร (แถวผู้สมัคร การชำระเงิน ประวัติสถานะ และไฟล์สลิป) ใช้ล้างใบสมัครทดลองหรือซ้ำ กู้คืนไม่ได้ ไม่กระทบที่นั่ง (ใบสมัครที่ยกเลิกแล้วไม่ถือที่นั่ง) บันทึก audit application.purge โดยไม่เก็บข้อมูลส่วนบุคคล ใบสมัครที่ยังใช้งานหรือพี่ค่ายลบตอบ 404 สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "example": "CC25-8A4B2C" }
+        ],
+        "responses": {
+          "200": {
+            "description": "ลบถาวรสำเร็จ",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "id": { "type": "string" } } }, "example": { "message": "purged successfully", "id": "CC25-8A4B2C" } } }
+          },
+          "401": { "description": "ไม่มีสิทธิ์เข้าถึง (ไม่ได้แนบ Token หรือ Token หมดอายุ)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN) สิทธิ์: admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "ไม่พบใบสมัครที่ยกเลิกเองด้วยรหัสนี้ (code NOT_FOUND)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
     },

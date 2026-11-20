@@ -119,19 +119,21 @@ func main() {
 		From:        cfg.SMTPFrom,
 		FrontendURL: cfg.FrontendURL,
 	}, auditRepo)
+	paymentSvc := service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
+		WithCodeGuard(codeGuard).
+		WithMailer(mailer).
+		// A slip verdict moves PASSED <-> CONFIRMED, which the public applicants list shows.
+		WithOnStatusChange(applicantSvc.InvalidatePublicList)
 	applicantSvc.WithCodeGuard(codeGuard).
 		WithAudit(auditRepo).
 		WithOnSeatChange(settingSvc.InvalidatePublicCache).
-		WithMailer(mailer)
+		WithMailer(mailer).
+		WithSlipFileRemover(paymentSvc.RemoveSlipFile)
 	services := server.Services{
 		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant: applicantSvc,
 		Setting:   settingSvc,
-		Payment: service.NewPaymentService(paymentRepo, appRepo, settingRepo, auditRepo, cfg.UploadDir).
-			WithCodeGuard(codeGuard).
-			WithMailer(mailer).
-			// A slip verdict moves PASSED <-> CONFIRMED, which the public applicants list shows.
-			WithOnStatusChange(applicantSvc.InvalidatePublicList),
+		Payment:   paymentSvc,
 	}
 
 	// 3. Router (all security middleware lives in internal/server)

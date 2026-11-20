@@ -273,3 +273,22 @@ func (h *ApplicantHandler) AdminDelete(w http.ResponseWriter, r *http.Request) {
 
 	response.OK(w, map[string]string{"message": "deleted successfully"})
 }
+
+// AdminPurgeWithdrawn answers DELETE /api/admin/applications/withdrawn/{id}: permanently deletes a
+// self-withdrawn application (404 for any other row).
+func (h *ApplicantHandler) AdminPurgeWithdrawn(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "application id is required")
+		return
+	}
+	var adminID int64
+	if claims := middleware.GetAdminClaims(r.Context()); claims != nil {
+		adminID = claims.AdminID
+	}
+	if err := h.appService.PurgeWithdrawn(r.Context(), id, adminID, middleware.RemoteIP(r)); err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	response.OK(w, map[string]string{"message": "purged successfully", "id": id})
+}

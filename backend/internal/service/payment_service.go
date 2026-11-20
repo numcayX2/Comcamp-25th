@@ -268,13 +268,19 @@ func slipFileName(slipURL string) (string, bool) {
 
 // removeSlipFile deletes the image of a payment row that no longer exists.
 func (s *PaymentService) removeSlipFile(p *domain.Payment) {
-	name, ok := slipFileName(p.SlipURL)
+	s.RemoveSlipFile(p.SlipURL)
+}
+
+// RemoveSlipFile deletes the stored image named by a slip_url whose payment row is gone. A missing
+// file is not an error; other failures are logged (the row is already deleted, nothing to undo).
+func (s *PaymentService) RemoveSlipFile(slipURL string) {
+	name, ok := slipFileName(slipURL)
 	if !ok {
-		log.Printf("superseded slip %s: unusable slip_url, file not removed", p.ID)
+		log.Printf("slip file: unusable slip_url %q, file not removed", slipURL)
 		return
 	}
 	if err := os.Remove(filepath.Join(s.slipDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Printf("superseded slip %s: cannot remove %s: %v", p.ID, name, err)
+		log.Printf("slip file: cannot remove %s: %v", name, err)
 	}
 }
 

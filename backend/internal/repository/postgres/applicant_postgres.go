@@ -644,6 +644,72 @@ func (r *ApplicantPostgresRepo) ListWithdrawn(ctx context.Context) ([]domain.Wit
 	return list, rows.Err()
 }
 
+// PurgeWithdrawn deletes a SELF_WITHDRAWN application for good. Payments and status logs go with it
+// (ON DELETE CASCADE in migration 000001); the payments are deleted explicitly first so their
+// slip_url can be returned for the file cleanup. Lock order matches the staff SoftDelete: the slip
+// advisory lock, then the payment rows, then the applicant row, so it queues behind a concurrent
+// Verify instead of deadlocking with it.
+func (r *ApplicantPostgresRepo) PurgeWithdrawn(ctx context.Context, applicationNo string, audit *domain.AuditEntry) ([]string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var id uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM applicants WHERE application_no = $1 AND deleted_at IS NOT NULL AND deleted_reason = 'SELF_WITHDRAWN'`, applicationNo).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find withdrawn applicant: %w", err)
+	}
+	if err := lockApplicantSlips(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT id FROM payments WHERE applicant_id = $1 ORDER BY id FOR UPDATE`, id); err != nil {
+		return nil, fmt.Errorf("lock slips: %w", err)
+	}
+	// Re-check under the row lock: nothing may have changed the row since the unlocked read.
+	err = tx.QueryRow(ctx, `SELECT id FROM applicants WHERE id = $1 AND deleted_at IS NOT NULL AND deleted_reason = 'SELF_WITHDRAWN' FOR UPDATE`, id).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock applicant: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `DELETE FROM payments WHERE applicant_id = $1 RETURNING slip_url`, id)
+	if err != nil {
+		return nil, fmt.Errorf("delete payments: %w", err)
+	}
+	slipURLs := []string{}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan deleted payment: %w", err)
+		}
+		slipURLs = append(slipURLs, u)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("delete payments: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM applicants WHERE id = $1`, id); err != nil {
+		return nil, fmt.Errorf("delete applicant: %w", err)
+	}
+	if audit != nil {
+		if err := insertAudit(ctx, tx, withAuditDetail(audit, "slipFiles", len(slipURLs))); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return slipURLs, nil
+}
+
 const applicantColumns = `
 	id, application_no, prefix, first_name, last_name, nickname,
 	birth_date, gender, school, grade, phone, email, line_id,

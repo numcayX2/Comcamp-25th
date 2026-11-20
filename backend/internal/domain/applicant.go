@@ -213,6 +213,11 @@ type ApplicantRepository interface {
 	// ListWithdrawn returns the applications their applicants withdrew (deleted_reason
 	// SELF_WITHDRAWN), most recent first.
 	ListWithdrawn(ctx context.Context) ([]WithdrawnApplicant, error)
+	// PurgeWithdrawn permanently deletes a self-withdrawn application (deleted_reason SELF_WITHDRAWN)
+	// together with its payment rows and status history, writing the audit entry in the same
+	// transaction, and returns the slip_url of every deleted payment so the caller can remove the
+	// files. A live or staff-deleted application is ErrNotFound and is left untouched.
+	PurgeWithdrawn(ctx context.Context, applicationNo string, audit *AuditEntry) ([]string, error)
 	CountActive(ctx context.Context) (int, error)
 	// ListPublic returns the public-list projection of every live (non-deleted) application whose
 	// status is PASSED or CONFIRMED, oldest first (created_at ascending, id as tiebreak).

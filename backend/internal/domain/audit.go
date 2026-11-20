@@ -21,6 +21,9 @@ const (
 	AuditEmailConfirmedFailed    AuditAction = "application.email.confirmed.failed"
 	// AuditApplicantWithdrawSelf is the applicant withdrawing their own application (no admin).
 	AuditApplicantWithdrawSelf AuditAction = "application.withdraw.self"
+	// AuditApplicantPurge is staff permanently deleting a self-withdrawn application (test or
+	// duplicate sign-ups). Details carry no personal data: the row they described is gone.
+	AuditApplicantPurge AuditAction = "application.purge"
 	// AuditProfileUpdate is a staff edit of an application; AuditProfileUpdateSelf is the
 	// applicant editing their own secondary fields (no admin).
 	AuditProfileUpdate     AuditAction = "application.profile.update"

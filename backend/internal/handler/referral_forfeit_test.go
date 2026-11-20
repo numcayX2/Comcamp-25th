@@ -174,3 +174,52 @@ func TestWithdrawn_AdminList(t *testing.T) {
 		t.Fatalf("expected status at withdrawal and a timestamp, got %+v", list[0])
 	}
 }
+
+// DELETE /api/admin/applications/withdrawn/{id} erases a self-withdrawal for good; live and
+// staff-deleted applications are refused with 404 and stay as they are.
+func TestWithdrawn_AdminPurge(t *testing.T) {
+	app := setupTestApp(t)
+	token := app.login(t)
+
+	self := app.submit(t, "0810000311", "p1@example.com")
+	live := app.submit(t, "0810000312", "p2@example.com")
+	deleted := app.submit(t, "0810000313", "p3@example.com")
+	if res := app.withdraw(t, self.ID); res.StatusCode != http.StatusOK {
+		t.Fatalf("withdraw: %d", res.StatusCode)
+	}
+	if rec := app.do(t, http.MethodDelete, "/api/admin/applications/"+deleted.ID, nil, bearer(token)); rec.Code != http.StatusOK {
+		t.Fatalf("admin delete: %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	if rec := app.do(t, http.MethodDelete, "/api/admin/applications/withdrawn/"+self.ID, nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous purge: expected 401, got %d", rec.Code)
+	}
+	for _, id := range []string{live.ID, deleted.ID} {
+		if rec := app.do(t, http.MethodDelete, "/api/admin/applications/withdrawn/"+id, nil, bearer(token)); rec.Code != http.StatusNotFound {
+			t.Fatalf("purge %s: expected 404, got %d (%s)", id, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := app.do(t, http.MethodDelete, "/api/admin/applications/withdrawn/"+self.ID, nil, bearer(token)); rec.Code != http.StatusOK {
+		t.Fatalf("purge: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := app.do(t, http.MethodDelete, "/api/admin/applications/withdrawn/"+self.ID, nil, bearer(token)); rec.Code != http.StatusNotFound {
+		t.Fatalf("second purge: expected 404, got %d", rec.Code)
+	}
+
+	rec := app.do(t, http.MethodGet, "/api/admin/applications/withdrawn", nil, bearer(token))
+	var list []service.WithdrawnEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected the withdrawn list to be empty after the purge, got %+v", list)
+	}
+	rec = app.do(t, http.MethodGet, "/api/admin/applications", nil, bearer(token))
+	var apps []service.ApplicationResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &apps); err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0].ID != live.ID {
+		t.Fatalf("expected only the live application to remain, got %d rows", len(apps))
+	}
+}

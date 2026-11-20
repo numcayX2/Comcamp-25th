@@ -1127,6 +1127,21 @@ export async function deleteApplication(
   return { data, source: 'LIVE GO API' };
 }
 
+/**
+ * DELETE /admin/applications/withdrawn/:id — permanently deletes a self-withdrawn application
+ * (row, payments, status history, slip files). Irreversible; 404 for any other application.
+ */
+export async function purgeWithdrawnApplication(
+  token: string,
+  id: string,
+): Promise<ApiResult<{ message: string; id: string }>> {
+  const data = await fetchJson<{ message: string; id: string }>(
+    `/admin/applications/withdrawn/${encodeURIComponent(id)}`,
+    { method: 'DELETE', headers: authHeader(token) },
+  );
+  return { data, source: 'LIVE GO API' };
+}
+
 /* ── Public applicants list (/applicants) ─────────────────────────────────── */
 
 /** Public status labels (Thai), exactly as the server sends them. */

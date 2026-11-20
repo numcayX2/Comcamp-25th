@@ -518,6 +518,58 @@ func (m *MemoryApplicantRepo) ListWithdrawn(ctx context.Context) ([]domain.Withd
 	return list, nil
 }
 
+// PurgeWithdrawn mirrors Postgres: only a SELF_WITHDRAWN row is removed, together with its payments
+// and status logs, and the deleted payments' slip_url values are returned.
+func (m *MemoryApplicantRepo) PurgeWithdrawn(ctx context.Context, applicationNo string, audit *domain.AuditEntry) ([]string, error) {
+	if err := checkAuditDetails(audit); err != nil {
+		return nil, err
+	}
+	if p := m.payments; p != nil {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var target *domain.Applicant
+	for _, a := range m.data {
+		if a.ApplicationNo == applicationNo {
+			target = a
+			break
+		}
+	}
+	if target == nil || target.DeletedAt == nil || target.DeletedReason != domain.DeletedReasonSelfWithdrawn {
+		return nil, domain.ErrNotFound
+	}
+
+	slipURLs := []string{}
+	if p := m.payments; p != nil {
+		for pid, pay := range p.data {
+			if pay.ApplicantID != target.ID {
+				continue
+			}
+			slipURLs = append(slipURLs, pay.SlipURL)
+			if pay.TransRef != nil {
+				delete(p.transRefs, *pay.TransRef)
+			}
+			delete(p.data, pid)
+		}
+	}
+	logs := m.logs[:0]
+	for _, l := range m.logs {
+		if l.ApplicantID != target.ID {
+			logs = append(logs, l)
+		}
+	}
+	m.logs = logs
+	delete(m.data, target.ID)
+
+	if audit != nil {
+		return slipURLs, m.audit.Log(ctx, withDetail(audit, "slipFiles", len(slipURLs)))
+	}
+	return slipURLs, nil
+}
+
 func withDetail(e *domain.AuditEntry, key string, value any) *domain.AuditEntry {
 	clone := *e
 	clone.Details = make(map[string]any, len(e.Details)+1)

@@ -22,6 +22,7 @@ import {
   adminLogin,
   adminPermissions,
   deleteApplication,
+  purgeWithdrawnApplication,
   fetchAdminSlipInfo,
   fetchWithdrawnApplicants,
   hasSlip,
@@ -51,9 +52,11 @@ import {
   matchesWithdrawnQuery,
   slipLabel,
   summarizeReferrals,
+  summarizeShirtSizes,
 } from '../lib/applicant-tools';
 import {
   PAYMENT_WINDOW_DAYS,
+  SHIRT_SIZES,
   describeStaffPaymentDeadline,
   type PaymentDeadlineInfo,
 } from './register/model';
@@ -258,7 +261,7 @@ const ROW_GRID =
 
 /** Column template shared by the sticky header and rows of the read-only withdrawn tab (lg and up). */
 const WITHDRAWN_GRID =
-  'lg:grid-cols-[7.5rem_minmax(0,1.2fr)_6.75rem_minmax(0,1.15fr)_7.5rem_7.5rem_7.5rem_minmax(0,1.1fr)]';
+  'lg:grid-cols-[7.5rem_minmax(0,1.2fr)_6.75rem_minmax(0,1.15fr)_7.5rem_7.5rem_7.5rem_minmax(0,1.1fr)_7rem]';
 
 /**
  * Seat-releasing changes, leaving CONFIRMED, and confirming without a slip review get a warning
@@ -442,6 +445,9 @@ export function AdminSection() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ appId: string; step: 1 | 2 | 3 } | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
+  /** Withdrawn tab: the row whose permanent-delete confirmation is open, and the row being purged. */
+  const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null);
+  const [purgingId, setPurgingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -499,6 +505,7 @@ export function AdminSection() {
   const verifyingBusyRef = useRef(false);
   const deletingRef = useRef<string | null>(null);
   const exportBusyRef = useRef(false);
+  const purgingRef = useRef<string | null>(null);
 
   const inspectingApp = inspectingId ? apps.find((a) => a.id === inspectingId) ?? null : null;
   const verifying = verifyingAction !== null;
@@ -921,6 +928,43 @@ export function AdminSection() {
       deletingRef.current = null;
       setDeletingId(null);
     }
+  }
+
+  /** Moves focus after a withdrawn row is purged: the next row's button, else the active tab pill. */
+  function focusAfterPurge(nextId: string | null) {
+    window.requestAnimationFrame(() => {
+      const next = nextId ? document.getElementById(`purge-btn-${nextId}`) : null;
+      const target =
+        next ?? filterGroupRef.current?.querySelector<HTMLElement>('button[aria-pressed="true"]') ?? null;
+      target?.focus();
+    });
+  }
+
+  async function handlePurgeWithdrawn(w: WithdrawnApplicant, nextId: string | null) {
+    if (!token || purgingRef.current) return;
+    purgingRef.current = w.id;
+    setPurgingId(w.id);
+    setError(null);
+    setActionSuccess(null);
+    try {
+      await purgeWithdrawnApplication(token, w.id);
+      setWithdrawnApps((prev) => prev.filter((x) => x.id !== w.id));
+      setPurgeConfirmId(null);
+      setActionSuccess(`ลบใบสมัคร ${w.id} (${w.fullName}) ออกจากระบบถาวรแล้ว`);
+      focusAfterPurge(nextId);
+    } catch (err) {
+      if (handleAuthError(err)) return;
+      setError(describeAdminError(err, 'ลบใบสมัครถาวรไม่สำเร็จ'));
+    } finally {
+      purgingRef.current = null;
+      setPurgingId(null);
+    }
+  }
+
+  function cancelPurge(id: string) {
+    if (purgingRef.current === id) return;
+    setPurgeConfirmId(null);
+    window.requestAnimationFrame(() => document.getElementById(`purge-btn-${id}`)?.focus());
   }
 
   /** Minimum gap between delete steps, so a double or triple click cannot run all three confirmations. */
@@ -1350,6 +1394,7 @@ export function AdminSection() {
     ? `พบ ${activeVisibleCount} จาก ${activeTotal} รายการ`
     : `${activeTotal} รายการ`;
   const referralSummary = summarizeReferrals(apps);
+  const shirtSummary = summarizeShirtSizes(apps, SHIRT_SIZES);
 
   const inputCls = `${INPUT_BASE} rounded-xl`;
   const pillGhost = PILL_GHOST;
@@ -1685,6 +1730,129 @@ export function AdminSection() {
             </details>
           )}
 
+          {/* ── Shirt sizes of seat holders (hidden on withdrawn tab) ── */}
+          {!isWithdrawnTab && (
+            <details className="group/shirt mt-2">
+              <summary
+                className={`inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] [&::-webkit-details-marker]:hidden ${FOCUS}`}
+                style={{ borderColor: RULE, color: INK }}
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  size={16}
+                  strokeWidth={1.5}
+                  className="shrink-0 transition-transform group-open/shirt:rotate-180 motion-reduce:transition-none"
+                />
+                <span>สรุปไซส์เสื้อ</span>
+                <span className="text-xs font-normal" style={{ color: INK_3 }}>
+                  <span className="font-mono tabular-nums">{shirtSummary.total}</span> ตัว
+                </span>
+              </summary>
+              <div className="mt-3 border-y py-3" style={{ borderColor: RULE }}>
+                <p className="text-sm leading-7" style={{ color: INK_2 }}>
+                  นับเฉพาะผู้ที่ถือที่นั่งอยู่ (ยืนยันสิทธิ์แล้ว และรอชำระเงิน) ไม่รวมผู้ที่หมดสิทธิ์ ไม่ผ่าน คืนเงิน หรือยกเลิก
+                </p>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[20rem] max-w-xl text-sm">
+                    <caption className="sr-only">จำนวนเสื้อแยกตามไซส์และสถานะ</caption>
+                    <thead>
+                      <tr className="border-b text-left text-xs" style={{ borderColor: RULE, color: INK_3 }}>
+                        <th scope="col" className="py-2 pr-4 font-semibold">ไซส์</th>
+                        <th scope="col" className="py-2 pr-4 text-right font-semibold">ยืนยันแล้ว</th>
+                        <th scope="col" className="py-2 pr-4 text-right font-semibold">รอชำระ</th>
+                        <th scope="col" className="py-2 text-right font-semibold">รวม</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shirtSummary.rows.map((r) => (
+                        <tr key={r.size} className="border-b" style={{ borderColor: RULE }}>
+                          <th scope="row" className="py-2 pr-4 text-left font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                            {r.size}
+                          </th>
+                          <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.confirmed ? INK : INK_3 }}>
+                            {r.confirmed}
+                          </td>
+                          <td className="py-2 pr-4 text-right font-mono tabular-nums" style={{ color: r.awaiting ? INK : INK_3 }}>
+                            {r.awaiting}
+                          </td>
+                          <td className="py-2 text-right font-mono font-semibold tabular-nums" style={{ color: r.total ? INK : INK_3 }}>
+                            {r.total}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th scope="row" className="py-2 pr-4 text-left font-semibold" style={{ color: INK }}>
+                          รวม
+                        </th>
+                        <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                          {shirtSummary.confirmed}
+                        </td>
+                        <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                          {shirtSummary.awaiting}
+                        </td>
+                        <td className="py-2 text-right font-mono font-semibold tabular-nums" style={{ color: INK }}>
+                          {shirtSummary.total}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {shirtSummary.total > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold leading-6" style={{ color: INK_3 }}>
+                      รายชื่อตามไซส์
+                    </p>
+                    <ul className="mt-1">
+                      {shirtSummary.rows
+                        .filter((r) => r.total > 0)
+                        .map((r) => (
+                          <li key={r.size} className="border-t first:border-t-0" style={{ borderColor: RULE }}>
+                            <details className="group/size">
+                              <summary
+                                className={`flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl py-2 text-sm [&::-webkit-details-marker]:hidden ${FOCUS}`}
+                                style={{ color: INK }}
+                              >
+                                <ChevronDown
+                                  aria-hidden="true"
+                                  size={14}
+                                  strokeWidth={1.5}
+                                  className="shrink-0 transition-transform group-open/size:rotate-180 motion-reduce:transition-none"
+                                />
+                                <span>
+                                  ไซส์ <span className="font-mono font-semibold tabular-nums">{r.size}</span>
+                                </span>
+                                <span className="text-xs" style={{ color: INK_3 }}>
+                                  <span className="font-mono tabular-nums">{r.total}</span> คน
+                                </span>
+                              </summary>
+                              <ol className="mb-2 space-y-1 pl-6">
+                                {r.people.map((p) => (
+                                  <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 text-sm leading-6" style={{ color: INK_2 }}>
+                                    <span style={{ color: INK }}>
+                                      {p.fullName}
+                                      {p.nickname ? ` (${p.nickname})` : ''}
+                                    </span>
+                                    <span className="font-mono text-xs tabular-nums" style={{ color: INK_3 }}>
+                                      {p.id}
+                                    </span>
+                                    <span className="text-xs" style={{ color: p.confirmed ? SUCCESS : INK_3 }}>
+                                      {p.confirmed ? 'ยืนยันแล้ว' : 'รอชำระ'}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </details>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+
           {/* ── Ledger ───────────────────────────────────────────── */}
           <section className="mt-6" aria-busy={isWithdrawnTab ? withdrawnLoading : busy}>
             {/* Queue chips, search and the column header stay in reach while scrolling the list (md and up). */}
@@ -1862,6 +2030,7 @@ export function AdminSection() {
                   <span>สมัครเมื่อ</span>
                   <span>ยกเลิกเมื่อ</span>
                   <span>เหตุผล</span>
+                  <span className="sr-only">จัดการ</span>
                 </div>
               )}
             </div>
@@ -2850,7 +3019,11 @@ export function AdminSection() {
                 style={{ borderColor: RULE, backgroundColor: BG_CARD }}
               >
                 <ul>
-                  {visibleWithdrawn.map((w) => (
+                  {visibleWithdrawn.map((w, i) => {
+                    const confirming = purgeConfirmId === w.id;
+                    const purging = purgingId === w.id;
+                    const nextId = visibleWithdrawn[i + 1]?.id ?? visibleWithdrawn[i - 1]?.id ?? null;
+                    return (
                     <li key={`${w.id}-${w.withdrawnAt}`} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
                       <div className={`flex flex-col gap-2 px-5 py-3.5 lg:grid lg:items-center lg:gap-3 xl:gap-4 ${WITHDRAWN_GRID}`}>
                         {/* Col 1: Code */}
@@ -2927,9 +3100,87 @@ export function AdminSection() {
                           <span className="font-semibold lg:hidden">เหตุผล: </span>
                           {w.reason?.trim() ? w.reason.trim() : '— ไม่ได้ระบุ —'}
                         </p>
+
+                        {/* Col 9: Permanent delete (opens the confirmation strip below the row) */}
+                        {can.deleteApplication && (
+                          <div className="lg:justify-self-end">
+                            <button
+                              id={`purge-btn-${w.id}`}
+                              type="button"
+                              disabled={purging}
+                              aria-expanded={confirming}
+                              aria-controls={confirming ? `purge-strip-${w.id}` : undefined}
+                              aria-label={`ลบใบสมัคร ${w.id} (${w.fullName}) ถาวร`}
+                              onClick={() => (confirming ? cancelPurge(w.id) : setPurgeConfirmId(w.id))}
+                              className={`max-w-full text-left ${PILL_DANGER}`}
+                              style={{
+                                borderColor: DANGER,
+                                color: DANGER,
+                                backgroundColor: confirming
+                                  ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
+                                  : undefined,
+                              }}
+                            >
+                              <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+                              <span>ลบถาวร</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Permanent delete confirmation: one explicit confirm, separated by a danger hairline. */}
+                      {can.deleteApplication && confirming && (
+                        <div
+                          id={`purge-strip-${w.id}`}
+                          role="region"
+                          aria-label={`ยืนยันการลบถาวร ${w.id}`}
+                          className="border-t px-5 py-4"
+                          style={{ borderColor: DANGER }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelPurge(w.id);
+                            }
+                          }}
+                        >
+                          <p className="text-sm font-semibold leading-7" style={{ color: DANGER }}>
+                            ลบใบสมัคร <span className="font-mono tabular-nums">{w.id}</span> ({w.fullName}) ออกจากระบบถาวร?
+                          </p>
+                          <p className="mt-0.5 text-sm leading-7" style={{ color: INK_2 }}>
+                            ข้อมูลผู้สมัคร ประวัติสถานะ และสลิป (ถ้ามี) จะถูกลบทั้งหมดและกู้คืนไม่ได้ ใช้กับใบสมัครทดลองหรือใบสมัครซ้ำเท่านั้น
+                            หากผู้สมัครตัวจริงอาจเปลี่ยนใจกลับมา ให้เก็บรายการนี้ไว้
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={purging}
+                              aria-busy={purging || undefined}
+                              onClick={() => void handlePurgeWithdrawn(w, nextId)}
+                              className={`${PILL_DANGER} disabled:opacity-60`}
+                              style={{
+                                borderColor: DANGER,
+                                color: DANGER,
+                                backgroundColor: 'color-mix(in srgb, var(--color-danger) 10%, transparent)',
+                              }}
+                            >
+                              <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+                              {purging ? 'กำลังลบ…' : 'ยืนยันลบถาวร'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={purging}
+                              onClick={() => cancelPurge(w.id)}
+                              className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                              style={{ color: INK_2 }}
+                            >
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
             )}

@@ -7,6 +7,7 @@ import {
   REFERRAL_GROUPS,
   REFERRAL_LABELS,
   hasSlip,
+  holdsSeat,
   sanitizeDigits,
   stripZeroWidth,
   type Application,
@@ -168,6 +169,60 @@ export function summarizeReferrals(apps: readonly Application[]): ReferralSummar
             }))
           : [],
     })),
+  };
+}
+
+/* ── Shirt sizes ──────────────────────────────────────────────────────── */
+
+export interface ShirtSizeRow {
+  size: string;
+  confirmed: number;
+  awaiting: number;
+  total: number;
+  /** Seat holders who picked this size, in application order (oldest first). */
+  people: { id: string; fullName: string; nickname: string; confirmed: boolean }[];
+}
+
+export interface ShirtSizeSummary {
+  rows: ShirtSizeRow[];
+  confirmed: number;
+  awaiting: number;
+  total: number;
+}
+
+/**
+ * Shirt orders of the applications that hold a seat (CONFIRMED, or still waiting for payment),
+ * one row per size in `order`; a stored size outside `order` (legacy rows) gets its own row after
+ * them. Released applications (rejected, refunded, forfeited, deleted) need no shirt.
+ */
+export function summarizeShirtSizes(apps: readonly Application[], order: readonly string[]): ShirtSizeSummary {
+  const bySize = new Map<string, ShirtSizeRow>();
+  for (const size of order) {
+    bySize.set(size, { size, confirmed: 0, awaiting: 0, total: 0, people: [] });
+  }
+  const seated = apps
+    .filter((a) => holdsSeat(a.status))
+    .slice()
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  for (const a of seated) {
+    const size = (a.shirtSize || '').trim() || '—';
+    let row = bySize.get(size);
+    if (!row) {
+      row = { size, confirmed: 0, awaiting: 0, total: 0, people: [] };
+      bySize.set(size, row);
+    }
+    const confirmed = a.status === 'CONFIRMED';
+    if (confirmed) row.confirmed += 1;
+    else row.awaiting += 1;
+    row.total += 1;
+    row.people.push({ id: a.id, fullName: a.fullName, nickname: a.nickname ?? '', confirmed });
+  }
+  const rows = [...bySize.values()];
+  return {
+    rows,
+    confirmed: rows.reduce((n, r) => n + r.confirmed, 0),
+    awaiting: rows.reduce((n, r) => n + r.awaiting, 0),
+    total: rows.reduce((n, r) => n + r.total, 0),
   };
 }
 

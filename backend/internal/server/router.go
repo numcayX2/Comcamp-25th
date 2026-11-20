@@ -145,6 +145,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 
 				admin.With(anyAdmin).Get("/admin/applications", appHandler.AdminList)
 				admin.With(anyAdmin).Get("/admin/applications/withdrawn", appHandler.AdminListWithdrawn)
+				admin.With(super).Delete("/admin/applications/withdrawn/{id}", appHandler.AdminPurgeWithdrawn)
 				admin.With(editors).Post("/admin/applications/export-audit", appHandler.AdminExportAudit)
 				admin.With(editors).Patch("/admin/applications/{id}", appHandler.AdminUpdateStatus)
 				admin.With(editors).Patch("/admin/applications/{id}/profile", appHandler.AdminUpdateProfile)
