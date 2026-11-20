@@ -1248,6 +1248,14 @@ const pageLinks = isAdmin ? [] : [
         opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
         translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     }
+    /* No-JS fallback: before the script binds the disclosure, hover or keyboard focus opens it. */
+    .nav-group:not([data-cc-group-bound="true"]):hover .nav-group__panel,
+    .nav-group:not([data-cc-group-bound="true"]):focus-within .nav-group__panel {
+      opacity: 1;
+      translate: 0 0;
+      visibility: visible;
+      pointer-events: auto;
+    }
     .nav-links .nav-group__panel a.nav-sec {
       min-height: 44px;
       padding: 8px 14px;
