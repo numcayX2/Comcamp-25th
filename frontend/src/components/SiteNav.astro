@@ -31,7 +31,7 @@ const navLinks = isAdmin ? [] : [
 
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหาหลัก</a>
 
-<header class:list={['site-nav', (isHome || active === 'home') && 'is-home']}>
+<header class:list={['site-nav', (isHome || active === 'home') && 'is-home', isAdmin && 'is-admin']}>
   <div class="wrap nav-inner">
     <!-- Brand Link -->
     <a
@@ -881,10 +881,14 @@ const navLinks = isAdmin ? [] : [
     border-color: rgba(255, 255, 255, 0.2);
     color: #C3C4C7;
   }
-  /* Narrow phones: logo-only brand so the action + menu button never get pushed off-screen.
+  /* Narrow phones: logo-only brand so the action + menu button never get pushed off-screen
+     (/admin also carries the Staff tag, so it needs the room up to 419px).
      The link keeps its aria-label ("ComCamp #25 · กลับขึ้นด้านบน"). */
   @media (max-width: 399px) {
     .site-nav.is-home .brand-word { display: none; }
+  }
+  @media (max-width: 419px) {
+    .site-nav.is-admin .brand-word { display: none; }
   }
 
   .theme-toggle-drawer {

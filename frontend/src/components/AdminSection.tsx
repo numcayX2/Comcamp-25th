@@ -1880,8 +1880,9 @@ export function AdminSection() {
                     const editing = editingId === a.id;
                     const pendingChange = pendingStatus?.appId === a.id ? pendingStatus : null;
                     const risky = pendingChange ? isRiskyTransition(pendingChange.from, pendingChange.to) : false;
+                    // Only FORFEITED → PASSED reopens a payment window; → CONFIRMED gets the skip-slip-review warning instead.
                     const restoringForfeited = pendingChange
-                      ? pendingChange.from === 'FORFEITED' && holdsSeat(pendingChange.to)
+                      ? pendingChange.from === 'FORFEITED' && pendingChange.to === 'PASSED'
                       : false;
                     const deleteStep = deleteConfirm?.appId === a.id ? deleteConfirm.step : 0;
                     // REJECTED / REFUND_PENDING / REFUNDED: the slip stays viewable but cannot be settled.
