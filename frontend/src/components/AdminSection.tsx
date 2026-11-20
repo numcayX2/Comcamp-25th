@@ -10,11 +10,9 @@ import {
   EyeOff,
   HeartHandshake,
   LayoutDashboard,
-  LogOut,
   Maximize2,
   Pencil,
   RotateCcw,
-  RotateCw,
   Search,
   Settings2,
   Shirt,
@@ -69,6 +67,8 @@ import { AdminSettingsPanel } from './AdminSettingsPanel';
 import { AdminSponsorsPanel } from './AdminSponsorsPanel';
 import { AdminOverview } from './admin/AdminOverview';
 import { AdminLogistics, isMeaningfulNote } from './admin/AdminLogistics';
+import { AdminSideMenu } from './admin/AdminSideMenu';
+import { AdminFilterTabs } from './admin/AdminFilterTabs';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
   BG_CANVAS,
@@ -1785,66 +1785,14 @@ export function AdminSection() {
         <>
           <div className="mt-3 xl:mt-4 xl:grid xl:grid-cols-[14rem_minmax(0,1fr)] xl:items-start xl:gap-8">
             {/* ── View menu: raised pills in a scroller (< xl), a raised dock sidebar (xl and up) ── */}
-            <div className="flex items-center gap-2 xl:sticky xl:top-[calc(var(--admin-nav-h,0px)+1rem)] xl:flex-col xl:items-stretch xl:gap-0 xl:self-start xl:rounded-[28px] xl:bg-[var(--bg-card)] xl:p-3 xl:[box-shadow:var(--shadow-card)]">
-              <nav aria-label="เมนูผู้ดูแลระบบ" className="-ml-4 min-w-0 flex-1 sm:-ml-8 xl:ml-0 xl:flex-none">
-                <div className="overflow-x-auto py-2 pl-4 pr-2 [scrollbar-width:none] sm:pl-8 xl:overflow-visible xl:p-0">
-                  <ul className="flex gap-2 xl:flex-col xl:gap-1">
-                    {navItems.map(({ key, label, Icon, n, srCount, alert }) => {
-                      const active = view === key;
-                      return (
-                        <li key={key} className="shrink-0">
-                          <button
-                            type="button"
-                            aria-current={active ? 'page' : undefined}
-                            onClick={() => openView(key)}
-                            className={`flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap rounded-full px-4 py-2 text-left text-sm transition-[background-color,box-shadow,color] duration-200 motion-reduce:transition-none ${
-                              active
-                                ? 'bg-[var(--bg-surface)] font-semibold [box-shadow:var(--shadow-well)]'
-                                : 'bg-[var(--bg-card)] font-medium [box-shadow:var(--shadow-card)] hover:bg-[var(--color-btn-ghost-hover)] xl:bg-transparent xl:[box-shadow:none]'
-                            } ${FOCUS}`}
-                            style={{ color: active ? INK : INK_2 }}
-                          >
-                            <Icon aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: active ? TECH : INK_3 }} />
-                            <span>{label}</span>
-                            {n !== undefined && n > 0 && (
-                              <span className="ml-auto inline-flex items-center gap-1.5 pl-1 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
-                                {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
-                                <span aria-hidden="true">{n}</span>
-                                {srCount && <span className="sr-only">{srCount}</span>}
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </nav>
-
-              {/* Session controls: icon buttons beside the menu (< xl), labelled rows under the dock menu (xl and up). */}
-              <div className="flex shrink-0 items-center gap-2 xl:mt-2 xl:flex-col xl:items-stretch xl:gap-1 xl:border-t xl:pt-2" style={{ borderColor: RULE }}>
-                <button
-                  type="button"
-                  onClick={() => guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true))}
-                  disabled={busy}
-                  aria-busy={busy || undefined}
-                  className={`inline-flex h-11 w-11 items-center justify-center gap-2.5 rounded-full bg-[var(--bg-card)] text-sm font-medium [box-shadow:var(--shadow-card)] transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-60 xl:h-auto xl:min-h-11 xl:w-full xl:justify-start xl:bg-transparent xl:px-4 xl:py-2 xl:[box-shadow:none] ${FOCUS}`}
-                  style={{ color: INK_2 }}
-                >
-                  <RotateCw aria-hidden="true" size={17} strokeWidth={1.5} className={`shrink-0 ${busy ? 'motion-safe:animate-spin' : ''}`} style={{ color: INK_3 }} />
-                  <span className="sr-only xl:not-sr-only">{busy ? 'กำลังโหลด…' : 'รีเฟรช'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={logout}
-                  className={`inline-flex h-11 w-11 items-center justify-center gap-2.5 rounded-full bg-[var(--bg-card)] text-sm font-medium [box-shadow:var(--shadow-card)] transition-colors hover:bg-[var(--color-btn-ghost-hover)] xl:h-auto xl:min-h-11 xl:w-full xl:justify-start xl:bg-transparent xl:px-4 xl:py-2 xl:[box-shadow:none] ${FOCUS}`}
-                  style={{ color: INK_2 }}
-                >
-                  <LogOut aria-hidden="true" size={17} strokeWidth={1.5} className="shrink-0" style={{ color: INK_3 }} />
-                  <span className="sr-only xl:not-sr-only">ออกจากระบบ</span>
-                </button>
-              </div>
-            </div>
+            <AdminSideMenu
+              items={navItems}
+              active={view}
+              onSelect={(k) => openView(k)}
+              onRefresh={() => guardProfileEditSwitch('รีเฟรชรายการ', () => void refresh(token, true))}
+              onLogout={logout}
+              busy={busy}
+            />
 
             <div className="mt-6 min-w-0 xl:mt-0">
               {view === 'overview' && (
@@ -1945,56 +1893,19 @@ export function AdminSection() {
                   style={{ color: INK_3 }}
                 />
               </div>
-              <div
-                ref={filterGroupRef}
+              <AdminFilterTabs
+                tabs={visibleTabs}
+                active={filter}
+                onSelect={(k) => {
+                  resetDeleteConfirm(false);
+                  setFilter(k);
+                }}
+                slipKey="SLIP_PENDING"
+                awaitKey="AWAITING_PAY"
+                overduePayCount={overduePayCount}
                 hidden={isWithdrawnTab}
-                tabIndex={-1}
-                role="group"
-                aria-label="กรองตามสถานะ"
-                className={`-mx-4 hidden gap-2 overflow-x-auto border-b px-4 py-3 [scrollbar-width:thin] sm:-mx-8 sm:px-8 md:flex lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 ${FOCUS}`}
-                style={{ borderColor: INK }}
-              >
-                {visibleTabs.map((t) => {
-                  const active = filter === t.key;
-                  const isSlipQueue = t.key === 'SLIP_PENDING';
-                  const overdue = t.key === 'AWAITING_PAY' ? overduePayCount : 0;
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => {
-                        resetDeleteConfirm(false);
-                        setFilter(t.key);
-                      }}
-                      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm transition-colors ${active ? '' : 'hover:bg-[var(--color-btn-ghost-hover)]'} ${FOCUS}`}
-                      style={{
-                        backgroundColor: active ? BTN_DARK : 'transparent',
-                        color: active ? BTN_DARK_TEXT : INK_2,
-                        borderColor: active ? BTN_DARK : isSlipQueue && t.n > 0 ? WARNING : overdue > 0 ? DANGER : RULE,
-                        fontWeight: active ? 600 : 500,
-                      }}
-                    >
-                      {isSlipQueue && (
-                        <span
-                          aria-hidden="true"
-                          className="size-2 rounded-full"
-                          style={{ backgroundColor: active ? BTN_DARK_TEXT : t.n > 0 ? WARNING : INK_3 }}
-                        />
-                      )}
-                      <span>{t.label}</span>
-                      <span className="font-mono text-xs tabular-nums" style={{ opacity: active ? 0.9 : 0.75 }}>
-                        {t.n}
-                      </span>
-                      {overdue > 0 && (
-                        <span className="text-xs font-semibold" style={{ color: active ? BTN_DARK_TEXT : DANGER }}>
-                          · เกินกำหนด <span className="font-mono tabular-nums">{overdue}</span>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                groupRef={filterGroupRef}
+              />
 
               {/* Search, sort, count and export */}
               <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
