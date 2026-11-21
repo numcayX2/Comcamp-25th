@@ -6,6 +6,7 @@ import {
   isApplicationCodeQuery,
   isPhoneQuery,
   normalizeLookupQuery,
+  REFERRAL_LABELS,
   verifyPaymentSlip,
   type ApplicantRecord,
 } from './api.ts';
@@ -94,6 +95,9 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
       motivation: 'อยากเข้าค่าย\nเพราะสนใจ IoT',
       allergies: '=cmd|calc',
       medicalConditions: 'หอบหืด\nพกยาพ่น',
+      // An unknown code (e.g. from an old export) must be dropped, not printed.
+      referralSources: ['other', 'social_facebook', 'not_a_code'] as ApplicantRecord['referralSources'],
+      referralOther: '=HYPERLINK("x")',
     }),
   ]);
 
@@ -102,7 +106,13 @@ test('F-04 buildApplicantsCsv applies BOM, RFC 4180 quoting, and formula escapin
   assert.ok(csv.includes(",' =1+1,"));
   assert.ok(csv.includes(",'\t+1+1,"));
   assert.ok(csv.includes(",'@SUM(A1),"));
-  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจ IoT",\'=cmd|calc,"หอบหืด\nพกยาพ่น"\r\n'));
+  assert.ok(csv.includes(',"อยากเข้าค่าย\nเพราะสนใจ IoT",\'=cmd|calc,"หอบหืด\nพกยาพ่น",'));
+  // Last two columns: referral labels (known codes only, form order) and the free-text "other" answer, formula-escaped.
+  const row = csv.split('\r\n')[1];
+  const [labels, other] = row.split(',').slice(-2);
+  assert.equal(labels, `${REFERRAL_LABELS.social_facebook}; ${REFERRAL_LABELS.other}`);
+  assert.equal(other, '"\'=HYPERLINK(""x"")"');
+  assert.ok(csv.endsWith('\r\n'));
 });
 
 test('F-01 verifyPaymentSlip rejects missing or malformed paymentId before issuing a request', async () => {

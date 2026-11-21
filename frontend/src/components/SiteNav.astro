@@ -1100,6 +1100,15 @@ const pageLinks = isAdmin ? [] : [
     color: #121316;
     border-color: #F5F4EF;
   }
+  /* Current page keeps the fern pill in dark mode too; the dark rule above outranks the light one. */
+  :global(html.dark) .btn-secondary.is-active,
+  :global(html.dark) .btn-secondary[aria-current="page"],
+  :global(html[data-theme="dark"]) .btn-secondary.is-active,
+  :global(html[data-theme="dark"]) .btn-secondary[aria-current="page"] {
+    background: #03B800;
+    color: #121316;
+    border-color: #03B800;
+  }
   @media (hover: hover) and (pointer: fine) {
     :global(html.dark) .nav-toggle:hover,
     :global(html[data-theme="dark"]) .nav-toggle:hover {
@@ -1111,6 +1120,14 @@ const pageLinks = isAdmin ? [] : [
       background: #FFFFFF;
       color: #121316;
       border-color: #FFFFFF;
+    }
+    :global(html.dark) .btn-secondary.is-active:hover,
+    :global(html.dark) .btn-secondary[aria-current="page"]:hover,
+    :global(html[data-theme="dark"]) .btn-secondary.is-active:hover,
+    :global(html[data-theme="dark"]) .btn-secondary[aria-current="page"]:hover {
+      background: #029E00;
+      color: #121316;
+      border-color: #029E00;
     }
   }
 
