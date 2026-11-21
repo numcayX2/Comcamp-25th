@@ -16,7 +16,7 @@ interface Props {
   onAuthError: (err: unknown) => boolean;
 }
 
-/** Staff addresses that receive an email for every inquiry sent from the public /sponsor form. */
+/** Staff addresses emailed for every new application and every inquiry sent from the public /sponsor form. */
 export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
   const [saved, setSaved] = useState<string[] | null>(null);
   const [emails, setEmails] = useState<string[]>([]);
@@ -118,7 +118,7 @@ export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
   return (
     <section aria-label="อีเมลแจ้งเตือน" className="flex max-w-2xl flex-col gap-5">
       <p className="text-sm leading-[1.75]" style={{ color: INK_2 }}>
-        ทุกครั้งที่มีคนส่งฟอร์ม “แจ้งความประสงค์สนับสนุน” จากหน้า /sponsor ระบบจะส่งอีเมลแจ้งไปยังทุกอีเมลในรายการนี้
+        ระบบจะส่งอีเมลแจ้งไปยังทุกอีเมลในรายการนี้ เมื่อมีน้องสมัครค่ายเข้ามาใหม่ (ชื่อ โรงเรียน จังหวัด และจำนวนที่นั่ง — ไม่มีรหัสใบสมัครหรือเบอร์โทร) และเมื่อมีคนส่งฟอร์ม “แจ้งความประสงค์สนับสนุน” จากหน้า /sponsor
       </p>
 
       {loadError && (
@@ -141,7 +141,7 @@ export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
         <>
           {emails.length === 0 ? (
             <p className="text-sm leading-7" style={{ color: INK_3 }}>
-              ยังไม่มีอีเมลรับแจ้งเตือน — ข้อมูลจากฟอร์มยังถูกเก็บไว้ในแท็บผู้สนใจสนับสนุนเสมอ
+              ยังไม่มีอีเมลรับแจ้งเตือน — ใบสมัครและข้อมูลจากฟอร์มสนับสนุนยังถูกเก็บไว้ในหน้าแอดมินเสมอ
             </p>
           ) : (
             <ul className="flex flex-col border-t" style={{ borderColor: RULE }} aria-label="อีเมลรับแจ้งเตือน">

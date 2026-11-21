@@ -143,6 +143,8 @@ func main() {
 		WithSlipFileRemover(paymentSvc.RemoveSlipFile)
 	sponsorSvc := service.NewSponsorService(sponsorRepo, cfg.UploadDir)
 	inquirySvc.WithNotifier(mailer)
+	// New applications go to the same staff list as sponsor inquiries (/admin → ผู้สนับสนุน → อีเมลแจ้งเตือน).
+	applicantSvc.WithStaffNotify(mailer, inquirySvc.NotifyEmails)
 	services := server.Services{
 		Auth:            service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
 		Applicant:       applicantSvc,

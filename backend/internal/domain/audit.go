@@ -19,6 +19,9 @@ const (
 	AuditEmailRegistrationFailed AuditAction = "application.email.registration.failed"
 	AuditEmailConfirmedSent      AuditAction = "application.email.confirmed.sent"
 	AuditEmailConfirmedFailed    AuditAction = "application.email.confirmed.failed"
+	// Staff notice about a new application, one per staff address (Details: maskedEmail only).
+	AuditEmailStaffRegistrationSent AuditAction = "application.email.staff_notice.sent"
+	AuditEmailStaffRegistrationFail AuditAction = "application.email.staff_notice.failed"
 	// AuditApplicantWithdrawSelf is the applicant withdrawing their own application (no admin).
 	AuditApplicantWithdrawSelf AuditAction = "application.withdraw.self"
 	// AuditApplicantPurge is staff permanently deleting a self-withdrawn application (test or

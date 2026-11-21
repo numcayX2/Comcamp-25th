@@ -182,6 +182,10 @@ type ApplicantService struct {
 	onSeatChange func()
 	// mailer dispatches registration / confirmation emails asynchronously after commit.
 	mailer EmailNotifier
+	// staffNotifier announces every new application to the staff notify list returned by
+	// staffRecipients (the list staff edit in /admin; see WithStaffNotify). Nil = off.
+	staffNotifier   StaffRegistrationNotifier
+	staffRecipients func(ctx context.Context) ([]string, error)
 	// now returns the current wall-clock time; defaults to time.Now and can be overridden in tests.
 	now func() time.Time
 	// pauseLogged is the LastHardCeilingAt (UnixNano) the expiry pause was last logged for.
@@ -258,6 +262,56 @@ func (s *ApplicantService) WithOnSeatChange(fn func()) *ApplicantService {
 func (s *ApplicantService) WithMailer(m EmailNotifier) *ApplicantService {
 	s.mailer = m
 	return s
+}
+
+// StaffRegistrationNotifier queues staff notices about new applications (AsyncSMTPMailer in
+// production).
+type StaffRegistrationNotifier interface {
+	EnqueueStaffRegistration(data StaffRegistrationEmailData)
+}
+
+// WithStaffNotify announces each new application to the addresses recipients returns and returns
+// the service.
+func (s *ApplicantService) WithStaffNotify(n StaffRegistrationNotifier, recipients func(ctx context.Context) ([]string, error)) *ApplicantService {
+	s.staffNotifier = n
+	s.staffRecipients = recipients
+	return s
+}
+
+// notifyStaffNewApplicant queues the staff notice off the request path: reading the recipient
+// list and seat count must never delay or fail a registration that has already committed.
+func (s *ApplicantService) notifyStaffNewApplicant(a *domain.Applicant, maxCapacity int, createdAt time.Time) {
+	if s.staffNotifier == nil || s.staffRecipients == nil {
+		return
+	}
+	data := StaffRegistrationEmailData{
+		ApplicationNo: a.ApplicationNo,
+		FullName:      a.FirstName + " " + a.LastName,
+		Nickname:      a.Nickname,
+		School:        a.School,
+		Province:      a.Province,
+		Grade:         a.Grade,
+		SeatsTaken:    -1,
+		MaxCapacity:   maxCapacity,
+		CreatedAt:     createdAt,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		to, err := s.staffRecipients(ctx)
+		if err != nil {
+			log.Printf("staff notice for %s: cannot load notify emails: %v", data.ApplicationNo, err)
+			return
+		}
+		if len(to) == 0 {
+			return
+		}
+		data.To = to
+		if n, err := s.appRepo.CountActive(ctx); err == nil {
+			data.SeatsTaken = n
+		}
+		s.staffNotifier.EnqueueStaffRegistration(data)
+	}()
 }
 
 // WithSlipFileRemover sets how PurgeWithdrawn deletes the slip images of the rows it removes and
@@ -466,11 +520,11 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 	switch {
 	case err == nil:
 		s.notifySeatChange()
+		createdAt := applicant.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = s.currentTime()
+		}
 		if s.mailer != nil && applicant.Email != "" {
-			createdAt := applicant.CreatedAt
-			if createdAt.IsZero() {
-				createdAt = s.currentTime()
-			}
 			s.mailer.EnqueueRegistration(RegistrationEmailData{
 				ApplicationNo: applicant.ApplicationNo,
 				FullName:      applicant.FullName(),
@@ -480,6 +534,7 @@ func (s *ApplicantService) SubmitWithKey(ctx context.Context, req ApplicationCre
 				CreatedAt:     createdAt,
 			})
 		}
+		s.notifyStaffNewApplicant(applicant, settings.MaxCapacity, createdAt)
 		return s.toPublic(ctx, applicant), false, nil
 	case errors.Is(err, domain.ErrCapacityReached):
 		return nil, false, ErrQuotaExceeded

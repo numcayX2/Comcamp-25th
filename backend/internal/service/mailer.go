@@ -76,6 +76,8 @@ type SMTPConfig struct {
 	FrontendURL string
 	Pace        time.Duration
 	SendTimeout time.Duration
+	// QueueSize overrides the queue capacity (0 = 64); tests that enqueue past a cap raise it.
+	QueueSize int
 	// SendFn overrides actual network SMTP delivery in tests.
 	SendFn func(ctx context.Context, addr, from, to string, raw []byte) error
 }
@@ -86,11 +88,41 @@ const (
 	emailKindRegistration emailKind = iota + 1
 	emailKindConfirmed
 	emailKindSponsorInquiry
+	emailKindStaffRegistration
 )
 
 // SponsorInquiryEmailsPerHour caps staff notification emails about sponsor inquiries process-wide,
 // so a flood of form submissions cannot turn the SMTP account into a spam source.
 const SponsorInquiryEmailsPerHour = 30
+
+// StaffRegistrationNoticesPerHour caps how many new applications per hour are announced to staff
+// (each notice goes to every staff address). Seats are limited, so this is only hit by abuse.
+const StaffRegistrationNoticesPerHour = 40
+
+// hourlyCap counts the events of one kind of staff email within the last hour.
+type hourlyCap struct {
+	mu   sync.Mutex
+	sent []time.Time
+}
+
+// allow reports whether another event fits within limit per hour and, if so, counts it.
+func (c *hourlyCap) allow(now time.Time, limit int) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cutoff := now.Add(-time.Hour)
+	keep := c.sent[:0]
+	for _, t := range c.sent {
+		if t.After(cutoff) {
+			keep = append(keep, t)
+		}
+	}
+	c.sent = keep
+	if len(c.sent) >= limit {
+		return false
+	}
+	c.sent = append(c.sent, now)
+	return true
+}
 
 type emailJob struct {
 	kind    emailKind
@@ -112,7 +144,8 @@ type AsyncSMTPMailer struct {
 	fromHeader  string
 	fromAddr    string
 	statusURL   string
-	adminURL    string
+	adminURL    string // sponsor desk (/admin#sponsors)
+	appsURL     string // applications ledger (/admin#applications)
 	pace        time.Duration
 	sendTimeout time.Duration
 	auditRepo   domain.AuditRepository
@@ -124,9 +157,8 @@ type AsyncSMTPMailer struct {
 	workerDone chan struct{}
 	closeOnce  sync.Once
 
-	// sponsorSent holds the enqueue times of sponsor inquiry emails within the last hour.
-	sponsorMu   sync.Mutex
-	sponsorSent []time.Time
+	sponsorCap  hourlyCap
+	staffRegCap hourlyCap
 }
 
 // NewAsyncSMTPMailer initializes a bounded async email dispatcher and starts its background
@@ -172,6 +204,7 @@ func NewAsyncSMTPMailer(cfg SMTPConfig, auditRepo domain.AuditRepository) *Async
 		fromAddr:    fromAddr,
 		statusURL:   buildStatusURL(cfg.FrontendURL),
 		adminURL:    buildFrontendURL(cfg.FrontendURL, "/admin#sponsors"),
+		appsURL:     buildFrontendURL(cfg.FrontendURL, "/admin#applications"),
 		pace:        pace,
 		sendTimeout: sendTimeout,
 		auditRepo:   auditRepo,
@@ -184,7 +217,11 @@ func NewAsyncSMTPMailer(cfg SMTPConfig, auditRepo domain.AuditRepository) *Async
 	if m.sendFn == nil {
 		m.sendFn = m.sendViaSMTP
 	}
-	m.queue = make(chan emailJob, defaultMailerQueueSize)
+	queueSize := cfg.QueueSize
+	if queueSize <= 0 {
+		queueSize = defaultMailerQueueSize
+	}
+	m.queue = make(chan emailJob, queueSize)
 	m.workerDone = make(chan struct{})
 	go m.runWorker()
 	return m
@@ -321,26 +358,6 @@ var sponsorKindLabels = map[string]string{
 	"goods": "สิ่งของ",
 }
 
-// allowSponsorInquiryEmail reports whether another sponsor inquiry email fits within the hourly cap
-// and, if so, counts it.
-func (m *AsyncSMTPMailer) allowSponsorInquiryEmail(now time.Time) bool {
-	m.sponsorMu.Lock()
-	defer m.sponsorMu.Unlock()
-	cutoff := now.Add(-time.Hour)
-	keep := m.sponsorSent[:0]
-	for _, t := range m.sponsorSent {
-		if t.After(cutoff) {
-			keep = append(keep, t)
-		}
-	}
-	m.sponsorSent = keep
-	if len(m.sponsorSent) >= SponsorInquiryEmailsPerHour {
-		return false
-	}
-	m.sponsorSent = append(m.sponsorSent, now)
-	return true
-}
-
 // EnqueueSponsorInquiry formats and queues one staff notification about a new sponsor inquiry.
 // Beyond SponsorInquiryEmailsPerHour per hour the email is skipped (the inquiry row is kept).
 func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
@@ -348,7 +365,7 @@ func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
 	if m == nil || !m.enabled || to == "" {
 		return
 	}
-	if !m.allowSponsorInquiryEmail(time.Now()) {
+	if !m.sponsorCap.allow(time.Now(), SponsorInquiryEmailsPerHour) {
 		log.Printf("mailer: sponsor inquiry %d email to %s skipped (hourly cap %d reached)", data.InquiryID, MaskEmail(to), SponsorInquiryEmailsPerHour)
 		return
 	}
@@ -379,13 +396,82 @@ func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
 		log.Printf("mailer: failed to render sponsor inquiry email (%d): %v", data.InquiryID, err)
 		return
 	}
-	m.enqueue(emailJob{
+	m.enqueueStaff(emailJob{
 		kind:    emailKindSponsorInquiry,
 		appNo:   fmt.Sprintf("%d", data.InquiryID),
 		to:      to,
 		subject: subject,
 		raw:     raw,
 	})
+}
+
+// StaffRegistrationEmailData announces one new application to staff. It deliberately carries no
+// application code, phone, email, guardian or health data: the email says who applied (what
+// /applicants shows anyway) and links to /admin for everything else.
+type StaffRegistrationEmailData struct {
+	To            []string
+	ApplicationNo string // audit target only, never rendered
+	FullName      string
+	Nickname      string
+	School        string
+	Province      string
+	Grade         string
+	SeatsTaken    int // < 0 when the count could not be read
+	MaxCapacity   int
+	CreatedAt     time.Time
+}
+
+// EnqueueStaffRegistration queues one notice per staff address about a new application. Beyond
+// StaffRegistrationNoticesPerHour applications per hour the notice is skipped (the application
+// itself is unaffected).
+func (m *AsyncSMTPMailer) EnqueueStaffRegistration(data StaffRegistrationEmailData) {
+	if m == nil || !m.enabled || len(data.To) == 0 {
+		return
+	}
+	if !m.staffRegCap.allow(time.Now(), StaffRegistrationNoticesPerHour) {
+		log.Printf("mailer: staff notice for %s skipped (hourly cap %d reached)", data.ApplicationNo, StaffRegistrationNoticesPerHour)
+		return
+	}
+	createdAt := data.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	seats := "-"
+	if data.SeatsTaken >= 0 && data.MaxCapacity > 0 {
+		seats = fmt.Sprintf("%d/%d", data.SeatsTaken, data.MaxCapacity)
+	}
+	dash := func(s string) string {
+		if s = strings.TrimSpace(s); s == "" {
+			return "-"
+		}
+		return s
+	}
+	view := struct {
+		FullName, Nickname, School, Province, Grade, Time, Seats, AdminURL string
+	}{
+		FullName: dash(data.FullName), Nickname: dash(data.Nickname), School: dash(data.School),
+		Province: dash(data.Province), Grade: dash(data.Grade), Time: formatBangkokThaiDateTime(createdAt),
+		Seats: seats, AdminURL: m.appsURL,
+	}
+	subject := fmt.Sprintf("[ComCamp #25] มีผู้สมัครใหม่ (ที่นั่ง %s): %s", seats, truncateRunes(stripCRLF(view.FullName), 60))
+	for _, raw := range data.To {
+		to := stripCRLF(strings.TrimSpace(raw))
+		if to == "" {
+			continue
+		}
+		msg, err := buildMultipartMIME(m.fromHeader, to, subject, staffRegTextTmpl, staffRegHTMLTmpl, view)
+		if err != nil {
+			log.Printf("mailer: failed to render staff notice for %s: %v", data.ApplicationNo, err)
+			return
+		}
+		m.enqueueStaff(emailJob{
+			kind:    emailKindStaffRegistration,
+			appNo:   data.ApplicationNo,
+			to:      to,
+			subject: subject,
+			raw:     msg,
+		})
+	}
 }
 
 func truncateRunes(s string, max int) string {
@@ -406,6 +492,25 @@ func (m *AsyncSMTPMailer) enqueue(job emailJob) {
 	case m.queue <- job:
 	default:
 		log.Printf("mailer: queue full, dropping email for %s (%s)", job.appNo, MaskEmail(job.to))
+	}
+}
+
+// enqueueStaff queues a staff notification only while the queue is less than half full, so staff
+// copies never take the room that applicants' own registration / confirmation emails need.
+func (m *AsyncSMTPMailer) enqueueStaff(job emailJob) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.closed || m.queue == nil {
+		return
+	}
+	if len(m.queue) >= cap(m.queue)/2 {
+		log.Printf("mailer: queue busy, skipping staff email for %s (%s)", job.appNo, MaskEmail(job.to))
+		return
+	}
+	select {
+	case m.queue <- job:
+	default:
+		log.Printf("mailer: queue full, dropping staff email for %s (%s)", job.appNo, MaskEmail(job.to))
 	}
 }
 
@@ -470,6 +575,11 @@ func (m *AsyncSMTPMailer) deliverJob(job emailJob) {
 		action = domain.AuditEmailSponsorInquirySent
 		if err != nil {
 			action = domain.AuditEmailSponsorInquiryFail
+		}
+	case emailKindStaffRegistration:
+		action = domain.AuditEmailStaffRegistrationSent
+		if err != nil {
+			action = domain.AuditEmailStaffRegistrationFail
 		}
 	default:
 		action = domain.AuditEmailRegistrationSent
@@ -761,6 +871,32 @@ var sponsorInquiryHTMLTmpl = htmltmpl.Must(htmltmpl.New("sponsorHTML").Parse(`<!
   <p style="margin:0 0 6px;"><strong>ประเภท:</strong> {{.Kind}}</p>
   <p style="margin:0 0 6px;white-space:pre-line;"><strong>รายละเอียด:</strong> {{.Details}}</p>
   <p style="margin:0;"><strong>เวลา:</strong> {{.Time}}</p>
+</div>
+<p><a href="{{.AdminURL}}" style="display:inline-block;padding:10px 20px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">เปิดหน้าแอดมิน</a></p>
+</body></html>`))
+
+var staffRegTextTmpl = texttmpl.Must(texttmpl.New("staffRegText").Parse(`มีน้องสมัครค่าย ComCamp #25 เข้ามาใหม่
+
+ชื่อ: {{.FullName}} ({{.Nickname}})
+โรงเรียน: {{.School}}
+จังหวัด: {{.Province}}
+ระดับชั้น: {{.Grade}}
+เวลาสมัคร: {{.Time}}
+ที่นั่งตอนนี้: {{.Seats}}
+
+ดูรายละเอียดและตรวจสลิปในหน้าแอดมิน: {{.AdminURL}}
+`))
+
+var staffRegHTMLTmpl = htmltmpl.Must(htmltmpl.New("staffRegHTML").Parse(`<!DOCTYPE html>
+<html lang="th"><body style="font-family:sans-serif;color:#121316;line-height:1.65;max-width:600px;margin:0 auto;padding:20px;">
+<h2 style="margin:0 0 12px;">มีน้องสมัครค่าย ComCamp #25 เข้ามาใหม่</h2>
+<div style="border:1px solid #d4d4d8;padding:14px 16px;margin:16px 0;background:#f9f8f4;">
+  <p style="margin:0 0 6px;"><strong>ชื่อ:</strong> {{.FullName}} ({{.Nickname}})</p>
+  <p style="margin:0 0 6px;"><strong>โรงเรียน:</strong> {{.School}}</p>
+  <p style="margin:0 0 6px;"><strong>จังหวัด:</strong> {{.Province}}</p>
+  <p style="margin:0 0 6px;"><strong>ระดับชั้น:</strong> {{.Grade}}</p>
+  <p style="margin:0 0 6px;"><strong>เวลาสมัคร:</strong> {{.Time}}</p>
+  <p style="margin:0;"><strong>ที่นั่งตอนนี้:</strong> {{.Seats}}</p>
 </div>
 <p><a href="{{.AdminURL}}" style="display:inline-block;padding:10px 20px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">เปิดหน้าแอดมิน</a></p>
 </body></html>`))

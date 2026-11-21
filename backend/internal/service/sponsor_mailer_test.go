@@ -25,6 +25,7 @@ func newCapturingMailer(t *testing.T) (*service.AsyncSMTPMailer, *memory.MemoryA
 		From:        "ComCamp <noreply@example.com>",
 		FrontendURL: "https://comcamp.example.com/, https://other.example.com",
 		Pace:        -1,
+		QueueSize:   256, // staff emails skip once the queue is half full; cap tests enqueue fast
 		SendFn: func(_ context.Context, addr, from, to string, raw []byte) error {
 			mu.Lock()
 			defer mu.Unlock()
