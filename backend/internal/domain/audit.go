@@ -58,6 +58,7 @@ const (
 	AuditSponsorInquiryCreate    AuditAction = "sponsor.inquiry.create"
 	AuditSponsorInquiryUpdate    AuditAction = "sponsor.inquiry.update"
 	AuditSponsorInquiryDelete    AuditAction = "sponsor.inquiry.delete"
+	AuditSponsorInquiryFileView  AuditAction = "sponsor.inquiry.file.view"
 	AuditSponsorNotifyUpdate     AuditAction = "sponsor.notify.update"
 	AuditSponsorDonationCreate   AuditAction = "sponsor.donation.create"
 	AuditSponsorDonationUpdate   AuditAction = "sponsor.donation.update"

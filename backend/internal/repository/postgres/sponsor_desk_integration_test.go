@@ -76,10 +76,36 @@ func TestSponsorDeskPostgres_Inquiries(t *testing.T) {
 		t.Fatalf("notify emails order = %v", list)
 	}
 
-	if err := inq.Delete(ctx, a.ID, nil); err != nil {
+	// 000016: an attached form round-trips through Create / GetByID / Delete.
+	hash := strings.Repeat("ab", 32)
+	b := &domain.SponsorInquiry{Name: "ร้าน ข", Phone: "0812345679", Kind: domain.SponsorKindMoney,
+		File: &domain.SponsorInquiryFile{Path: "sponsor-docs/inquiry-x.pdf", MIME: "application/pdf", SizeBytes: 1234, SHA256: hash}}
+	if err := inq.Create(ctx, b, nil); err != nil {
+		t.Fatalf("create with file: %v", err)
+	}
+	got, err = inq.GetByID(ctx, b.ID)
+	if err != nil || got.File == nil || *got.File != *b.File {
+		t.Fatalf("get with file: %v %+v", err, got)
+	}
+	if got, err = inq.GetByID(ctx, a.ID); err != nil || got.File != nil {
+		t.Fatalf("typed inquiry must have no file: %v %+v", err, got)
+	}
+	if err := inq.Create(ctx, &domain.SponsorInquiry{Name: "x", Phone: "0812345678", Kind: domain.SponsorKindMoney,
+		File: &domain.SponsorInquiryFile{Path: "sponsor-docs/x.svg", MIME: "image/svg+xml", SizeBytes: 1, SHA256: hash}}, nil); err == nil {
+		t.Fatal("file CHECK constraint must reject an SVG")
+	}
+	if _, err := inq.GetByID(ctx, 9999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing inquiry: want ErrNotFound, got %v", err)
+	}
+	deleted, err := inq.Delete(ctx, b.ID, nil)
+	if err != nil || deleted.File == nil || deleted.File.Path != b.File.Path {
+		t.Fatalf("delete with file must return its path: %v %+v", err, deleted)
+	}
+
+	if _, err := inq.Delete(ctx, a.ID, nil); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if err := inq.Delete(ctx, a.ID, nil); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := inq.Delete(ctx, a.ID, nil); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("second delete: want ErrNotFound, got %v", err)
 	}
 }

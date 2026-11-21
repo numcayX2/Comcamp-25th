@@ -474,15 +474,16 @@ async function toApiError(res: Response): Promise<ApiHttpError> {
 }
 
 /** multipart POST through XMLHttpRequest, the only way to report upload progress. */
-function xhrUploadSlip(
+function xhrUpload<T>(
   url: string,
   formData: FormData,
   onProgress?: (percent: number) => void,
-): Promise<SlipUploadResult> {
+  timeoutMs = 20000,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
-    xhr.timeout = 20000;
+    xhr.timeout = timeoutMs;
     xhr.setRequestHeader('Accept', 'application/json');
     if (onProgress) {
       xhr.upload.onprogress = (ev) => {
@@ -501,7 +502,7 @@ function xhrUploadSlip(
         /* non-JSON error page */
       }
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(body as SlipUploadResult);
+        resolve(body as T);
         return;
       }
       const errData = (body ?? {}) as { error?: string; code?: string };
@@ -728,7 +729,7 @@ export function uploadPaymentSlip(
   formData.append('slip', file);
 
   return withFallback(
-    () => xhrUploadSlip(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress),
+    () => xhrUpload<SlipUploadResult>(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress),
     () => ({
       id,
       status: 'PASSED',
@@ -1364,6 +1365,28 @@ export async function submitSponsorInquiry(payload: SponsorInquiryPayload): Prom
   });
 }
 
+/** Body of POST /sponsor-inquiries/upload besides the file: `kind` defaults to money server-side. */
+export type SponsorFormUploadPayload = Pick<SponsorInquiryPayload, 'name' | 'phone' | 'turnstileToken' | 'website'>;
+
+/**
+ * POST /sponsor-inquiries/upload — public multipart: the filled donation form (PDF/JPG/PNG/WebP
+ * ≤ 8 MB) instead of the typed inquiry. XHR for upload progress; 2 min timeout so an 8 MB scan
+ * still makes it over a slow mobile uplink. No mock fallback.
+ */
+export async function submitSponsorFormUpload(
+  payload: SponsorFormUploadPayload,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  const form = new FormData();
+  form.append('name', payload.name);
+  form.append('phone', payload.phone);
+  form.append('turnstileToken', payload.turnstileToken);
+  form.append('website', payload.website ?? '');
+  form.append('file', file, file.name);
+  await xhrUpload<{ ok?: boolean }>(`${API_BASE}/sponsor-inquiries/upload`, form, onProgress, 120000);
+}
+
 export interface SponsorInquiry {
   id: number;
   name: string;
@@ -1371,6 +1394,8 @@ export interface SponsorInquiry {
   email: string;
   kind: SponsorKind;
   details: string;
+  /** The filled donation form the sponsor attached (uploadedAt = createdAt); null when typed. */
+  file: SponsorDonationFile | null;
   handled: boolean;
   handledAt: string | null;
   createdAt: string;
@@ -1436,6 +1461,7 @@ function pickInquiry(raw: unknown): SponsorInquiry | null {
     email: str(r.email),
     kind: r.kind,
     details: str(r.details),
+    file: pickDonationFile(r.file),
     handled: r.handled === true,
     handledAt: strOrNull(r.handledAt),
     createdAt: str(r.createdAt),
@@ -1497,6 +1523,23 @@ export async function setSponsorInquiryHandled(token: string, id: number, handle
 
 export async function deleteSponsorInquiry(token: string, id: number): Promise<void> {
   await fetchJson<void>(`/admin/sponsor-inquiries/${id}`, { method: 'DELETE', headers: authHeader(token) });
+}
+
+/** GET the form a sponsor attached as a blob: URL (admin-only, no-store). Revoke it when done. */
+export async function fetchSponsorInquiryFile(token: string, id: number): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(`${API_BASE}/admin/sponsor-inquiries/${id}/file`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: authHeader(token),
+    });
+    if (!res.ok) throw await toApiError(res);
+    return URL.createObjectURL(await res.blob());
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function fetchSponsorNotifyEmails(token: string): Promise<string[]> {

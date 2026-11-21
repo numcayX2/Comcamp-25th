@@ -384,10 +384,17 @@ func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
 	if details == "" {
 		details = "-"
 	}
+	file := "-"
+	switch {
+	case data.FileMIME == "application/pdf":
+		file = "แบบฟอร์มบริจาคที่กรอกแล้ว (PDF) เปิดดูได้ในหน้าแอดมิน"
+	case data.FileMIME != "":
+		file = "แบบฟอร์มบริจาคที่กรอกแล้ว (รูปภาพ) เปิดดูได้ในหน้าแอดมิน"
+	}
 	view := struct {
-		Name, Phone, Email, Kind, Details, Time, AdminURL string
+		Name, Phone, Email, Kind, Details, File, Time, AdminURL string
 	}{
-		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Details: details,
+		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Details: details, File: file,
 		Time: formatBangkokThaiDateTime(createdAt), AdminURL: m.adminURL,
 	}
 	subject := "[ComCamp #25] มีผู้สนใจสนับสนุนค่าย: " + truncateRunes(stripCRLF(data.Name), 60)
@@ -856,6 +863,7 @@ var sponsorInquiryTextTmpl = texttmpl.Must(texttmpl.New("sponsorText").Parse(`�
 อีเมล: {{.Email}}
 ประเภท: {{.Kind}}
 รายละเอียด: {{.Details}}
+ไฟล์แนบ: {{.File}}
 เวลา: {{.Time}}
 
 ดูและจัดการในหน้าแอดมิน: {{.AdminURL}}
@@ -870,6 +878,7 @@ var sponsorInquiryHTMLTmpl = htmltmpl.Must(htmltmpl.New("sponsorHTML").Parse(`<!
   <p style="margin:0 0 6px;"><strong>อีเมล:</strong> {{.Email}}</p>
   <p style="margin:0 0 6px;"><strong>ประเภท:</strong> {{.Kind}}</p>
   <p style="margin:0 0 6px;white-space:pre-line;"><strong>รายละเอียด:</strong> {{.Details}}</p>
+  <p style="margin:0 0 6px;"><strong>ไฟล์แนบ:</strong> {{.File}}</p>
   <p style="margin:0;"><strong>เวลา:</strong> {{.Time}}</p>
 </div>
 <p><a href="{{.AdminURL}}" style="display:inline-block;padding:10px 20px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">เปิดหน้าแอดมิน</a></p>

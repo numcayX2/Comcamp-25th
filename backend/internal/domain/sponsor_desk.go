@@ -15,6 +15,7 @@ const (
 )
 
 // SponsorInquiry is one "แจ้งความประสงค์สนับสนุน" submission from the public /sponsor page.
+// File is the filled donation form the sponsor attached instead of typing (nil = none).
 type SponsorInquiry struct {
 	ID        int64
 	Name      string
@@ -22,8 +23,19 @@ type SponsorInquiry struct {
 	Email     string
 	Kind      string
 	Details   string
+	File      *SponsorInquiryFile
 	HandledAt *time.Time
 	CreatedAt time.Time
+}
+
+// SponsorInquiryFile is the stored metadata of an attached form (migration 000016). Path is
+// relative to UPLOAD_DIR ("sponsor-docs/<name>") and never serialized; the upload time is the
+// inquiry's CreatedAt.
+type SponsorInquiryFile struct {
+	Path      string
+	MIME      string
+	SizeBytes int
+	SHA256    string
 }
 
 // SponsorDonationFile is the stored metadata of a donation's signed form or transfer slip.
@@ -92,15 +104,19 @@ func (d *SponsorDonation) ChangedFields(f SponsorDonationFields) []string {
 }
 
 type SponsorInquiryRepository interface {
-	// Create inserts inq and writes the audit row in the same transaction (ID/CreatedAt populated).
+	// Create inserts inq (with its file metadata when set) and writes the audit row in the same
+	// transaction (ID/CreatedAt populated).
 	Create(ctx context.Context, inq *SponsorInquiry, audit *AuditEntry) error
 	// List returns every inquiry newest first (created_at DESC, id DESC).
 	List(ctx context.Context) ([]*SponsorInquiry, error)
+	// GetByID returns one inquiry, or ErrNotFound.
+	GetByID(ctx context.Context, id int64) (*SponsorInquiry, error)
 	// SetHandled sets handled_at = now() (keeping an earlier value) or clears it, with the audit row
 	// in the same transaction. ErrNotFound when id does not exist.
 	SetHandled(ctx context.Context, id int64, handled bool, audit *AuditEntry) (*SponsorInquiry, error)
-	// Delete removes inquiry id with the audit row in the same transaction. ErrNotFound when absent.
-	Delete(ctx context.Context, id int64, audit *AuditEntry) error
+	// Delete removes inquiry id with the audit row in the same transaction, returning the deleted
+	// row so the caller can remove its file after commit. ErrNotFound when absent.
+	Delete(ctx context.Context, id int64, audit *AuditEntry) (*SponsorInquiry, error)
 	// ListNotifyEmails returns the staff notification addresses in their saved order.
 	ListNotifyEmails(ctx context.Context) ([]string, error)
 	// ReplaceNotifyEmails replaces the whole address list (already validated, unique) with the audit

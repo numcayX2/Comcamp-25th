@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, FilePlus2, Mail, Phone, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
+import { Check, Eye, FilePlus2, FileText, Mail, Phone, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
 import {
   SPONSOR_KIND_LABELS,
   deleteSponsorInquiry,
   fetchSponsorInquiries,
+  fetchSponsorInquiryFile,
   setSponsorInquiryHandled,
   type SponsorInquiry,
 } from '../../lib/api';
+import { formatBytes } from '../../lib/slip-upload';
 import { DANGER, FOCUS, INK, INK_2, INK_3, PILL_DANGER, PILL_GHOST, RULE, SUCCESS, SURFACE_SUBTLE, WARNING } from '../admin-ui';
 import {
   NoticeBanner,
@@ -33,7 +35,15 @@ interface Props {
 const byNewest = (a: SponsorInquiry, b: SponsorInquiry) =>
   b.createdAt.localeCompare(a.createdAt) || b.id - a.id;
 
-/** Inquiries sent from the public /sponsor form: mark as contacted, turn into a donation, delete. */
+/** A viewed form's blob: URL stays alive this long for the new tab to load it. */
+const VIEW_URL_TTL_MS = 60_000;
+
+const fileTypeLabel = (mime: string) => (mime === 'application/pdf' ? 'PDF' : 'รูปภาพ');
+
+/**
+ * Inquiries sent from the public /sponsor form: mark as contacted, open the attached donation
+ * form, turn into a donation, delete.
+ */
 export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandledCount, onCreateDonation }: Props) {
   const [items, setItems] = useState<SponsorInquiry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,6 +54,10 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const actionRef = useRef(false);
   const loadingRef = useRef(false);
+  /** Inquiry id whose attached form is being fetched, mirrored by `viewRef`. */
+  const [viewingId, setViewingId] = useState<number | null>(null);
+  const viewRef = useRef(false);
+  const viewUrlsRef = useRef(new Set<string>());
 
   async function load(signal?: { cancelled: boolean }) {
     if (loadingRef.current) return;
@@ -76,6 +90,15 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
   useEffect(() => {
     onUnhandledCount(items ? items.filter((i) => !i.handled).length : null);
   }, [items, onUnhandledCount]);
+
+  // Revoke any viewed-form URL still alive when the panel goes away.
+  useEffect(() => {
+    const urls = viewUrlsRef.current;
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (confirmDeleteId === null) return;
@@ -133,6 +156,37 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
     } finally {
       actionRef.current = false;
       setBusyKey(null);
+    }
+  }
+
+  async function onViewFile(inq: SponsorInquiry) {
+    if (viewRef.current) return;
+    // Open the tab inside the click so popup blockers allow it, then point it at the blob.
+    const win = window.open('', '_blank');
+    if (!win) {
+      setNotice({ kind: 'error', text: 'เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัปสำหรับเว็บนี้แล้วลองอีกครั้ง' });
+      return;
+    }
+    win.opener = null;
+    viewRef.current = true;
+    setViewingId(inq.id);
+    setNotice(null);
+    try {
+      const url = await fetchSponsorInquiryFile(token, inq.id);
+      viewUrlsRef.current.add(url);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        viewUrlsRef.current.delete(url);
+      }, VIEW_URL_TTL_MS);
+      if (!win.closed) win.location.href = url;
+    } catch (err) {
+      win.close();
+      if (onAuthError(err)) return;
+      setNotice({ kind: 'error', text: `เปิดแบบฟอร์มไม่สำเร็จ: ${sponsorErrorText(err, UNKNOWN_ERROR)}` });
+      if (isNotFound(err)) load();
+    } finally {
+      viewRef.current = false;
+      setViewingId(null);
     }
   }
 
@@ -229,6 +283,16 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                         {inq.handled && <Check aria-hidden="true" size={12} strokeWidth={2} style={{ color: SUCCESS }} />}
                         {inq.handled ? 'ติดต่อแล้ว' : 'ยังไม่ได้ติดต่อ'}
                       </span>
+                      {inq.file && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium leading-5"
+                          style={{ borderColor: INK, color: INK }}
+                        >
+                          <FileText aria-hidden="true" size={12} strokeWidth={2} />
+                          แนบแบบฟอร์ม · {fileTypeLabel(inq.file.mime)} ·{' '}
+                          <span className="font-mono tabular-nums">{formatBytes(inq.file.size)}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-7">
                       <a
@@ -264,6 +328,20 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+                    {inq.file && (
+                      <button
+                        type="button"
+                        disabled={viewingId !== null}
+                        aria-busy={viewingId === inq.id || undefined}
+                        aria-label={`ดูแบบฟอร์มที่ ${inq.name} แนบมา (เปิดในแท็บใหม่)`}
+                        onClick={() => onViewFile(inq)}
+                        className={`${PILL_GHOST} gap-1.5`}
+                        style={{ borderColor: INK, color: INK }}
+                      >
+                        <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
+                        {viewingId === inq.id ? 'กำลังเปิด…' : 'ดูแบบฟอร์ม'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy}
@@ -323,7 +401,9 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                       <span className="min-w-0 break-words">ยืนยันลบรายการของ “{inq.name}”?</span>
                     </p>
                     <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                      ข้อมูลติดต่อนี้จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)
+                      {inq.file
+                        ? 'ข้อมูลติดต่อและไฟล์แบบฟอร์มที่แนบมาจะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'
+                        : 'ข้อมูลติดต่อนี้จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button

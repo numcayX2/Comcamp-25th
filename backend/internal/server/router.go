@@ -149,6 +149,9 @@ func NewRouter(svc Services, opt Options) http.Handler {
 
 		// Slip upload carries its own 5 MB cap; everything else is small JSON.
 		api.With(limits.Slip.Middleware).Post("/applications/{id}/slip", paymentHandler.UploadSlip)
+		// The filled sponsor donation form carries its own 8 MB cap and shares the inquiry rate
+		// limit (one bucket per IP for both ways of sending an inquiry).
+		api.With(limits.SponsorInquiry.Middleware).Post("/sponsor-inquiries/upload", sponsorDesk.SubmitInquiryUpload)
 
 		// Sponsor logo uploads carry their own 2 MB multipart cap and donation files their own
 		// 8 MB cap, outside the 64 KB JSON limit.
@@ -206,6 +209,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				admin.With(anyAdmin).Get("/admin/sponsor-inquiries", sponsorDesk.ListInquiries)
 				admin.With(super).Patch("/admin/sponsor-inquiries/{id}", sponsorDesk.UpdateInquiry)
 				admin.With(super).Delete("/admin/sponsor-inquiries/{id}", sponsorDesk.DeleteInquiry)
+				admin.With(anyAdmin).Get("/admin/sponsor-inquiries/{id}/file", sponsorDesk.GetInquiryFile)
 				admin.With(anyAdmin).Get("/admin/sponsor-notify-emails", sponsorDesk.GetNotifyEmails)
 				admin.With(super).Put("/admin/sponsor-notify-emails", sponsorDesk.PutNotifyEmails)
 				admin.With(anyAdmin).Get("/admin/sponsor-donations", sponsorDesk.ListDonations)

@@ -49,7 +49,8 @@ export type SlipCheck =
   | { ok: true; file: File; previewUrl: string; resized: boolean }
   | { ok: false; message: string };
 
-function decode(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void } | null> {
+/** Decodes an image file (createImageBitmap, falling back to <img>); null when the browser cannot. */
+export function decodeImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void } | null> {
   if (typeof createImageBitmap === 'function') {
     return createImageBitmap(file)
       .then((bmp) => ({ source: bmp as CanvasImageSource, width: bmp.width, height: bmp.height, close: () => bmp.close() }))
@@ -71,7 +72,7 @@ function decodeWithImage(file: File) {
   });
 }
 
-type EncodedCanvas = {
+export type EncodedCanvas = {
   blob: Blob;
   ext: 'webp' | 'jpg';
   mime: 'image/webp' | 'image/jpeg';
@@ -94,7 +95,7 @@ async function encodeCanvasOptimal(canvas: HTMLCanvasElement, quality: number): 
 }
 
 /** Re-encodes via canvas (WebP with JPEG fallback), dropping EXIF metadata from phone photos. */
-async function shrink(
+export async function shrinkImage(
   src: { source: CanvasImageSource; width: number; height: number },
   edge: number,
   quality: number,
@@ -126,7 +127,7 @@ export async function prepareSlipFile(file: File): Promise<SlipCheck> {
   if (!SLIP_TYPES.includes(file.type)) {
     return { ok: false, message: 'กรุณาเลือกไฟล์รูปภาพ (JPG, PNG หรือ WebP)' };
   }
-  const img = await decode(file);
+  const img = await decodeImage(file);
   if (!img) return { ok: false, message: UNREADABLE };
 
   try {
@@ -141,7 +142,7 @@ export async function prepareSlipFile(file: File): Promise<SlipCheck> {
 
     let encoded: EncodedCanvas | null = null;
     for (const [edge, q] of [[OPTIMIZE_MAX_EDGE, 0.82], [1280, 0.76], [1024, 0.7]] as const) {
-      encoded = await shrink(img, edge, q);
+      encoded = await shrinkImage(img, edge, q);
       if (encoded && encoded.blob.size <= MAX_SLIP_BYTES) break;
     }
     if (!encoded) return { ok: false, message: UNREADABLE };

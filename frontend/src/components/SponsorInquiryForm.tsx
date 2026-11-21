@@ -1,14 +1,17 @@
 /**
- * /sponsor — public sponsor inquiry form.
+ * /sponsor — public sponsor inquiry form, in two ways: type the inquiry on the web, or send the
+ * faculty donation form already filled and signed (PDF or a photo/scan) instead.
  *
  * - Every value lives in React state only: nothing is written to localStorage, sessionStorage or
- *   cookies (AGENTS.md §9.2 / §13.5).
+ *   cookies (AGENTS.md §9.2 / §13.5). The attached form is only held as a File until it is sent.
  * - Synchronous useRef lock + disabled + aria-busy stop a double submit; there is no idempotency
  *   key here because a repeated inquiry is harmless and the server owns deduplication.
- * - Turnstile follows RegisterSection exactly: widget / dev-skip / missing-key.
+ * - Turnstile follows RegisterSection exactly: widget / dev-skip / missing-key. The widget stays
+ *   mounted across a mode switch, so one solved challenge serves either way of sending.
+ * - `#sponsor-upload` in the URL (the hero link) opens the upload mode.
  */
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, Send, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { Check, FileDown, FileText, Image as ImageIcon, Send, TriangleAlert, Upload } from 'lucide-react';
 import {
   ApiHttpError,
   SPONSOR_DETAILS_MAX,
@@ -16,9 +19,13 @@ import {
   SPONSOR_NAME_MAX,
   sanitizeDigits,
   stripZeroWidth,
+  submitSponsorFormUpload,
   submitSponsorInquiry,
   type SponsorKind,
 } from '../lib/api';
+import { SPONSOR_FORM_FILENAME, SPONSOR_FORM_PDF } from '../lib/camp-facts';
+import { formatBytes, middleTruncate } from '../lib/slip-upload';
+import { SPONSOR_FORM_ACCEPT, prepareSponsorFormFile } from '../lib/sponsor-upload';
 import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
 
 const TURNSTILE_SITE_KEY = String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
@@ -36,10 +43,18 @@ const CAPTCHA_UNAVAILABLE_MESSAGE =
   'ระบบยืนยันตัวตนยังไม่พร้อมใช้งาน จึงยังส่งข้อมูลไม่ได้ กรุณาโทรหาพี่ค่าย';
 const SEND_FAILED_MESSAGE = 'ส่งไม่สำเร็จ กรุณาลองใหม่ หรือโทรหาพี่ค่าย';
 const VALIDATION_FAILED_MESSAGE = 'ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+const FILE_REJECTED_MESSAGE = 'ระบบไม่รับไฟล์นี้ กรุณาเลือกไฟล์ PDF หรือรูปภาพ (JPG, PNG, WebP) ใหม่';
 
 const KIND_OPTIONS: SponsorKind[] = ['money', 'goods'];
+const UPLOAD_HASH = '#sponsor-upload';
 
-type FieldKey = 'name' | 'phone' | 'email' | 'kind';
+type Mode = 'web' | 'file';
+const MODE_LABELS: Record<Mode, string> = {
+  web: 'กรอกข้อมูลบนเว็บ',
+  file: 'แนบแบบฟอร์มที่กรอกแล้ว',
+};
+
+type FieldKey = 'name' | 'phone' | 'email' | 'kind' | 'file';
 type FieldErrors = Partial<Record<FieldKey, ReactNode>>;
 
 function emailError(value: string): ReactNode | undefined {
@@ -65,9 +80,17 @@ function emailError(value: string): ReactNode | undefined {
   );
 }
 
-function errorMessage(err: unknown): ReactNode {
+function errorMessage(err: unknown, mode: Mode): ReactNode {
   if (err instanceof ApiHttpError) {
-    if (err.code === 'VALIDATION_ERROR') return VALIDATION_FAILED_MESSAGE;
+    if (err.code === 'PAYLOAD_TOO_LARGE') {
+      return (
+        <>
+          ไฟล์ใหญ่เกิน <span className="font-mono tabular-nums">8</span> MB กรุณาถ่ายรูปแบบฟอร์มใหม่ หรือสแกนให้ไฟล์เล็กลง
+        </>
+      );
+    }
+    if (err.code === 'INVALID_IMAGE_DIMENSIONS') return 'รูปมีขนาดใหญ่เกินไป กรุณาถ่ายรูปแบบฟอร์มใหม่';
+    if (err.code === 'VALIDATION_ERROR') return mode === 'file' ? FILE_REJECTED_MESSAGE : VALIDATION_FAILED_MESSAGE;
     if (err.code === 'CAPTCHA_FAILED') return CAPTCHA_FAILED_MESSAGE;
     if (err.code === 'RATE_LIMITED') {
       const seconds = err.retryAfterSeconds;
@@ -85,28 +108,36 @@ function errorMessage(err: unknown): ReactNode {
 }
 
 export default function SponsorInquiryForm() {
+  const [mode, setMode] = useState<Mode>('web');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [kind, setKind] = useState<SponsorKind | ''>('');
   const [details, setDetails] = useState('');
   const [website, setWebsite] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<ReactNode | null>(null);
   const [captchaError, setCaptchaError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<Mode | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
   const busyRef = useRef(false);
+  /** Bumped on every pick so a slow re-encode of an older pick never overwrites a newer one. */
+  const pickRef = useRef(0);
   const focusFormOnReset = useRef(false);
   const captchaRef = useRef<TurnstileFieldHandle>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const kindRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -114,19 +145,66 @@ export default function SponsorInquiryForm() {
       successRef.current?.focus();
     } else if (focusFormOnReset.current) {
       focusFormOnReset.current = false;
-      nameRef.current?.focus();
+      (mode === 'file' ? fileRef : nameRef).current?.focus();
     }
   }, [done]);
 
   useEffect(() => {
     setHydrated(true);
+    const syncHash = () => {
+      if (window.location.hash === UPLOAD_HASH && !busyRef.current) setMode('file');
+    };
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
   }, []);
 
   function clearError(key: FieldKey) {
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
   }
 
+  function switchMode(next: Mode) {
+    if (busyRef.current || next === mode) return;
+    setMode(next);
+    setErrors({});
+    setFormError(null);
+  }
+
+  async function pickFile(picked: File | null | undefined) {
+    if (!picked || busyRef.current) return;
+    const pick = ++pickRef.current;
+    setPreparing(true);
+    clearError('file');
+    setFormError(null);
+    try {
+      const check = await prepareSponsorFormFile(picked);
+      if (pick !== pickRef.current) return;
+      if (check.ok) {
+        setFile(check.file);
+      } else {
+        setFile(null);
+        setErrors((prev) => ({ ...prev, file: check.message }));
+      }
+    } finally {
+      if (pick === pickRef.current) setPreparing(false);
+    }
+  }
+
+  function onFileInput(event: ChangeEvent<HTMLInputElement>) {
+    const picked = event.target.files?.[0];
+    // Reset so choosing the same file again (after an error) still fires change.
+    event.target.value = '';
+    void pickFile(picked);
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragging(false);
+    void pickFile(event.dataTransfer.files?.[0]);
+  }
+
   function firstInvalidField(next: FieldErrors): HTMLElement | null {
+    if (next.file) return fileRef.current;
     if (next.name) return nameRef.current;
     if (next.phone) return phoneRef.current;
     if (next.email) return emailRef.current;
@@ -136,7 +214,7 @@ export default function SponsorInquiryForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busyRef.current) return;
+    if (busyRef.current || preparing) return;
 
     const cleanName = stripZeroWidth(name).trim();
     const digits = sanitizeDigits(phone);
@@ -163,9 +241,13 @@ export default function SponsorInquiryForm() {
       );
     }
 
-    const mailError = emailError(email);
-    if (mailError) next.email = mailError;
-    if (!kind) next.kind = 'กรุณาเลือกประเภทการสนับสนุน';
+    if (mode === 'web') {
+      const mailError = emailError(email);
+      if (mailError) next.email = mailError;
+      if (!kind) next.kind = 'กรุณาเลือกประเภทการสนับสนุน';
+    } else if (!file) {
+      next.file = errors.file ?? 'กรุณาแนบไฟล์แบบฟอร์มที่กรอกแล้ว';
+    }
 
     setErrors(next);
     setFormError(null);
@@ -175,8 +257,6 @@ export default function SponsorInquiryForm() {
       requestAnimationFrame(() => firstInvalid.focus());
       return;
     }
-
-    if (!kind) return;
 
     if (CAPTCHA_MODE === 'missing-key') return;
 
@@ -190,19 +270,26 @@ export default function SponsorInquiryForm() {
     setBusy(true);
 
     try {
-      await submitSponsorInquiry({
-        name: cleanName,
-        phone: digits,
-        email: stripZeroWidth(email).trim(),
-        kind,
-        details: stripZeroWidth(details).trim(),
-        turnstileToken,
-        website,
-      });
-      setDone(true);
+      if (mode === 'file') {
+        if (!file) return;
+        setProgress(0);
+        await submitSponsorFormUpload({ name: cleanName, phone: digits, turnstileToken, website }, file, setProgress);
+      } else {
+        if (!kind) return;
+        await submitSponsorInquiry({
+          name: cleanName,
+          phone: digits,
+          email: stripZeroWidth(email).trim(),
+          kind,
+          details: stripZeroWidth(details).trim(),
+          turnstileToken,
+          website,
+        });
+      }
+      setDone(mode);
     } catch (err) {
       const captchaFailed = err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED';
-      setFormError(captchaFailed ? null : errorMessage(err));
+      setFormError(captchaFailed ? null : errorMessage(err, mode));
       captchaRef.current?.reset();
       if (captchaFailed) {
         setCaptchaError(CAPTCHA_FAILED_MESSAGE);
@@ -211,6 +298,7 @@ export default function SponsorInquiryForm() {
     } finally {
       busyRef.current = false;
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -221,13 +309,34 @@ export default function SponsorInquiryForm() {
     setKind('');
     setDetails('');
     setWebsite('');
+    setFile(null);
     setErrors({});
     setFormError(null);
     setCaptchaError(null);
     setTurnstileToken('');
     focusFormOnReset.current = true;
-    setDone(false);
+    setDone(null);
   }
+
+  const fileMode = mode === 'file';
+  let submitLabel: ReactNode;
+  if (busy && fileMode) {
+    submitLabel = (
+      <>
+        กำลังส่งไฟล์… <span className="font-mono tabular-nums">{progress ?? 0}%</span>
+      </>
+    );
+  } else if (busy) {
+    submitLabel = 'กำลังส่ง…';
+  } else {
+    submitLabel = (
+      <>
+        <span>{fileMode ? 'ส่งแบบฟอร์มให้พี่ค่าย' : 'ส่งข้อมูลให้พี่ค่าย'}</span>
+        <Send className="sp-ico" size={16} strokeWidth={1.5} aria-hidden="true" />
+      </>
+    );
+  }
+  const FileIcon = file?.type === 'application/pdf' ? FileText : ImageIcon;
 
   return (
     <div className="sp-inquiry">
@@ -235,7 +344,7 @@ export default function SponsorInquiryForm() {
         แจ้งความประสงค์สนับสนุน
       </h2>
       <p className="sp-inquiry__lead">
-        กรอกข้อมูลติดต่อและประเภทการสนับสนุน พี่ค่ายจะติดต่อกลับเพื่อยืนยันรายละเอียดและนัดหมายขั้นตอนถัดไป
+        กรอกข้อมูลบนเว็บ หรือแนบแบบฟอร์มบริจาคที่กรอกแล้วแทนก็ได้ พี่ค่ายจะติดต่อกลับเพื่อยืนยันรายละเอียดและนัดหมายขั้นตอนถัดไป
       </p>
 
       {done ? (
@@ -250,239 +359,367 @@ export default function SponsorInquiryForm() {
             <Check size={16} strokeWidth={1.5} />
           </span>
           <h3 id="sp-success-title" className="sp-success__title">
-            ได้รับข้อมูลแล้ว
+            {done === 'file' ? 'ได้รับแบบฟอร์มแล้ว' : 'ได้รับข้อมูลแล้ว'}
           </h3>
           <p id="sp-success-text" className="sp-success__text">
-            พี่ค่ายจะติดต่อกลับทางเบอร์ที่ให้ไว้
+            {done === 'file'
+              ? 'พี่ค่ายจะตรวจแบบฟอร์มแล้วติดต่อกลับทางเบอร์ที่ให้ไว้'
+              : 'พี่ค่ายจะติดต่อกลับทางเบอร์ที่ให้ไว้'}
           </p>
           <button type="button" className="sp-btn sp-btn--secondary" onClick={resetForm}>
             ส่งอีกครั้ง
           </button>
         </div>
       ) : (
-        <form className="sp-form" method="post" noValidate onSubmit={handleSubmit} aria-labelledby="sp-inquiry-title">
-          <div className="sp-hp" aria-hidden="true">
-            <label htmlFor="sp-website">Website</label>
-            <input
-              id="sp-website"
-              name="website"
-              type="text"
-              tabIndex={-1}
-              autoComplete="off"
-              value={website}
-              onChange={(event) => setWebsite(event.target.value)}
-            />
-          </div>
-
-          <div className="sp-field sp-field--full">
-            <label className="sp-label" htmlFor="sp-name">
-              <span>
-                ชื่อผู้สนับสนุน / ร้าน / บริษัท <span className="sp-req" aria-hidden="true">*</span>
-                <span className="sr-only"> (จำเป็น)</span>
-              </span>
-            </label>
-            <input
-              id="sp-name"
-              name="name"
-              ref={nameRef}
-              className="sp-input"
-              type="text"
-              autoComplete="organization"
-              maxLength={SPONSOR_NAME_MAX}
-              required
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-                clearError('name');
-              }}
-              aria-invalid={errors.name ? true : undefined}
-              aria-describedby={errors.name ? 'sp-name-err' : undefined}
-            />
-            {errors.name && (
-              <p id="sp-name-err" className="sp-error">
-                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{errors.name}</span>
-              </p>
-            )}
-          </div>
-
-          <div className="sp-field">
-            <label className="sp-label" htmlFor="sp-phone">
-              <span>
-                เบอร์โทรศัพท์มือถือ <span className="sp-req" aria-hidden="true">*</span>
-                <span className="sr-only"> (จำเป็น)</span>
-              </span>
-            </label>
-            <input
-              id="sp-phone"
-              name="phone"
-              ref={phoneRef}
-              className="sp-input sp-input--mono"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="08X-XXX-XXXX"
-              required
-              value={phone}
-              onChange={(event) => {
-                setPhone(sanitizeDigits(event.target.value).slice(0, 10));
-                clearError('phone');
-              }}
-              aria-invalid={errors.phone ? true : undefined}
-              aria-describedby={errors.phone ? 'sp-phone-err' : undefined}
-            />
-            {errors.phone && (
-              <p id="sp-phone-err" className="sp-error">
-                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{errors.phone}</span>
-              </p>
-            )}
-          </div>
-
-          <div className="sp-field">
-            <label className="sp-label" htmlFor="sp-email">
-              <span>อีเมล</span>
-              <span className="sp-label__optional">ไม่บังคับ</span>
-            </label>
-            <input
-              id="sp-email"
-              name="email"
-              ref={emailRef}
-              className="sp-input"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                clearError('email');
-              }}
-              aria-invalid={errors.email ? true : undefined}
-              aria-describedby={errors.email ? 'sp-email-err' : undefined}
-            />
-            {errors.email && (
-              <p id="sp-email-err" className="sp-error">
-                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{errors.email}</span>
-              </p>
-            )}
-          </div>
-
-          <fieldset
-            className="sp-fieldset sp-field--full"
-            aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
-          >
-            <legend className="sp-label">
-              <span>
-                ประเภทการสนับสนุน <span className="sp-req" aria-hidden="true">*</span>
-                <span className="sr-only"> (จำเป็น)</span>
-              </span>
-            </legend>
+        <>
+          <fieldset id="sponsor-upload" className="sp-fieldset sp-method">
+            <legend className="sp-label">วิธีส่งข้อมูล</legend>
             <div className="sp-choices">
-              {KIND_OPTIONS.map((option, index) => (
+              {(['web', 'file'] as const).map((option) => (
                 <label className="sp-choice" key={option}>
                   <input
                     className="sp-choice__input"
                     type="radio"
-                    name="kind"
+                    name="sp-method"
                     value={option}
-                    ref={index === 0 ? kindRef : undefined}
-                    checked={kind === option}
-                    required={index === 0}
-                    onChange={() => {
-                      setKind(option);
-                      clearError('kind');
-                    }}
-                    aria-invalid={errors.kind ? true : undefined}
-                    aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
+                    checked={mode === option}
+                    disabled={busy}
+                    onChange={() => switchMode(option)}
                   />
-                  <span className="sp-choice__pill">{SPONSOR_KIND_LABELS[option]}</span>
+                  <span className="sp-choice__pill">{MODE_LABELS[option]}</span>
                 </label>
               ))}
             </div>
-            {errors.kind && (
-              <p id="sp-kind-err" className="sp-error">
-                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{errors.kind}</span>
-              </p>
-            )}
           </fieldset>
 
-          <div className="sp-field sp-field--full">
-            <label className="sp-label" htmlFor="sp-details">
-              <span>
-                รายละเอียดเพิ่มเติม <span className="sp-label__optional">ไม่บังคับ</span>
-              </span>
-              <span className="sp-hint" aria-hidden="true">
-                <span className="font-mono tabular-nums">{details.length}</span>/
-                <span className="font-mono tabular-nums">{SPONSOR_DETAILS_MAX}</span>
-              </span>
-            </label>
-            <textarea
-              id="sp-details"
-              name="details"
-              className="sp-input sp-textarea"
-              rows={5}
-              maxLength={SPONSOR_DETAILS_MAX}
-              placeholder="เช่น จำนวนเงินโดยประมาณ หรือรายการสิ่งของ"
-              value={details}
-              onChange={(event) => setDetails(event.target.value)}
-            />
-          </div>
-
-          <div className="sp-field sp-field--full sp-captcha">
-            {CAPTCHA_MODE === 'widget' && (
-              <TurnstileField
-                ref={captchaRef}
-                siteKey={TURNSTILE_SITE_KEY}
-                errorId="sp-captcha-err"
-                error={captchaError}
-                onToken={(token) => {
-                  setTurnstileToken(token ?? '');
-                  if (token) setCaptchaError(null);
-                }}
+          <form className="sp-form" method="post" noValidate onSubmit={handleSubmit} aria-labelledby="sp-inquiry-title">
+            <div className="sp-hp" aria-hidden="true">
+              <label htmlFor="sp-website">Website</label>
+              <input
+                id="sp-website"
+                name="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(event) => setWebsite(event.target.value)}
               />
-            )}
-            {CAPTCHA_MODE === 'dev-skip' && (
-              <p className="sp-hint sp-hint--dev">
-                [DEV] ยังไม่ได้ตั้ง <span className="font-mono">PUBLIC_TURNSTILE_SITE_KEY</span>{' '}
-                จึงข้ามการยืนยันตัวตน (เซิร์ฟเวอร์ dev ที่ไม่มี secret ก็ข้ามเช่นกัน)
-              </p>
-            )}
-            {CAPTCHA_MODE === 'missing-key' && (
-              <p id="sp-captcha-err" className="sp-error" role="alert">
-                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-                <span>{CAPTCHA_UNAVAILABLE_MESSAGE}</span>
-              </p>
-            )}
-          </div>
-
-          {formError && (
-            <div className="sp-alert" role="alert">
-              <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
-              <div>{formError}</div>
             </div>
-          )}
 
-          <div className="sp-form__actions">
-            <button
-              type="submit"
-              className="sp-btn sp-btn--primary"
-              disabled={busy || !hydrated}
-              aria-busy={busy || undefined}
-            >
-              {busy ? (
-                'กำลังส่ง…'
-              ) : (
-                <>
-                  <span>ส่งข้อมูลให้พี่ค่าย</span>
-                  <Send className="sp-ico" size={16} strokeWidth={1.5} aria-hidden="true" />
-                </>
+            {fileMode && (
+              <div className="sp-field--full sp-upload">
+                <ol className="sp-upload__steps">
+                  <li className="sp-upload__step">
+                    <span className="sp-upload__no font-mono tabular-nums" aria-hidden="true">
+                      1
+                    </span>
+                    <div className="sp-upload__body">
+                      <p className="sp-upload__text">ดาวน์โหลดแบบฟอร์มบริจาคของคณะ</p>
+                      <a className="sp-btn sp-btn--secondary sp-btn--sm" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
+                        <FileDown className="sp-ico" size={16} strokeWidth={1.5} aria-hidden="true" />
+                        <span>ดาวน์โหลดแบบฟอร์ม</span>
+                        <span className="sp-btn__meta font-mono">PDF</span>
+                      </a>
+                    </div>
+                  </li>
+                  <li className="sp-upload__step">
+                    <span className="sp-upload__no font-mono tabular-nums" aria-hidden="true">
+                      2
+                    </span>
+                    <p className="sp-upload__text">
+                      กรอกข้อมูลและลงนาม จะพิมพ์ออกมาเขียน หรือกรอกในไฟล์ PDF ก็ได้
+                      ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้
+                    </p>
+                  </li>
+                  <li className="sp-upload__step">
+                    <span className="sp-upload__no font-mono tabular-nums" aria-hidden="true">
+                      3
+                    </span>
+                    <p className="sp-upload__text">ถ่ายรูปหรือสแกนให้เห็นทั้งแผ่น แล้วแนบไฟล์ด้านล่าง</p>
+                  </li>
+                </ol>
+
+                <div className="sp-field">
+                  <span className="sp-label" id="sp-file-label">
+                    <span>
+                      ไฟล์แบบฟอร์มที่กรอกแล้ว <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </span>
+                  <label
+                    className="sp-drop"
+                    data-drag={dragging || undefined}
+                    data-filled={file ? true : undefined}
+                    data-invalid={errors.file ? true : undefined}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (!busy) setDragging(true);
+                    }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={onDrop}
+                  >
+                    <input
+                      ref={fileRef}
+                      id="sp-file"
+                      name="file"
+                      className="sp-drop__input"
+                      type="file"
+                      accept={SPONSOR_FORM_ACCEPT}
+                      disabled={busy}
+                      onChange={onFileInput}
+                      aria-labelledby="sp-file-label"
+                      aria-invalid={errors.file ? true : undefined}
+                      aria-describedby={`sp-file-state sp-file-hint${errors.file ? ' sp-file-err' : ''}`}
+                    />
+                    {file ? (
+                      <>
+                        <FileIcon className="sp-drop__icon" size={20} strokeWidth={1.5} aria-hidden="true" />
+                        <span className="sp-drop__text" id="sp-file-state">
+                          <span className="sp-drop__name">{middleTruncate(file.name, 34)}</span>
+                          <span className="sp-drop__meta font-mono tabular-nums">{formatBytes(file.size)}</span>
+                        </span>
+                        <span className="sp-drop__action" aria-hidden="true">
+                          เปลี่ยนไฟล์
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="sp-drop__icon" size={20} strokeWidth={1.5} aria-hidden="true" />
+                        <span className="sp-drop__text" id="sp-file-state">
+                          <span className="sp-drop__name">
+                            {preparing ? 'กำลังเตรียมไฟล์…' : 'เลือกไฟล์ หรือถ่ายรูปแบบฟอร์ม'}
+                          </span>
+                        </span>
+                      </>
+                    )}
+                  </label>
+                  <p id="sp-file-hint" className="sp-hint sp-hint--wrap">
+                    PDF, JPG, PNG หรือ WebP ไม่เกิน <span className="font-mono tabular-nums">8</span> MB
+                    รูปขนาดใหญ่จะถูกย่อให้อัตโนมัติ
+                  </p>
+                  {errors.file && (
+                    <p id="sp-file-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.file}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className={fileMode ? 'sp-field' : 'sp-field sp-field--full'}>
+              <label className="sp-label" htmlFor="sp-name">
+                <span>
+                  ชื่อผู้สนับสนุน / ร้าน / บริษัท <span className="sp-req" aria-hidden="true">*</span>
+                  <span className="sr-only"> (จำเป็น)</span>
+                </span>
+              </label>
+              <input
+                id="sp-name"
+                name="name"
+                ref={nameRef}
+                className="sp-input"
+                type="text"
+                autoComplete="organization"
+                maxLength={SPONSOR_NAME_MAX}
+                required
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearError('name');
+                }}
+                aria-invalid={errors.name ? true : undefined}
+                aria-describedby={errors.name ? 'sp-name-err' : undefined}
+              />
+              {errors.name && (
+                <p id="sp-name-err" className="sp-error">
+                  <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{errors.name}</span>
+                </p>
               )}
-            </button>
-            <p className="sp-form__note">ข้อมูลนี้ใช้เพื่อติดต่อกลับเรื่องการสนับสนุนค่ายเท่านั้น</p>
-          </div>
-        </form>
+            </div>
+
+            <div className="sp-field">
+              <label className="sp-label" htmlFor="sp-phone">
+                <span>
+                  เบอร์โทรศัพท์มือถือ <span className="sp-req" aria-hidden="true">*</span>
+                  <span className="sr-only"> (จำเป็น)</span>
+                </span>
+              </label>
+              <input
+                id="sp-phone"
+                name="phone"
+                ref={phoneRef}
+                className="sp-input sp-input--mono"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="08X-XXX-XXXX"
+                required
+                value={phone}
+                onChange={(event) => {
+                  setPhone(sanitizeDigits(event.target.value).slice(0, 10));
+                  clearError('phone');
+                }}
+                aria-invalid={errors.phone ? true : undefined}
+                aria-describedby={errors.phone ? 'sp-phone-err' : undefined}
+              />
+              {errors.phone && (
+                <p id="sp-phone-err" className="sp-error">
+                  <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{errors.phone}</span>
+                </p>
+              )}
+            </div>
+
+            {!fileMode && (
+              <div className="sp-field">
+                <label className="sp-label" htmlFor="sp-email">
+                  <span>อีเมล</span>
+                  <span className="sp-label__optional">ไม่บังคับ</span>
+                </label>
+                <input
+                  id="sp-email"
+                  name="email"
+                  ref={emailRef}
+                  className="sp-input"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    clearError('email');
+                  }}
+                  aria-invalid={errors.email ? true : undefined}
+                  aria-describedby={errors.email ? 'sp-email-err' : undefined}
+                />
+                {errors.email && (
+                  <p id="sp-email-err" className="sp-error">
+                    <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{errors.email}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!fileMode && (
+              <fieldset
+                className="sp-fieldset sp-field--full"
+                aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
+              >
+                <legend className="sp-label">
+                  <span>
+                    ประเภทการสนับสนุน <span className="sp-req" aria-hidden="true">*</span>
+                    <span className="sr-only"> (จำเป็น)</span>
+                  </span>
+                </legend>
+                <div className="sp-choices">
+                  {KIND_OPTIONS.map((option, index) => (
+                    <label className="sp-choice" key={option}>
+                      <input
+                        className="sp-choice__input"
+                        type="radio"
+                        name="kind"
+                        value={option}
+                        ref={index === 0 ? kindRef : undefined}
+                        checked={kind === option}
+                        required={index === 0}
+                        onChange={() => {
+                          setKind(option);
+                          clearError('kind');
+                        }}
+                        aria-invalid={errors.kind ? true : undefined}
+                        aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
+                      />
+                      <span className="sp-choice__pill">{SPONSOR_KIND_LABELS[option]}</span>
+                    </label>
+                  ))}
+                </div>
+                {errors.kind && (
+                  <p id="sp-kind-err" className="sp-error">
+                    <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{errors.kind}</span>
+                  </p>
+                )}
+              </fieldset>
+            )}
+
+            {!fileMode && (
+              <div className="sp-field sp-field--full">
+                <label className="sp-label" htmlFor="sp-details">
+                  <span>
+                    รายละเอียดเพิ่มเติม <span className="sp-label__optional">ไม่บังคับ</span>
+                  </span>
+                  <span className="sp-hint" aria-hidden="true">
+                    <span className="font-mono tabular-nums">{details.length}</span>/
+                    <span className="font-mono tabular-nums">{SPONSOR_DETAILS_MAX}</span>
+                  </span>
+                </label>
+                <textarea
+                  id="sp-details"
+                  name="details"
+                  className="sp-input sp-textarea"
+                  rows={5}
+                  maxLength={SPONSOR_DETAILS_MAX}
+                  placeholder="เช่น จำนวนเงินโดยประมาณ หรือรายการสิ่งของ"
+                  value={details}
+                  onChange={(event) => setDetails(event.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="sp-field sp-field--full sp-captcha">
+              {CAPTCHA_MODE === 'widget' && (
+                <TurnstileField
+                  ref={captchaRef}
+                  siteKey={TURNSTILE_SITE_KEY}
+                  errorId="sp-captcha-err"
+                  error={captchaError}
+                  onToken={(token) => {
+                    setTurnstileToken(token ?? '');
+                    if (token) setCaptchaError(null);
+                  }}
+                />
+              )}
+              {CAPTCHA_MODE === 'dev-skip' && (
+                <p className="sp-hint sp-hint--dev">
+                  [DEV] ยังไม่ได้ตั้ง <span className="font-mono">PUBLIC_TURNSTILE_SITE_KEY</span>{' '}
+                  จึงข้ามการยืนยันตัวตน (เซิร์ฟเวอร์ dev ที่ไม่มี secret ก็ข้ามเช่นกัน)
+                </p>
+              )}
+              {CAPTCHA_MODE === 'missing-key' && (
+                <p id="sp-captcha-err" className="sp-error" role="alert">
+                  <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{CAPTCHA_UNAVAILABLE_MESSAGE}</span>
+                </p>
+              )}
+            </div>
+
+            {formError && (
+              <div className="sp-alert" role="alert">
+                <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                <div>{formError}</div>
+              </div>
+            )}
+
+            <div className="sp-form__actions">
+              <button
+                type="submit"
+                className="sp-btn sp-btn--primary"
+                disabled={busy || preparing || !hydrated}
+                aria-busy={busy || undefined}
+              >
+                {submitLabel}
+              </button>
+              <p className="sp-form__note">
+                {fileMode
+                  ? 'ไฟล์นี้เปิดดูได้เฉพาะพี่ค่ายที่ดูแลผู้สนับสนุน และใช้เพื่อดำเนินเรื่องบริจาคเท่านั้น'
+                  : 'ข้อมูลนี้ใช้เพื่อติดต่อกลับเรื่องการสนับสนุนค่ายเท่านั้น'}
+              </p>
+            </div>
+          </form>
+        </>
       )}
     </div>
   );

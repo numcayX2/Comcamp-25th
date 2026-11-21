@@ -1012,6 +1012,60 @@
         }
       }
     },
+    "/sponsor-inquiries/upload": {
+      "post": {
+        "tags": ["Sponsors"],
+        "summary": "Submit Sponsor Inquiry With Filled Form",
+        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ ใช้ช่องเดียวกับ POST /sponsor-inquiries แต่เป็น multipart/form-data และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "phone", "file"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "phone": { "type": "string", "description": "10 หลักขึ้นต้นด้วย 0 (รับเลขไทย ขีด และช่องว่าง)" },
+                  "email": { "type": "string", "maxLength": 150 },
+                  "kind": { "type": "string", "enum": ["money", "goods"], "description": "ว่าง = money (แบบฟอร์มของคณะเป็นการบริจาคเงิน)" },
+                  "details": { "type": "string", "maxLength": 500 },
+                  "turnstileToken": { "type": "string" },
+                  "website": { "type": "string", "description": "honeypot ต้องว่าง" },
+                  "file": { "type": "string", "format": "binary", "description": "แบบฟอร์มที่กรอกแล้ว 1 ไฟล์" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "รับคำขอและไฟล์แล้ว (ไม่มี id และไม่สะท้อนข้อมูลกลับ)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } }
+          },
+          "400": {
+            "description": "ข้อมูลหรือไฟล์ไม่ถูกต้อง ไม่มีไฟล์ หรือมีมากกว่า 1 ไฟล์ (VALIDATION_ERROR / INVALID_IMAGE_DIMENSIONS)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "ยืนยัน Turnstile ไม่ผ่าน (code CAPTCHA_FAILED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "413": {
+            "description": "ไฟล์เกิน 8 MB (code PAYLOAD_TOO_LARGE)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "429": {
+            "description": "ส่งถี่เกินไป (code RATE_LIMITED, มี Retry-After)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "503": {
+            "description": "ระบบตรวจ Turnstile ไม่พร้อม (code SERVICE_UNAVAILABLE)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
     "/admin/sponsor-inquiries": {
       "get": {
         "tags": ["Sponsors", "Admin Management"],
@@ -1083,7 +1137,7 @@
       "delete": {
         "tags": ["Sponsors", "Admin Management"],
         "summary": "Admin Delete Sponsor Inquiry",
-        "description": "ลบคำขอ บันทึก audit sponsor.inquiry.delete สิทธิ์: admin",
+        "description": "ลบคำขอ (ลบไฟล์แบบฟอร์มที่แนบมาหลัง commit) บันทึก audit sponsor.inquiry.delete สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           {
@@ -1105,6 +1159,45 @@
           },
           "404": {
             "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-inquiries/{id}/file": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin View Sponsor Inquiry Form",
+        "description": "ส่งแบบฟอร์มที่ผู้สนับสนุนแนบมาตาม path ใน DB เท่านั้น Cache-Control: private, no-store และ X-Content-Type-Options: nosniff บันทึก audit sponsor.inquiry.file.view สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ไฟล์ต้นฉบับ",
+            "content": {
+              "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบคำขอหรือคำขอนี้ไม่มีไฟล์แนบ (code NOT_FOUND)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           }
         }
@@ -1788,7 +1881,7 @@
       },
       "SponsorInquiry": {
         "type": "object",
-        "required": ["id", "name", "phone", "email", "kind", "details", "handled", "handledAt", "createdAt"],
+        "required": ["id", "name", "phone", "email", "kind", "details", "file", "handled", "handledAt", "createdAt"],
         "properties": {
           "id": { "type": "integer", "format": "int64" },
           "name": { "type": "string" },
@@ -1800,6 +1893,11 @@
             "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
           },
           "details": { "type": "string" },
+          "file": {
+            "allOf": [{ "$ref": "#/components/schemas/SponsorDonationFile" }],
+            "nullable": true,
+            "description": "แบบฟอร์มที่ผู้สนับสนุนแนบมา (uploadedAt = createdAt) null เมื่อกรอกบนเว็บ"
+          },
           "handled": { "type": "boolean" },
           "handledAt": { "type": "string", "format": "date-time", "nullable": true },
           "createdAt": { "type": "string", "format": "date-time" }

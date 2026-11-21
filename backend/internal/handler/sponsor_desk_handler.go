@@ -19,6 +19,14 @@ import (
 // MaxSponsorDocRequestBytes caps a donation file upload: the 8 MB file plus 64 KB of multipart framing.
 const MaxSponsorDocRequestBytes = service.MaxSponsorDocBytes + 64<<10
 
+// MaxSponsorInquiryUploadBytes caps POST /api/sponsor-inquiries/upload: the 8 MB form plus 64 KB
+// for the text fields and multipart framing.
+const MaxSponsorInquiryUploadBytes = service.MaxSponsorDocBytes + 64<<10
+
+// maxInquiryFieldBytes bounds one text part of the upload form; the service enforces the real
+// per-field limits.
+const maxInquiryFieldBytes = 4 << 10
+
 // SponsorDeskHandler serves the public sponsor inquiry form and the admin inquiry / donation desk.
 type SponsorDeskHandler struct {
 	inquiries *service.SponsorInquiryService
@@ -77,11 +85,122 @@ func (h *SponsorDeskHandler) SubmitInquiry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
-	if err := h.inquiries.Submit(ctx, req); err != nil {
+	if err := h.inquiries.Submit(ctx, req, nil); err != nil {
 		writeSponsorDeskError(w, r, err)
 		return
 	}
 	response.Created(w, map[string]bool{"ok": true})
+}
+
+// SubmitInquiryUpload handles POST /api/sponsor-inquiries/upload: the sponsor sends the filled
+// donation form instead of typing the inquiry. multipart/form-data with the SubmitInquiry fields
+// (name, phone, email, kind, details, turnstileToken, website) plus "file" (PDF/JPG/PNG/WebP
+// ≤ 8 MB); 201 {"ok":true}, nothing echoed back. Parts are read in memory under hard caps, so a
+// public upload never spills multipart temp files onto the small /tmp tmpfs.
+func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.Request) {
+	tooLarge := func() {
+		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorDocTooLarge.Error())
+	}
+	invalid := func(msg string) {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, msg)
+	}
+	isTooLarge := func(err error) bool {
+		var maxErr *http.MaxBytesError
+		return errors.As(err, &maxErr)
+	}
+	if r.ContentLength > MaxSponsorInquiryUploadBytes {
+		tooLarge()
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, MaxSponsorInquiryUploadBytes)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		invalid("invalid multipart form")
+		return
+	}
+
+	var req service.SponsorInquiryRequest
+	fields := map[string]*string{
+		"name": &req.Name, "phone": &req.Phone, "email": &req.Email, "kind": &req.Kind,
+		"details": &req.Details, "turnstileToken": &req.TurnstileToken, "website": &req.Website,
+	}
+	var file []byte
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			if isTooLarge(err) {
+				tooLarge()
+			} else {
+				invalid("invalid multipart form")
+			}
+			return
+		}
+		name := part.FormName()
+		var data []byte
+		switch {
+		case name == "file":
+			if file != nil {
+				part.Close()
+				invalid("only one file is allowed")
+				return
+			}
+			// One byte over the limit is enough for the service to answer 413.
+			data, err = io.ReadAll(io.LimitReader(part, service.MaxSponsorDocBytes+1))
+			file = data
+		case fields[name] != nil:
+			data, err = io.ReadAll(io.LimitReader(part, maxInquiryFieldBytes+1))
+			if err == nil && len(data) > maxInquiryFieldBytes {
+				part.Close()
+				invalid(name + " is too long")
+				return
+			}
+			*fields[name] = string(data)
+		default:
+			_, err = io.Copy(io.Discard, part)
+		}
+		part.Close()
+		if err != nil {
+			if isTooLarge(err) {
+				tooLarge()
+			} else {
+				invalid("cannot read form")
+			}
+			return
+		}
+	}
+	if file == nil {
+		invalid("file is required")
+		return
+	}
+
+	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
+	if err := h.inquiries.Submit(ctx, req, file); err != nil {
+		writeSponsorDeskError(w, r, err)
+		return
+	}
+	response.Created(w, map[string]bool{"ok": true})
+}
+
+// GetInquiryFile handles GET /api/admin/sponsor-inquiries/{id}/file: streams the attached form
+// (path from the DB only) privately and uncached.
+func (h *SponsorDeskHandler) GetInquiryFile(w http.ResponseWriter, r *http.Request) {
+	adminID, ip, ok := adminIdentity(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	doc, err := h.inquiries.OpenFile(r.Context(), id, adminID, ip)
+	if err != nil {
+		writeSponsorDeskError(w, r, err)
+		return
+	}
+	serveSponsorDoc(w, r, doc)
 }
 
 // ListInquiries handles GET /api/admin/sponsor-inquiries.
@@ -308,6 +427,11 @@ func (h *SponsorDeskHandler) GetDonationFile(w http.ResponseWriter, r *http.Requ
 		writeSponsorDeskError(w, r, err)
 		return
 	}
+	serveSponsorDoc(w, r, doc)
+}
+
+// serveSponsorDoc streams a resolved sponsor document privately and uncached.
+func serveSponsorDoc(w http.ResponseWriter, r *http.Request, doc *service.SponsorDocFile) {
 	f, err := os.Open(doc.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		writeSponsorDeskError(w, r, service.ErrSponsorRecordNotFound)

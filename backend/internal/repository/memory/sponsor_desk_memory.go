@@ -42,6 +42,10 @@ func cloneInquiry(i *domain.SponsorInquiry) *domain.SponsorInquiry {
 		t := *i.HandledAt
 		c.HandledAt = &t
 	}
+	if i.File != nil {
+		f := *i.File
+		c.File = &f
+	}
 	return &c
 }
 
@@ -89,6 +93,16 @@ func (m *MemorySponsorInquiryRepo) List(ctx context.Context) ([]*domain.SponsorI
 	return out, nil
 }
 
+func (m *MemorySponsorInquiryRepo) GetByID(ctx context.Context, id int64) (*domain.SponsorInquiry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	cur, ok := m.data[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return cloneInquiry(cur), nil
+}
+
 func (m *MemorySponsorInquiryRepo) SetHandled(ctx context.Context, id int64, handled bool, audit *domain.AuditEntry) (*domain.SponsorInquiry, error) {
 	if err := checkAuditDetails(audit); err != nil {
 		return nil, err
@@ -114,22 +128,22 @@ func (m *MemorySponsorInquiryRepo) SetHandled(ctx context.Context, id int64, han
 	return cloneInquiry(cur), nil
 }
 
-func (m *MemorySponsorInquiryRepo) Delete(ctx context.Context, id int64, audit *domain.AuditEntry) error {
+func (m *MemorySponsorInquiryRepo) Delete(ctx context.Context, id int64, audit *domain.AuditEntry) (*domain.SponsorInquiry, error) {
 	if err := checkAuditDetails(audit); err != nil {
-		return err
+		return nil, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cur, ok := m.data[id]
 	if !ok {
-		return domain.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	delete(m.data, id)
 	if err := m.logAudit(ctx, audit, id); err != nil {
 		m.data[id] = cur
-		return err
+		return nil, err
 	}
-	return nil
+	return cloneInquiry(cur), nil
 }
 
 func (m *MemorySponsorInquiryRepo) ListNotifyEmails(ctx context.Context) ([]string, error) {

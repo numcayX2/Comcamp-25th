@@ -64,7 +64,7 @@ func setupSponsorDeskAppWith(t *testing.T, captcha service.TurnstileVerifier, li
 	inquiryRepo := memory.NewMemorySponsorInquiryRepo(base.auditRepo)
 	donationRepo := memory.NewMemorySponsorDonationRepo(base.auditRepo)
 	notifier := &recordingInquiryNotifier{}
-	inquirySvc := service.NewSponsorInquiryService(inquiryRepo).WithNotifier(notifier)
+	inquirySvc := service.NewSponsorInquiryService(inquiryRepo, base.auditRepo, uploadDir).WithNotifier(notifier)
 	if captcha != nil {
 		inquirySvc.WithTurnstile(captcha)
 	}
@@ -248,6 +248,9 @@ func TestSponsorInquiry_RateLimited(t *testing.T) {
 	if rec.Header().Get("Retry-After") == "" {
 		t.Fatal("429 without Retry-After")
 	}
+	// Sending the filled form instead shares the same per-IP bucket.
+	pdf := []byte("%PDF-1.4\n%%EOF\n")
+	expectCode(t, app.postInquiryUpload(t, map[string]string{"name": "ร้าน", "phone": "0812345678"}, "form.pdf", pdf), http.StatusTooManyRequests, response.CodeRateLimited)
 }
 
 func TestSponsorDesk_AdminRoutesRequireToken(t *testing.T) {
@@ -256,6 +259,7 @@ func TestSponsorDesk_AdminRoutesRequireToken(t *testing.T) {
 		{http.MethodGet, "/api/admin/sponsor-inquiries"},
 		{http.MethodPatch, "/api/admin/sponsor-inquiries/1"},
 		{http.MethodDelete, "/api/admin/sponsor-inquiries/1"},
+		{http.MethodGet, "/api/admin/sponsor-inquiries/1/file"},
 		{http.MethodGet, "/api/admin/sponsor-notify-emails"},
 		{http.MethodPut, "/api/admin/sponsor-notify-emails"},
 		{http.MethodGet, "/api/admin/sponsor-donations"},
@@ -494,4 +498,184 @@ func TestSponsorDonation_OversizedImageDimensions(t *testing.T) {
 	token := app.login(t)
 	d := app.createDonation(t, token, `{"donorName":"ก","kind":"money","amount":"1"}`)
 	expectCode(t, app.putFile(t, token, d.ID, "signed", "huge.webp", webpVP8XHeader(10001, 10)), http.StatusBadRequest, response.CodeInvalidImageDims)
+}
+
+// inquiryUploadBody builds a POST /api/sponsor-inquiries/upload body; a nil file omits the part.
+func inquiryUploadBody(t *testing.T, fields map[string]string, fileName string, file []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if file != nil {
+		part, err := w.CreateFormFile("file", fileName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = part.Write(file)
+	}
+	_ = w.Close()
+	return &buf, w.FormDataContentType()
+}
+
+func (a *sponsorDeskApp) postInquiryUpload(t *testing.T, fields map[string]string, fileName string, file []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	body, ct := inquiryUploadBody(t, fields, fileName, file)
+	return a.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", body, map[string]string{"Content-Type": ct})
+}
+
+func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
+	app := setupSponsorDeskApp(t, nil)
+	token := app.login(t)
+	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com"]}`), http.StatusOK, "")
+
+	pdf := []byte("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
+	rec := app.postInquiryUpload(t, map[string]string{"name": " ร้าน ค ", "phone": "081-234-5678"}, "form.pdf", pdf)
+	expectCode(t, rec, http.StatusCreated, "")
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
+		t.Fatalf("body = %q, want {\"ok\":true}", got)
+	}
+	// A typed inquiry next to it has no file.
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน ง","phone":"0812345679","kind":"goods"}`), http.StatusCreated, "")
+
+	rec = app.authed(t, token, http.MethodGet, "/api/admin/sponsor-inquiries", "")
+	expectCode(t, rec, http.StatusOK, "")
+	var res struct {
+		Inquiries []service.SponsorInquiryEntry `json:"inquiries"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &res)
+	if len(res.Inquiries) != 2 {
+		t.Fatalf("admin list = %+v", res.Inquiries)
+	}
+	var withFile, typed service.SponsorInquiryEntry
+	for _, e := range res.Inquiries {
+		if e.Name == "ร้าน ค" {
+			withFile = e
+		} else {
+			typed = e
+		}
+	}
+	if withFile.Kind != "money" || withFile.Phone != "0812345678" || withFile.File == nil ||
+		withFile.File.MIME != "application/pdf" || withFile.File.Size != len(pdf) {
+		t.Fatalf("uploaded inquiry = %+v (file %+v)", withFile, withFile.File)
+	}
+	if typed.File != nil {
+		t.Fatalf("typed inquiry must have no file: %+v", typed.File)
+	}
+	if strings.Contains(rec.Body.String(), "sponsor-docs") {
+		t.Fatal("admin list leaks the stored file path")
+	}
+	if files := app.docFiles(t); len(files) != 1 || !strings.HasPrefix(files[0], "inquiry-") || !strings.HasSuffix(files[0], ".pdf") {
+		t.Fatalf("files on disk = %v", files)
+	}
+	app.notifier.mu.Lock()
+	sent := append([]service.SponsorInquiryEmailData{}, app.notifier.sent...)
+	app.notifier.mu.Unlock()
+	if len(sent) != 2 || sent[0].FileMIME != "application/pdf" || sent[1].FileMIME != "" {
+		t.Fatalf("notifications = %+v", sent)
+	}
+
+	rec = app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", withFile.ID), "")
+	expectCode(t, rec, http.StatusOK, "")
+	if !bytes.Equal(rec.Body.Bytes(), pdf) {
+		t.Fatal("served bytes differ from upload")
+	}
+	for h, want := range map[string]string{
+		"Content-Type":           "application/pdf",
+		"Cache-Control":          "private, no-store",
+		"X-Content-Type-Options": "nosniff",
+		"Content-Disposition":    fmt.Sprintf(`inline; filename="sponsor-inquiry-%d.pdf"`, withFile.ID),
+	} {
+		if got := rec.Header().Get(h); got != want {
+			t.Fatalf("%s = %q, want %q", h, got, want)
+		}
+	}
+	if app.auditCount(domain.AuditSponsorInquiryFileView) != 1 {
+		t.Fatal("file view not audited")
+	}
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", typed.ID), ""), http.StatusNotFound, response.CodeNotFound)
+
+	expectCode(t, app.authed(t, token, http.MethodDelete, fmt.Sprintf("/api/admin/sponsor-inquiries/%d", withFile.ID), ""), http.StatusNoContent, "")
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("inquiry delete must remove its form: %v", files)
+	}
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", withFile.ID), ""), http.StatusNotFound, response.CodeNotFound)
+}
+
+func TestSponsorInquiryUpload_RejectsWithoutLeavingFiles(t *testing.T) {
+	app := setupSponsorDeskApp(t, nil)
+	ok := map[string]string{"name": "ร้าน ค", "phone": "0812345678"}
+	pdf := []byte("%PDF-1.4\n%%EOF\n")
+
+	for name, tc := range map[string]struct {
+		fields   map[string]string
+		fileName string
+		file     []byte
+		status   int
+		code     string
+	}{
+		"svg":        {ok, "evil.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`), http.StatusBadRequest, response.CodeValidation},
+		"html":       {ok, "evil.html", []byte(`<!DOCTYPE html><html><script>alert(1)</script></html>`), http.StatusBadRequest, response.CodeValidation},
+		"gif":        {ok, "anim.gif", []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;"), http.StatusBadRequest, response.CodeValidation},
+		"empty file": {ok, "form.pdf", []byte{}, http.StatusBadRequest, response.CodeValidation},
+		"no file":    {ok, "", nil, http.StatusBadRequest, response.CodeValidation},
+		"bad phone":  {map[string]string{"name": "ร้าน", "phone": "12345"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"bad kind":   {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "alcohol"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"long field": {map[string]string{"name": strings.Repeat("ก", 2000), "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"too large":  {ok, "big.pdf", append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("a"), service.MaxSponsorDocBytes)...), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
+		"huge image": {ok, "huge.webp", webpVP8XHeader(10001, 10), http.StatusBadRequest, response.CodeInvalidImageDims},
+	} {
+		t.Run(name, func(t *testing.T) {
+			expectCode(t, app.postInquiryUpload(t, tc.fields, tc.fileName, tc.file), tc.status, tc.code)
+		})
+	}
+
+	// Two file parts are refused.
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for range 2 {
+		part, _ := w.CreateFormFile("file", "form.pdf")
+		_, _ = part.Write(pdf)
+	}
+	_ = w.WriteField("name", "ร้าน")
+	_ = w.WriteField("phone", "0812345678")
+	_ = w.Close()
+	expectCode(t, app.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", &buf, map[string]string{"Content-Type": w.FormDataContentType()}), http.StatusBadRequest, response.CodeValidation)
+	// JSON is not a multipart form.
+	expectCode(t, app.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", bytes.NewBufferString(`{"name":"ร้าน"}`), nil), http.StatusBadRequest, response.CodeValidation)
+
+	// A filled honeypot answers success but stores neither the row nor the file.
+	honeypot := map[string]string{"name": "bot", "phone": "0812345678", "website": "http://spam.example"}
+	expectCode(t, app.postInquiryUpload(t, honeypot, "form.pdf", pdf), http.StatusCreated, "")
+
+	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
+		t.Fatalf("rejected uploads were stored: %d", len(list))
+	}
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("rejected uploads left files on disk: %v", files)
+	}
+	if app.notifier.count() != 0 {
+		t.Fatal("rejected uploads sent email")
+	}
+}
+
+func TestSponsorInquiryUpload_TurnstileFailureKeepsNoFile(t *testing.T) {
+	captcha := &cloudflareLike{used: map[string]bool{}}
+	app := setupSponsorDeskApp(t, captcha)
+	pdf := []byte("%PDF-1.4\n%%EOF\n")
+	fields := map[string]string{"name": "ร้าน", "phone": "0812345678", "turnstileToken": "bad"}
+	expectCode(t, app.postInquiryUpload(t, fields, "form.pdf", pdf), http.StatusForbidden, response.CodeCaptchaFailed)
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("captcha failure left a file: %v", files)
+	}
+	// An invalid file is refused before Turnstile, so the token is not burnt.
+	fields["turnstileToken"] = "good-1"
+	expectCode(t, app.postInquiryUpload(t, fields, "x.gif", []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")), http.StatusBadRequest, response.CodeValidation)
+	expectCode(t, app.postInquiryUpload(t, fields, "form.pdf", pdf), http.StatusCreated, "")
+	if files := app.docFiles(t); len(files) != 1 {
+		t.Fatalf("files on disk = %v", files)
+	}
 }

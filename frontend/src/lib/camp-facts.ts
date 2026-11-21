@@ -25,6 +25,15 @@ export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf?v=1';
 export const SPONSOR_DECK_READY = false;
 export const SPONSOR_DECK_PDF = '/assets/docs/sponsor-deck.pdf?v=1';
 
+/**
+ * Faculty donation form (แบบฟอร์มบริจาคเงิน) for /sponsor: the sponsor fills and signs it, then
+ * either sends the file through the inquiry form (POST /api/sponsor-inquiries/upload) or hands it
+ * to staff. The real file is in place, so the download is always shown. Bump `?v=` on replace.
+ */
+export const SPONSOR_FORM_PDF = '/assets/docs/sponsor-donation-form.pdf?v=1';
+/** Name the browser saves the form under (the `download` attribute). */
+export const SPONSOR_FORM_FILENAME = 'แบบฟอร์มบริจาค-ComCamp25.pdf';
+
 const THAI_MONTHS_SHORT = [
   'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',

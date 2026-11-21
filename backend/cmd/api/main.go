@@ -107,7 +107,7 @@ func main() {
 
 	// 2. Initialize Services
 	applicantSvc := service.NewApplicantService(appRepo, settingRepo, paymentRepo)
-	inquirySvc := service.NewSponsorInquiryService(inquiryRepo)
+	inquirySvc := service.NewSponsorInquiryService(inquiryRepo, auditRepo, cfg.UploadDir)
 	if cfg.TurnstileSecretKey != "" {
 		verifier := service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts())
 		applicantSvc.WithTurnstile(verifier)

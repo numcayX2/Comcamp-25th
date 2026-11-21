@@ -26,15 +26,20 @@ func NewSponsorInquiryPostgresRepo(pool *pgxpool.Pool) *SponsorInquiryPostgresRe
 	return &SponsorInquiryPostgresRepo{pool: pool}
 }
 
-const inquiryColumns = `id, name, phone, email, kind, details, handled_at, created_at`
+const inquiryColumns = `id, name, phone, email, kind, details, file_path, file_mime, file_size, file_sha256, handled_at, created_at`
 
 func scanInquiry(s scannable) (*domain.SponsorInquiry, error) {
 	var i domain.SponsorInquiry
-	if err := s.Scan(&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details, &i.HandledAt, &i.CreatedAt); err != nil {
+	var path, mime, hash *string
+	var size *int
+	if err := s.Scan(&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details, &path, &mime, &size, &hash, &i.HandledAt, &i.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
 		return nil, err
+	}
+	if path != nil && mime != nil && size != nil && hash != nil {
+		i.File = &domain.SponsorInquiryFile{Path: *path, MIME: *mime, SizeBytes: *size, SHA256: *hash}
 	}
 	return &i, nil
 }
@@ -54,11 +59,16 @@ func (r *SponsorInquiryPostgresRepo) Create(ctx context.Context, inq *domain.Spo
 	}
 	defer tx.Rollback(ctx)
 
+	var path, mime, hash *string
+	var size *int
+	if f := inq.File; f != nil {
+		path, mime, size, hash = &f.Path, &f.MIME, &f.SizeBytes, &f.SHA256
+	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO sponsor_inquiries (name, phone, email, kind, details)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO sponsor_inquiries (name, phone, email, kind, details, file_path, file_mime, file_size, file_sha256)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at
-	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details).Scan(&inq.ID, &inq.CreatedAt)
+	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details, path, mime, size, hash).Scan(&inq.ID, &inq.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert sponsor inquiry: %w", err)
 	}
@@ -87,6 +97,10 @@ func (r *SponsorInquiryPostgresRepo) List(ctx context.Context) ([]*domain.Sponso
 	return list, rows.Err()
 }
 
+func (r *SponsorInquiryPostgresRepo) GetByID(ctx context.Context, id int64) (*domain.SponsorInquiry, error) {
+	return scanInquiry(r.pool.QueryRow(ctx, `SELECT `+inquiryColumns+` FROM sponsor_inquiries WHERE id = $1`, id))
+}
+
 func (r *SponsorInquiryPostgresRepo) SetHandled(ctx context.Context, id int64, handled bool, audit *domain.AuditEntry) (*domain.SponsorInquiry, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -113,26 +127,29 @@ func (r *SponsorInquiryPostgresRepo) SetHandled(ctx context.Context, id int64, h
 	return inq, nil
 }
 
-func (r *SponsorInquiryPostgresRepo) Delete(ctx context.Context, id int64, audit *domain.AuditEntry) error {
+func (r *SponsorInquiryPostgresRepo) Delete(ctx context.Context, id int64, audit *domain.AuditEntry) (*domain.SponsorInquiry, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	tag, err := tx.Exec(ctx, `DELETE FROM sponsor_inquiries WHERE id = $1`, id)
+	inq, err := scanInquiry(tx.QueryRow(ctx, `DELETE FROM sponsor_inquiries WHERE id = $1 RETURNING `+inquiryColumns, id))
 	if err != nil {
-		return fmt.Errorf("delete sponsor inquiry: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrNotFound
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("delete sponsor inquiry: %w", err)
 	}
 	if audit != nil {
 		if err := insertAudit(ctx, tx, auditWithTarget(audit, id)); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return inq, nil
 }
 
 func (r *SponsorInquiryPostgresRepo) ListNotifyEmails(ctx context.Context) ([]string, error) {

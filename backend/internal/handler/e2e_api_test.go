@@ -114,7 +114,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		Applicant:      applicantSvc,
 		Setting:        settingSvc,
 		Payment:        service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard).WithOnStatusChange(applicantSvc.InvalidatePublicList),
-		SponsorInquiry: service.NewSponsorInquiryService(memory.NewMemorySponsorInquiryRepo(appRepo.Audit())),
+		SponsorInquiry: service.NewSponsorInquiryService(memory.NewMemorySponsorInquiryRepo(appRepo.Audit()), appRepo.Audit(), uploadDir),
 		SponsorDonation: service.NewSponsorDonationService(
 			memory.NewMemorySponsorDonationRepo(appRepo.Audit()), appRepo.Audit(), uploadDir),
 	}

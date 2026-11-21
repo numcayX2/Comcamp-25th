@@ -8,7 +8,13 @@ import FileDown from '@lucide/astro/icons/file-down';
 import GraduationCap from '@lucide/astro/icons/graduation-cap';
 import MessageCircle from '@lucide/astro/icons/message-circle';
 import Phone from '@lucide/astro/icons/phone';
-import { MAX_CAPACITY, SPONSOR_DECK_PDF, SPONSOR_DECK_READY } from '../lib/camp-facts';
+import {
+  MAX_CAPACITY,
+  SPONSOR_DECK_PDF,
+  SPONSOR_DECK_READY,
+  SPONSOR_FORM_FILENAME,
+  SPONSOR_FORM_PDF,
+} from '../lib/camp-facts';
 import { PAY_ACCOUNT } from '../lib/payment';
 import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
 ---
@@ -26,6 +32,17 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ การสนับสนุนของท่านช่วยให้ค่ายจัดชุดอุปกรณ์ อาหาร และกิจกรรมให้น้อง ๆ
         ได้ครบตลอดค่าย
       </p>
+      <div class="sp-hero__actions">
+        <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
+          <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          <span>ดาวน์โหลดแบบฟอร์มบริจาค</span>
+          <span class="sp-btn__meta font-mono">PDF</span>
+        </a>
+        <a class="sp-link" href="#sponsor-upload">
+          <span>กรอกแล้ว แนบไฟล์ส่งให้พี่ค่าย</span>
+          <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+        </a>
+      </div>
     </div>
 
     <dl class="sp-gazette" aria-label="ข้อมูลค่ายโดยย่อ">
@@ -151,7 +168,8 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         <div class="sp-step__body">
           <h3 class="sp-step__title">แจ้งความประสงค์</h3>
           <p class="sp-step__text">
-            กรอกแบบฟอร์มแจ้งความประสงค์ด้านล่าง หรือโทรหาพี่ค่ายตามช่องทางติดต่อในหน้านี้
+            กรอกแบบฟอร์มด้านล่าง หรือดาวน์โหลดแบบฟอร์มบริจาค กรอกและลงนามแล้วแนบไฟล์ส่งมาแทน
+            หรือโทรหาพี่ค่ายตามช่องทางติดต่อในหน้านี้
           </p>
         </div>
       </li>
@@ -160,7 +178,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         <div class="sp-step__body">
           <h3 class="sp-step__title">พี่ค่ายติดต่อกลับ</h3>
           <p class="sp-step__text">
-            พี่ค่ายติดต่อกลับเพื่อยืนยันรายละเอียด และนำแบบฟอร์มบริจาคของคณะไปให้ลงนาม
+            พี่ค่ายติดต่อกลับเพื่อยืนยันรายละเอียด และรับแบบฟอร์มบริจาคที่ลงนามแล้ว หากท่านยังไม่ได้ส่งมา
           </p>
         </div>
       </li>

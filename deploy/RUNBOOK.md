@@ -85,14 +85,14 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000015`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000016`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs db
 ```
 
-ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000015_sponsor_donations.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011` — วันปิดจริงปรับต่อได้ใน `/admin`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว และต้องมีคอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` พร้อม CHECK สถานะที่รวม `FORFEITED` (จาก `000013`)
+ใน Log ของ `db` ควรเห็นลำดับ `Applying migration: 000001_init_schema.up.sql` จนถึง `000016_sponsor_inquiry_file.up.sql` และผล Query `settings` (`id = 1`) แสดงช่วงเปิดรับ `19 พ.ย. 2569 09:00 น.–18 ธ.ค. 2569` (`2026-11-19 09:00:00+07` ถึง `2026-12-18 23:59:59+07`, จาก `000011` — วันปิดจริงปรับต่อได้ใน `/admin`), โควตา `40` ที่นั่ง (`000011`), ไซส์เสื้อ `SSS–4XL` (`000009`), และค่าสมัคร `1,200` บาท (`1200.00` จาก `000010`) — ตาราง `applicants` ต้อง **ไม่มี** คอลัมน์ `national_id` แล้ว และต้องมีคอลัมน์ `referral_sources`, `referral_other`, `deleted_reason` พร้อม CHECK สถานะที่รวม `FORFEITED` (จาก `000013`)
 
 *(หมายเหตุ: สคริปต์ใน `/docker-entrypoint-initdb.d/` จะทำงานเฉพาะตอนสร้าง Volume `pgdata_prod` ครั้งแรกที่ฐานข้อมูลยังว่างอยู่เท่านั้น)*
 
@@ -282,7 +282,7 @@ git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -455,6 +455,41 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://comcamp.csmju.com/sponsor
 - รายการอีเมลเดียวกันนี้ได้รับแจ้งเตือน **ทุกใบสมัครใหม่** ด้วย (ชื่อ ชื่อเล่น โรงเรียน จังหวัด ระดับชั้น จำนวนที่นั่ง + ลิงก์ `/admin#applications` — ไม่มีรหัสใบสมัคร เบอร์ อีเมล หรือข้อมูลสุขภาพ; สูงสุด 40 ใบสมัครต่อชั่วโมง และข้ามเมื่อคิวอีเมลเต็มครึ่งหนึ่งเพื่อกันอีเมลของน้องค้าง) — ดูผลส่งใน `audit_logs` action `application.email.staff_notice.sent` / `.failed`
 - **Build ใหม่บน Schema เก่า:** ฟอร์ม `/sponsor` และแท็บผู้สนใจ/รายการบริจาค/อีเมลแจ้งเตือนใน `/admin` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
 - **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000015_sponsor_donations.down.sql` (DROP 4 ตาราง — ข้อมูลผู้สนใจ/รายการบริจาคหายถาวร ไฟล์ใน `sponsor-docs/` ต้องลบเองถ้าต้องการ)
+
+### Migration `000016` (แนบแบบฟอร์มบริจาคจากหน้า `/sponsor`)
+
+`000016_sponsor_inquiry_file.up.sql` **เพิ่มอย่างเดียว** และรันซ้ำได้: เพิ่ม 4 คอลัมน์ใน `sponsor_inquiries` (`file_path`, `file_mime`, `file_size`, `file_sha256` — ว่างทั้งหมดหรือมีครบทั้งหมด ตาม CHECK `sponsor_inquiries_file_check`) สำหรับแบบฟอร์มบริจาคที่ผู้สนับสนุนกรอกแล้วแนบมาแทนการกรอกบนเว็บ (`POST /api/sponsor-inquiries/upload`, PDF/JPG/PNG/WebP ≤ 8 MB) ไฟล์เก็บใน `${UPLOAD_DIR}/sponsor-docs/inquiry-<uuid>.<ext>` (volume `uploads_data` เดียวกับไฟล์รายการบริจาค) เปิดดูได้เฉพาะแอดมินที่ `GET /api/admin/sponsor-inquiries/{id}/file` และถูกลบเมื่อลบรายการผู้สนใจ backend รุ่นก่อนหน้าไม่อ่านคอลัมน์เหล่านี้ จึงรันขณะระบบเดิมทำงานอยู่ได้ (ต้องรัน `000015` มาก่อนแล้ว)
+
+```bash
+cd ~/comcamp25
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+mkdir -p "$B"
+F="$B/cc25_db_pre000016_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"; ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000016 up ขณะ backend เดิมยังทำงาน
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000016_sponsor_inquiry_file.up.sql
+
+# 3. ตรวจ: ต้องเห็น 4 คอลัมน์ file_*
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -c "\d sponsor_inquiries" | grep file_
+
+# 4. Build และเปิด backend + frontend ตัวใหม่
+$C up -d --build backend frontend
+
+# 5. ตรวจ: ไฟล์แบบฟอร์มต้องได้ 200 application/pdf
+curl -sSI 'https://comcamp.csmju.com/assets/docs/sponsor-donation-form.pdf?v=1' | grep -iE '^(HTTP|content-type|content-length)'
+```
+
+- หลัง deploy: เปิด `/sponsor` → `แจ้งความประสงค์สนับสนุน` → `แนบแบบฟอร์มที่กรอกแล้ว` ส่งไฟล์ทดสอบ 1 ครั้ง ต้องเห็นรายการพร้อมป้าย `แนบแบบฟอร์ม` และปุ่ม `ดูแบบฟอร์ม` ใน `/admin` → ผู้สนับสนุน → ผู้สนใจสนับสนุน (ลบรายการทดสอบทิ้งได้ ไฟล์ถูกลบตาม)
+- **Build ใหม่บน Schema เก่า:** แท็บผู้สนใจสนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
+- **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000016_sponsor_inquiry_file.down.sql` (ลบ 4 คอลัมน์ — ไฟล์ `sponsor-docs/inquiry-*` ที่ส่งมาแล้วยังอยู่ ลบเองถ้าต้องการ)
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 
