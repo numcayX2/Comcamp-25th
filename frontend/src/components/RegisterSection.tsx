@@ -26,6 +26,13 @@ import {
   type ReferralGroup,
   type ShirtSize,
 } from '../lib/api';
+import {
+  REGISTRATION_CLOSE_AT,
+  REGISTRATION_OPEN_AT,
+  formatBangkokTime,
+  formatThaiDateFull,
+  formatThaiDateNoYear,
+} from '../lib/camp-facts';
 import { canonicalProvince } from '../lib/provinces';
 import { ProvinceCombobox } from './ProvinceCombobox';
 import {
@@ -117,6 +124,13 @@ const isTextEntry = (el: EventTarget | null) =>
 
 const timeText = (ms: number) =>
   new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+/** Wraps digit runs in IBM Plex Mono; Thai text stays in the sans face (AGENTS §5.1). */
+function monoDigits(text: string): ReactNode[] {
+  return text
+    .split(/(\d[\d:]*)/)
+    .map((part, i) => (i % 2 === 1 ? <span key={i} className="font-mono tabular-nums">{part}</span> : part));
+}
 
 function formatThaiOpenDateTime(ms: number): string {
   const d = new Date(ms);
@@ -443,6 +457,8 @@ export function RegisterSection() {
   const [seats, setSeats] = useState(MAX_CAPACITY);
   const [feeText, setFeeText] = useState(CAMP_FEE_TEXT);
   const [opensAtMs, setOpensAtMs] = useState<number | null>(null);
+  /** Closing time shown in the Step 01 rules; live from /api/settings/public, camp-facts until it arrives. */
+  const [closesAtMs, setClosesAtMs] = useState(() => Date.parse(REGISTRATION_CLOSE_AT));
   const [offsetMs, setOffsetMs] = useState(0);
   const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
@@ -474,6 +490,7 @@ export function RegisterSection() {
         const serverNow = Date.now() + serverOffset;
         const parsedOpens = new Date(settings.registrationOpenAt).getTime();
         const opensAt = Number.isFinite(parsedOpens) ? parsedOpens : null;
+        const parsedCloses = settings.registrationCloseAt ? new Date(settings.registrationCloseAt).getTime() : Number.NaN;
         const capacity = settings.maxCapacity && settings.maxCapacity > 0 ? settings.maxCapacity : MAX_CAPACITY;
         const remaining = Math.max(0, capacity - (settings.currentCount ?? 0));
 
@@ -483,6 +500,7 @@ export function RegisterSection() {
         }
         setOffsetMs(serverOffset);
         setOpensAtMs(opensAt);
+        if (Number.isFinite(parsedCloses)) setClosesAtMs(parsedCloses);
 
         if (opensAt !== null && serverNow < opensAt && !settings.isOpen) {
           setGate('pre_open');
@@ -1031,8 +1049,9 @@ export function RegisterSection() {
                 <div>
                 <strong className="rw-rules__label">รับ <span className="font-mono tabular-nums">{seats}</span> ที่นั่ง</strong>
                 <p>
-                  เปิดรับ <span className="font-mono tabular-nums">19</span> พ.ย. <span className="font-mono tabular-nums">09:00</span> น. – <span className="font-mono tabular-nums">18</span> ธ.ค.{' '}
-                  <span className="font-mono tabular-nums">2569</span> · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
+                  เปิดรับ {monoDigits(formatThaiDateNoYear(opensAtMs ?? REGISTRATION_OPEN_AT))}{' '}
+                  {monoDigits(formatBangkokTime(opensAtMs ?? REGISTRATION_OPEN_AT))} น. – {monoDigits(formatThaiDateFull(closesAtMs))}{' '}
+                  · <strong className="rw-rules__flag">เต็มก่อนปิดก่อนทันที</strong>
                 </p>
                 </div>
               </li>

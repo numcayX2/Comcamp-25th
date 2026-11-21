@@ -546,6 +546,8 @@ export function AdminSection() {
   const filterGroupRef = useRef<HTMLDivElement>(null);
   const emptyStateRef = useRef<HTMLDivElement>(null);
   const slipPanelRef = useRef<HTMLDivElement>(null);
+  // Login: the submit button disables while busy, so focus is put back explicitly (password on failure).
+  const passwordRef = useRef<HTMLInputElement>(null);
   // Synchronous in-flight locks prevent rapid double-clicks / Enter spam from firing duplicate requests before React re-renders.
   const loginBusyRef = useRef(false);
   const refreshBusyRef = useRef(false);
@@ -705,6 +707,13 @@ export function AdminSection() {
     }
   }
 
+  function focusPasswordAfterFailure() {
+    const el = passwordRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }
+
   async function onLogin(e: FormEvent) {
     e.preventDefault();
     if (loginBusyRef.current || busy) return;
@@ -721,12 +730,15 @@ export function AdminSection() {
       if (resolvedRole !== 'admin') {
         tokenStore.clear();
         setError('บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ (admin)');
+        focusPasswordAfterFailure();
         return;
       }
       setToken(res.data.token);
       setRole(resolvedRole);
       setSource(res.source);
       await refresh(res.data.token);
+      // Land keyboard and screen-reader users on the opened view's heading instead of <body>.
+      setViewFocusNonce((n) => n + 1);
     } catch (err) {
       if (err instanceof ApiHttpError) {
         if (err.status === 401) {
@@ -739,6 +751,7 @@ export function AdminSection() {
       } else {
         setError(describeAdminError(err, 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองใหม่อีกครั้ง'));
       }
+      focusPasswordAfterFailure();
     } finally {
       loginBusyRef.current = false;
       setBusy(false);
@@ -1750,6 +1763,7 @@ export function AdminSection() {
               </label>
               <div className="relative">
                 <input
+                  ref={passwordRef}
                   id="admin-pass"
                   className={`${inputCls} pr-12`}
                   style={{ borderColor: INPUT_BORDER, color: INK }}
@@ -2698,7 +2712,7 @@ export function AdminSection() {
                               style={{ color: TECH }}
                             >
                               <Maximize2 aria-hidden="true" size={15} strokeWidth={1.75} />
-                              เปิดรูปขนาดเต็ม / ซูม
+                              เปิดรูปเต็มจอ
                             </button>
                           )}
                         </div>
