@@ -58,6 +58,18 @@
   ! Cache-Control
   Cache-Control: no-store
 
+/sponsor
+  ! Cache-Control
+  Cache-Control: no-store
+
+/sponsor/
+  ! Cache-Control
+  Cache-Control: no-store
+
+/sponsor/*
+  ! Cache-Control
+  Cache-Control: no-store
+
 /applicants
   ! Cache-Control
   Cache-Control: no-store

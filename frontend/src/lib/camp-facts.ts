@@ -21,6 +21,10 @@ export const CAMP_FEE_TEXT = CAMP_FEE.toLocaleString('en-US');
 export const DOCS_READY = false;
 export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf?v=1';
 
+/** Sponsor deck for /sponsor. Same rule as DOCS_READY: the download stays hidden until the file exists. */
+export const SPONSOR_DECK_READY = false;
+export const SPONSOR_DECK_PDF = '/assets/docs/sponsor-deck.pdf?v=1';
+
 const THAI_MONTHS_SHORT = [
   'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',

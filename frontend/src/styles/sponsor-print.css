@@ -1,0 +1,183 @@
+/* Printed sponsor donation form (/admin → ผู้สนับสนุน → รายการบริจาค → พิมพ์ฟอร์ม).
+   SponsorFormPrint portals `.sponsor-print-root` into <body>, shrinks the type until the sheet fits,
+   adds `html.sponsor-printing`, calls window.print() and removes both on `afterprint`. The sheet is
+   a fixed A4 box (one page only); `@page { size: A4; margin: 0 }` is rendered by the component only
+   while it prints. Colours are literal (black on white, amber = the light theme --color-warning) so
+   dark mode never prints. */
+
+/* On screen the sheet is laid out off-canvas (so it can be measured) but never visible. */
+.sponsor-print-root {
+  position: fixed;
+  top: 0;
+  left: -300mm;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media print {
+  html.sponsor-printing,
+  html.sponsor-printing body {
+    color-scheme: light;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    transition: none !important;
+  }
+
+  html.sponsor-printing body > :not(.sponsor-print-root),
+  html.sponsor-printing body::before,
+  html.sponsor-printing body::after {
+    display: none !important;
+  }
+
+  html.sponsor-printing .sponsor-print-root {
+    position: static;
+    visibility: visible;
+  }
+}
+
+.sponsor-sheet {
+  box-sizing: border-box;
+  width: 210mm;
+  /* 1 mm short of A4 so rounding never spills a blank second page. */
+  height: 296mm;
+  overflow: hidden;
+  padding: 15mm 20mm 0;
+  background: #fff;
+  color: #000;
+  font-family: 'IBM Plex Sans Thai', 'Noto Sans Thai', 'Leelawadee UI', Tahoma, sans-serif;
+  font-size: 12.5pt;
+  font-weight: 400;
+  line-height: 1.75;
+  text-align: left;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  break-inside: avoid;
+}
+
+.sponsor-sheet p {
+  margin: 0;
+}
+
+.sponsor-sheet__logos {
+  display: block;
+  width: 66mm;
+  height: auto;
+  margin: 0 auto 5mm;
+}
+
+.sponsor-sheet__title {
+  margin: 0 0 6mm;
+  padding: 3mm 6mm;
+  border: 1.5px solid #b45309;
+  border-radius: 12px;
+  font-size: 1.08em;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.sponsor-sheet__title span {
+  display: block;
+}
+
+.sponsor-sheet__date {
+  margin-bottom: 4mm !important;
+  text-align: right;
+}
+
+.sponsor-sheet__line {
+  margin-bottom: 1.5mm !important;
+}
+
+.sponsor-sheet__label {
+  margin-right: 3mm;
+  font-weight: 700;
+}
+
+.sponsor-sheet__para {
+  margin-top: 3mm !important;
+  text-indent: 12mm;
+}
+
+.sponsor-sheet__block {
+  margin-top: 3mm;
+}
+
+/* One form line: labels keep their words together, the trailing Rule takes the rest of the width. */
+.sponsor-sheet__row {
+  display: flex;
+  align-items: baseline;
+  gap: 0 2mm;
+}
+
+.sponsor-sheet__row--indent {
+  padding-left: 12mm;
+}
+
+.sponsor-sheet__row--choice {
+  margin-top: 1.5mm !important;
+  padding-left: 12mm;
+}
+
+.sponsor-sheet__row--sub {
+  padding-left: 19mm;
+}
+
+.sponsor-sheet__nw {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Short value on a dotted line (date, phone, amount, name in the signature). */
+.sponsor-sheet__fill {
+  display: inline-block;
+  flex: none;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 1.5mm;
+  border-bottom: 1px dotted #000;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* Rest-of-row value: a dotted rule under every line box (1 px dots every 3 px, one row per 1.75em). */
+.sponsor-sheet__rule {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-left: 1.5mm;
+  overflow-wrap: anywhere;
+  background-image: conic-gradient(from 270deg at 1px 1px, #000 0 25%, transparent 0);
+  background-size: 3px 1.75em;
+  background-position: 0 1.5em;
+}
+
+.sponsor-sheet__box {
+  display: inline-block;
+  flex: none;
+  position: relative;
+  width: 4mm;
+  height: 4mm;
+  margin-right: 0.5mm;
+  border: 1.2px solid #000;
+  vertical-align: -0.5mm;
+}
+
+.sponsor-sheet__box svg {
+  position: absolute;
+  inset: -1.2mm -1mm -0.4mm -0.4mm;
+  width: calc(100% + 1.4mm);
+  height: calc(100% + 1.6mm);
+}
+
+.sponsor-sheet__sign {
+  width: 100mm;
+  margin: 16mm 0 0 auto;
+  text-align: center;
+}
+
+.sponsor-sheet__sign p + p {
+  margin-top: 2mm !important;
+}

@@ -30,12 +30,14 @@ func main() {
 
 	// 1. Initialize Repositories
 	var (
-		appRepo     domain.ApplicantRepository
-		settingRepo domain.SettingRepository
-		adminRepo   domain.AdminRepository
-		paymentRepo domain.PaymentRepository
-		auditRepo   domain.AuditRepository
-		sponsorRepo domain.SponsorRepository
+		appRepo      domain.ApplicantRepository
+		settingRepo  domain.SettingRepository
+		adminRepo    domain.AdminRepository
+		paymentRepo  domain.PaymentRepository
+		auditRepo    domain.AuditRepository
+		sponsorRepo  domain.SponsorRepository
+		inquiryRepo  domain.SponsorInquiryRepository
+		donationRepo domain.SponsorDonationRepository
 	)
 
 	ctxPing, cancelPing := context.WithTimeout(context.Background(), 3*time.Second)
@@ -61,6 +63,8 @@ func main() {
 		paymentRepo = postgres.NewPaymentPostgresRepo(pool)
 		auditRepo = postgres.NewAuditPostgresRepo(pool)
 		sponsorRepo = postgres.NewSponsorPostgresRepo(pool)
+		inquiryRepo = postgres.NewSponsorInquiryPostgresRepo(pool)
+		donationRepo = postgres.NewSponsorDonationPostgresRepo(pool)
 		defer pool.Close()
 
 	case cfg.IsProduction():
@@ -97,13 +101,18 @@ func main() {
 		paymentRepo = memory.NewMemoryPaymentRepo(memApp)
 		auditRepo = memApp.Audit()
 		sponsorRepo = memory.NewMemorySponsorRepo(memApp.Audit())
+		inquiryRepo = memory.NewMemorySponsorInquiryRepo(memApp.Audit())
+		donationRepo = memory.NewMemorySponsorDonationRepo(memApp.Audit())
 	}
 
 	// 2. Initialize Services
 	applicantSvc := service.NewApplicantService(appRepo, settingRepo, paymentRepo)
+	inquirySvc := service.NewSponsorInquiryService(inquiryRepo)
 	if cfg.TurnstileSecretKey != "" {
-		applicantSvc.WithTurnstile(service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts()))
-		log.Println("Cloudflare Turnstile verification is ON for POST /api/applications")
+		verifier := service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts())
+		applicantSvc.WithTurnstile(verifier)
+		inquirySvc.WithTurnstile(verifier)
+		log.Println("Cloudflare Turnstile verification is ON for POST /api/applications and /api/sponsor-inquiries")
 	} else if cfg.IsProduction() {
 		// config.Load already refuses this; kept as a second lock so a future refactor cannot
 		// silently ship an unprotected registration endpoint.
@@ -133,12 +142,15 @@ func main() {
 		WithMailer(mailer).
 		WithSlipFileRemover(paymentSvc.RemoveSlipFile)
 	sponsorSvc := service.NewSponsorService(sponsorRepo, cfg.UploadDir)
+	inquirySvc.WithNotifier(mailer)
 	services := server.Services{
-		Auth:      service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
-		Applicant: applicantSvc,
-		Setting:   settingSvc,
-		Payment:   paymentSvc,
-		Sponsor:   sponsorSvc,
+		Auth:            service.NewAuthService(adminRepo, auditRepo, cfg.JWTSecret),
+		Applicant:       applicantSvc,
+		Setting:         settingSvc,
+		Payment:         paymentSvc,
+		Sponsor:         sponsorSvc,
+		SponsorInquiry:  inquirySvc,
+		SponsorDonation: service.NewSponsorDonationService(donationRepo, auditRepo, cfg.UploadDir),
 	}
 
 	// 3. Router (all security middleware lives in internal/server)

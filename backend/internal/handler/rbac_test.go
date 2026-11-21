@@ -155,6 +155,24 @@ func TestRBAC_EveryAdminRouteForEveryRole(t *testing.T) {
 			},
 		},
 		{
+			name: "GET /api/admin/sponsor-inquiries", allowed: all,
+			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
+				return app.do(t, http.MethodGet, "/api/admin/sponsor-inquiries", nil, bearer(token))
+			},
+		},
+		{
+			name: "GET /api/admin/sponsor-notify-emails", allowed: all,
+			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
+				return app.do(t, http.MethodGet, "/api/admin/sponsor-notify-emails", nil, bearer(token))
+			},
+		},
+		{
+			name: "GET /api/admin/sponsor-donations", allowed: all,
+			call: func(t *testing.T, token, _ string) *httptest.ResponseRecorder {
+				return app.do(t, http.MethodGet, "/api/admin/sponsor-donations", nil, bearer(token))
+			},
+		},
+		{
 			name: "GET /api/admin/applications/{id}/slip", allowed: payments, setup: newApplicationWithSlip,
 			call: func(t *testing.T, token, id string) *httptest.ResponseRecorder {
 				return app.do(t, http.MethodGet, service.AdminSlipPath(id), nil, bearer(token))
@@ -318,6 +336,18 @@ func TestRBAC_NoTokenIs401OnEveryAdminRoute(t *testing.T) {
 		{http.MethodPatch, "/api/admin/applications/CC25-000000/verify-slip"},
 		{http.MethodDelete, "/api/admin/applications/CC25-000000"},
 		{http.MethodPost, "/api/admin/applications/export-audit"},
+		{http.MethodGet, "/api/admin/sponsor-inquiries"},
+		{http.MethodPatch, "/api/admin/sponsor-inquiries/1"},
+		{http.MethodDelete, "/api/admin/sponsor-inquiries/1"},
+		{http.MethodGet, "/api/admin/sponsor-notify-emails"},
+		{http.MethodPut, "/api/admin/sponsor-notify-emails"},
+		{http.MethodGet, "/api/admin/sponsor-donations"},
+		{http.MethodPost, "/api/admin/sponsor-donations"},
+		{http.MethodPatch, "/api/admin/sponsor-donations/1"},
+		{http.MethodDelete, "/api/admin/sponsor-donations/1"},
+		{http.MethodPut, "/api/admin/sponsor-donations/1/files/signed"},
+		{http.MethodGet, "/api/admin/sponsor-donations/1/files/slip"},
+		{http.MethodDelete, "/api/admin/sponsor-donations/1/files/slip"},
 	} {
 		if rec := app.do(t, rt.method, rt.path, nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a token: expected 401, got %d", rt.method, rt.path, rec.Code)

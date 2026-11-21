@@ -48,6 +48,8 @@ type RateLimits struct {
 	SponsorsPublic *middleware.RateLimiter
 	// SponsorLogo guards GET /api/sponsors/{id}/logo (see SponsorLogoRatePerMinute).
 	SponsorLogo *middleware.RateLimiter
+	// SponsorInquiry guards POST /api/sponsor-inquiries (see SponsorInquiryRatePer10Min).
+	SponsorInquiry *middleware.RateLimiter
 }
 
 // PublicListRatePerMinute is the per-IP allowance for the public applicants list. The answer is
@@ -59,6 +61,9 @@ const (
 	PublicListRatePerMinute  = 60
 	SponsorListRatePerMinute = 60
 	SponsorLogoRatePerMinute = 300
+	// SponsorInquiryRatePer10Min: a sponsor sends one inquiry; 5 per 10 minutes per IP leaves room
+	// for a retry or a colleague on the same network while slowing a spammer.
+	SponsorInquiryRatePer10Min = 5
 )
 
 func DefaultRateLimits() RateLimits {
@@ -77,6 +82,7 @@ func DefaultRateLimits() RateLimits {
 		PublicList:     middleware.NewRateLimiter(PublicListRatePerMinute, time.Minute),
 		SponsorsPublic: middleware.NewRateLimiter(SponsorListRatePerMinute, time.Minute),
 		SponsorLogo:    middleware.NewRateLimiter(SponsorLogoRatePerMinute, time.Minute),
+		SponsorInquiry: middleware.NewRateLimiter(SponsorInquiryRatePer10Min, 10*time.Minute),
 	}
 }
 
@@ -95,6 +101,9 @@ type Services struct {
 	Setting   *service.SettingService
 	Payment   *service.PaymentService
 	Sponsor   *service.SponsorService
+	// SponsorInquiry and SponsorDonation back the /sponsor form and the admin sponsor desk.
+	SponsorInquiry  *service.SponsorInquiryService
+	SponsorDonation *service.SponsorDonationService
 }
 
 func NewRouter(svc Services, opt Options) http.Handler {
@@ -104,6 +113,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 	settingHandler := handler.NewSettingHandler(svc.Setting)
 	paymentHandler := handler.NewPaymentHandler(svc.Payment)
 	sponsorHandler := handler.NewSponsorHandler(svc.Sponsor)
+	sponsorDesk := handler.NewSponsorDeskHandler(svc.SponsorInquiry, svc.SponsorDonation)
 	swaggerHandler := handler.NewSwaggerHandler(opt.OpenAPISpec)
 	limits := opt.RateLimits
 	if limits.SponsorsPublic == nil {
@@ -111,6 +121,9 @@ func NewRouter(svc Services, opt Options) http.Handler {
 	}
 	if limits.SponsorLogo == nil {
 		limits.SponsorLogo = middleware.NewRateLimiter(SponsorLogoRatePerMinute, time.Minute)
+	}
+	if limits.SponsorInquiry == nil {
+		limits.SponsorInquiry = middleware.NewRateLimiter(SponsorInquiryRatePer10Min, 10*time.Minute)
 	}
 
 	r := chi.NewRouter()
@@ -137,12 +150,14 @@ func NewRouter(svc Services, opt Options) http.Handler {
 		// Slip upload carries its own 5 MB cap; everything else is small JSON.
 		api.With(limits.Slip.Middleware).Post("/applications/{id}/slip", paymentHandler.UploadSlip)
 
-		// Sponsor logo uploads carry their own 2 MB multipart cap, outside the 64 KB JSON limit.
+		// Sponsor logo uploads carry their own 2 MB multipart cap and donation files their own
+		// 8 MB cap, outside the 64 KB JSON limit.
 		api.Group(func(adminMultipart chi.Router) {
 			adminMultipart.Use(middleware.RequireAuth(svc.Auth))
 			super := middleware.RequireRoles(rolesSuper...)
 			adminMultipart.With(super).Post("/admin/sponsors", sponsorHandler.AdminCreate)
 			adminMultipart.With(super).Patch("/admin/sponsors/{id}", sponsorHandler.AdminUpdate)
+			adminMultipart.With(super).Put("/admin/sponsor-donations/{id}/files/{kind}", sponsorDesk.PutDonationFile)
 		})
 
 		api.Group(func(json chi.Router) {
@@ -156,6 +171,7 @@ func NewRouter(svc Services, opt Options) http.Handler {
 			json.Get("/settings/public", settingHandler.GetPublic)
 			json.With(limits.SponsorsPublic.Middleware).Get("/sponsors", sponsorHandler.ListPublic)
 			json.With(limits.SponsorLogo.Middleware).Get("/sponsors/{id}/logo", sponsorHandler.GetLogo)
+			json.With(limits.SponsorInquiry.Middleware).Post("/sponsor-inquiries", sponsorDesk.SubmitInquiry)
 
 			json.With(limits.Submit.Middleware).Post("/applications", appHandler.Submit)
 			json.With(limits.StatusQuery.Middleware).Get("/applications/status", appHandler.GetStatus)
@@ -187,6 +203,17 @@ func NewRouter(svc Services, opt Options) http.Handler {
 				admin.With(anyAdmin).Get("/admin/sponsors", sponsorHandler.AdminList)
 				admin.With(super).Put("/admin/sponsors/order", sponsorHandler.AdminReorder)
 				admin.With(super).Delete("/admin/sponsors/{id}", sponsorHandler.AdminDelete)
+				admin.With(anyAdmin).Get("/admin/sponsor-inquiries", sponsorDesk.ListInquiries)
+				admin.With(super).Patch("/admin/sponsor-inquiries/{id}", sponsorDesk.UpdateInquiry)
+				admin.With(super).Delete("/admin/sponsor-inquiries/{id}", sponsorDesk.DeleteInquiry)
+				admin.With(anyAdmin).Get("/admin/sponsor-notify-emails", sponsorDesk.GetNotifyEmails)
+				admin.With(super).Put("/admin/sponsor-notify-emails", sponsorDesk.PutNotifyEmails)
+				admin.With(anyAdmin).Get("/admin/sponsor-donations", sponsorDesk.ListDonations)
+				admin.With(super).Post("/admin/sponsor-donations", sponsorDesk.CreateDonation)
+				admin.With(super).Patch("/admin/sponsor-donations/{id}", sponsorDesk.UpdateDonation)
+				admin.With(super).Delete("/admin/sponsor-donations/{id}", sponsorDesk.DeleteDonation)
+				admin.With(anyAdmin).Get("/admin/sponsor-donations/{id}/files/{kind}", sponsorDesk.GetDonationFile)
+				admin.With(super).Delete("/admin/sponsor-donations/{id}/files/{kind}", sponsorDesk.DeleteDonationFile)
 			})
 		})
 	})

@@ -49,6 +49,25 @@ const (
 	AuditTargetSponsor              = "sponsor"
 )
 
+// Sponsor inquiry / donation events (migration 000015). Mutations are written in the same
+// transaction as the change; details never carry personal data beyond what is listed per action.
+const (
+	AuditSponsorInquiryCreate    AuditAction = "sponsor.inquiry.create"
+	AuditSponsorInquiryUpdate    AuditAction = "sponsor.inquiry.update"
+	AuditSponsorInquiryDelete    AuditAction = "sponsor.inquiry.delete"
+	AuditSponsorNotifyUpdate     AuditAction = "sponsor.notify.update"
+	AuditSponsorDonationCreate   AuditAction = "sponsor.donation.create"
+	AuditSponsorDonationUpdate   AuditAction = "sponsor.donation.update"
+	AuditSponsorDonationDelete   AuditAction = "sponsor.donation.delete"
+	AuditSponsorDonationFileUp   AuditAction = "sponsor.donation.file.upload"
+	AuditSponsorDonationFileView AuditAction = "sponsor.donation.file.view"
+	AuditSponsorDonationFileDel  AuditAction = "sponsor.donation.file.delete"
+	AuditEmailSponsorInquirySent AuditAction = "email.sponsor_inquiry.sent"
+	AuditEmailSponsorInquiryFail AuditAction = "email.sponsor_inquiry.failed"
+	AuditTargetSponsorInquiry                = "sponsor_inquiry"
+	AuditTargetSponsorDonation               = "sponsor_donation"
+)
+
 // AuditSlipSuperseded is an applicant uploading a new slip that replaced one still waiting for
 // review (no admin). The replaced slip's row and file are deleted.
 const AuditSlipSuperseded AuditAction = "payment.slip.superseded"

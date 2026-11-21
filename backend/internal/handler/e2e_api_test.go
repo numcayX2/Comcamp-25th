@@ -110,10 +110,13 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		applicantSvc.WithTurnstile(captcha)
 	}
 	services := server.Services{
-		Auth:      service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
-		Applicant: applicantSvc,
-		Setting:   settingSvc,
-		Payment:   service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard).WithOnStatusChange(applicantSvc.InvalidatePublicList),
+		Auth:           service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),
+		Applicant:      applicantSvc,
+		Setting:        settingSvc,
+		Payment:        service.NewPaymentService(payRepo, appRepo, setRepo, appRepo.Audit(), uploadDir).WithCodeGuard(guard).WithOnStatusChange(applicantSvc.InvalidatePublicList),
+		SponsorInquiry: service.NewSponsorInquiryService(memory.NewMemorySponsorInquiryRepo(appRepo.Audit())),
+		SponsorDonation: service.NewSponsorDonationService(
+			memory.NewMemorySponsorDonationRepo(appRepo.Audit()), appRepo.Audit(), uploadDir),
 	}
 
 	router := server.NewRouter(services, server.Options{

@@ -1,0 +1,290 @@
+---
+import '../styles/sponsor.css';
+import SponsorInquiryForm from './SponsorInquiryForm';
+import ArrowUpRight from '@lucide/astro/icons/arrow-up-right';
+import Copy from '@lucide/astro/icons/copy';
+import FileDown from '@lucide/astro/icons/file-down';
+import GraduationCap from '@lucide/astro/icons/graduation-cap';
+import MessageCircle from '@lucide/astro/icons/message-circle';
+import Phone from '@lucide/astro/icons/phone';
+import { MAX_CAPACITY, SPONSOR_DECK_PDF, SPONSOR_DECK_READY } from '../lib/camp-facts';
+import { PAY_ACCOUNT } from '../lib/payment';
+import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
+---
+
+<article class="sp-page">
+  <!-- Masthead: statement left, camp facts ledger right -->
+  <header class="sp-hero">
+    <div class="sp-hero__main">
+      <p class="sp-eyebrow">สนับสนุนค่าย</p>
+      <h1 class="sp-title">
+        ร่วมสนับสนุนค่ายยุวชนคอมพิวเตอร์ ครั้งที่ <span class="font-mono tabular-nums">25</span>
+      </h1>
+      <p class="sp-lead">
+        ComCamp <span class="font-mono tabular-nums">#25</span> คือค่ายยุวชนคอมพิวเตอร์ของสาขาวิชาวิทยาการคอมพิวเตอร์
+        คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ การสนับสนุนของท่านช่วยให้ค่ายจัดชุดอุปกรณ์ อาหาร และกิจกรรมให้น้อง ๆ
+        ได้ครบตลอดค่าย
+      </p>
+    </div>
+
+    <dl class="sp-gazette" aria-label="ข้อมูลค่ายโดยย่อ">
+      <div class="sp-gazette__row">
+        <dt class="sp-gazette__key">วันจัดค่าย</dt>
+        <dd class="sp-gazette__val">
+          <span class="font-mono tabular-nums">5–7</span> ก.พ. <span class="font-mono tabular-nums">2570</span>
+        </dd>
+      </div>
+      <div class="sp-gazette__row">
+        <dt class="sp-gazette__key">ผู้เข้าร่วม</dt>
+        <dd class="sp-gazette__val"><span class="font-mono tabular-nums">{MAX_CAPACITY}</span> คน</dd>
+      </div>
+      <div class="sp-gazette__row">
+        <dt class="sp-gazette__key">ระดับชั้น</dt>
+        <dd class="sp-gazette__val">
+          ม.<span class="font-mono tabular-nums">4</span>–ม.<span class="font-mono tabular-nums">6</span> / ปวช.<span
+            class="font-mono tabular-nums">1</span
+          >–<span class="font-mono tabular-nums">3</span>
+        </dd>
+      </div>
+      <div class="sp-gazette__row">
+        <dt class="sp-gazette__key">สถานที่</dt>
+        <dd class="sp-gazette__val">
+          อาคาร <span class="font-mono tabular-nums">60</span> ปี แม่โจ้ ชั้น <span class="font-mono tabular-nums">6</span>
+        </dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- 1. What the camp is, and where sponsorship goes -->
+  <section id="about" class="sp-sec" aria-labelledby="sp-about-title">
+    <h2 id="sp-about-title" class="sp-h2">รู้จักค่าย ComCamp <span class="font-mono tabular-nums">#25</span></h2>
+
+    <div class="sp-why__grid">
+      <p class="sp-statement">
+        ตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน
+        น้อง ๆ ได้เรียนงานไมโครคอนโทรลเลอร์ตั้งแต่พื้นฐาน จนสร้างและนำเสนอผลงานของตัวเองได้
+      </p>
+
+      <div class="sp-why__body">
+        <p>
+          น้อง ๆ เริ่มจากการจำลองวงจรบนคอมพิวเตอร์ ต่อวงจรจริงด้วย <span class="font-mono">Arduino UNO R3</span> และ{' '}
+          <span class="font-mono">ESP8266</span> ไปจนถึงการทำ <span class="font-mono">IoT Dashboard</span>{' '}
+          และนำเสนอผลงานสดบนเวที
+        </p>
+        <p>การสนับสนุนของท่านช่วยแบ่งเบาค่าใช้จ่ายในการจัดค่าย เช่น</p>
+        <ul class="sp-costs">
+          <li>
+            <strong>ชุดอุปกรณ์สำหรับน้อง ๆ</strong>
+            บอร์ด <span class="font-mono">Arduino UNO R3</span> และ <span class="font-mono">ESP8266</span>{' '}
+            พร้อมเซนเซอร์สำหรับฝึกปฏิบัติ
+          </li>
+          <li>
+            <strong>อาหาร</strong>
+            อาหารและอาหารว่างตลอดกิจกรรมในค่าย
+          </li>
+          <li>
+            <strong>กิจกรรม</strong>
+            การเรียนการสอน การทำโครงงาน และการนำเสนอผลงาน
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Ways to support: money plate + goods -->
+  <section id="ways" class="sp-sec" aria-labelledby="sp-ways-title">
+    <h2 id="sp-ways-title" class="sp-h2">วิธีสนับสนุน</h2>
+    <p class="sp-sec__lead">
+      เลือกช่องทางที่สะดวกสำหรับท่าน ทั้งการสนับสนุนด้วยเงินหรือสิ่งของ ทีมงานพร้อมประสานงานเป็นขั้นตอน
+    </p>
+
+    <div class="sp-ways">
+      <div class="sp-way">
+        <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
+        <p class="sp-way__text">
+          โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้พี่ค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
+        </p>
+
+        <div class="sp-account">
+          <div class="sp-account__head">
+            <p class="sp-account__bank">{PAY_ACCOUNT.bank}</p>
+            <p class="sp-account__name">ชื่อบัญชี {PAY_ACCOUNT.name}</p>
+          </div>
+          <p class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</p>
+        </div>
+
+        <div class="sp-copy-row">
+          <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT.number} aria-describedby="sp-copy-status">
+            <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            <span>คัดลอกเลขบัญชี</span>
+          </button>
+          <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
+        </div>
+      </div>
+
+      <div class="sp-way">
+        <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
+        <p class="sp-way__text">
+          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการผ่านแบบฟอร์มด้านล่าง
+          แล้วพี่ค่ายจะติดต่อกลับเพื่อนัดหมาย
+        </p>
+        <ul class="sp-goods">
+          <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
+          <li>ของรางวัลสำหรับกิจกรรมในค่าย</li>
+          <li>อาหารและเครื่องดื่มสำหรับผู้เข้าร่วม</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Ordered process 01–03 -->
+  <section id="steps" class="sp-sec" aria-labelledby="sp-steps-title">
+    <h2 id="sp-steps-title" class="sp-h2">ขั้นตอนการสนับสนุน</h2>
+    <p class="sp-sec__lead">
+      แจ้งความประสงค์ก่อน แล้วพี่ค่ายจะประสานงานเรื่องแบบฟอร์มและเอกสารให้ครบทั้งสามขั้นตอน
+    </p>
+
+    <ol class="sp-steps">
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">01</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">แจ้งความประสงค์</h3>
+          <p class="sp-step__text">
+            กรอกแบบฟอร์มแจ้งความประสงค์ด้านล่าง หรือโทรหาพี่ค่ายตามช่องทางติดต่อในหน้านี้
+          </p>
+        </div>
+      </li>
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">02</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">พี่ค่ายติดต่อกลับ</h3>
+          <p class="sp-step__text">
+            พี่ค่ายติดต่อกลับเพื่อยืนยันรายละเอียด และนำแบบฟอร์มบริจาคของคณะไปให้ลงนาม
+          </p>
+        </div>
+      </li>
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">03</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">คณะดำเนินเรื่องลดหย่อนภาษี</h3>
+          <p class="sp-step__text">
+            ทีมงานส่งข้อมูลให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ดำเนินเรื่องลดหย่อนภาษีให้ผู้สนับสนุน
+          </p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 4. What sponsors receive -->
+  <section id="benefits" class="sp-sec" aria-labelledby="sp-benefits-title">
+    <div class="sp-awards">
+      <div class="sp-benefits">
+        <div class="sp-benefits__head">
+          <h2 id="sp-benefits-title" class="sp-h2">สิ่งที่ผู้สนับสนุนได้รับ</h2>
+          <p class="sp-benefits__note">พี่ค่ายจะยืนยันรายละเอียดกับท่านอีกครั้งตอนติดต่อกลับ</p>
+        </div>
+
+        <ul class="sp-benefit-list">
+          <li class="sp-benefit">
+            <h3 class="sp-benefit__title">ชื่อหรือโลโก้ในแถบ “ขอบคุณผู้สนับสนุน”</h3>
+            <p class="sp-benefit__text">
+              แสดงบนหน้าแรกของเว็บไซต์ค่าย ในแถบขอบคุณผู้สนับสนุนท้ายหน้า
+            </p>
+            <a class="sp-link" href="/#sponsors">
+              <span>ดูแถบขอบคุณผู้สนับสนุนบนหน้าแรก</span>
+              <ArrowUpRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            </a>
+          </li>
+          <li class="sp-benefit">
+            <h3 class="sp-benefit__title">เอกสารลดหย่อนภาษีผ่านคณะวิทยาศาสตร์</h3>
+            <p class="sp-benefit__text">
+              ทีมงานค่ายส่งข้อมูลการบริจาคให้คณะ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ เป็นผู้ดำเนินการออกเอกสาร
+            </p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Sponsor deck: nothing renders until the real PDF exists -->
+  {SPONSOR_DECK_READY && (
+    <section id="deck" class="sp-sec" aria-labelledby="sp-deck-title">
+      <h2 id="sp-deck-title" class="sp-h2">เอกสารแนะนำผู้สนับสนุน</h2>
+      <p class="sp-deck__text">ดาวน์โหลดเอกสารเพื่อดูภาพรวมค่ายและช่องทางการสนับสนุน</p>
+      <div class="sp-deck__action">
+        <a class="sp-btn sp-btn--secondary" href={SPONSOR_DECK_PDF} download>
+          <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          <span>ดาวน์โหลดเอกสาร (PDF)</span>
+        </a>
+      </div>
+    </section>
+  )}
+
+  <!-- 6–7. Inquiry form and the staff contact rail -->
+  <div class="sp-close">
+    <section id="inquiry" class="sp-sec" aria-labelledby="sp-inquiry-title">
+      <SponsorInquiryForm client:visible />
+    </section>
+
+    <section id="contact" class="sp-sec sp-contact" aria-labelledby="sp-contact-title">
+      <h2 id="sp-contact-title" class="sp-h2">ติดต่อพี่ค่าย</h2>
+      <p class="sp-contact__lead">
+        สอบถามรายละเอียดก่อนตัดสินใจสนับสนุนได้โดยตรงที่พี่ค่ายหรือเพจโครงการ
+      </p>
+
+      <ul class="sp-contact__list">
+        {STAFF_CONTACTS.map((c) => (
+          <li>
+            <a class="sp-contact__row" href={`tel:${c.tel}`}>
+              <Phone class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span class="sp-contact__text">
+                <span class="sp-phone font-mono tabular-nums">{c.phone}</span>
+                <span class="sp-contact__name">{c.name}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+        <li>
+          <a class="sp-contact__row" href={FB_URL} target="_blank" rel="noopener noreferrer">
+            <MessageCircle class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            <span class="sp-contact__text">
+              <span>Facebook เพจโครงการ (<span class="font-mono">CCCSMJU</span>)</span>
+            </span>
+            <ArrowUpRight class="sp-contact__ext" size={16} stroke-width={1.5} aria-hidden="true" />
+          </a>
+        </li>
+      </ul>
+
+      <p class="sp-advisor">
+        <GraduationCap class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+        <span>อาจารย์ที่ปรึกษาโครงการ <strong>{PROJECT_ADVISOR}</strong></span>
+      </p>
+    </section>
+  </div>
+</article>
+
+<script>
+  import { copyText } from '../lib/payment';
+
+  function initSponsorCopy() {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('[data-sp-copy]');
+    buttons.forEach((button) => {
+      if (button.dataset.spCopyBound === 'true') return;
+      button.dataset.spCopyBound = 'true';
+
+      button.addEventListener('click', async () => {
+        const statusId = button.getAttribute('aria-describedby');
+        const status = statusId ? document.getElementById(statusId) : null;
+        const ok = await copyText(button.dataset.spCopy ?? '');
+        if (!status) return;
+        status.textContent = ok
+          ? 'คัดลอกเลขบัญชีแล้ว'
+          : 'คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกเลขบัญชีแล้วคัดลอกเอง';
+        status.dataset.state = ok ? 'ok' : 'err';
+      });
+    });
+  }
+
+  initSponsorCopy();
+  document.addEventListener('astro:page-load', initSponsorCopy);
+</script>

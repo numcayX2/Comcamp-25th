@@ -85,11 +85,16 @@ type emailKind int
 const (
 	emailKindRegistration emailKind = iota + 1
 	emailKindConfirmed
+	emailKindSponsorInquiry
 )
+
+// SponsorInquiryEmailsPerHour caps staff notification emails about sponsor inquiries process-wide,
+// so a flood of form submissions cannot turn the SMTP account into a spam source.
+const SponsorInquiryEmailsPerHour = 30
 
 type emailJob struct {
 	kind    emailKind
-	appNo   string
+	appNo   string // application code, or the inquiry id for emailKindSponsorInquiry
 	to      string
 	subject string
 	raw     []byte
@@ -107,6 +112,7 @@ type AsyncSMTPMailer struct {
 	fromHeader  string
 	fromAddr    string
 	statusURL   string
+	adminURL    string
 	pace        time.Duration
 	sendTimeout time.Duration
 	auditRepo   domain.AuditRepository
@@ -117,6 +123,10 @@ type AsyncSMTPMailer struct {
 	queue      chan emailJob
 	workerDone chan struct{}
 	closeOnce  sync.Once
+
+	// sponsorSent holds the enqueue times of sponsor inquiry emails within the last hour.
+	sponsorMu   sync.Mutex
+	sponsorSent []time.Time
 }
 
 // NewAsyncSMTPMailer initializes a bounded async email dispatcher and starts its background
@@ -161,6 +171,7 @@ func NewAsyncSMTPMailer(cfg SMTPConfig, auditRepo domain.AuditRepository) *Async
 		fromHeader:  fromHeader,
 		fromAddr:    fromAddr,
 		statusURL:   buildStatusURL(cfg.FrontendURL),
+		adminURL:    buildFrontendURL(cfg.FrontendURL, "/admin#sponsors"),
 		pace:        pace,
 		sendTimeout: sendTimeout,
 		auditRepo:   auditRepo,
@@ -180,12 +191,13 @@ func NewAsyncSMTPMailer(cfg SMTPConfig, auditRepo domain.AuditRepository) *Async
 }
 
 func buildStatusURL(frontendURL string) string {
+	return buildFrontendURL(frontendURL, "/status")
+}
+
+// buildFrontendURL joins the first FRONTEND_URL origin with path (path alone when unset).
+func buildFrontendURL(frontendURL, path string) string {
 	first := strings.TrimSpace(strings.Split(frontendURL, ",")[0])
-	first = strings.TrimRight(first, "/")
-	if first == "" {
-		return "/status"
-	}
-	return first + "/status"
+	return strings.TrimRight(first, "/") + path
 }
 
 func extractBareAddress(raw string) string {
@@ -303,6 +315,87 @@ func (m *AsyncSMTPMailer) EnqueueConfirmed(data ConfirmedEmailData) {
 	})
 }
 
+// sponsorKindLabels are the Thai labels of the inquiry kinds.
+var sponsorKindLabels = map[string]string{
+	"money": "เงิน (โอน/เงินสด)",
+	"goods": "สิ่งของ",
+}
+
+// allowSponsorInquiryEmail reports whether another sponsor inquiry email fits within the hourly cap
+// and, if so, counts it.
+func (m *AsyncSMTPMailer) allowSponsorInquiryEmail(now time.Time) bool {
+	m.sponsorMu.Lock()
+	defer m.sponsorMu.Unlock()
+	cutoff := now.Add(-time.Hour)
+	keep := m.sponsorSent[:0]
+	for _, t := range m.sponsorSent {
+		if t.After(cutoff) {
+			keep = append(keep, t)
+		}
+	}
+	m.sponsorSent = keep
+	if len(m.sponsorSent) >= SponsorInquiryEmailsPerHour {
+		return false
+	}
+	m.sponsorSent = append(m.sponsorSent, now)
+	return true
+}
+
+// EnqueueSponsorInquiry formats and queues one staff notification about a new sponsor inquiry.
+// Beyond SponsorInquiryEmailsPerHour per hour the email is skipped (the inquiry row is kept).
+func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
+	to := stripCRLF(strings.TrimSpace(data.To))
+	if m == nil || !m.enabled || to == "" {
+		return
+	}
+	if !m.allowSponsorInquiryEmail(time.Now()) {
+		log.Printf("mailer: sponsor inquiry %d email to %s skipped (hourly cap %d reached)", data.InquiryID, MaskEmail(to), SponsorInquiryEmailsPerHour)
+		return
+	}
+	createdAt := data.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	kind := sponsorKindLabels[data.Kind]
+	if kind == "" {
+		kind = data.Kind
+	}
+	email, details := data.Email, data.Details
+	if email == "" {
+		email = "-"
+	}
+	if details == "" {
+		details = "-"
+	}
+	view := struct {
+		Name, Phone, Email, Kind, Details, Time, AdminURL string
+	}{
+		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Details: details,
+		Time: formatBangkokThaiDateTime(createdAt), AdminURL: m.adminURL,
+	}
+	subject := "[ComCamp #25] มีผู้สนใจสนับสนุนค่าย: " + truncateRunes(stripCRLF(data.Name), 60)
+	raw, err := buildMultipartMIME(m.fromHeader, to, subject, sponsorInquiryTextTmpl, sponsorInquiryHTMLTmpl, view)
+	if err != nil {
+		log.Printf("mailer: failed to render sponsor inquiry email (%d): %v", data.InquiryID, err)
+		return
+	}
+	m.enqueue(emailJob{
+		kind:    emailKindSponsorInquiry,
+		appNo:   fmt.Sprintf("%d", data.InquiryID),
+		to:      to,
+		subject: subject,
+		raw:     raw,
+	})
+}
+
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
+}
+
 func (m *AsyncSMTPMailer) enqueue(job emailJob) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -364,17 +457,23 @@ func (m *AsyncSMTPMailer) deliverJob(job emailJob) {
 	durationMs := time.Since(start).Milliseconds()
 
 	masked := MaskEmail(job.to)
+	targetType := domain.AuditTargetApplicant
 	var action domain.AuditAction
-	if job.kind == emailKindConfirmed {
-		if err == nil {
-			action = domain.AuditEmailConfirmedSent
-		} else {
+	switch job.kind {
+	case emailKindConfirmed:
+		action = domain.AuditEmailConfirmedSent
+		if err != nil {
 			action = domain.AuditEmailConfirmedFailed
 		}
-	} else {
-		if err == nil {
-			action = domain.AuditEmailRegistrationSent
-		} else {
+	case emailKindSponsorInquiry:
+		targetType = domain.AuditTargetSponsorInquiry
+		action = domain.AuditEmailSponsorInquirySent
+		if err != nil {
+			action = domain.AuditEmailSponsorInquiryFail
+		}
+	default:
+		action = domain.AuditEmailRegistrationSent
+		if err != nil {
 			action = domain.AuditEmailRegistrationFailed
 		}
 	}
@@ -395,7 +494,7 @@ func (m *AsyncSMTPMailer) deliverJob(job emailJob) {
 		defer acancel()
 		_ = m.auditRepo.Log(actx, &domain.AuditEntry{
 			Action:     action,
-			TargetType: domain.AuditTargetApplicant,
+			TargetType: targetType,
 			TargetID:   job.appNo,
 			Details:    details,
 		})
@@ -638,4 +737,30 @@ var confHTMLTmpl = htmltmpl.Must(htmltmpl.New("confHTML").Parse(`<!DOCTYPE html>
   <li><strong>อุปกรณ์อิเล็กทรอนิกส์:</strong> สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อมบอร์ด ESP8266; โน้ตบุ๊กส่วนตัวไม่บังคับ)</li>
 </ul>
 <p style="font-size:0.9em;color:#4a4d55;">ดูข้อมูลใบสมัครได้ที่ <a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> · อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว<br/>สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>
+</body></html>`))
+
+var sponsorInquiryTextTmpl = texttmpl.Must(texttmpl.New("sponsorText").Parse(`มีผู้แจ้งความประสงค์สนับสนุนค่าย ComCamp #25 ผ่านหน้าเว็บไซต์
+
+ชื่อ: {{.Name}}
+เบอร์โทร: {{.Phone}}
+อีเมล: {{.Email}}
+ประเภท: {{.Kind}}
+รายละเอียด: {{.Details}}
+เวลา: {{.Time}}
+
+ดูและจัดการในหน้าแอดมิน: {{.AdminURL}}
+`))
+
+var sponsorInquiryHTMLTmpl = htmltmpl.Must(htmltmpl.New("sponsorHTML").Parse(`<!DOCTYPE html>
+<html lang="th"><body style="font-family:sans-serif;color:#121316;line-height:1.65;max-width:600px;margin:0 auto;padding:20px;">
+<h2 style="margin:0 0 12px;">มีผู้สนใจสนับสนุนค่าย ComCamp #25</h2>
+<div style="border:1px solid #d4d4d8;padding:14px 16px;margin:16px 0;background:#f9f8f4;">
+  <p style="margin:0 0 6px;"><strong>ชื่อ:</strong> {{.Name}}</p>
+  <p style="margin:0 0 6px;"><strong>เบอร์โทร:</strong> {{.Phone}}</p>
+  <p style="margin:0 0 6px;"><strong>อีเมล:</strong> {{.Email}}</p>
+  <p style="margin:0 0 6px;"><strong>ประเภท:</strong> {{.Kind}}</p>
+  <p style="margin:0 0 6px;white-space:pre-line;"><strong>รายละเอียด:</strong> {{.Details}}</p>
+  <p style="margin:0;"><strong>เวลา:</strong> {{.Time}}</p>
+</div>
+<p><a href="{{.AdminURL}}" style="display:inline-block;padding:10px 20px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">เปิดหน้าแอดมิน</a></p>
 </body></html>`))

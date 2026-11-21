@@ -68,8 +68,8 @@ func keysOf(m map[string]any) []string {
 func (a *testApp) submitWithEverySensitiveField(t *testing.T) map[string]string {
 	t.Helper()
 	secret := map[string]string{
-		"fullName":          "ลับสุดยอด นามสกุลสาธารณะ",
-		"nickname":          "เปิดเผยได้",
+		"fullName": "ลับสุดยอด นามสกุลสาธารณะ",
+		"nickname": "เปิดเผยได้",
 		// Legacy field from pre-PDPA clients: the server drops it, and it must never surface.
 		"nationalId":        "1509977700119",
 		"phone":             "0897770011",

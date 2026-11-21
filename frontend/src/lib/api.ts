@@ -1330,3 +1330,255 @@ export async function reorderSponsors(token: string, ids: number[]): Promise<Adm
   const list = Array.isArray(data?.sponsors) ? data.sponsors : [];
   return list.map(pickAdminSponsor).filter((s): s is AdminSponsor => s !== null);
 }
+
+/* ── Sponsor inquiries & donations (contract: migration 000015) ──────────────── */
+
+export type SponsorKind = 'money' | 'goods';
+export const SPONSOR_KIND_LABELS: Record<SponsorKind, string> = {
+  money: 'เงิน (โอน/เงินสด)',
+  goods: 'สิ่งของ',
+};
+export function isSponsorKind(v: unknown): v is SponsorKind {
+  return v === 'money' || v === 'goods';
+}
+
+export const SPONSOR_NAME_MAX = 120;
+export const SPONSOR_DETAILS_MAX = 500;
+
+/** Body of POST /sponsor-inquiries. `website` is the honeypot and must stay empty. */
+export interface SponsorInquiryPayload {
+  name: string;
+  phone: string;
+  email: string;
+  kind: SponsorKind;
+  details: string;
+  turnstileToken: string;
+  website?: string;
+}
+
+/** POST /sponsor-inquiries — public. No mock fallback: a fake success would lose the inquiry. */
+export async function submitSponsorInquiry(payload: SponsorInquiryPayload): Promise<void> {
+  await fetchJson<{ ok?: boolean }>('/sponsor-inquiries', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, website: payload.website ?? '' }),
+  });
+}
+
+export interface SponsorInquiry {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  kind: SponsorKind;
+  details: string;
+  handled: boolean;
+  handledAt: string | null;
+  createdAt: string;
+}
+
+export type SponsorFileKind = 'signed' | 'slip';
+export const SPONSOR_FILE_LABELS: Record<SponsorFileKind, string> = {
+  signed: 'ฟอร์มที่เซ็นแล้ว',
+  slip: 'สลิปโอน',
+};
+export const SPONSOR_FILE_MAX_BYTES = 8 * 1024 * 1024;
+export const SPONSOR_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
+
+export interface SponsorDonationFile {
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface SponsorDonation {
+  id: number;
+  donorName: string;
+  address: string;
+  phone: string;
+  kind: SponsorKind;
+  /** Decimal string such as "1200" or "1500.5"; null when not set. */
+  amount: string | null;
+  goodsDescription: string;
+  /** "YYYY-MM-DD" or "". */
+  donatedOn: string;
+  note: string;
+  facultySubmitted: boolean;
+  facultySubmittedAt: string | null;
+  files: Record<SponsorFileKind, SponsorDonationFile | null>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body of POST / PATCH /admin/sponsor-donations — PATCH replaces every editable field. */
+export interface SponsorDonationInput {
+  donorName: string;
+  address: string;
+  phone: string;
+  kind: SponsorKind;
+  amount: string | null;
+  goodsDescription: string;
+  donatedOn: string;
+  note: string;
+  facultySubmitted: boolean;
+}
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
+function pickInquiry(raw: unknown): SponsorInquiry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'number' || !isSponsorKind(r.kind)) return null;
+  return {
+    id: r.id,
+    name: str(r.name),
+    phone: str(r.phone),
+    email: str(r.email),
+    kind: r.kind,
+    details: str(r.details),
+    handled: r.handled === true,
+    handledAt: strOrNull(r.handledAt),
+    createdAt: str(r.createdAt),
+  };
+}
+
+function pickDonationFile(raw: unknown): SponsorDonationFile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.mime !== 'string') return null;
+  return { mime: r.mime, size: typeof r.size === 'number' ? r.size : 0, uploadedAt: str(r.uploadedAt) };
+}
+
+function pickDonation(raw: unknown): SponsorDonation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'number' || !isSponsorKind(r.kind)) return null;
+  const files = (r.files && typeof r.files === 'object' ? r.files : {}) as Record<string, unknown>;
+  return {
+    id: r.id,
+    donorName: str(r.donorName),
+    address: str(r.address),
+    phone: str(r.phone),
+    kind: r.kind,
+    amount: strOrNull(r.amount),
+    goodsDescription: str(r.goodsDescription),
+    donatedOn: str(r.donatedOn),
+    note: str(r.note),
+    facultySubmitted: r.facultySubmitted === true,
+    facultySubmittedAt: strOrNull(r.facultySubmittedAt),
+    files: { signed: pickDonationFile(files.signed), slip: pickDonationFile(files.slip) },
+    createdAt: str(r.createdAt),
+    updatedAt: str(r.updatedAt),
+  };
+}
+
+function mustDonation(raw: unknown): SponsorDonation {
+  const d = pickDonation(raw);
+  if (!d) throw new Error('invalid donation response');
+  return d;
+}
+
+export async function fetchSponsorInquiries(token: string): Promise<SponsorInquiry[]> {
+  const data = await fetchJson<{ inquiries?: unknown }>('/admin/sponsor-inquiries', { method: 'GET', headers: authHeader(token) });
+  const list = Array.isArray(data?.inquiries) ? data.inquiries : [];
+  return list.map(pickInquiry).filter((x): x is SponsorInquiry => x !== null);
+}
+
+export async function setSponsorInquiryHandled(token: string, id: number, handled: boolean): Promise<SponsorInquiry> {
+  const data = await fetchJson<unknown>(`/admin/sponsor-inquiries/${id}`, {
+    method: 'PATCH',
+    headers: authHeader(token),
+    body: JSON.stringify({ handled }),
+  });
+  const inq = pickInquiry(data);
+  if (!inq) throw new Error('invalid inquiry response');
+  return inq;
+}
+
+export async function deleteSponsorInquiry(token: string, id: number): Promise<void> {
+  await fetchJson<void>(`/admin/sponsor-inquiries/${id}`, { method: 'DELETE', headers: authHeader(token) });
+}
+
+export async function fetchSponsorNotifyEmails(token: string): Promise<string[]> {
+  const data = await fetchJson<{ emails?: unknown }>('/admin/sponsor-notify-emails', { method: 'GET', headers: authHeader(token) });
+  return Array.isArray(data?.emails) ? data.emails.filter((e): e is string => typeof e === 'string') : [];
+}
+
+export async function updateSponsorNotifyEmails(token: string, emails: string[]): Promise<string[]> {
+  const data = await fetchJson<{ emails?: unknown }>('/admin/sponsor-notify-emails', {
+    method: 'PUT',
+    headers: authHeader(token),
+    body: JSON.stringify({ emails }),
+  });
+  return Array.isArray(data?.emails) ? data.emails.filter((e): e is string => typeof e === 'string') : [];
+}
+
+export async function fetchSponsorDonations(token: string): Promise<SponsorDonation[]> {
+  const data = await fetchJson<{ donations?: unknown }>('/admin/sponsor-donations', { method: 'GET', headers: authHeader(token) });
+  const list = Array.isArray(data?.donations) ? data.donations : [];
+  return list.map(pickDonation).filter((x): x is SponsorDonation => x !== null);
+}
+
+export async function createSponsorDonation(token: string, input: SponsorDonationInput): Promise<SponsorDonation> {
+  return mustDonation(
+    await fetchJson<unknown>('/admin/sponsor-donations', { method: 'POST', headers: authHeader(token), body: JSON.stringify(input) }),
+  );
+}
+
+export async function updateSponsorDonation(token: string, id: number, input: SponsorDonationInput): Promise<SponsorDonation> {
+  return mustDonation(
+    await fetchJson<unknown>(`/admin/sponsor-donations/${id}`, { method: 'PATCH', headers: authHeader(token), body: JSON.stringify(input) }),
+  );
+}
+
+export async function deleteSponsorDonation(token: string, id: number): Promise<void> {
+  await fetchJson<void>(`/admin/sponsor-donations/${id}`, { method: 'DELETE', headers: authHeader(token) });
+}
+
+/** PUT /admin/sponsor-donations/:id/files/:kind (multipart `file`): PDF/JPG/PNG/WebP ≤ 8 MB; replaces the old file. */
+export async function uploadSponsorDonationFile(
+  token: string,
+  id: number,
+  kind: SponsorFileKind,
+  file: File | Blob,
+): Promise<SponsorDonation> {
+  const form = new FormData();
+  form.append('file', file);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(`${API_BASE}/admin/sponsor-donations/${id}/files/${kind}`, {
+      method: 'PUT',
+      body: form,
+      signal: controller.signal,
+      headers: { Accept: 'application/json', ...authHeader(token) },
+    });
+    if (!res.ok) throw await toApiError(res);
+    return mustDonation(await res.json());
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** GET the stored file as a blob: URL (admin-only, no-store). Revoke it when done. */
+export async function fetchSponsorDonationFile(token: string, id: number, kind: SponsorFileKind): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(`${API_BASE}/admin/sponsor-donations/${id}/files/${kind}`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: authHeader(token),
+    });
+    if (!res.ok) throw await toApiError(res);
+    return URL.createObjectURL(await res.blob());
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function deleteSponsorDonationFile(token: string, id: number, kind: SponsorFileKind): Promise<SponsorDonation> {
+  return mustDonation(
+    await fetchJson<unknown>(`/admin/sponsor-donations/${id}/files/${kind}`, { method: 'DELETE', headers: authHeader(token) }),
+  );
+}

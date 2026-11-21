@@ -965,6 +965,470 @@
           "404": { "description": "ไม่พบผู้สนับสนุน (code NOT_FOUND)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
       }
+    },
+    "/sponsor-inquiries": {
+      "post": {
+        "tags": ["Sponsors"],
+        "summary": "Submit Sponsor Inquiry",
+        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจ Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล ไม่เก็บเลขผู้เสียภาษีหรือเลขบัตรประชาชน",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SponsorInquiryRequest" },
+              "example": {
+                "name": "ร้านตัวอย่าง",
+                "phone": "0812345678",
+                "email": "",
+                "kind": "money",
+                "details": "",
+                "turnstileToken": "…",
+                "website": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "รับคำขอแล้ว (ไม่มี id และไม่สะท้อนข้อมูลกลับ)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "ยืนยัน Turnstile ไม่ผ่าน (code CAPTCHA_FAILED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "429": {
+            "description": "ส่งถี่เกินไป (code RATE_LIMITED, มี Retry-After)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "503": {
+            "description": "ระบบตรวจ Turnstile ไม่พร้อม (code SERVICE_UNAVAILABLE)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-inquiries": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin List Sponsor Inquiries",
+        "description": "รายการคำขอสนับสนุนทั้งหมด ใหม่สุดก่อน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "รายการคำขอ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorInquiriesResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-inquiries/{id}": {
+      "patch": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Mark Sponsor Inquiry Handled",
+        "description": "ทำเครื่องหมายว่าติดต่อแล้ว/ยกเลิก บันทึก audit sponsor.inquiry.update สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SponsorInquiryUpdateRequest" },
+              "example": { "handled": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "แก้ไขสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorInquiry" } } }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Delete Sponsor Inquiry",
+        "description": "ลบคำขอ บันทึก audit sponsor.inquiry.delete สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "ลบสำเร็จ" },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-notify-emails": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Get Sponsor Notify Emails",
+        "description": "อีเมลทีมงานที่รับแจ้งเตือนคำขอสนับสนุน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "รายชื่ออีเมล",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorNotifyEmails" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Replace Sponsor Notify Emails",
+        "description": "แทนที่รายชื่อทั้งหมด: trim, ตัวพิมพ์เล็ก, ตัดซ้ำโดยคงลำดับ, สูงสุด 10 อีเมล แต่ละอีเมลยาวไม่เกิน 150 ตัวอักษร รายการว่างได้ บันทึก audit sponsor.notify.update (จำนวนเท่านั้น) สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SponsorNotifyEmails" },
+              "example": { "emails": ["staff@example.com"] }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "บันทึกสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorNotifyEmails" } } }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-donations": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin List Sponsor Donations",
+        "description": "รายการการสนับสนุนที่ทีมงานบันทึก ใหม่สุดก่อน สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "รายการการสนับสนุน",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonationsResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Create Sponsor Donation",
+        "description": "บันทึกการสนับสนุนใหม่ บันทึก audit sponsor.donation.create สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonationInput" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "บันทึกสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonation" } } }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-donations/{id}": {
+      "patch": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Update Sponsor Donation",
+        "description": "แทนที่ฟิลด์ที่แก้ไขได้ทั้งหมด บันทึก audit sponsor.donation.update (ชื่อฟิลด์ที่เปลี่ยนเท่านั้น ไม่มีค่า) สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonationInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "แก้ไขสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonation" } } }
+          },
+          "400": {
+            "description": "ข้อมูลไม่ถูกต้อง (code VALIDATION_ERROR)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Delete Sponsor Donation",
+        "description": "ลบการสนับสนุนและไฟล์แนบ (ลบไฟล์หลัง commit) บันทึก audit sponsor.donation.delete สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "ลบสำเร็จ" },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/admin/sponsor-donations/{id}/files/{kind}": {
+      "put": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Upload Sponsor Donation File",
+        "description": "อัปโหลดฟอร์มที่เซ็นแล้วหรือสลิปโอน (แทนที่ไฟล์เดิม) ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG บันทึก audit sponsor.donation.file.upload สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["signed", "slip"] },
+            "description": "signed = ฟอร์มที่เซ็นแล้ว, slip = สลิปโอน"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": { "file": { "type": "string", "format": "binary" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "อัปโหลดสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonation" } } }
+          },
+          "400": {
+            "description": "ไฟล์ไม่ถูกต้อง (VALIDATION_ERROR / INVALID_IMAGE_DIMENSIONS)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "413": {
+            "description": "ไฟล์เกิน 8 MB (code PAYLOAD_TOO_LARGE)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin View Sponsor Donation File",
+        "description": "ส่งไฟล์ตาม path ใน DB เท่านั้น Cache-Control: private, no-store และ X-Content-Type-Options: nosniff บันทึก audit sponsor.donation.file.view สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["signed", "slip"] },
+            "description": "signed = ฟอร์มที่เซ็นแล้ว, slip = สลิปโอน"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ไฟล์ต้นฉบับ",
+            "content": {
+              "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin Delete Sponsor Donation File",
+        "description": "ลบไฟล์แนบ (ลบไฟล์หลัง commit) บันทึก audit sponsor.donation.file.delete สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["signed", "slip"] },
+            "description": "signed = ฟอร์มที่เซ็นแล้ว, slip = สลิปโอน"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ลบสำเร็จ",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SponsorDonation" } } }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบข้อมูล (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1301,6 +1765,152 @@
             "type": "array",
             "items": { "type": "integer", "format": "int64", "minimum": 1 },
             "description": "รายการรหัสผู้สนับสนุนตามลำดับใหม่ ต้องครบทุกตัวและไม่ซ้ำ"
+          }
+        }
+      },
+      "OkResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean", "example": true } } },
+      "SponsorInquiryRequest": {
+        "type": "object",
+        "required": ["name", "phone", "kind"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "phone": { "type": "string", "description": "10 หลักขึ้นต้นด้วย 0 (รับเลขไทย ขีด และช่องว่าง)" },
+          "email": { "type": "string", "maxLength": 150 },
+          "kind": {
+            "type": "string",
+            "enum": ["money", "goods"],
+            "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
+          },
+          "details": { "type": "string", "maxLength": 500 },
+          "turnstileToken": { "type": "string" },
+          "website": { "type": "string", "description": "honeypot ต้องว่าง" }
+        }
+      },
+      "SponsorInquiry": {
+        "type": "object",
+        "required": ["id", "name", "phone", "email", "kind", "details", "handled", "handledAt", "createdAt"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["money", "goods"],
+            "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
+          },
+          "details": { "type": "string" },
+          "handled": { "type": "boolean" },
+          "handledAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SponsorInquiriesResponse": {
+        "type": "object",
+        "required": ["inquiries"],
+        "properties": { "inquiries": { "type": "array", "items": { "$ref": "#/components/schemas/SponsorInquiry" } } }
+      },
+      "SponsorInquiryUpdateRequest": { "type": "object", "required": ["handled"], "properties": { "handled": { "type": "boolean" } } },
+      "SponsorNotifyEmails": {
+        "type": "object",
+        "required": ["emails"],
+        "properties": {
+          "emails": {
+            "type": "array",
+            "maxItems": 10,
+            "items": { "type": "string", "format": "email", "maxLength": 150 }
+          }
+        }
+      },
+      "SponsorDonationFile": {
+        "type": "object",
+        "nullable": true,
+        "required": ["mime", "size", "uploadedAt"],
+        "properties": {
+          "mime": { "type": "string", "enum": ["application/pdf", "image/jpeg", "image/png", "image/webp"] },
+          "size": { "type": "integer" },
+          "uploadedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SponsorDonation": {
+        "type": "object",
+        "required": [
+          "id",
+          "donorName",
+          "address",
+          "phone",
+          "kind",
+          "amount",
+          "goodsDescription",
+          "donatedOn",
+          "note",
+          "facultySubmitted",
+          "facultySubmittedAt",
+          "files",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "donorName": { "type": "string" },
+          "address": { "type": "string" },
+          "phone": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["money", "goods"],
+            "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
+          },
+          "amount": {
+            "type": "string",
+            "nullable": true,
+            "example": "1500.5",
+            "description": "จำนวนเงิน (สตริงทศนิยม) null = ไม่ระบุ"
+          },
+          "goodsDescription": { "type": "string" },
+          "donatedOn": { "type": "string", "example": "2026-11-20", "description": "YYYY-MM-DD หรือ \"\"" },
+          "note": { "type": "string" },
+          "facultySubmitted": { "type": "boolean" },
+          "facultySubmittedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "files": {
+            "type": "object",
+            "required": ["signed", "slip"],
+            "properties": {
+              "signed": { "$ref": "#/components/schemas/SponsorDonationFile" },
+              "slip": { "$ref": "#/components/schemas/SponsorDonationFile" }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SponsorDonationsResponse": {
+        "type": "object",
+        "required": ["donations"],
+        "properties": { "donations": { "type": "array", "items": { "$ref": "#/components/schemas/SponsorDonation" } } }
+      },
+      "SponsorDonationInput": {
+        "type": "object",
+        "required": ["donorName", "kind"],
+        "properties": {
+          "donorName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "address": { "type": "string", "maxLength": 500 },
+          "phone": { "type": "string", "description": "ว่าง หรือ 9–10 หลักหลังตัดขีด/ช่องว่าง (รับเบอร์บ้าน)" },
+          "kind": {
+            "type": "string",
+            "enum": ["money", "goods"],
+            "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
+          },
+          "amount": {
+            "type": "string",
+            "nullable": true,
+            "description": "money: จำเป็น > 0 ไม่เกิน 10,000,000 ทศนิยมไม่เกิน 2 ตำแหน่ง; goods: มูลค่าประมาณ ≥ 0 หรือ null"
+          },
+          "goodsDescription": { "type": "string", "maxLength": 500, "description": "goods: จำเป็น 1–500; money: ต้องว่าง" },
+          "donatedOn": { "type": "string", "description": "\"\" หรือ YYYY-MM-DD" },
+          "note": { "type": "string", "maxLength": 500 },
+          "facultySubmitted": {
+            "type": "boolean",
+            "description": "true ตั้ง facultySubmittedAt = now() ถ้ายังไม่มี; false ล้างค่า"
           }
         }
       }

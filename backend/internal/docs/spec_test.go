@@ -24,13 +24,20 @@ func TestOpenAPISpec(t *testing.T) {
 	}
 
 	for path, method := range map[string]string{
-		"/applications/{id}/withdraw":        "post",
-		"/applications/{id}/profile":         "patch",
-		"/admin/applications/{id}/profile":   "patch",
-		"/admin/applications/{id}":           "delete",
-		"/admin/applications/export-audit":   "post",
-		"/admin/applications/withdrawn":      "get",
-		"/admin/applications/withdrawn/{id}": "delete",
+		"/applications/{id}/withdraw":                "post",
+		"/applications/{id}/profile":                 "patch",
+		"/admin/applications/{id}/profile":           "patch",
+		"/admin/applications/{id}":                   "delete",
+		"/admin/applications/export-audit":           "post",
+		"/admin/applications/withdrawn":              "get",
+		"/admin/applications/withdrawn/{id}":         "delete",
+		"/sponsor-inquiries":                         "post",
+		"/admin/sponsor-inquiries":                   "get",
+		"/admin/sponsor-inquiries/{id}":              "patch",
+		"/admin/sponsor-notify-emails":               "put",
+		"/admin/sponsor-donations":                   "post",
+		"/admin/sponsor-donations/{id}":              "delete",
+		"/admin/sponsor-donations/{id}/files/{kind}": "put",
 	} {
 		if _, ok := spec.Paths[path][method]; !ok {
 			t.Errorf("spec is missing %s %s", method, path)

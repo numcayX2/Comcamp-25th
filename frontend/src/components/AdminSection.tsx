@@ -64,7 +64,7 @@ import {
 } from './register/model';
 import { AdminProfileEditor } from './AdminProfileEditor';
 import { AdminSettingsPanel } from './AdminSettingsPanel';
-import { AdminSponsorsPanel } from './AdminSponsorsPanel';
+import { AdminSponsorHub } from './admin/AdminSponsorHub';
 import { AdminOverview } from './admin/AdminOverview';
 import { AdminLogistics, isMeaningfulNote } from './admin/AdminLogistics';
 import { AdminSideMenu } from './admin/AdminSideMenu';
@@ -474,6 +474,8 @@ export function AdminSection() {
   const [feeBaht, setFeeBaht] = useState<number | null>(null);
   /** Seat quota from the settings panel; null until loaded (the over-capacity warning then omits numbers). */
   const [maxCapacity, setMaxCapacity] = useState<number | null>(null);
+  /** Sponsor inquiries not yet contacted (side-menu badge); null until the sponsor view has loaded them. */
+  const [sponsorInquiryCount, setSponsorInquiryCount] = useState<number | null>(null);
   /** Minute clock for the 5-day transfer countdowns. */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -1533,7 +1535,14 @@ export function AdminSection() {
     },
     { key: 'withdrawn', label: 'ยกเลิกเอง', Icon: UserX, n: withdrawnApps.length, srCount: `${withdrawnApps.length} รายการ` },
     { key: 'logistics', label: 'เตรียมงานค่าย', Icon: Shirt },
-    { key: 'sponsors', label: 'ผู้สนับสนุน', Icon: HeartHandshake },
+    {
+      key: 'sponsors',
+      label: 'ผู้สนับสนุน',
+      Icon: HeartHandshake,
+      n: sponsorInquiryCount ?? 0,
+      srCount: `ผู้สนใจสนับสนุนที่ยังไม่ได้ติดต่อ ${sponsorInquiryCount ?? 0} รายการ`,
+      alert: (sponsorInquiryCount ?? 0) > 0,
+    },
     { key: 'settings', label: 'ตั้งค่าค่าย', Icon: Settings2 },
   ];
 
@@ -1837,9 +1846,17 @@ export function AdminSection() {
               </div>
 
               <div data-view="sponsors" hidden={view !== 'sponsors'}>
-                <ViewHeading title="ผู้สนับสนุน" sub="โลโก้ในแถบ “ขอบคุณผู้สนับสนุน” ท้ายหน้าแรก แถบจะซ่อนเองเมื่อยังไม่มีรายการ" />
+                <ViewHeading
+                  title="ผู้สนับสนุน"
+                  sub="ผู้แจ้งความประสงค์จาก /sponsor รายการบริจาคและฟอร์มของคณะ โลโก้ท้ายหน้าแรก และอีเมลแจ้งเตือน"
+                />
                 <div className={PANEL}>
-                  <AdminSponsorsPanel token={token} canEdit={can.editSettings} onAuthError={handleAuthError} />
+                  <AdminSponsorHub
+                    token={token}
+                    canEdit={can.editSettings}
+                    onAuthError={handleAuthError}
+                    onUnhandledCount={setSponsorInquiryCount}
+                  />
                 </div>
               </div>
 

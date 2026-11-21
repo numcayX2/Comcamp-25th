@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SiteNav from '../components/SiteNav.astro';
+import SponsorPage from '../components/SponsorPage.astro';
+---
+
+<BaseLayout
+  title="สนับสนุนค่าย · ComCamp #25"
+  description="ร่วมสนับสนุนค่าย ComCamp #25 ของสาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ช่องทางบริจาคเงินและสิ่งของ ขั้นตอนการดำเนินเรื่องลดหย่อนภาษีผ่านคณะวิทยาศาสตร์ และแบบฟอร์มแจ้งความประสงค์สำหรับผู้สนับสนุน"
+>
+  <SiteNav active="sponsor" />
+  <main id="main">
+    <SponsorPage />
+  </main>
+</BaseLayout>

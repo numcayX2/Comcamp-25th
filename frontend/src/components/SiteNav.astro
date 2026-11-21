@@ -9,7 +9,7 @@ import {
 } from '../lib/camp-facts';
 
 interface Props {
-  active?: 'home' | 'register' | 'status' | 'admin' | 'applicants' | 'guide';
+  active?: 'home' | 'register' | 'status' | 'admin' | 'applicants' | 'guide' | 'sponsor';
   isHome?: boolean;
 }
 
@@ -29,6 +29,7 @@ const sectionLinks = isAdmin ? [] : [
 const pageLinks = isAdmin ? [] : [
   { href: '/guide', label: 'คู่มือผู้สมัคร', current: active === 'guide' },
   { href: '/applicants', label: 'รายชื่อผู้สมัคร', current: active === 'applicants' },
+  { href: '/sponsor', label: 'สนับสนุนค่าย', current: active === 'sponsor' },
 ];
 ---
 
