@@ -272,6 +272,35 @@ html[data-reg-open="true"] .hero__cta:hover { border-color: var(--fern-600); bac
   text-underline-offset: 0.3em;
 }
 .hero__link:hover { color: var(--hero-ink); }
+/* Register + guide pills; wrap to two rows only when too narrow (long pre-open/full labels on phones). */
+.hero__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+/* Guide: second priority after the register CTA, so an outline pill with a lighter rule and no fill. */
+.hero__btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 0.5rem;
+  padding: clamp(0.55rem, 1.1vh, 0.75rem) clamp(1.1rem, 2.5vw, 1.4rem);
+  border: 1px solid var(--hero-line-strong);
+  border-radius: 999px;
+  color: var(--hero-ink);
+  background: transparent;
+  font-weight: 500;
+  font-size: clamp(0.82rem, 1.2vh, 0.92rem);
+  text-decoration: none;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.hero__btn svg { flex: none; }
+.hero__btn:hover {
+  border-color: var(--hero-ink);
+  background: color-mix(in srgb, var(--hero-ink) 6%, transparent);
+}
 
 /* Proof strip: compact affiliation + milestone, no pills, no cards. */
 .hero__proof {
@@ -318,8 +347,15 @@ html[data-reg-open="true"] .hero__cta:hover { border-color: var(--fern-600); bac
 /* Short desktop windows (laptops at 720–820px tall): the copy column would run into the bottom
    venue bar. The department caption under the CTAs repeats the certificate line, so drop it there. */
 @media(min-width:1024px) and (max-height:820px){.hero__proof{display:none}.hero__cert{margin-top:.6rem}}
+/* Short desktops (<= 860px tall): the action row (register + guide pills, status link) sits at the
+   bottom bar's height. 1024–1263px: the row can wrap, so hide the centred "เลื่อนลง" hint and the
+   venue label (repeated in #essentials). Up to 1365px the long FULL/CLOSED labels still reach the hint.
+   visibility (not display) keeps the bar's grid columns. */
+@media(min-width:1024px) and (max-width:1263px) and (max-height:860px){.hero__explore,.hero__bar-start{visibility:hidden}}
+@media(min-width:1264px) and (max-width:1365px) and (max-height:860px){html[data-reg-open="false"] .hero__explore{visibility:hidden}}
 
 .hero__cta:focus-visible,
+.hero__btn:focus-visible,
 .hero__link:focus-visible,
 .hero__explore:focus-visible {
   outline: 2px solid var(--hero-accent);
@@ -569,10 +605,13 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 
   .hero__actions {
     flex-direction: row;
-    gap: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0 1.5rem;
     margin-top: 0.25rem;
   }
-  .hero__cta {
+  .hero__buttons { justify-content: flex-start; gap: 0.75rem; }
+  .hero__cta,
+  .hero__btn {
     padding: clamp(0.75rem, 1.35vh, 0.95rem) clamp(1.25rem, 1.5vw, 1.65rem);
     border-radius: 999px;
   }

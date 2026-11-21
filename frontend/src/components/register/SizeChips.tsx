@@ -48,12 +48,12 @@ export function SizeChips({
       gsap.killTweensOf(el);
       gsap.set(el, to);
       if (prefersReducedMotion()) gsap.set(el, { autoAlpha: 1, scale: 1 });
-      else gsap.fromTo(el, { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)', overwrite: 'auto' });
+      else gsap.fromTo(el, { autoAlpha: 0, scale: 0.85 }, { autoAlpha: 1, scale: 1, duration: 0.22, ease: 'back.out(1.2)', overwrite: 'auto' });
       placed.current = true;
     } else {
-      // Moving between sizes: slide, with a small stretch while in motion.
-      gsap.to(el, { ...to, autoAlpha: 1, duration: 0.5, ease: 'back.out(1.25)', overwrite: 'auto' });
-      gsap.fromTo(el, { scaleX: 1.06 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' });
+      // Moving between sizes: a stiff slide (short, ~2% overshoot) with a slight stretch while in motion.
+      gsap.to(el, { ...to, autoAlpha: 1, duration: 0.3, ease: 'back.out(0.6)', overwrite: 'auto' });
+      gsap.fromTo(el, { scaleX: 1.03 }, { scaleX: 1, duration: 0.3, ease: 'power2.out' });
     }
   }, [value]);
 
@@ -73,12 +73,12 @@ export function SizeChips({
     };
   }, []);
 
-  /** Tactile press: shrinks while held, springs back. Interruptible like everything else here. */
+  /** Tactile press: a firm dip while held, one quick settle on release (no wobble). Interruptible. */
   function press(face: HTMLElement | null, down: boolean) {
     if (!face || prefersReducedMotion()) return;
     gsap.to(face, down
-      ? { scale: 0.93, duration: 0.12, ease: 'power2.out', overwrite: 'auto' }
-      : { scale: 1, duration: 0.55, ease: 'elastic.out(1, 0.45)', overwrite: 'auto' });
+      ? { scale: 0.96, duration: 0.08, ease: 'power2.out', overwrite: 'auto' }
+      : { scale: 1, duration: 0.2, ease: 'back.out(1.4)', overwrite: 'auto' });
   }
 
   return (

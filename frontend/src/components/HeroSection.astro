@@ -7,18 +7,21 @@
  *   <HeroSection titleStyle="pixel" />   → Pixel / dot-matrix title (Figma draft)
  */
 import '@fontsource/space-grotesk/700.css';
+import BookOpen from '@lucide/astro/icons/book-open';
 import { CAMP_FEE_TEXT, REGISTRATION_OPEN_AT, formatBangkokTime, formatThaiDateShort } from '../lib/camp-facts';
 
 interface Props {
   titleStyle?: 'sans' | 'pixel';
   registerHref?: string;
   statusHref?: string;
+  guideHref?: string;
 }
 
 const {
   titleStyle = 'sans',
   registerHref = '/register',
   statusHref = '/status',
+  guideHref = '/guide',
 } = Astro.props;
 ---
 
@@ -51,12 +54,19 @@ const {
       </p>
 
       <div class="hero__actions">
-        <a class="hero__cta" id="cta-primary" href="#essentials" data-register-href={registerHref}>
-          <span>ลงทะเบียนวันที่ {formatThaiDateShort(REGISTRATION_OPEN_AT)} (<span class="font-mono tabular-nums" data-open-time>{formatBangkokTime(REGISTRATION_OPEN_AT)}</span> น.)</span>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square">
-            <path d="M4 12 12 4M5.5 4H12v6.5" />
-          </svg>
-        </a>
+        <!-- Button group: register (primary, state-driven by main.js) then the guide (secondary, static in every state). -->
+        <div class="hero__buttons">
+          <a class="hero__cta" id="cta-primary" href="#essentials" data-register-href={registerHref}>
+            <span>ลงทะเบียนวันที่ {formatThaiDateShort(REGISTRATION_OPEN_AT)} (<span class="font-mono tabular-nums" data-open-time>{formatBangkokTime(REGISTRATION_OPEN_AT)}</span> น.)</span>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square">
+              <path d="M4 12 12 4M5.5 4H12v6.5" />
+            </svg>
+          </a>
+          <a class="hero__btn" href={guideHref}>
+            <BookOpen size={16} stroke-width={1.5} aria-hidden="true" />
+            <span>คู่มือผู้สมัคร</span>
+          </a>
+        </div>
         <a class="hero__link" id="cta-secondary" href={statusHref}>ตรวจสอบสถานะใบสมัคร →</a>
       </div>
 
