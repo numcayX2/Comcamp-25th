@@ -1,6 +1,7 @@
 ---
 import '../styles/sponsor.css';
 import SponsorInquiryForm from './SponsorInquiryForm';
+import ArrowRight from '@lucide/astro/icons/arrow-right';
 import ArrowUpRight from '@lucide/astro/icons/arrow-up-right';
 import Copy from '@lucide/astro/icons/copy';
 import FileDown from '@lucide/astro/icons/file-down';
@@ -36,7 +37,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
       </div>
       <div class="sp-gazette__row">
         <dt class="sp-gazette__key">ผู้เข้าร่วม</dt>
-        <dd class="sp-gazette__val"><span class="font-mono tabular-nums">{MAX_CAPACITY}</span> คน</dd>
+        <dd class="sp-gazette__val"><span class="font-mono tabular-nums" data-sp-seats>{MAX_CAPACITY}</span> คน</dd>
       </div>
       <div class="sp-gazette__row">
         <dt class="sp-gazette__key">ระดับชั้น</dt>
@@ -190,9 +191,9 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
             <p class="sp-benefit__text">
               แสดงบนหน้าแรกของเว็บไซต์ค่าย ในแถบขอบคุณผู้สนับสนุนท้ายหน้า
             </p>
-            <a class="sp-link" href="/#sponsors">
+            <a class="sp-link" href="/#sponsors" hidden data-sp-sponsors-link>
               <span>ดูแถบขอบคุณผู้สนับสนุนบนหน้าแรก</span>
-              <ArrowUpRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
             </a>
           </li>
           <li class="sp-benefit">
@@ -265,6 +266,8 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
 
 <script>
   import { copyText } from '../lib/payment';
+  import { API_BASE, fetchSponsors } from '../lib/api';
+  import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
 
   function initSponsorCopy() {
     const buttons = document.querySelectorAll<HTMLButtonElement>('[data-sp-copy]');
@@ -285,6 +288,47 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
     });
   }
 
+  /* The home page hides #sponsors while the sponsor list is empty, so this link only
+     un-hides once the list endpoint confirms at least one sponsor exists. */
+  async function syncSponsorLink() {
+    const link = document.querySelector<HTMLElement>('[data-sp-sponsors-link]');
+    // The module-load call and the initial astro:page-load both land here; fetch once per page.
+    if (!link || link.dataset.spSponsorsChecked === 'true') return;
+    link.dataset.spSponsorsChecked = 'true';
+
+    try {
+      const sponsors = await fetchSponsors();
+      if (sponsors.length > 0) link.removeAttribute('hidden');
+    } catch {
+      /* List unreachable: keep the link hidden so it never lands on an empty section. */
+    }
+  }
+
+  async function syncSponsorSettings() {
+    const seatEls = document.querySelectorAll<HTMLElement>('[data-sp-seats]');
+    if (!seatEls.length) return;
+
+    try {
+      const settings = await fetchSharedPublicSettings(API_BASE, { timeoutMs: 4000 });
+      if (
+        typeof settings.maxCapacity === 'number' &&
+        Number.isFinite(settings.maxCapacity) &&
+        settings.maxCapacity > 0
+      ) {
+        const capText = String(settings.maxCapacity);
+        seatEls.forEach((el) => {
+          el.textContent = capText;
+        });
+      }
+    } catch {
+      /* Keep the server-rendered fallback value when settings cannot be reached. */
+    }
+  }
+
   initSponsorCopy();
+  syncSponsorLink();
+  syncSponsorSettings();
   document.addEventListener('astro:page-load', initSponsorCopy);
+  document.addEventListener('astro:page-load', syncSponsorLink);
+  document.addEventListener('astro:page-load', syncSponsorSettings);
 </script>

@@ -98,6 +98,7 @@ export default function SponsorInquiryForm() {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const busyRef = useRef(false);
   const focusFormOnReset = useRef(false);
@@ -116,6 +117,10 @@ export default function SponsorInquiryForm() {
       nameRef.current?.focus();
     }
   }, [done]);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   function clearError(key: FieldKey) {
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
@@ -255,7 +260,7 @@ export default function SponsorInquiryForm() {
           </button>
         </div>
       ) : (
-        <form className="sp-form" noValidate onSubmit={handleSubmit} aria-labelledby="sp-inquiry-title">
+        <form className="sp-form" method="post" noValidate onSubmit={handleSubmit} aria-labelledby="sp-inquiry-title">
           <div className="sp-hp" aria-hidden="true">
             <label htmlFor="sp-website">Website</label>
             <input
@@ -463,7 +468,7 @@ export default function SponsorInquiryForm() {
             <button
               type="submit"
               className="sp-btn sp-btn--primary"
-              disabled={busy}
+              disabled={busy || !hydrated}
               aria-busy={busy || undefined}
             >
               {busy ? (
