@@ -1409,12 +1409,14 @@
 }
 
 /* ==========================================================================
-   Sponsors (#sponsors) — Hairline Logo Band after the gallery
+   Sponsors (#sponsors) — Hairline Logo Band right under the hero
    Hidden in the markup; main.js reveals it only with at least one logo.
    Equal cells in a centred wrapping row, so 1–12 logos stay balanced.
+   Compact on purpose: it is a thank-you strip between the hero and section 02, not a section.
    ========================================================================== */
+/* Bottom padding adds ~16px for the next section's .ed-index pill, which straddles its top rule. */
 .ed-sponsors {
-  padding: clamp(56px, 8vw, 104px) 0;
+  padding: clamp(24px, 3vw, 36px) 0 clamp(40px, 4.5vw, 52px);
   border-top: 1px solid var(--rule);
   background: var(--canvas-0);
 }
@@ -1435,9 +1437,9 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: clamp(28px, 3.6vw, 44px) var(--sp-gap);
-  margin: clamp(24px, 3vw, 36px) 0 0;
-  padding: clamp(28px, 4vw, 48px) 0 0;
+  gap: clamp(18px, 2.4vw, 28px) var(--sp-gap);
+  margin: clamp(12px, 1.4vw, 18px) 0 0;
+  padding: clamp(16px, 2vw, 24px) 0 0;
   border-top: 1px solid var(--rule);
   list-style: none;
 }

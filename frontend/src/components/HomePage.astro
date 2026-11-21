@@ -205,6 +205,16 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
     <!-- Section 01: Hero — 3D Hardware Stage (Arduino UNO R3 & ESP8266) -->
     <HeroSection titleStyle="pixel" registerHref="/register" statusHref="/status" />
 
+    <!-- Sponsors: stays hidden (no JS, API error, empty list); main.js fills it from GET /api/sponsors
+         right after boot. It sits under the 100svh hero, so it appears below the fold on a normal load;
+         when it is inserted above the viewport (deep link, restored scroll) main.js offsets the scroll. -->
+    <section id="sponsors" class="ed-sponsors" aria-labelledby="sponsors-title" hidden>
+      <div class="wrap">
+        <h2 id="sponsors-title" class="ed-sponsors__title">ขอบคุณผู้สนับสนุน</h2>
+        <ul class="ed-sponsors__list" role="list" data-sponsor-list></ul>
+      </div>
+    </section>
+
     <!-- Section 02: Curriculum (merged "what you build" + "4 steps over 3 days") — central spine -->
     <section id="experience" class="ed-sec ed-sec--curriculum" aria-labelledby="experience-title">
       <p class="ed-index"><span class="ed-index__no">02</span><span class="ed-index__label">หลักสูตร</span></p>
@@ -652,15 +662,6 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
           </a>
         </div>
 
-      </div>
-    </section>
-
-    <!-- Sponsors: stays hidden (no JS, API error, empty list); main.js fills it from GET /api/sponsors
-         once the visitor nears the gallery. Far below the fold, so revealing it never shifts the hero. -->
-    <section id="sponsors" class="ed-sponsors" aria-labelledby="sponsors-title" hidden>
-      <div class="wrap">
-        <h2 id="sponsors-title" class="ed-sponsors__title">ขอบคุณผู้สนับสนุน</h2>
-        <ul class="ed-sponsors__list" role="list" data-sponsor-list></ul>
       </div>
     </section>
   </main>

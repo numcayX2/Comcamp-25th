@@ -1410,10 +1410,10 @@
     }
   })();
 
-  // Sponsor band (#sponsors, after the gallery). Fetched only once the visitor nears the gallery, so
-  // the launch-morning burst on /settings/public never pays for it, and revealed only when at least
-  // one valid logo arrives; no JS, an error or an empty list leaves it hidden. Server data goes into
-  // the DOM through createElement / textContent / properties only (never innerHTML).
+  // Sponsor band (#sponsors, right under the hero). Fetched at boot (GET /api/sponsors is cached
+  // server-side) and revealed only when at least one valid logo arrives; no JS, an error or an empty
+  // list leaves it hidden. Server data goes into the DOM through createElement / textContent /
+  // properties only (never innerHTML).
   (function initSponsors(){
     var section = $('sponsors');
     var list = section ? section.querySelector('[data-sponsor-list]') : null;
@@ -1428,6 +1428,23 @@
     var refreshTriggers = function(){
       try { if (gsapBooted && typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh(); } catch (e) {}
     };
+    // The band sits above sections 02–05, so on a deep link (#faq) or restored scroll it changes
+    // height above the viewport. Hold what the visitor reads in place: browser scroll anchoring is
+    // switched off for this one write (not every engine has it) and the page moves by the exact delta.
+    var keepScroll = function(mutate){
+      var root = document.documentElement;
+      var next = section.nextElementSibling;
+      var before = next ? next.getBoundingClientRect().top : 1;
+      var prevAnchor = root.style.overflowAnchor;
+      root.style.overflowAnchor = 'none';
+      mutate();
+      if (next && before <= 0) {
+        var delta = next.getBoundingClientRect().top - before;
+        if (delta) window.scrollBy({ top: delta, left: 0, behavior: 'instant' });
+      }
+      requestAnimationFrame(function(){ root.style.overflowAnchor = prevAnchor; });
+      refreshTriggers();
+    };
     var safeLink = function(v){
       if (typeof v !== 'string' || !v) return '';
       try {
@@ -1437,9 +1454,10 @@
     };
     // A logo that fails to load drops its cell; the band hides again if none remain.
     var dropItem = function(li){
-      if (li.parentNode) li.parentNode.removeChild(li);
-      if (!list.firstChild) section.hidden = true;
-      refreshTriggers();
+      keepScroll(function(){
+        if (li.parentNode) li.parentNode.removeChild(li);
+        if (!list.firstChild) section.hidden = true;
+      });
     };
     var buildItem = function(s){
       if (!s || typeof s.name !== 'string' || typeof s.logoUrl !== 'string' || !LOGO_PATH.test(s.logoUrl)) return null;
@@ -1498,35 +1516,15 @@
             if (li) frag.appendChild(li);
           }
           if (!frag.firstChild) return;
-          list.appendChild(frag);
-          section.hidden = false;
-          refreshTriggers();
+          keepScroll(function(){
+            list.appendChild(frag);
+            section.hidden = false;
+          });
         })
         .catch(function(){ /* stays hidden */ })
         .then(function(){ clearTimeout(timeoutId); });
     };
-
-    // Start when the gallery top is within two viewports (also catches jumps past it, e.g. #gallery
-    // links or restored scroll). Rect-based on purpose: IntersectionObserver under-reports on this
-    // ~1400vh section in some in-app WebViews (see MemoryTunnel._tick).
-    var gallery = $('gallery');
-    if (!gallery) { load(); return; }
-    var started = false;
-    var tick = 0;
-    var onScroll = function(){ if (!tick) tick = requestAnimationFrame(check); };
-    function check(){
-      tick = 0;
-      if (started) return;
-      var vh = window.innerHeight || document.documentElement.clientHeight;
-      if (gallery.getBoundingClientRect().top >= vh * 2) return;
-      started = true;
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      load();
-    }
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    check();
+    load();
   })();
 
   var gsapBooted = false;
