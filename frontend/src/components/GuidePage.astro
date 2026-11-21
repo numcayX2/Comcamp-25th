@@ -653,16 +653,17 @@ const tocItems = [
     const uaBrands = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] } })
       .userAgentData?.brands;
     const refract = !!(marker && glassFilter && glassMap && glassBend && uaBrands?.some((b) => b.brand === 'Chromium'));
-    // feDisplacementMap moves a pixel by up to scale / 2, so the rim reaches at most 9px past the
-    // pill: a squeezed sliver of the next label. A longer reach pulls whole labels in as duplicates.
-    const BEND_MAX = 18;
-    const BEND_PER_SPEED = 0.025; // scale per px/s of marker speed: full bend from ~560 px/s
+    // feDisplacementMap moves a pixel by up to scale / 2, so at full bend the rim reaches 20px past
+    // the pill and pulls the neighbouring label in, squeezed hard against the edge (heavy glass).
+    const BEND_MAX = 40;
+    const BEND_PER_SPEED = 0.08; // scale per px/s of marker speed: a one-row step (~300 px/s) ≈ 24
     const glassMaps = new Map<string, string>();
     let glassKey = '';
-    // Displacement map for a w × h pill shaped like a glass dome: neutral on the centre line and
-    // pointing outward along the edge normal towards the rim, strongest at the edge, so the rim shows
-    // what lies just beyond the pill, squeezed. The vertical pull is stronger mid-pill than near the
-    // ends, so a label crossing the top or bottom edge bows into an arc. R / G carry x / y around 128.
+    // Displacement map for a w × h pill shaped like a thick glass dome: neutral on the centre line
+    // and pointing outward along the edge normal, rising with the cube of the distance so the middle
+    // stays clear and the bend piles up at the rim, where what lies just beyond the pill shows
+    // squeezed. The vertical pull is stronger mid-pill than near the ends, so a label crossing the
+    // top or bottom edge bows into an arc. R / G carry x / y around 128.
     const drawGlassMap = (w: number, h: number): string => {
       const canvas = document.createElement('canvas');
       canvas.width = w;
@@ -671,14 +672,14 @@ const tocItems = [
       if (!ctx) return '';
       const img = ctx.createImageData(w, h);
       const r = h / 2;
-      // Outward pull grows with the square of the distance from the centre line (0 → 1 at the rim).
+      // Outward pull grows with the cube of the distance from the centre line (0 → 1 at the rim).
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           // Offset from the pill's centre line; its length is the distance from that line.
           const dx = x + 0.5 - Math.min(Math.max(x + 0.5, r), w - r);
           const dy = y + 0.5 - r;
           const dist = Math.hypot(dx, dy);
-          const k = dist > 0 ? Math.min(1, dist / r) ** 2 / dist : 0;
+          const k = dist > 0 ? Math.min(1, dist / r) ** 3 / dist : 0;
           const across = (x + 0.5) / w * 2 - 1;
           const bow = 1 - 0.5 * across * across;
           const i = (y * w + x) * 4;
