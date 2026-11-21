@@ -125,6 +125,13 @@ const tocItems = [
             </li>
           ))}
         </ul>
+        {/* Refraction for the glass marker. initGuideToc() draws the map and switches it on in Chromium only. */}
+        <svg class="gd-toc__filters" width="0" height="0" aria-hidden="true" focusable="false">
+          <filter id="gd-glass" filterUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+            <feImage id="gd-glass-map" x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="map" />
+            <feDisplacementMap id="gd-glass-bend" in="SourceGraphic" in2="map" scale="0" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+        </svg>
       </div>
     </nav>
 
@@ -635,6 +642,82 @@ const tocItems = [
     let frame = 0;
     let lastFrame = 0;
 
+    // Glass marker. In Chromium the pill sits over the links and bends what passes under its rim
+    // through the SVG displacement map in the markup (`backdrop-filter: url()` is Chromium-only). The
+    // bend grows with the spring's speed, so text flexes while the pill glides and lies flat once it
+    // rests. Other engines keep the frosted pill behind the text (guide.css).
+    const marker = toc.querySelector<HTMLElement>('.gd-toc__marker');
+    const glassFilter = document.getElementById('gd-glass');
+    const glassMap = document.getElementById('gd-glass-map');
+    const glassBend = document.getElementById('gd-glass-bend');
+    const uaBrands = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] } })
+      .userAgentData?.brands;
+    const refract = !!(marker && glassFilter && glassMap && glassBend && uaBrands?.some((b) => b.brand === 'Chromium'));
+    // feDisplacementMap moves a pixel by up to scale / 2, so the rim reaches at most 9px past the
+    // pill: a squeezed sliver of the next label. A longer reach pulls whole labels in as duplicates.
+    const BEND_MAX = 18;
+    const BEND_PER_SPEED = 0.025; // scale per px/s of marker speed: full bend from ~560 px/s
+    const glassMaps = new Map<string, string>();
+    let glassKey = '';
+    // Displacement map for a w × h pill shaped like a glass dome: neutral on the centre line and
+    // pointing outward along the edge normal towards the rim, strongest at the edge, so the rim shows
+    // what lies just beyond the pill, squeezed. The vertical pull is stronger mid-pill than near the
+    // ends, so a label crossing the top or bottom edge bows into an arc. R / G carry x / y around 128.
+    const drawGlassMap = (w: number, h: number): string => {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      const img = ctx.createImageData(w, h);
+      const r = h / 2;
+      // Outward pull grows with the square of the distance from the centre line (0 → 1 at the rim).
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          // Offset from the pill's centre line; its length is the distance from that line.
+          const dx = x + 0.5 - Math.min(Math.max(x + 0.5, r), w - r);
+          const dy = y + 0.5 - r;
+          const dist = Math.hypot(dx, dy);
+          const k = dist > 0 ? Math.min(1, dist / r) ** 2 / dist : 0;
+          const across = (x + 0.5) / w * 2 - 1;
+          const bow = 1 - 0.5 * across * across;
+          const i = (y * w + x) * 4;
+          img.data[i] = 128 + dx * k * 127;
+          img.data[i + 1] = 128 + dy * k * bow * 127;
+          img.data[i + 2] = 128;
+          img.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL();
+    };
+    const paintGlass = () => {
+      if (!refract || !marker || !glassFilter || !glassMap || !glassBend) return;
+      const w = marker.offsetWidth;
+      const h = Math.round(springH.to);
+      if (w <= 0 || h <= 0) return;
+      const key = `${w}x${h}`;
+      if (key !== glassKey) {
+        let url = glassMaps.get(key);
+        if (!url) {
+          url = drawGlassMap(w, h);
+          glassMaps.set(key, url);
+        }
+        if (!url) return;
+        glassMap.setAttribute('href', url);
+        glassKey = key;
+      }
+      // The map is drawn for the target height and stretched while the height spring catches up.
+      for (const el of [glassFilter, glassMap]) {
+        el.setAttribute('width', String(w));
+        el.setAttribute('height', springH.x.toFixed(2));
+      }
+      // Flat at rest (the label in the pill stays crisp); the rim bends only while the pill moves.
+      const speed = Math.abs(springY.v) + Math.abs(springH.v);
+      glassBend.setAttribute('scale', Math.min(BEND_MAX, speed * BEND_PER_SPEED).toFixed(2));
+      if (toc.dataset.glass !== 'refract') toc.dataset.glass = 'refract';
+    };
+
     const paint = () => {
       track.style.setProperty('--gd-marker-y', `${springY.x.toFixed(2)}px`);
       track.style.setProperty('--gd-marker-h', `${springH.x.toFixed(2)}px`);
@@ -643,6 +726,7 @@ const tocItems = [
         const dot = springY.x + springH.x / 2 - railTop;
         track.style.setProperty('--gd-progress', Math.min(1, Math.max(0, dot / railHeight)).toFixed(4));
       }
+      paintGlass();
     };
 
     const step = (now: number) => {
@@ -708,8 +792,9 @@ const tocItems = [
         return;
       }
       link.setAttribute('aria-current', 'true');
-      placeMarker();
+      // Shown first, so the glass can measure the marker on its first placement.
       toc.setAttribute('data-spy', '');
+      placeMarker();
       // Mobile: the chips scroll sideways; bring the active one into view without moving the page.
       if (!wide.matches && list.scrollWidth > list.clientWidth) {
         const left = link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2;
