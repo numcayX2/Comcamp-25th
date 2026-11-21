@@ -436,6 +436,13 @@ html[data-theme="dark"] .gd-toc {
     font-weight: 600;
     white-space: normal;
   }
+  /* Lens zoom: GuidePage.astro writes --gd-lens (1 → 1.06) from the marker spring, so the label
+     under the glass swells as the pill reaches it. Left edge stays put; no transition (per frame). */
+  .gd-toc__label {
+    display: block;
+    transform: scale(var(--gd-lens, 1));
+    transform-origin: left center;
+  }
   /* Rail on the left fills with reading progress; a raised pill slides to the section in view. */
   .gd-toc__track {
     padding-left: 14px;
