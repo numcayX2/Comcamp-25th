@@ -1074,6 +1074,12 @@
   margin: 0;
   white-space: normal;
 }
+/* Under the kind pills: says whether the choice goes through the faculty's tax form. */
+.sp-hint--wrap.sp-kind-hint {
+  margin-top: 10px;
+  max-width: 46em;
+  text-wrap: pretty;
+}
 
 .sp-success {
   display: grid;

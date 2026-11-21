@@ -1028,7 +1028,7 @@
                   "name": { "type": "string", "minLength": 1, "maxLength": 120 },
                   "phone": { "type": "string", "description": "10 หลักขึ้นต้นด้วย 0 (รับเลขไทย ขีด และช่องว่าง)" },
                   "email": { "type": "string", "maxLength": 150 },
-                  "kind": { "type": "string", "enum": ["money", "goods"], "description": "ว่าง = money (แบบฟอร์มของคณะเป็นการบริจาคเงิน)" },
+                  "kind": { "type": "string", "enum": ["money"], "description": "ว่าง = money; แบบฟอร์มของคณะใช้กับการบริจาคเงินเท่านั้น (สิ่งของลดหย่อนภาษีไม่ได้ จึงไม่มีแบบฟอร์ม) — goods → 400 VALIDATION_ERROR" },
                   "details": { "type": "string", "maxLength": 500 },
                   "turnstileToken": { "type": "string" },
                   "website": { "type": "string", "description": "honeypot ต้องว่าง" },

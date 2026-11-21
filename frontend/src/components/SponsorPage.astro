@@ -35,7 +35,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
       <div class="sp-hero__actions">
         <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
           <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
-          <span>ดาวน์โหลดแบบฟอร์มบริจาค</span>
+          <span>ดาวน์โหลดแบบฟอร์มบริจาคเงิน</span>
           <span class="sp-btn__meta font-mono">PDF</span>
         </a>
         <a class="sp-link" href="#sponsor-upload">
@@ -121,6 +121,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
         <p class="sp-way__text">
           โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้พี่ค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
+          การบริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ โดยกรอกแบบฟอร์มบริจาคเงิน
         </p>
 
         <div class="sp-account">
@@ -143,8 +144,8 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
       <div class="sp-way">
         <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
         <p class="sp-way__text">
-          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการผ่านแบบฟอร์มด้านล่าง
-          แล้วพี่ค่ายจะติดต่อกลับเพื่อนัดหมาย
+          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการในช่องแจ้งความประสงค์ด้านล่าง
+          แล้วพี่ค่ายจะติดต่อกลับเพื่อนัดหมาย ไม่ต้องใช้แบบฟอร์มบริจาค เพราะการสนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้
         </p>
         <ul class="sp-goods">
           <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
@@ -168,7 +169,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         <div class="sp-step__body">
           <h3 class="sp-step__title">แจ้งความประสงค์</h3>
           <p class="sp-step__text">
-            กรอกแบบฟอร์มด้านล่าง หรือดาวน์โหลดแบบฟอร์มบริจาค กรอกและลงนามแล้วแนบไฟล์ส่งมาแทน
+            กรอกแบบฟอร์มด้านล่าง หากบริจาคเงินจะดาวน์โหลดแบบฟอร์มบริจาคเงิน กรอกและลงนามแล้วแนบไฟล์ส่งมาแทนก็ได้
             หรือโทรหาพี่ค่ายตามช่องทางติดต่อในหน้านี้
           </p>
         </div>
@@ -187,7 +188,8 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         <div class="sp-step__body">
           <h3 class="sp-step__title">คณะดำเนินเรื่องลดหย่อนภาษี</h3>
           <p class="sp-step__text">
-            ทีมงานส่งข้อมูลให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ดำเนินเรื่องลดหย่อนภาษีให้ผู้สนับสนุน
+            สำหรับการบริจาคเงิน ทีมงานส่งข้อมูลให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ดำเนินเรื่องลดหย่อนภาษีให้ผู้สนับสนุน
+            การสนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้
           </p>
         </div>
       </li>
@@ -215,9 +217,10 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
             </a>
           </li>
           <li class="sp-benefit">
-            <h3 class="sp-benefit__title">เอกสารลดหย่อนภาษีผ่านคณะวิทยาศาสตร์</h3>
+            <h3 class="sp-benefit__title">เอกสารลดหย่อนภาษีผ่านคณะวิทยาศาสตร์ (บริจาคเงิน)</h3>
             <p class="sp-benefit__text">
-              ทีมงานค่ายส่งข้อมูลการบริจาคให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ซึ่งเป็นผู้ออกเอกสาร
+              ทีมงานค่ายส่งข้อมูลการบริจาคเงินให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ซึ่งเป็นผู้ออกเอกสาร
+              การสนับสนุนด้วยสิ่งของไม่ได้รับเอกสารนี้
             </p>
           </li>
         </ul>

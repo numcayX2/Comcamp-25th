@@ -624,6 +624,7 @@ func TestSponsorInquiryUpload_RejectsWithoutLeavingFiles(t *testing.T) {
 		"no file":    {ok, "", nil, http.StatusBadRequest, response.CodeValidation},
 		"bad phone":  {map[string]string{"name": "ร้าน", "phone": "12345"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"bad kind":   {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "alcohol"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"goods kind": {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "goods"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"long field": {map[string]string{"name": strings.Repeat("ก", 2000), "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"too large":  {ok, "big.pdf", append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("a"), service.MaxSponsorDocBytes)...), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
 		"huge image": {ok, "huge.webp", webpVP8XHeader(10001, 10), http.StatusBadRequest, response.CodeInvalidImageDims},

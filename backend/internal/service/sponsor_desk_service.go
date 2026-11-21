@@ -144,12 +144,16 @@ func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRe
 	}
 	withFile := file != nil
 	if withFile && strings.TrimSpace(req.Kind) == "" {
-		// The faculty form is a cash donation form, so a bare upload is a money inquiry.
 		req.Kind = domain.SponsorKindMoney
 	}
 	inq, err := validateSponsorInquiry(req)
 	if err != nil {
 		return err
+	}
+	if withFile && inq.Kind != domain.SponsorKindMoney {
+		// The faculty form is a cash donation form: goods cannot be claimed as a tax deduction, so
+		// there is no form to send for them. A bare upload (no kind) is a money inquiry.
+		return newValidationError("the donation form is for cash donations only")
 	}
 	var cleaned []byte
 	var mimeType, ext, hash string

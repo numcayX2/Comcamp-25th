@@ -1,6 +1,7 @@
 /**
- * /sponsor — public sponsor inquiry form, in two ways: type the inquiry on the web, or send the
- * faculty donation form already filled and signed (PDF or a photo/scan) instead.
+ * /sponsor — public sponsor inquiry form, in two ways: type the inquiry on the web, or (cash
+ * donations only) send the faculty donation form already filled and signed (PDF or a photo/scan).
+ * A goods donation cannot be claimed as a tax deduction, so it has no form to download or send.
  *
  * - Every value lives in React state only: nothing is written to localStorage, sessionStorage or
  *   cookies (AGENTS.md §9.2 / §13.5). The attached form is only held as a File until it is sent.
@@ -51,7 +52,14 @@ const UPLOAD_HASH = '#sponsor-upload';
 type Mode = 'web' | 'file';
 const MODE_LABELS: Record<Mode, string> = {
   web: 'กรอกข้อมูลบนเว็บ',
-  file: 'แนบแบบฟอร์มที่กรอกแล้ว',
+  file: 'แนบแบบฟอร์มบริจาคเงิน',
+};
+
+/** Shown under the kind choice once one is picked: only a cash donation goes through the faculty's tax form. */
+const KIND_HINTS: Record<SponsorKind, string> = {
+  money:
+    'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ พี่ค่ายจะส่งแบบฟอร์มบริจาคเงินให้ลงนาม หรือเลือก “แนบแบบฟอร์มบริจาคเงิน” ด้านบนเพื่อส่งแบบฟอร์มเองก็ได้',
+  goods: 'สนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้ จึงไม่ต้องใช้แบบฟอร์มบริจาค แจ้งรายการสิ่งของในช่องรายละเอียดด้านล่าง',
 };
 
 type FieldKey = 'name' | 'phone' | 'email' | 'kind' | 'file';
@@ -344,7 +352,8 @@ export default function SponsorInquiryForm() {
         แจ้งความประสงค์สนับสนุน
       </h2>
       <p className="sp-inquiry__lead">
-        กรอกข้อมูลบนเว็บ หรือแนบแบบฟอร์มบริจาคที่กรอกแล้วแทนก็ได้ พี่ค่ายจะติดต่อกลับเพื่อยืนยันรายละเอียดและนัดหมายขั้นตอนถัดไป
+        กรอกข้อมูลบนเว็บ หรือหากบริจาคเงิน แนบแบบฟอร์มบริจาคเงินที่กรอกแล้วแทนก็ได้
+        พี่ค่ายจะติดต่อกลับเพื่อยืนยันรายละเอียดและนัดหมายขั้นตอนถัดไป
       </p>
 
       {done ? (
@@ -414,7 +423,10 @@ export default function SponsorInquiryForm() {
                       1
                     </span>
                     <div className="sp-upload__body">
-                      <p className="sp-upload__text">ดาวน์โหลดแบบฟอร์มบริจาคของคณะ</p>
+                      <p className="sp-upload__text">ดาวน์โหลดแบบฟอร์มบริจาคเงินของคณะ</p>
+                      <p className="sp-hint sp-hint--wrap">
+                        ใช้กับการบริจาคเงินเท่านั้น สนับสนุนด้วยสิ่งของไม่ต้องใช้แบบฟอร์มนี้ เลือก “กรอกข้อมูลบนเว็บ” แทน
+                      </p>
                       <a className="sp-btn sp-btn--secondary sp-btn--sm" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
                         <FileDown className="sp-ico" size={16} strokeWidth={1.5} aria-hidden="true" />
                         <span>ดาวน์โหลดแบบฟอร์ม</span>
@@ -606,7 +618,7 @@ export default function SponsorInquiryForm() {
             {!fileMode && (
               <fieldset
                 className="sp-fieldset sp-field--full"
-                aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
+                aria-describedby={[kind ? 'sp-kind-hint' : '', errors.kind ? 'sp-kind-err' : ''].filter(Boolean).join(' ') || undefined}
               >
                 <legend className="sp-label">
                   <span>
@@ -636,6 +648,11 @@ export default function SponsorInquiryForm() {
                     </label>
                   ))}
                 </div>
+                {kind && (
+                  <p id="sp-kind-hint" className="sp-hint sp-hint--wrap sp-kind-hint">
+                    {KIND_HINTS[kind]}
+                  </p>
+                )}
                 {errors.kind && (
                   <p id="sp-kind-err" className="sp-error">
                     <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />

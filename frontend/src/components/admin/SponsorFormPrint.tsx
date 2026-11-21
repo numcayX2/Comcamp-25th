@@ -5,7 +5,11 @@ import { bahtText, formatThaiLongDate } from '../../lib/thai-baht-text';
 import { formatAmount, formatPhone } from './sponsor-ui';
 import '../../styles/sponsor-print.css';
 
-/** The donation fields printed on the faculty form (never a tax / national ID: that line stays blank). */
+/**
+ * The donation fields printed on the faculty form. The tax / national ID is never stored: on a money
+ * (or blank) form its line stays blank for the donor to write; a goods donation cannot be claimed as a
+ * tax deduction, so its form has no such line.
+ */
 export type PrintableDonation = Pick<
   SponsorDonation,
   'donorName' | 'address' | 'phone' | 'kind' | 'amount' | 'goodsDescription' | 'donatedOn'
@@ -161,10 +165,12 @@ export function SponsorFormPrint({ donation, onDone }: Props) {
             <span className="sponsor-sheet__nw">หมายเลขโทรศัพท์มือถือ</span>
             <Fill value={d?.phone ? formatPhone(d.phone) : undefined} min={14} />
           </p>
-          <p className="sponsor-sheet__row">
-            <span className="sponsor-sheet__nw">เลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชน</span>
-            <Rule />
-          </p>
+          {!isGoods && (
+            <p className="sponsor-sheet__row">
+              <span className="sponsor-sheet__nw">เลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชน</span>
+              <Rule />
+            </p>
+          )}
         </div>
 
         <p className="sponsor-sheet__para">
