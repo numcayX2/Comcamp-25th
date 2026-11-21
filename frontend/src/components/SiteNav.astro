@@ -873,6 +873,32 @@ const pageLinks = isAdmin ? [] : [
     margin-left: auto;
   }
 
+  /* Enlarged text (150–200%): the brand word gives way (ellipsis) so the quick action and the
+     menu button always stay on screen. The link keeps its aria-label. */
+  @media (max-width: 899px) {
+    .brand {
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+    /* Only the word gives way: the logo plate (inside <picture>) and the Staff tag keep their size. */
+    .brand > picture,
+    .brand-tag {
+      flex: none;
+    }
+    .brand-word {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      /* .brand sets line-height: 1, so the clip box would cut the "p" descender; pad it out
+         and pull the margin back so the bar height does not change. */
+      padding-block: 0.25em;
+      margin-block: -0.25em;
+    }
+    .nav-mobile-controls {
+      flex: none;
+    }
+  }
+
   /* Mobile registration action (replaces the old bottom sticky bar).
      Square like .nav-toggle beside it; fern fill only when it actually does something. */
   .nav-quick-cta {
@@ -1387,6 +1413,15 @@ const pageLinks = isAdmin ? [] : [
     formatThaiDateShort,
   } from '../lib/camp-facts';
 
+  // Window/document listeners bound for the current page; aborted when ClientRouter swaps it out
+  // (the nav element is re-rendered per page, so each page binds a fresh set).
+  let navAbort: AbortController | null = null;
+  const navSignal = () => (navAbort ??= new AbortController()).signal;
+  document.addEventListener('astro:before-swap', () => {
+    navAbort?.abort();
+    navAbort = null;
+  });
+
   function initSiteNav() {
     const nav = document.querySelector<HTMLElement>('.site-nav');
     const toggle = document.querySelector<HTMLButtonElement>('.site-nav .nav-toggle');
@@ -1433,7 +1468,7 @@ const pageLinks = isAdmin ? [] : [
             setOpen(false);
             toggle.focus();
           }
-        });
+        }, { signal: navSignal() });
 
         const onWide = () => {
           if (wide.matches) {
@@ -1444,7 +1479,7 @@ const pageLinks = isAdmin ? [] : [
           }
         };
         if (wide.addEventListener) {
-          wide.addEventListener('change', onWide);
+          wide.addEventListener('change', onWide, { signal: navSignal() });
         } else if ('addListener' in wide) {
           (wide as any).addListener(onWide);
         }
@@ -1501,8 +1536,8 @@ const pageLinks = isAdmin ? [] : [
       });
       document.addEventListener('pointerdown', (e) => {
         if (isOpen() && !group.contains(e.target as Node)) setGroup(false);
-      });
-      window.matchMedia('(min-width: 900px)').addEventListener?.('change', () => setGroup(false));
+      }, { signal: navSignal() });
+      window.matchMedia('(min-width: 900px)').addEventListener?.('change', () => setGroup(false), { signal: navSignal() });
     }
 
     if (nav && nav.dataset.ccScrollBound !== 'true') {
@@ -1511,7 +1546,7 @@ const pageLinks = isAdmin ? [] : [
         nav.classList.toggle('is-scrolled', window.scrollY > 8);
       };
       onScroll();
-      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('scroll', onScroll, { passive: true, signal: navSignal() });
     }
   }
 

@@ -94,7 +94,7 @@ const tocItems = [
       <span class="gd-window__label">ช่วงเปิดรับสมัคร</span>
       <span class="gd-window__dates">
         <span data-guide-date="open">{openDateText}</span>
-        <span aria-hidden="true"> – </span>
+        <span aria-hidden="true"> – </span><span class="sr-only">ถึง</span>
         <span data-guide-date="close">{closeDateText}</span>
         <span> · ปิดรับทันทีเมื่อที่นั่งเต็ม</span>
       </span>
@@ -118,7 +118,7 @@ const tocItems = [
       <div class="gd-toc__track">
         <span class="gd-toc__rail" aria-hidden="true"><span class="gd-toc__progress"></span></span>
         <span class="gd-toc__marker" aria-hidden="true"></span>
-        <ul class="gd-toc__list">
+        <ul class="gd-toc__list" role="list">
           {tocItems.map((item) => (
             <li class="gd-toc__item">
               <a class="gd-toc__link" href={`#${item.id}`}>{item.label}</a>
@@ -184,7 +184,7 @@ const tocItems = [
           ทำรายการทั้งหมดผ่านเว็บไซต์ค่ายบนมือถือหรือคอมพิวเตอร์ได้โดยตรง ตามลำดับ <span class="font-mono tabular-nums">5</span> ขั้นตอนดังนี้
         </p>
 
-        <ol class="gd-steps">
+        <ol class="gd-steps" role="list">
           <li class="gd-step">
             <span class="gd-step__num font-mono tabular-nums" aria-hidden="true">01</span>
             <div class="gd-step__body">
@@ -281,7 +281,7 @@ const tocItems = [
           </p>
         </div>
 
-        <div class="gd-inline-contacts" aria-label="ช่องทางติดต่อพี่ค่ายกรณีชำระไม่ทันกำหนด">
+        <div class="gd-inline-contacts" role="group" aria-label="ช่องทางติดต่อพี่ค่ายกรณีชำระไม่ทันกำหนด">
           <a class="gd-pill-link" href={FB_URL} target="_blank" rel="noopener noreferrer">
             <MessageCircle class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
             <span>ติดต่อทาง Facebook</span>
@@ -499,7 +499,7 @@ const tocItems = [
           หากมีข้อสงสัยเพิ่มเติมเรื่องการสมัคร การชำระเงิน หรือรายละเอียดค่าย สามารถติดต่อพี่ค่ายและผู้ประสานงานโครงการได้โดยตรง
         </p>
 
-        <ul class="gd-contacts">
+        <ul class="gd-contacts" role="list">
           {STAFF_CONTACTS.map((c) => (
             <li class="gd-contact-row">
               <a class="gd-contact-link" href={`tel:${c.tel}`}>
@@ -586,6 +586,14 @@ const tocItems = [
   syncGuidePublicSettings();
   document.addEventListener('astro:page-load', syncGuidePublicSettings);
 
+  // ClientRouter keeps window/document alive across pages: listeners bound for one visit to
+  // /guide are dropped when the page is swapped out, instead of piling up on every visit.
+  let tocAbort: AbortController | null = null;
+  document.addEventListener('astro:before-swap', () => {
+    tocAbort?.abort();
+    tocAbort = null;
+  });
+
   /* Table of contents: scroll-spy (aria-current), a sliding marker behind the active link and a
      reading-progress rail on desktop; on mobile the active chip is kept in view in its scroller.
      Enhance-only: without this script the ToC is the plain link list. */
@@ -602,6 +610,10 @@ const tocItems = [
       .filter((it): it is { link: HTMLAnchorElement; sec: HTMLElement } => it.sec !== null);
     if (!items.length) return;
     toc.dataset.spyBound = 'true';
+    tocAbort?.abort();
+    const ac = new AbortController();
+    tocAbort = ac;
+    const { signal } = ac;
 
     const wide = window.matchMedia('(min-width: 900px)');
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -722,6 +734,13 @@ const tocItems = [
       if (!tick) tick = requestAnimationFrame(update);
     };
 
+    signal.addEventListener('abort', () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(tick);
+      frame = 0;
+      tick = 0;
+    });
+
     // A ToC click marks its target right away and holds it while the smooth scroll passes the
     // sections in between, so the marker travels once instead of stepping through each one.
     list.addEventListener('click', (e) => {
@@ -730,7 +749,7 @@ const tocItems = [
       lockUntil = performance.now() + 1200;
       setActive(link);
       // Browsers without `scrollend` (older Safari) re-check once the lock has run out.
-      window.setTimeout(request, 1250);
+      window.setTimeout(() => { if (!signal.aborted) request(); }, 1250);
     });
     // The reader takes over mid-scroll (wheel, finger, scroll keys): drop the hold at once so the
     // marker follows what they do instead of staying parked on the clicked target.
@@ -739,18 +758,18 @@ const tocItems = [
       lockUntil = 0;
       request();
     };
-    window.addEventListener('wheel', release, { passive: true });
+    window.addEventListener('wheel', release, { passive: true, signal });
     // A touch listener on the document is also what lets iOS / in-app WebViews show :active
     // press states on touch-down instead of skipping them.
-    document.addEventListener('touchstart', release, { passive: true });
+    document.addEventListener('touchstart', release, { passive: true, signal });
     window.addEventListener('keydown', (e) => {
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) release();
-    });
+    }, { signal });
     window.addEventListener('scrollend', () => {
       lockUntil = 0;
       request();
-    });
-    window.addEventListener('scroll', request, { passive: true });
+    }, { signal });
+    window.addEventListener('scroll', request, { passive: true, signal });
 
     // Mobile chip row: fade the edge that has more chips behind it, so the row reads as scrollable.
     const markEdges = () => {
@@ -763,13 +782,14 @@ const tocItems = [
       placeMarker(true);
       markEdges();
       request();
-    });
+    }, { signal });
     wide.addEventListener?.('change', () => {
       placeMarker(true);
       markEdges();
       request();
-    });
+    }, { signal });
     document.fonts?.ready.then(() => {
+      if (signal.aborted) return;
       placeMarker(true);
       markEdges();
       request();

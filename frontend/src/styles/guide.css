@@ -90,6 +90,7 @@
   line-height: 1.72;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 /* 4-item facts row: hairline separated, no cards. */
@@ -234,7 +235,7 @@
 .gd-btn--primary {
   background: var(--color-cta);
   border-color: var(--color-cta);
-  color: #121316;
+  color: var(--color-on-success);
 }
 .gd-btn--secondary {
   background: var(--bg-card);
@@ -246,7 +247,7 @@
   .gd-btn--primary:hover {
     background: var(--color-success);
     border-color: var(--color-success);
-    color: #121316;
+    color: var(--color-on-success);
   }
   .gd-btn--secondary:hover {
     background: var(--color-btn-ghost-hover);
@@ -454,10 +455,7 @@
     height: var(--gd-marker-h, 44px);
     border-radius: 9999px;
     background: var(--bg-card);
-    box-shadow:
-      0 1px 2px rgba(18, 19, 22, 0.03),
-      0 6px 18px -6px rgba(18, 19, 22, 0.06),
-      0 0 0 1px var(--color-border);
+    box-shadow: var(--shadow-card);
     transform: translateY(var(--gd-marker-y, 0));
     pointer-events: none;
   }
@@ -541,6 +539,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 .gd-prose {
@@ -556,6 +555,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 .gd-prose strong {
@@ -621,6 +621,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 .gd-kv__link-wrap {
@@ -640,6 +641,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 /* ── 4. Ordered steps (01-05) ─────────────────────────────────────────────── */
@@ -678,6 +680,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 /* ── 5. Inline contacts row (Payment deadline section) ────────────────────── */
@@ -723,6 +726,7 @@
 .gd-pill-link__meta {
   font-weight: 400;
   color: var(--color-ink-muted);
+  white-space: normal;
 }
 
 .gd-pill-link:active:not([aria-disabled="true"]) {
@@ -851,6 +855,7 @@
   line-height: 1.75;
   letter-spacing: 0;
   color: var(--color-ink-muted);
+  text-wrap: pretty;
 }
 
 /* ── 9. Contacts ──────────────────────────────────────────────────────────── */
@@ -902,6 +907,7 @@
 .gd-contact-link__name {
   font-weight: 400;
   color: var(--color-ink-muted);
+  white-space: normal;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -946,7 +952,6 @@
   .gd-pill-link .gd-ico,
   .gd-faq__summary,
   .gd-faq__chev,
-  .gd-faq__item[open] .gd-faq__chev,
   .gd-contact-link,
   .gd-contact-link__text > .gd-ico {
     transition: none;

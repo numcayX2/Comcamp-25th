@@ -127,10 +127,19 @@
 </style>
 
 <script>
+  let bttAbort: AbortController | null = null;
+  document.addEventListener('astro:before-swap', () => {
+    bttAbort?.abort();
+    bttAbort = null;
+  });
+
   function setupBackToTop() {
     const btn = document.querySelector<HTMLButtonElement>('[data-back-to-top]');
     if (!btn || btn.dataset.bttBound === 'true') return;
     btn.dataset.bttBound = 'true';
+    bttAbort?.abort();
+    bttAbort = new AbortController();
+    const { signal } = bttAbort;
 
 
     let ticking = false;
@@ -154,8 +163,8 @@
       }
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', updateVisibility, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true, signal });
+    window.addEventListener('resize', updateVisibility, { passive: true, signal });
 
     // Initial check
     updateVisibility();
