@@ -604,21 +604,85 @@ const tocItems = [
     toc.dataset.spyBound = 'true';
 
     const wide = window.matchMedia('(min-width: 900px)');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let current: HTMLAnchorElement | null = null;
     let lockUntil = 0;
     let tick = 0;
 
-    // The rail fills down to the dot beside the active link, so the line always ends at the dot.
-    const placeMarker = () => {
+    // The marker and the rail end ride one critically damped spring (damping ratio 1, response
+    // 0.35 s). A new target while it is still moving keeps the current position AND velocity, so
+    // scrolling fast through several sections reads as one glide instead of restarting each step.
+    const RESPONSE_S = 0.35;
+    const STIFFNESS = (2 * Math.PI / RESPONSE_S) ** 2;
+    const DAMPING = (4 * Math.PI) / RESPONSE_S;
+    const springY = { x: 0, v: 0, to: 0 };
+    const springH = { x: 0, v: 0, to: 0 };
+    let railTop = 0;
+    let railHeight = 0;
+    let placed = false;
+    let frame = 0;
+    let lastFrame = 0;
+
+    const paint = () => {
+      track.style.setProperty('--gd-marker-y', `${springY.x.toFixed(2)}px`);
+      track.style.setProperty('--gd-marker-h', `${springH.x.toFixed(2)}px`);
+      // The rail fills down to the dot beside the marker, so the line always ends at the dot.
+      if (railHeight > 0) {
+        const dot = springY.x + springH.x / 2 - railTop;
+        track.style.setProperty('--gd-progress', Math.min(1, Math.max(0, dot / railHeight)).toFixed(4));
+      }
+    };
+
+    const step = (now: number) => {
+      const dt = Math.min(0.064, (now - lastFrame) / 1000);
+      lastFrame = now;
+      // Fixed sub-steps keep the integration stable when a frame arrives late.
+      for (let left = dt; left > 0; left -= 1 / 240) {
+        const h = Math.min(1 / 240, left);
+        for (const s of [springY, springH]) {
+          s.v += (-STIFFNESS * (s.x - s.to) - DAMPING * s.v) * h;
+          s.x += s.v * h;
+        }
+      }
+      // Sub-pixel remainders are invisible; stop the loop there instead of chasing the long tail.
+      const settled = [springY, springH].every((s) => Math.abs(s.x - s.to) < 0.3 && Math.abs(s.v) < 2);
+      if (settled) {
+        for (const s of [springY, springH]) {
+          s.x = s.to;
+          s.v = 0;
+        }
+      }
+      paint();
+      frame = settled ? 0 : requestAnimationFrame(step);
+    };
+
+    // `instant` places without motion: first appearance, layout changes and reduced motion.
+    const placeMarker = (instant = false) => {
       if (!current) {
+        placed = false;
+        cancelAnimationFrame(frame);
+        frame = 0;
         track.style.setProperty('--gd-progress', '0');
         return;
       }
-      track.style.setProperty('--gd-marker-y', `${current.offsetTop}px`);
-      track.style.setProperty('--gd-marker-h', `${current.offsetHeight}px`);
-      if (rail && rail.offsetHeight > 0) {
-        const dot = current.offsetTop + current.offsetHeight / 2 - rail.offsetTop;
-        track.style.setProperty('--gd-progress', Math.min(1, Math.max(0, dot / rail.offsetHeight)).toFixed(4));
+      railTop = rail?.offsetTop ?? 0;
+      railHeight = rail?.offsetHeight ?? 0;
+      springY.to = current.offsetTop;
+      springH.to = current.offsetHeight;
+      if (instant || !placed || reduceMotion.matches || !wide.matches) {
+        for (const s of [springY, springH]) {
+          s.x = s.to;
+          s.v = 0;
+        }
+        cancelAnimationFrame(frame);
+        frame = 0;
+        placed = true;
+        paint();
+        return;
+      }
+      if (!frame) {
+        lastFrame = performance.now();
+        frame = requestAnimationFrame(step);
       }
     };
 
@@ -668,23 +732,49 @@ const tocItems = [
       // Browsers without `scrollend` (older Safari) re-check once the lock has run out.
       window.setTimeout(request, 1250);
     });
+    // The reader takes over mid-scroll (wheel, finger, scroll keys): drop the hold at once so the
+    // marker follows what they do instead of staying parked on the clicked target.
+    const release = () => {
+      if (!lockUntil) return;
+      lockUntil = 0;
+      request();
+    };
+    window.addEventListener('wheel', release, { passive: true });
+    // A touch listener on the document is also what lets iOS / in-app WebViews show :active
+    // press states on touch-down instead of skipping them.
+    document.addEventListener('touchstart', release, { passive: true });
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) release();
+    });
     window.addEventListener('scrollend', () => {
       lockUntil = 0;
       request();
     });
     window.addEventListener('scroll', request, { passive: true });
+
+    // Mobile chip row: fade the edge that has more chips behind it, so the row reads as scrollable.
+    const markEdges = () => {
+      const max = list.scrollWidth - list.clientWidth;
+      list.toggleAttribute('data-more-start', !wide.matches && list.scrollLeft > 2);
+      list.toggleAttribute('data-more-end', !wide.matches && max - list.scrollLeft > 2);
+    };
+    list.addEventListener('scroll', markEdges, { passive: true });
     window.addEventListener('resize', () => {
-      placeMarker();
+      placeMarker(true);
+      markEdges();
       request();
     });
     wide.addEventListener?.('change', () => {
-      placeMarker();
+      placeMarker(true);
+      markEdges();
       request();
     });
     document.fonts?.ready.then(() => {
-      placeMarker();
+      placeMarker(true);
+      markEdges();
       request();
     });
+    markEdges();
     update();
   }
 

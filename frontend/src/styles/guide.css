@@ -375,6 +375,19 @@
     border-color: var(--color-ink);
   }
 }
+/* Edge fade on the sideways chip row: only on a side that has more chips behind it. */
+.gd-toc__list[data-more-end] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.gd-toc__list[data-more-start] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px);
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+.gd-toc__list[data-more-start][data-more-end] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
 
 @media (min-width: 900px) {
   .gd-toc {
@@ -422,6 +435,8 @@
     width: 1px;
     background: var(--color-border);
   }
+  /* Position, height and progress are written every frame by the spring in GuidePage.astro, so
+     there is no CSS transition here: a transition would restart from rest on every re-target. */
   .gd-toc__progress {
     position: absolute;
     inset: 0;
@@ -429,7 +444,6 @@
     background: var(--color-tech);
     transform: scaleY(var(--gd-progress, 0));
     transform-origin: top;
-    transition: transform var(--dur-base) var(--ease-out);
   }
   .gd-toc[data-spy] .gd-toc__marker {
     position: absolute;
@@ -445,9 +459,6 @@
       0 6px 18px -6px rgba(18, 19, 22, 0.06),
       0 0 0 1px var(--color-border);
     transform: translateY(var(--gd-marker-y, 0));
-    transition:
-      transform var(--dur-base) var(--ease-out),
-      height var(--dur-base) var(--ease-out);
     pointer-events: none;
   }
   /* The dot rides the rail next to the active link. */
@@ -869,6 +880,11 @@
   transition:
     color var(--dur-fast) var(--ease-out),
     outline-offset var(--dur-fast) var(--ease-out);
+}
+/* Call rows are the main tap target on phones: colour them on touch-down, not after release. */
+.gd-contact-link:active {
+  color: var(--color-tech);
+  transition-duration: 0s;
 }
 
 .gd-contact-link__text {
