@@ -13,6 +13,15 @@ import { decodeImage, shrinkImage, type EncodedCanvas } from './slip-upload';
 export const SPONSOR_FORM_ACCEPT = 'application/pdf,.pdf,image/jpeg,image/png,image/webp,image/heic,image/heif';
 
 const SERVER_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+/** Some in-app browsers hand over a photo with an empty `type`; the extension still tells us which decoder to try. */
+const IMAGE_TYPES_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+};
 const MAX_IMAGE_PX = 10000;
 /** Images above this size are shrunk even when the server would accept them: faster on 4G. */
 const OPTIMIZE_ABOVE_BYTES = 3 * 1024 * 1024;
@@ -29,6 +38,12 @@ function isPdf(file: File): boolean {
   return file.type === 'application/pdf' || (file.type === '' && /\.pdf$/i.test(file.name));
 }
 
+function uploadType(file: File): string {
+  if (file.type) return file.type;
+  const ext = /\.([A-Za-z0-9]+)$/.exec(file.name)?.[1].toLowerCase() ?? '';
+  return IMAGE_TYPES_BY_EXT[ext] ?? '';
+}
+
 /** Validates the chosen form file and shrinks a heavy or non-web image before upload. */
 export async function prepareSponsorFormFile(file: File): Promise<SponsorFormCheck> {
   if (file.size === 0) return { ok: false, message: 'ไฟล์นี้ว่างเปล่า กรุณาเลือกไฟล์ใหม่' };
@@ -39,13 +54,14 @@ export async function prepareSponsorFormFile(file: File): Promise<SponsorFormChe
     if (String.fromCharCode(...head) !== '%PDF-') return { ok: false, message: 'ไฟล์ PDF นี้เปิดไม่ได้ กรุณาเลือกไฟล์ใหม่' };
     return { ok: true, file, resized: false };
   }
-  if (!file.type.startsWith('image/')) return { ok: false, message: WRONG_TYPE };
+  const mime = uploadType(file);
+  if (!mime.startsWith('image/')) return { ok: false, message: WRONG_TYPE };
 
   const img = await decodeImage(file);
-  if (!img) return { ok: false, message: SERVER_IMAGE_TYPES.includes(file.type) ? UNREADABLE : WRONG_TYPE };
+  if (!img) return { ok: false, message: SERVER_IMAGE_TYPES.includes(mime) ? UNREADABLE : WRONG_TYPE };
   try {
     const sendable =
-      SERVER_IMAGE_TYPES.includes(file.type) &&
+      SERVER_IMAGE_TYPES.includes(mime) &&
       file.size <= SPONSOR_FILE_MAX_BYTES &&
       img.width <= MAX_IMAGE_PX &&
       img.height <= MAX_IMAGE_PX;

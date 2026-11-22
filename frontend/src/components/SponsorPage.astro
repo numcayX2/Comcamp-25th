@@ -15,8 +15,23 @@ import {
   SPONSOR_FORM_FILENAME,
   SPONSOR_FORM_PDF,
 } from '../lib/camp-facts';
-import { PAY_ACCOUNT } from '../lib/payment';
+import { GALLERY_BASE_URL } from '../lib/gallery';
+import { PAY_ACCOUNT, PAY_ACCOUNT_DIGITS } from '../lib/payment';
 import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
+
+/* Hands-on lab shots already curated for the home page (#essentials photo strip). */
+const PHOTOS = [
+  {
+    file: 'g05.jpg',
+    alt: 'พี่เลี้ยงยืนให้คำแนะนำอย่างใกล้ชิดข้างที่นั่ง ขณะน้องค่ายฝึกเขียนโปรแกรมบนหน้าจอคอมพิวเตอร์',
+    caption: 'พี่เลี้ยงดูแลใกล้ชิดระหว่างฝึกปฏิบัติ',
+  },
+  {
+    file: 'g34.jpg',
+    alt: 'นักเรียนและพี่เลี้ยงร่วมกันวิเคราะห์ผลลัพธ์บนหน้าจอคอมพิวเตอร์เป็นทีมในห้องปฏิบัติการ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้',
+    caption: 'ทำงานเป็นทีมในแล็บ',
+  },
+];
 ---
 
 <article class="sp-page">
@@ -33,14 +48,13 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         ได้ครบตลอดค่าย
       </p>
       <div class="sp-hero__actions">
-        <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
-          <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
-          <span>ดาวน์โหลดแบบฟอร์มบริจาคเงิน</span>
-          <span class="sp-btn__meta font-mono">PDF</span>
-        </a>
-        <a class="sp-link" href="#sponsor-upload">
-          <span>กรอกแล้ว แนบไฟล์ส่งให้สตาฟค่าย</span>
+        <a class="sp-btn sp-btn--primary" href="#inquiry">
+          <span>แจ้งความประสงค์สนับสนุน</span>
           <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+        </a>
+        <a class="sp-btn sp-btn--secondary" href="#contact">
+          <Phone class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          <span>ติดต่อสตาฟค่าย</span>
         </a>
       </div>
     </div>
@@ -73,15 +87,35 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
     </dl>
   </header>
 
-  <!-- 1. What the camp is, and where sponsorship goes -->
+  <!-- 1. What the camp is, real lab photos, and where sponsorship goes -->
   <section id="about" class="sp-sec" aria-labelledby="sp-about-title">
     <h2 id="sp-about-title" class="sp-h2">รู้จักค่าย ComCamp <span class="font-mono tabular-nums">#25</span></h2>
 
     <div class="sp-why__grid">
-      <p class="sp-statement">
-        ตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน
-        น้อง ๆ ได้เรียนงานไมโครคอนโทรลเลอร์ตั้งแต่พื้นฐาน จนสร้างและนำเสนอผลงานของตัวเองได้
-      </p>
+      <div class="sp-why__main">
+        <p class="sp-statement">
+          ตลอด <span class="font-mono tabular-nums">3</span> วัน <span class="font-mono tabular-nums">2</span> คืน
+          น้อง ๆ ได้เรียนงานไมโครคอนโทรลเลอร์ตั้งแต่พื้นฐาน จนสร้างและนำเสนอผลงานของตัวเองได้
+        </p>
+        <div class="sp-photos">
+          {PHOTOS.map((p) => (
+            <figure class="sp-photo">
+              <img
+                src={`${GALLERY_BASE_URL}${p.file}`}
+                data-fallback={`/assets/gallery/${p.file}`}
+                onerror="this.onerror=null;this.src=this.dataset.fallback;"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+                alt={p.alt}
+              />
+              <figcaption class="sp-photo__cap">{p.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+        <p class="sp-photos__note">ภาพบรรยากาศจริงจากค่าย ComCamp รุ่นที่ผ่านมา</p>
+      </div>
 
       <div class="sp-why__body">
         <p>
@@ -109,95 +143,8 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
     </div>
   </section>
 
-  <!-- 2. Ways to support: money plate + goods -->
-  <section id="ways" class="sp-sec" aria-labelledby="sp-ways-title">
-    <h2 id="sp-ways-title" class="sp-h2">วิธีสนับสนุน</h2>
-    <p class="sp-sec__lead">
-      เลือกช่องทางที่สะดวกสำหรับท่าน ทั้งการสนับสนุนด้วยเงินหรือสิ่งของ ทีมงานพร้อมประสานงานเป็นขั้นตอน
-    </p>
-
-    <div class="sp-ways">
-      <div class="sp-way">
-        <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
-        <p class="sp-way__text">
-          โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้สตาฟค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
-          การบริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ โดยกรอกแบบฟอร์มบริจาคเงิน
-        </p>
-
-        <div class="sp-account">
-          <div class="sp-account__head">
-            <p class="sp-account__bank">{PAY_ACCOUNT.bank}</p>
-            <p class="sp-account__name">ชื่อบัญชี {PAY_ACCOUNT.name}</p>
-          </div>
-          <p class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</p>
-        </div>
-
-        <div class="sp-copy-row">
-          <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT.number} aria-describedby="sp-copy-status">
-            <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
-            <span>คัดลอกเลขบัญชี</span>
-          </button>
-          <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
-        </div>
-      </div>
-
-      <div class="sp-way">
-        <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
-        <p class="sp-way__text">
-          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการในช่องแจ้งความประสงค์ด้านล่าง
-          แล้วสตาฟค่ายจะติดต่อกลับเพื่อนัดหมาย ไม่ต้องใช้แบบฟอร์มบริจาค เพราะการสนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้
-        </p>
-        <ul class="sp-goods">
-          <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
-          <li>ของรางวัลสำหรับกิจกรรมในค่าย</li>
-          <li>อาหารและเครื่องดื่มสำหรับผู้เข้าร่วม</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- 3. Ordered process 01–03 -->
-  <section id="steps" class="sp-sec" aria-labelledby="sp-steps-title">
-    <h2 id="sp-steps-title" class="sp-h2">ขั้นตอนการสนับสนุน</h2>
-    <p class="sp-sec__lead">
-      แจ้งความประสงค์ก่อน แล้วสตาฟค่ายจะประสานงานเรื่องแบบฟอร์มและเอกสารให้ครบทั้งสามขั้นตอน
-    </p>
-
-    <ol class="sp-steps">
-      <li class="sp-step">
-        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">01</span>
-        <div class="sp-step__body">
-          <h3 class="sp-step__title">แจ้งความประสงค์</h3>
-          <p class="sp-step__text">
-            กรอกแบบฟอร์มด้านล่าง หากบริจาคเงินจะดาวน์โหลดแบบฟอร์มบริจาคเงิน กรอกและลงนามแล้วแนบไฟล์ส่งมาแทนก็ได้
-            หรือโทรหาสตาฟค่ายตามช่องทางติดต่อในหน้านี้
-          </p>
-        </div>
-      </li>
-      <li class="sp-step">
-        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">02</span>
-        <div class="sp-step__body">
-          <h3 class="sp-step__title">สตาฟค่ายติดต่อกลับ</h3>
-          <p class="sp-step__text">
-            สตาฟค่ายติดต่อกลับเพื่อยืนยันรายละเอียด และรับแบบฟอร์มบริจาคที่ลงนามแล้ว หากท่านยังไม่ได้ส่งมา
-          </p>
-        </div>
-      </li>
-      <li class="sp-step">
-        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">03</span>
-        <div class="sp-step__body">
-          <h3 class="sp-step__title">คณะดำเนินเรื่องลดหย่อนภาษี</h3>
-          <p class="sp-step__text">
-            สำหรับการบริจาคเงิน ทีมงานส่งข้อมูลให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ดำเนินเรื่องลดหย่อนภาษีให้ผู้สนับสนุน
-            การสนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้
-          </p>
-        </div>
-      </li>
-    </ol>
-  </section>
-
-  <!-- 4. What sponsors receive -->
-  <section id="benefits" class="sp-sec" aria-labelledby="sp-benefits-title">
+  <!-- 2. What sponsors receive: the value exchange comes before the ask -->
+  <section id="benefits" class="sp-sec sp-sec--awards" aria-labelledby="sp-benefits-title">
     <div class="sp-awards">
       <div class="sp-benefits">
         <div class="sp-benefits__head">
@@ -209,7 +156,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
           <li class="sp-benefit">
             <h3 class="sp-benefit__title">ชื่อหรือโลโก้ในแถบ “ขอบคุณผู้สนับสนุน”</h3>
             <p class="sp-benefit__text">
-              แสดงบนหน้าแรกของเว็บไซต์ค่าย ในแถบขอบคุณผู้สนับสนุนท้ายหน้า
+              แสดงบนหน้าแรกของเว็บไซต์ค่าย ในแถบขอบคุณผู้สนับสนุนใต้ส่วนหัวของหน้า
             </p>
             <a class="sp-link" href="/#sponsors" hidden data-sp-sponsors-link>
               <span>ดูแถบขอบคุณผู้สนับสนุนบนหน้าแรก</span>
@@ -220,12 +167,116 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
             <h3 class="sp-benefit__title">เอกสารลดหย่อนภาษีผ่านคณะวิทยาศาสตร์ (บริจาคเงิน)</h3>
             <p class="sp-benefit__text">
               ทีมงานค่ายส่งข้อมูลการบริจาคเงินให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ซึ่งเป็นผู้ออกเอกสาร
-              การสนับสนุนด้วยสิ่งของไม่ได้รับเอกสารนี้
             </p>
           </li>
         </ul>
       </div>
     </div>
+  </section>
+
+  <!-- 3. Ordered process 01–03: inquire first, before any bank details -->
+  <section id="steps" class="sp-sec" aria-labelledby="sp-steps-title">
+    <h2 id="sp-steps-title" class="sp-h2">ขั้นตอนการสนับสนุน</h2>
+    <p class="sp-sec__lead">
+      แจ้งความประสงค์ก่อน แล้วสตาฟค่ายจะประสานงานกับท่านให้ครบทุกขั้นตอน
+    </p>
+
+    <ol class="sp-steps">
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">01</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">แจ้งความประสงค์</h3>
+          <p class="sp-step__text">
+            กรอกแบบฟอร์มท้ายหน้านี้ หรือโทรหาสตาฟค่าย หากบริจาคเงิน จะแนบแบบฟอร์มบริจาคเงินที่กรอกและลงนามแล้วมาด้วยก็ได้
+          </p>
+        </div>
+      </li>
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">02</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">สตาฟค่ายติดต่อกลับ</h3>
+          <p class="sp-step__text">
+            สตาฟค่ายติดต่อกลับเพื่อยืนยันรายละเอียด รับแบบฟอร์มบริจาคเงินที่ลงนามแล้วหากท่านยังไม่ได้ส่งมา
+            หรือนัดหมายรับสิ่งของ
+          </p>
+        </div>
+      </li>
+      <li class="sp-step">
+        <span class="sp-step__no font-mono tabular-nums" aria-hidden="true">03</span>
+        <div class="sp-step__body">
+          <h3 class="sp-step__title">คณะดำเนินเรื่องลดหย่อนภาษี (บริจาคเงิน)</h3>
+          <p class="sp-step__text">
+            ทีมงานส่งข้อมูลให้คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ดำเนินเรื่องลดหย่อนภาษีให้ผู้สนับสนุน
+          </p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 4. Ways to support: cash (account, tax form) vs goods, side by side -->
+  <section id="ways" class="sp-sec" aria-labelledby="sp-ways-title">
+    <h2 id="sp-ways-title" class="sp-h2">วิธีสนับสนุน</h2>
+    <p class="sp-sec__lead">สนับสนุนได้ทั้งเงินและสิ่งของ ต่างกันที่เรื่องแบบฟอร์มและการลดหย่อนภาษี</p>
+
+    <div class="sp-ways">
+      <div class="sp-way">
+        <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
+        <p class="sp-way__text">
+          โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้สตาฟค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
+          การบริจาคเงินนำไปลดหย่อนภาษีได้ โดยกรอกแบบฟอร์มบริจาคเงินของคณะวิทยาศาสตร์
+        </p>
+
+        <p class="sp-account__pre">
+          แจ้งความประสงค์หรือติดต่อสตาฟค่ายก่อนโอน และเก็บสลิปไว้ส่งให้สตาฟค่ายตอนติดต่อกลับ
+        </p>
+        <div class="sp-account">
+          <div class="sp-account__head">
+            <p class="sp-account__bank">{PAY_ACCOUNT.bank}</p>
+            <p class="sp-account__name">ชื่อบัญชี {PAY_ACCOUNT.name}</p>
+          </div>
+          <p class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</p>
+          <p class="sp-account__holders">ผู้ถือบัญชี {PAY_ACCOUNT.holders}</p>
+        </div>
+
+        <div class="sp-copy-row">
+          <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT_DIGITS} aria-describedby="sp-copy-status">
+            <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            <span>คัดลอกเลขบัญชี</span>
+          </button>
+          <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
+        </div>
+
+        <div class="sp-taxform">
+          <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
+            <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            <span>แบบฟอร์มบริจาคเงิน</span>
+            <span class="sp-btn__meta font-mono">PDF</span>
+          </a>
+          <p class="sp-taxform__note">
+            ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้ สตาฟค่ายจะสอบถามตอนติดต่อกลับ
+          </p>
+          <a class="sp-link" href="#sponsor-upload">
+            <span>กรอกแล้ว แนบไฟล์ส่งให้สตาฟค่าย</span>
+            <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+          </a>
+        </div>
+      </div>
+
+      <div class="sp-way">
+        <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
+        <p class="sp-way__text">
+          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการในแบบฟอร์มท้ายหน้านี้
+          แล้วสตาฟค่ายจะติดต่อกลับเพื่อนัดหมาย ไม่ต้องใช้แบบฟอร์มบริจาค และนำไปลดหย่อนภาษีไม่ได้
+        </p>
+        <ul class="sp-goods">
+          <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
+          <li>ของรางวัลสำหรับกิจกรรมในค่าย</li>
+          <li>อาหารและเครื่องดื่ม (ไม่มีแอลกอฮอล์) สำหรับผู้เข้าร่วม</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="sp-policy">ค่ายไม่รับการสนับสนุนจากธุรกิจเครื่องดื่มแอลกอฮอล์</p>
   </section>
 
   <!-- 5. Sponsor deck: nothing renders until the real PDF exists -->
@@ -245,7 +296,7 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
   <!-- 6–7. Inquiry form and the staff contact rail -->
   <div class="sp-close">
     <section id="inquiry" class="sp-sec" aria-labelledby="sp-inquiry-title">
-      <SponsorInquiryForm client:visible />
+      <SponsorInquiryForm client:idle />
     </section>
 
     <section id="contact" class="sp-sec sp-contact" aria-labelledby="sp-contact-title">
@@ -283,12 +334,23 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
       </p>
     </section>
   </div>
+
+  <footer class="sp-foot">
+    <nav class="sp-foot__links" aria-label="ลิงก์ท้ายหน้า">
+      <a class="sp-link" href="/">กลับหน้าหลัก</a>
+      <a class="sp-link" href="/guide">คู่มือผู้สมัคร</a>
+    </nav>
+  </footer>
 </article>
 
 <script>
   import { copyText } from '../lib/payment';
   import { API_BASE, fetchSponsors } from '../lib/api';
   import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
+
+  const COPY_OK_MS = 2200;
+  const COPY_ERR_MS = 5000;
+  const copyTimers = new WeakMap<HTMLElement, number>();
 
   function initSponsorCopy() {
     const buttons = document.querySelectorAll<HTMLButtonElement>('[data-sp-copy]');
@@ -301,10 +363,23 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
         const status = statusId ? document.getElementById(statusId) : null;
         const ok = await copyText(button.dataset.spCopy ?? '');
         if (!status) return;
-        status.textContent = ok
-          ? 'คัดลอกเลขบัญชีแล้ว'
-          : 'คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกเลขบัญชีแล้วคัดลอกเอง';
-        status.dataset.state = ok ? 'ok' : 'err';
+        // Clear first so role="status" announces again on a repeat click.
+        window.clearTimeout(copyTimers.get(status));
+        status.textContent = '';
+        delete status.dataset.state;
+        window.requestAnimationFrame(() => {
+          status.textContent = ok
+            ? 'คัดลอกเลขบัญชีแล้ว'
+            : 'คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกเลขบัญชีแล้วคัดลอกเอง';
+          status.dataset.state = ok ? 'ok' : 'err';
+          copyTimers.set(
+            status,
+            window.setTimeout(() => {
+              status.textContent = '';
+              delete status.dataset.state;
+            }, ok ? COPY_OK_MS : COPY_ERR_MS),
+          );
+        });
       });
     });
   }
@@ -327,7 +402,9 @@ import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
 
   async function syncSponsorSettings() {
     const seatEls = document.querySelectorAll<HTMLElement>('[data-sp-seats]');
-    if (!seatEls.length) return;
+    // Same once-per-page guard as syncSponsorLink.
+    if (!seatEls.length || seatEls[0].dataset.spSeatsSynced === 'true') return;
+    seatEls[0].dataset.spSeatsSynced = 'true';
 
     try {
       const settings = await fetchSharedPublicSettings(API_BASE, { timeoutMs: 4000 });

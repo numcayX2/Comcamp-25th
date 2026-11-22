@@ -16,6 +16,8 @@ import Smartphone from '@lucide/astro/icons/smartphone';
 import Phone from '@lucide/astro/icons/phone';
 import MessageCircle from '@lucide/astro/icons/message-circle';
 import ScanLine from '@lucide/astro/icons/scan-line';
+import HandHeart from '@lucide/astro/icons/hand-heart';
+import { GALLERY_BASE_URL } from '../lib/gallery';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,8 +32,7 @@ import {
   formatThaiDateFull,
   formatThaiDateShort,
 } from '../lib/camp-facts';
-const rawGalleryBase = import.meta.env.PUBLIC_GALLERY_BASE_URL || 'https://comcamp25-gallery.sokulshop5.workers.dev/';
-const galleryBaseUrl = rawGalleryBase.endsWith('/') ? rawGalleryBase : `${rawGalleryBase}/`;
+const galleryBaseUrl = GALLERY_BASE_URL;
 const apiBaseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:8000/api';
 // Cloudflare caches /theme/* for 4 hours: a content hash in the query string makes each deploy's
 // theme files load at once, while unchanged files keep their cached copy.
@@ -714,6 +715,12 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
                   </a>
                 </li>
               ))}
+              <li>
+                <a href="/sponsor">
+                  <HandHeart class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+                  <span>ร่วมสนับสนุนค่าย</span>
+                </a>
+              </li>
             </ul>
             <p class="footer-col__note"><GraduationCap class="ed-ico" size={16} stroke-width={1.5} aria-hidden="true" /><span>อาจารย์ผู้รับผิดชอบโครงการ: {PROJECT_ADVISOR}</span></p>
             <figure class="fb-qr">

@@ -196,6 +196,8 @@ func TestSponsorInquiry_ValidationFailures(t *testing.T) {
 	long := strings.Repeat("ก", 501)
 	for name, body := range map[string]string{
 		"bad phone":       `{"name":"ร้าน","phone":"12345","kind":"money"}`,
+		"phone no lead 0": `{"name":"ร้าน","phone":"812345678","kind":"money"}`,
+		"phone 11 digits": `{"name":"ร้าน","phone":"08123456789","kind":"money"}`,
 		"missing name":    `{"name":"  ","phone":"0812345678","kind":"money"}`,
 		"bad kind":        `{"name":"ร้าน","phone":"0812345678","kind":"alcohol"}`,
 		"long details":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","details":"` + long + `"}`,
@@ -208,6 +210,15 @@ func TestSponsorInquiry_ValidationFailures(t *testing.T) {
 	}
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatalf("invalid inquiries were stored: %d", len(list))
+	}
+}
+
+func TestSponsorInquiry_AcceptsLandline(t *testing.T) {
+	app := setupSponsorDeskApp(t, nil)
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"053-123-456","kind":"goods"}`), http.StatusCreated, "")
+	list, _ := app.inquiryRepo.List(context.Background())
+	if len(list) != 1 || list[0].Phone != "053123456" {
+		t.Fatalf("landline inquiry not stored as digits: %+v", list)
 	}
 }
 

@@ -61,11 +61,11 @@ html[data-theme="dark"] {
   --bg-card: #141820;
   --color-border: rgba(255, 255, 255, 0.14);
   --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-input: #5A5D63;
+  --color-border-input: #656972; /* ≥ 3:1 on canvas (3.48) and card (3.23), WCAG 1.4.11 */
   --color-ink: #F5F4EF;
   --color-ink-muted: #C3C4C7;
   --color-ink-subtle: #9A9CA1;
-  --color-tech: #337AFF;
+  --color-tech: #5C96FF; /* ≥ 6:1 on canvas, surface and card */
   --color-warning: #F59E0B;
   --color-warning-text: #F59E0B;
   --color-fern-text: #03B800;
@@ -89,7 +89,7 @@ html[data-theme="dark"] {
   --ink-3: #9A9CA1;
   --rule: rgba(255, 255, 255, 0.14);
   --rule-strong: rgba(255, 255, 255, 0.24);
-  --border-input: #5A5D63;
+  --border-input: #656972;
 }
 
 html, body {
@@ -118,7 +118,7 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html, body { scroll-behavior: auto; }
+  html, body { scroll-behavior: auto; transition: none; }
 }
 
 /* ============================================================

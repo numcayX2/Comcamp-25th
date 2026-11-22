@@ -335,9 +335,10 @@ func validateSponsorInquiry(req SponsorInquiryRequest) (*domain.SponsorInquiry, 
 	if err != nil {
 		return nil, err
 	}
+	// Businesses often give a landline (053-xxx-xxx, 9 digits), same rule as a donation record.
 	phone := cleanNumber(req.Phone)
-	if checkPhone(phone) != nil {
-		return nil, newValidationError("phone must be 10 digits starting with 0")
+	if !strings.HasPrefix(phone, "0") || len(phone) < 9 || len(phone) > 10 || !isNumeric(phone) {
+		return nil, newValidationError("phone must be 9-10 digits starting with 0")
 	}
 	email := cleanEmail(req.Email)
 	if email != "" && checkEmail(email) != nil {

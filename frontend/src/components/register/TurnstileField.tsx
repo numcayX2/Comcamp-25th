@@ -8,7 +8,7 @@
  * - The widget theme follows <html class="dark"> (the site toggle), not only the OS setting.
  * - The token lives in React state only; it is never written to browser storage.
  */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
@@ -83,13 +83,17 @@ interface Props {
   /** Inline message under the widget (e.g. "please verify first"). */
   error?: string | null;
   errorId: string;
+  /** Copy shown when the widget itself cannot load; defaults to the /register wording. */
+  failedMessage?: ReactNode;
 }
 
 export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function TurnstileField(
-  { siteKey, onToken, error, errorId },
+  { siteKey, onToken, error, errorId, failedMessage },
   ref,
 ) {
+  const labelId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
+  const failedRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
@@ -103,7 +107,7 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
       if (widgetId.current && window.turnstile) window.turnstile.reset(widgetId.current);
     },
     focus() {
-      boxRef.current?.focus();
+      (load === 'failed' ? failedRef : boxRef).current?.focus();
     },
   }));
 
@@ -138,6 +142,15 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
           'error-callback': () => {
             errored = true;
             onTokenRef.current(null);
+            const id = widgetId.current;
+            widgetId.current = null;
+            if (id && window.turnstile) {
+              try {
+                window.turnstile.remove(id);
+              } catch {
+                /* the widget is already gone */
+              }
+            }
             if (!cancelled) setLoad('failed');
           },
           'timeout-callback': () => onTokenRef.current(null),
@@ -166,8 +179,8 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   return (
-    <section className="rw-captcha" aria-labelledby="captcha-label">
-      <p id="captcha-label" className="rw-captcha__label">
+    <div className="rw-captcha" role="group" aria-labelledby={labelId}>
+      <p id={labelId} className="rw-captcha__label">
         ยืนยันว่าไม่ใช่โปรแกรมอัตโนมัติ
       </p>
       <div
@@ -183,11 +196,15 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
         </p>
       )}
       {load === 'failed' && (
-        <div className="rw-captcha__failed" role="alert">
+        <div ref={failedRef} className="rw-captcha__failed" role="alert" tabIndex={-1}>
           <p>
-            โหลดการยืนยันตัวตนไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง
-            หากเปิดจากเบราว์เซอร์ในแอป LINE หรือ Facebook แล้วไม่ขึ้น แนะนำให้เปิดหน้านี้ใน Chrome หรือ Safari
-            (หมายเหตุ: การสลับแอปเบราว์เซอร์จะล้างข้อมูลร่างที่กรอกค้างไว้ แต่หากส่งใบสมัครไปแล้ว สามารถตรวจสอบได้ที่หน้า /status ด้วยรหัสใบสมัคร CC25-XXXXXX ที่ส่งไปทางอีเมล)
+            {failedMessage ?? (
+              <>
+                โหลดการยืนยันตัวตนไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง
+                หากเปิดจากเบราว์เซอร์ในแอป LINE หรือ Facebook แล้วไม่ขึ้น แนะนำให้เปิดหน้านี้ใน Chrome หรือ Safari
+                (หมายเหตุ: การสลับแอปเบราว์เซอร์จะล้างข้อมูลร่างที่กรอกค้างไว้ แต่หากส่งใบสมัครไปแล้ว สามารถตรวจสอบได้ที่หน้า /status ด้วยรหัสใบสมัคร CC25-XXXXXX ที่ส่งไปทางอีเมล)
+              </>
+            )}
           </p>
           <button type="button" className="rw-btn rw-btn--ghost rw-btn--sm" onClick={retry}>
             <RotateCw size={18} strokeWidth={1.5} aria-hidden="true" />
@@ -201,6 +218,6 @@ export const TurnstileField = forwardRef<TurnstileFieldHandle, Props>(function T
           <span>{error}</span>
         </p>
       )}
-    </section>
+    </div>
   );
 });

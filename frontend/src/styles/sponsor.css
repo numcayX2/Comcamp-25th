@@ -1,6 +1,6 @@
 /* ==========================================================================
    /sponsor — sponsorship prospectus ("สนับสนุนค่าย").
-   Tokens from global.css only; radii only 0 / 12 / 24 / 9999.
+   Tokens from global.css only; radii only 0 / 12 / 24 / 28 / 9999.
    Accent rules stay hairlines: no gradients, no glow, no nested cards.
    ========================================================================== */
 
@@ -166,6 +166,53 @@
   color: var(--color-ink);
 }
 
+.sp-why__main {
+  min-width: 0;
+}
+
+/* Real lab photos under the statement: two frames, sized up front so nothing shifts. */
+.sp-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+.sp-photo {
+  min-width: 0;
+  margin: 0;
+}
+.sp-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+@media (min-width: 640px) {
+  .sp-photos {
+    gap: 16px;
+  }
+  .sp-photo img {
+    border-radius: 24px;
+  }
+}
+.sp-photo__cap {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--color-ink-subtle);
+}
+.sp-photos__note {
+  margin: 14px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--color-ink-subtle);
+}
+
 .sp-why__body {
   min-width: 0;
   padding-top: 16px;
@@ -220,7 +267,8 @@
 }
 @media (min-width: 900px) {
   .sp-ways {
-    grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+    /* Equal columns: cash and goods read as two options of the same weight. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: clamp(36px, 5vw, 72px);
   }
 }
@@ -259,9 +307,23 @@
   color: var(--color-ink-muted);
 }
 
+/* Inquire-first guardrail above the account plate. */
+.sp-account__pre {
+  margin: 16px 0 0;
+  max-width: 34em;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.7;
+  letter-spacing: 0;
+  text-wrap: pretty;
+  color: var(--color-ink);
+}
+
 /* The transfer plate follows the theme: ink plate in light mode, paper plate in dark mode. */
 .sp-account {
-  margin-top: 18px;
+  margin-top: 14px;
   padding: clamp(20px, 3vw, 28px);
   border-radius: 24px;
   background: var(--color-btn-dark);
@@ -288,6 +350,15 @@
   line-height: 1.3;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+}
+.sp-account__holders {
+  margin: 10px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  text-wrap: pretty;
 }
 .sp-account__name {
   margin: 0;
@@ -381,6 +452,33 @@
   background: var(--color-ink-subtle);
 }
 
+/* Cash-only faculty form: download, the blank tax-ID note, and the attach shortcut. */
+.sp-taxform {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border);
+}
+.sp-taxform__note {
+  margin: 10px 0 0;
+  max-width: 34em;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  text-wrap: pretty;
+  color: var(--color-ink-muted);
+}
+
+.sp-policy {
+  margin: 24px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+}
+
 /* ── 3. Ordered steps ─────────────────────────────────────────────────────── */
 .sp-steps {
   list-style: none;
@@ -397,9 +495,6 @@
 }
 .sp-step:first-child {
   border-top-color: var(--color-ink);
-}
-.sp-step:last-child {
-  border-bottom: 1px solid var(--color-border);
 }
 .sp-step__no {
   padding-top: 3px;
@@ -441,9 +536,6 @@
     padding: 16px 0 0;
     border-top: 0;
   }
-  .sp-step:last-child {
-    border-bottom: 0;
-  }
   .sp-step + .sp-step {
     padding-left: clamp(20px, 3vw, 32px);
     border-left: 1px solid var(--color-border);
@@ -457,6 +549,11 @@
 }
 
 /* ── 4. What sponsors receive ─────────────────────────────────────────────── */
+/* The tinted box is the divider itself: no hairline + padding stacked above it. */
+.sp-sec--awards {
+  padding-top: 0;
+  border-top: 0;
+}
 .sp-awards {
   margin-top: 22px;
   padding: clamp(22px, 4vw, 40px);
@@ -538,6 +635,12 @@
 .sp-link[hidden] {
   display: none;
 }
+/* A link inside running text (captcha fallback): no pill-height box, no line break. */
+.sp-link--inline {
+  display: inline;
+  min-height: 0;
+  margin: 0;
+}
 .sp-link > span {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -573,7 +676,7 @@
 .sp-close {
   margin-top: clamp(40px, 6vw, 72px);
 }
-@media (min-width: 1000px) {
+@media (min-width: 1024px) {
   .sp-close {
     display: grid;
     grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
@@ -609,6 +712,8 @@
 }
 
 .sp-form {
+  /* Fields in one row stay top-aligned when only one of them shows an error. */
+  align-items: start;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -628,6 +733,7 @@
 .sp-field {
   display: grid;
   gap: 6px;
+  align-content: start;
   min-width: 0;
 }
 
@@ -699,6 +805,15 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+/* Placeholder mixes Thai ("หรือ"), so it stays in the Thai face: Mono is for digits only. */
+.sp-input--mono::placeholder {
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+.sp-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .sp-input:-webkit-autofill,
 .sp-input:-webkit-autofill:hover,
 .sp-input:-webkit-autofill:focus {
@@ -743,9 +858,10 @@
   margin: -1px;
   padding: 0;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+  scroll-margin: 120px 0;
 }
 .sp-choice__pill {
   display: inline-flex;
@@ -781,11 +897,15 @@
   outline: 2px solid var(--color-tech);
   outline-offset: 2px;
 }
-.sp-choice:active .sp-choice__pill {
+.sp-choice__input:disabled + .sp-choice__pill {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.sp-choice:active .sp-choice__input:not(:disabled) + .sp-choice__pill {
   scale: 0.975;
 }
 @media (hover: hover) and (pointer: fine) {
-  .sp-choice:hover .sp-choice__input:not(:checked) + .sp-choice__pill {
+  .sp-choice:hover .sp-choice__input:not(:checked):not(:disabled) + .sp-choice__pill {
     border-color: var(--color-ink);
     background: var(--color-btn-ghost-hover);
   }
@@ -932,10 +1052,13 @@
 }
 
 /* ── Inquiry: type on the web or send the filled form ────────────────────── */
-.sp-method {
-  margin-top: 22px;
-  /* Target of the hero's #sponsor-upload link: clear the sticky nav. */
+/* Kind comes first; money reveals the method toggle right under it. */
+.sp-kind {
+  /* Target of the #sponsor-upload links: clear the sticky nav. */
   scroll-margin-top: 96px;
+}
+.sp-method {
+  margin-top: 4px;
 }
 
 .sp-upload {
@@ -1009,7 +1132,7 @@
 .sp-drop[data-invalid] {
   border-color: var(--color-danger);
 }
-.sp-drop:focus-within {
+.sp-drop:has(.sp-drop__input:focus-visible) {
   outline: 2px solid var(--color-tech);
   outline-offset: 2px;
 }
@@ -1029,7 +1152,8 @@
   margin: -1px;
   padding: 0;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  scroll-margin: 120px 0;
   white-space: nowrap;
   border: 0;
 }
@@ -1068,6 +1192,12 @@
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
+}
+/* "ลบไฟล์" sits under the drop zone, outside the label (a button may not live inside it). */
+.sp-drop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .sp-hint--wrap {
@@ -1139,8 +1269,9 @@
   outline: 2px solid var(--color-tech);
   outline-offset: 3px;
 }
+/* TurnstileField removes a widget that failed to load; only the fallback copy remains. */
 .sp-captcha .rw-captcha__box[data-state='failed'] {
-  min-height: 0;
+  display: none;
 }
 .sp-captcha .rw-captcha__hint {
   margin: 8px 0 0;
@@ -1301,10 +1432,21 @@
 .sp-copy:focus-visible,
 .sp-link:focus-visible,
 .sp-btn:focus-visible,
-.sp-contact__row:focus-visible,
-.sp-deck a:focus-visible {
+.sp-contact__row:focus-visible {
   outline: 2px solid var(--color-tech);
   outline-offset: 2px;
+}
+
+/* ── Quiet end-of-page links ─────────────────────────────────────────────── */
+.sp-foot {
+  margin-top: clamp(40px, 6vw, 72px);
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.sp-foot__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
 }
 
 /* ── Reduced motion (no motion on this page; keep state changes instant) ──── */

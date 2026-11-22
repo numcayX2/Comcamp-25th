@@ -1366,7 +1366,10 @@ export async function submitSponsorInquiry(payload: SponsorInquiryPayload): Prom
 }
 
 /** Body of POST /sponsor-inquiries/upload besides the file: `kind` defaults to money server-side. */
-export type SponsorFormUploadPayload = Pick<SponsorInquiryPayload, 'name' | 'phone' | 'turnstileToken' | 'website'>;
+export type SponsorFormUploadPayload = Pick<
+  SponsorInquiryPayload,
+  'name' | 'phone' | 'email' | 'details' | 'turnstileToken' | 'website'
+>;
 
 /**
  * POST /sponsor-inquiries/upload — public multipart: the filled donation form (PDF/JPG/PNG/WebP
@@ -1381,6 +1384,8 @@ export async function submitSponsorFormUpload(
   const form = new FormData();
   form.append('name', payload.name);
   form.append('phone', payload.phone);
+  form.append('email', payload.email ?? '');
+  form.append('details', payload.details ?? '');
   form.append('turnstileToken', payload.turnstileToken);
   form.append('website', payload.website ?? '');
   form.append('file', file, file.name);
