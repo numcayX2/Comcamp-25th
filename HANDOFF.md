@@ -181,7 +181,7 @@ Comcamp-site/
     │   ├── assets/
     │   │   ├── line-openchat-qr.jpg # QR Code เข้ากลุ่ม LINE OpenChat หลังส่งสลิป
     │   │   ├── gallery/            # รูปสำรอง g01.jpg–g43.jpg + WebP (Ignored ใน Git, เสิร์ฟหลักจาก CDN)
-    │   │   └── logo/               # comcamp25-logo-sm.webp, comcamp25-logo-sm.png, comcamp25-logo.png
+    │   │   └── logo/               # comcamp25-logo-sm.webp, comcamp25-logo-sm.png
     │   ├── draco/gltf/             # Self-hosted Draco decoder (draco_decoder.{js,wasm}, draco_wasm_wrapper.js)
     │   ├── models/                 # โมเดล 3D: ArduinoR3.glb และ esp8266.glb
     │   └── theme/
