@@ -343,11 +343,13 @@ function Stepper({
   current,
   furthest,
   locked,
+  dir,
   onJump,
 }: {
   current: number;
   furthest: number;
   locked: boolean;
+  dir: 'init' | 'next' | 'back';
   onJump: (i: number) => void;
 }) {
   const labels = [...STEPS.map((s) => s.label), RECEIPT_META.label];
@@ -361,7 +363,7 @@ function Stepper({
   };
 
   return (
-    <ol className="rw-stepper">
+    <ol className="rw-stepper" data-dir={dir}>
       {labels.map((label, i) => {
         const state = stateOf(i);
         const clickable = !locked && (state === 'done' || state === 'visited');
@@ -431,8 +433,8 @@ export function RegisterSection() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [consent, setConsent] = useState(false);
   const [step, setStep] = useState(0);
-  /** Which way the last move went, so the next step body slides in from that side. */
-  const [dir, setDir] = useState<'next' | 'back'>('next');
+  /** Which way the last move went, so the next step body and stepper move in that direction ('init' skips sideways slide & arrival delay on mount). */
+  const [dir, setDir] = useState<'init' | 'next' | 'back'>('init');
   const [furthest, setFurthest] = useState(0);
   const [returnTo, setReturnTo] = useState<number | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -453,6 +455,7 @@ export function RegisterSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const rulesRef = useRef<HTMLElement>(null);
+  const rulesAnimatedRef = useRef(false);
   const noticeFocus = useRef(false);
   const [seats, setSeats] = useState(MAX_CAPACITY);
   const [feeText, setFeeText] = useState(CAMP_FEE_TEXT);
@@ -769,6 +772,7 @@ export function RegisterSection() {
       pending.current = { heading: true };
       setAppId(app.id);
       setSource(src);
+      setDir('next');
       setStep(RECEIPT_STEP);
       setFurthest(RECEIPT_STEP);
       window.scrollTo({ top: 0 });
@@ -872,6 +876,7 @@ export function RegisterSection() {
     setConfirmClear(false);
     announce('ล้างข้อมูลร่างแล้ว');
     pending.current = { field: 'fullName' };
+    setDir(step > 0 ? 'back' : 'init');
     setStep(0);
   }
 
@@ -891,6 +896,7 @@ export function RegisterSection() {
     setConfirmClear(false);
     setAppId(null);
     setSource(null);
+    setDir('init');
     setStep(0);
     noticeFocus.current = true;
     setNotice(
@@ -922,18 +928,29 @@ export function RegisterSection() {
 
   const wizard = gate === 'open' && appId === null;
 
-  /* Step 1 intro: stagger the callout in, then clear every inline style so hover/sticky states
-     stay untouched. The card is plain HTML in the first paint; GSAP only enhances it. */
+  /* Step 1 intro: stagger the callout in once per session, then clear every inline style so
+     hover/sticky states stay untouched. Skipping on return visits avoids fighting the Back slide. */
   useLayoutEffect(() => {
+    if (step > 0) {
+      rulesAnimatedRef.current = true;
+      return;
+    }
     const root = rulesRef.current;
-    if (!root || step !== 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!root || !wizard || rulesAnimatedRef.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
 
     const ctx = gsap.context(() => {
-      const rows = gsap.utils.toArray<HTMLElement>('.rw-rules__list > li');
-      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-      tl.from(root, { autoAlpha: 0, y: 12, duration: 0.4 })
-        .from(rows, { x: -10, autoAlpha: 0, duration: 0.36, stagger: 0.06 }, 0.16)
-        .set([root, ...rows], { clearProps: 'all' });
+      const rows = gsap.utils.toArray<HTMLElement>('.rw-rules__list > li', root);
+      const tl = gsap.timeline({
+        defaults: { ease: 'power3.out' },
+        onComplete: () => {
+          rulesAnimatedRef.current = true;
+        },
+      });
+      tl.from(root, { autoAlpha: 0, y: 12, duration: 0.36 })
+        .from(rows, { x: -10, autoAlpha: 0, duration: 0.32, stagger: 0.055 }, 0.14)
+        .set([root, ...rows], { clearProps: 'transform,opacity,visibility' });
     }, root);
 
     return () => ctx.revert();
@@ -1840,7 +1857,7 @@ export function RegisterSection() {
           </div>
         </div>
 
-        <Stepper current={current} furthest={furthest} locked={Boolean(appId) || gate !== 'open'} onJump={goTo} />
+        <Stepper current={current} furthest={furthest} locked={Boolean(appId) || gate !== 'open'} dir={dir} onJump={goTo} />
 
         <p className="rw-colophon">
           <span className="nowrap">
@@ -1875,7 +1892,7 @@ export function RegisterSection() {
           <div className="rw-foot">
             <div className="rw-foot__inner">
               {step > 0 && (
-                <button type="button" className="rw-btn rw-btn--ghost" onClick={goBack} disabled={busy}>
+                <button type="button" className="rw-btn rw-btn--ghost rw-btn--back" onClick={goBack} disabled={busy}>
                   <ArrowLeft {...ICON} />
                   ย้อนกลับ
                 </button>

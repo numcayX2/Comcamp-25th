@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Check, Eye, Pencil, Plus, Printer, RotateCw, Save, Trash2, TriangleAlert, X } from 'lucide-react';
 import {
   SPONSOR_ADDRESS_LINE_MAX,
@@ -51,8 +52,9 @@ import {
 } from '../admin-ui';
 import { SponsorFormPrint, type PrintableDonation } from './SponsorFormPrint';
 import { FileDropzone } from './ui/FileDropzone';
+import { RevealPanel } from './ui/RevealPanel';
 import { StatefulButton } from './ui/StatefulButton';
-import { useDoneSignal } from './ui/motion';
+import { EXPAND, useDoneSignal } from './ui/motion';
 import {
   CONTROL_CHARS,
   NoticeBanner,
@@ -402,9 +404,9 @@ function a11y(k: FieldKey, error: string | undefined, hasHelp: boolean) {
   } as const;
 }
 
-const PRIMARY_BTN = `inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`;
+const PRIMARY_BTN = `inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 motion-reduce:transition-none ${FOCUS}`;
 const LINK_BTN = `inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`;
-const CONFIRM_BTN = `inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`;
+const CONFIRM_BTN = `inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-[background-color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`;
 const DANGER_TINT = 'color-mix(in srgb, var(--color-danger) 10%, transparent)';
 
 /**
@@ -737,7 +739,10 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     const inputCls = `${INPUT_BASE} min-h-11 rounded-xl`;
     const border = (k: FieldKey) => ({ borderColor: e[k] ? DANGER : INPUT_BORDER, color: INK });
     return (
-      <form
+      <motion.form
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={EXPAND}
         onSubmit={onSave}
         noValidate
         aria-busy={saving}
@@ -789,7 +794,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
               return (
                 <label
                   key={k}
-                  className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--color-tech)] has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-[var(--bg-canvas)] ${saving ? 'opacity-50' : ''}`}
+                  className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--color-tech)] has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-[var(--bg-canvas)] motion-reduce:transition-none ${saving ? 'opacity-50' : ''}`}
                   style={{
                     borderColor: on ? BTN_DARK : RULE,
                     backgroundColor: on ? BTN_DARK : 'transparent',
@@ -1075,7 +1080,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
             ยกเลิก
           </button>
         </div>
-      </form>
+      </motion.form>
     );
   }
 
@@ -1228,7 +1233,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
             className={`${PILL_GHOST} gap-1.5`}
             style={{ borderColor: RULE, color: INK }}
           >
-            <RotateCw aria-hidden="true" size={16} strokeWidth={1.5} />
+            <RotateCw aria-hidden="true" size={16} strokeWidth={1.5} className={loading ? 'motion-safe:animate-spin' : ''} />
             {loading ? 'กำลังโหลด…' : 'โหลดใหม่'}
           </button>
           {formTarget !== 'new' && (
@@ -1427,49 +1432,53 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
                   </div>
                 </div>
 
-                {confirming && (
-                  <div
-                    id={`donation-delete-strip-${d.id}`}
-                    role="region"
-                    aria-label={`ยืนยันการลบรายการของ ${d.donorName}`}
-                    className="mt-4 rounded-xl border p-4"
-                    style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
-                  >
-                    <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
-                      <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
-                      <span className="min-w-0 break-words">ยืนยันลบรายการบริจาคของ “{d.donorName}”?</span>
-                    </p>
-                    <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                      {fileCount > 0
-                        ? `ไฟล์แนบ ${fileCount} ไฟล์ (ฟอร์มที่เซ็นแล้ว/สลิปโอน) จะถูกลบจากเซิร์ฟเวอร์ไปด้วย กู้คืนไม่ได้`
-                        : 'รายการนี้จะหายไปถาวร กู้คืนไม่ได้ (ไฟล์แนบที่มีจะถูกลบไปด้วย)'}
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-busy={deleting || undefined}
-                        onClick={() => onConfirmDelete(d)}
-                        className={CONFIRM_BTN}
-                        style={{ borderColor: DANGER, color: DANGER }}
+                <AnimatePresence initial={false}>
+                  {confirming && (
+                    <RevealPanel key="confirm-delete">
+                      <div
+                        id={`donation-delete-strip-${d.id}`}
+                        role="region"
+                        aria-label={`ยืนยันการลบรายการของ ${d.donorName}`}
+                        className="mt-4 rounded-xl border p-4"
+                        style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
                       >
-                        {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deleting}
-                        onClick={() => {
-                          setConfirmDeleteId(null);
-                          focusLater(`donation-delete-${d.id}`);
-                        }}
-                        className={LINK_BTN}
-                        style={{ color: INK_2 }}
-                      >
-                        ยกเลิก
-                      </button>
-                    </div>
-                  </div>
-                )}
+                        <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
+                          <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
+                          <span className="min-w-0 break-words">ยืนยันลบรายการบริจาคของ “{d.donorName}”?</span>
+                        </p>
+                        <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
+                          {fileCount > 0
+                            ? `ไฟล์แนบ ${fileCount} ไฟล์ (ฟอร์มที่เซ็นแล้ว/สลิปโอน) จะถูกลบจากเซิร์ฟเวอร์ไปด้วย กู้คืนไม่ได้`
+                            : 'รายการนี้จะหายไปถาวร กู้คืนไม่ได้ (ไฟล์แนบที่มีจะถูกลบไปด้วย)'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-busy={deleting || undefined}
+                            onClick={() => onConfirmDelete(d)}
+                            className={CONFIRM_BTN}
+                            style={{ borderColor: DANGER, color: DANGER }}
+                          >
+                            {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => {
+                              setConfirmDeleteId(null);
+                              focusLater(`donation-delete-${d.id}`);
+                            }}
+                            className={LINK_BTN}
+                            style={{ color: INK_2 }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      </div>
+                    </RevealPanel>
+                  )}
+                </AnimatePresence>
 
                 {formTarget === d.id && <div className="mt-4">{renderForm()}</div>}
               </li>

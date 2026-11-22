@@ -26,4 +26,4 @@
 .veil-rule{display:block;height:2px;margin-top:10px;background:var(--rule)}
 .veil-rule i{display:block;height:100%;background:var(--ink);transform:scaleX(0);transform-origin:left}
 @media(min-width:768px){.veil{padding:28px 40px calc(28px + env(safe-area-inset-bottom))}}
-@media(prefers-reduced-motion:reduce){.veil{transition:none}.veil-kicker,.veil-display .vl i,.veil-thai,.veil-sub{animation:none}}
+@media(prefers-reduced-motion:reduce){.veil,.veil.is-done{transition:none !important;will-change:auto !important}.veil-kicker,.veil-display .vl i,.veil-thai,.veil-sub{animation:none !important}}

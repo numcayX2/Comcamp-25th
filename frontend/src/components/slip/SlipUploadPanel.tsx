@@ -11,7 +11,7 @@
  * `appId` is the applicant's proof; there is no second secret to type.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { DragEvent } from 'react';
+import type { CSSProperties, DragEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
 import { uploadPaymentSlip, type ApiSource, type SlipStatus } from '../../lib/api';
 import {
@@ -183,7 +183,11 @@ export function SlipUploadPanel({
       if (busy || preparing) return;
       if (!dragging) setDragging(true);
     },
-    onDragLeave: () => setDragging(false),
+    onDragLeave: (e: DragEvent<HTMLElement>) => {
+      // Moving across child spans fires dragleave on the label; ignore internal transitions to stop flicker.
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDragging(false);
+    },
     onDrop,
   };
 
@@ -350,7 +354,15 @@ export function SlipUploadPanel({
                 disabled={busy || preparing || !ready}
                 aria-busy={busy || preparing || undefined}
               >
-                {busy ? `กำลังส่งสลิป… ${progress}%` : preparing ? 'กำลังย่อขนาดรูปสลิป…' : submitLabel}
+                {busy ? (
+                  <>
+                    กำลังส่งสลิป… <span className="font-mono su-num">{progress}%</span>
+                  </>
+                ) : preparing ? (
+                  'กำลังย่อขนาดรูปสลิป…'
+                ) : (
+                  submitLabel
+                )}
               </button>
               {replace && (
                 <button type="button" className="su-btn su-btn--ghost su-btn--cancel" onClick={cancelReplace} disabled={busy || preparing}>
@@ -358,6 +370,21 @@ export function SlipUploadPanel({
                 </button>
               )}
             </div>
+            {busy && (
+              <div
+                className="su-progress"
+                role="progressbar"
+                aria-label="ความคืบหน้าการส่งสลิป"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress}
+              >
+                <span
+                  className="su-progress__fill"
+                  style={{ '--su-p': Math.min(100, Math.max(0, progress)) / 100 } as CSSProperties}
+                />
+              </div>
+            )}
             {!ready && !busy && !preparing && (
               <ul className="su-checklist" aria-live="polite">
                 <li data-done={Boolean(file)}>

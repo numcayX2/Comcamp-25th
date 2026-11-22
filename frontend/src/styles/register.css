@@ -196,7 +196,7 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
   background: var(--rw-fern);
   transform-origin: left center;
   transform: scaleX(var(--p, 0));
-  transition: transform 0.45s var(--rw-ease);
+  transition: transform 0.34s var(--rw-ease);
 }
 
 .rw-stepper, .rw-colophon { display: none; }
@@ -225,13 +225,14 @@ html.dark .rw-theme .rw-ic-moon { display: none; }
 }
 
 /* The one authored moment: each step settles in briskly without dipping contrast.
+   Initial mount settles subtly vertically (avoiding a horizontal clash with the Step 01 intro);
    Next slides the new step in from the right, Back from the left (data-dir from RegisterSection). */
 .rw-step-view,
-.rw-receipt { animation: rw-in var(--dur-base, .26s) var(--ease-out, var(--rw-ease)); }
-.rw-step-view[data-dir='next'] { animation: rw-in-next 0.38s var(--rw-ease); }
-.rw-step-view[data-dir='back'] { animation: rw-in-back 0.38s var(--rw-ease); }
+.rw-receipt { animation: rw-in var(--dur-base, .24s) var(--ease-out, var(--rw-ease)); }
+.rw-step-view[data-dir='next'] { animation: rw-in-next 0.3s var(--rw-ease); }
+.rw-step-view[data-dir='back'] { animation: rw-in-back 0.3s var(--rw-ease); }
 @keyframes rw-in {
-  from { opacity: 0.72; translate: 0 8px; }
+  from { opacity: 0.72; translate: 0 6px; }
   to { opacity: 1; translate: 0 0; }
 }
 @keyframes rw-in-next {
@@ -510,6 +511,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
 .rw-table th:last-child, .rw-table td:last-child { padding-right: 0; }
 .rw-table thead th { font-size: 0.8125rem; color: var(--rw-ink-3); border-top: 1px solid var(--rw-ink); }
 .rw-table tbody th { width: 32%; font-weight: 600; }
+.rw-table tbody tr > * { transition: background-color var(--dur-fast, .16s) var(--ease-out, ease), box-shadow var(--dur-fast, .16s) var(--ease-out, ease); }
 .rw-table tbody tr:last-child th, .rw-table tbody tr:last-child td { border-bottom: 1px solid var(--rw-rule); }
 .rw-table tr[data-selected='true'] > * {
   font-weight: 700;
@@ -763,8 +765,9 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   }
   .rw-btn--ghost:hover:not(:disabled) { border-color: var(--rw-ink); background: color-mix(in srgb, var(--rw-ink) 5%, transparent); }
   .rw-btn--danger:hover:not(:disabled) { background: var(--rw-danger); color: var(--rw-canvas); }
-  .rw-btn--next:hover:not(:disabled) svg { translate: 3px 0; }
-  .rw-btn--ghost:hover:not(:disabled) svg:first-child { translate: -3px 0; }
+  .rw-btn--next:hover:not(:disabled) svg,
+  .rw-btn--forward:hover:not(:disabled) svg { translate: 3px 0; }
+  .rw-btn--back:hover:not(:disabled) svg { translate: -3px 0; }
 }
 
 .rw-textlink {
@@ -777,7 +780,10 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   text-decoration: underline;
   text-decoration-color: var(--rw-line);
   text-underline-offset: 5px;
-  transition: color var(--dur-fast, .16s) var(--ease-out, ease), outline-offset var(--dur-fast, .16s) var(--ease-out, ease);
+  transition:
+    color var(--dur-fast, .16s) var(--ease-out, ease),
+    opacity var(--dur-fast, .16s) var(--ease-out, ease),
+    outline-offset var(--dur-fast, .16s) var(--ease-out, ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .rw-textlink:hover { color: var(--rw-focus); text-decoration-color: var(--rw-focus); }
@@ -841,6 +847,7 @@ html[data-theme="dark"] .rw .rw-input::placeholder { opacity: 0.7; }
   font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.7;
+  animation: rw-in var(--dur-fast, .16s) var(--ease-out, var(--rw-ease));
 }
 .rw-banner p { display: flex; align-items: flex-start; gap: 10px; color: inherit; }
 .rw-banner svg { flex: none; margin-top: 0.3em; color: inherit; }
@@ -1012,7 +1019,7 @@ html[data-theme="dark"] .rw-ticket {
 /* ---------- Withdraw (receipt) ---------- */
 /* Quiet by default: one ink text link. The open panel is a plain ruled form, not a modal. */
 .rw-withdraw { margin-top: -8px; }
-.rw-withdraw--open { margin-top: 0; max-width: 520px; }
+.rw-withdraw--open { margin-top: 0; max-width: 520px; animation: rw-in var(--dur-fast, .16s) var(--ease-out, var(--rw-ease)); }
 .rw-withdraw__phone { max-width: 260px; }
 .rw-withdraw__warn { margin: 8px 0 16px; max-width: 56ch; font-size: 0.9375rem; line-height: 1.75; color: var(--rw-ink-2); }
 .rw-withdraw__hint { margin-top: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--rw-ink-3); }
@@ -1415,7 +1422,6 @@ html[data-theme="dark"] .rw-due {
   padding-top: 10px;
   padding-bottom: 10px;
 }
-.rw-btn--doc:hover:not(:disabled) svg:first-child { translate: none; }
 
 .rw-line-card {
   display: grid;
@@ -1568,7 +1574,7 @@ html[data-theme="dark"] .rw-due {
   }
   .rw-step:last-child::before { display: none; }
   /* Connector fill: the line below every step before the current one fills top-down in fern
-     (same colour as the phone progress bar); going Back drains it again. */
+     (same colour as the phone progress bar); going Back drains it immediately with no lag. */
   .rw-step::after {
     content: '';
     position: absolute;
@@ -1579,10 +1585,12 @@ html[data-theme="dark"] .rw-due {
     background: var(--rw-fern);
     transform: scaleY(0);
     transform-origin: top;
-    transition: transform 0.42s var(--rw-ease) 0.1s;
+    transition: transform 0.26s var(--rw-ease) 0s;
   }
   .rw-step:last-child::after { display: none; }
   .rw-step[data-line='on']::after { transform: scaleY(1); }
+  .rw-stepper[data-dir='next'] .rw-step[data-line='on']::after { transition: transform 0.36s var(--rw-ease) 0.06s; }
+  .rw-stepper[data-dir='init'] .rw-step::after { transition: none; }
 
   .rw-step__dot {
     position: relative;
@@ -1596,7 +1604,13 @@ html[data-theme="dark"] .rw-due {
     background: var(--rw-side-bg);
     color: var(--rw-side-muted);
     font-size: 0.8125rem;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      scale var(--dur-fast, .16s) var(--ease-out, var(--rw-ease)),
+      box-shadow 0.2s ease;
   }
   @media (prefers-reduced-motion: reduce) { .rw-step__dot { transition: none; } }
   .rw-step__label {
@@ -1610,17 +1624,24 @@ html[data-theme="dark"] .rw-due {
   .rw-step[data-state='visited'] .rw-step__dot { border-color: var(--rw-side-ink-2); color: var(--rw-side-ink-2); }
   .rw-step[data-state='visited'] .rw-step__label { color: var(--rw-side-ink-2); }
 
-  .rw-step[data-state='done'] .rw-step__dot { background: var(--rw-side-ink); border-color: var(--rw-side-ink); color: var(--rw-side-bg); animation: rw-dot-pop 0.42s var(--rw-ease); }
+  .rw-step[data-state='done'] .rw-step__dot { background: var(--rw-side-ink); border-color: var(--rw-side-ink); color: var(--rw-side-bg); animation: rw-dot-pop 0.36s var(--rw-ease); }
   /* The circle turns into a tick: the check mark draws itself as the step completes. */
-  .rw-step[data-state='done'] .rw-step__dot path { stroke-dasharray: 24; animation: rw-tick 0.34s var(--rw-ease) 0.06s backwards; }
+  .rw-step[data-state='done'] .rw-step__dot path { stroke-dasharray: 24; animation: rw-tick 0.3s var(--rw-ease) 0.05s backwards; }
   .rw-step[data-state='done'] .rw-step__label { color: var(--rw-side-ink-2); }
+  /* Restoring a draft or receipt on first paint skips phantom check-draw animations. The animation
+     is finished instantly rather than removed: switching `animation-name` back from `none` on the
+     first Next/Back would restart it on every step that was already done. */
+  .rw-stepper[data-dir='init'] .rw-step[data-state='done'] .rw-step__dot,
+  .rw-stepper[data-dir='init'] .rw-step[data-state='done'] .rw-step__dot path { animation-duration: 0s; animation-delay: 0s; }
 
-  /* The next circle lights up once the connector has reached it. */
-  .rw-step[data-state='active'] .rw-step__dot { background: var(--rw-fern); border-color: var(--rw-fern); color: #121316; font-weight: 700; transform: scale(1.16); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rw-fern) 18%, transparent); transition-delay: 0.28s; }
-  .rw-step[data-state='active'] .rw-step__label { color: var(--rw-side-ink); font-weight: 700; transition-delay: 0.28s; }
+  /* Active circle lights up right away on initial load and Back; only waits for connector arrival when advancing. */
+  .rw-step[data-state='active'] .rw-step__dot { background: var(--rw-fern); border-color: var(--rw-fern); color: #121316; font-weight: 700; transform: scale(1.16); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rw-fern) 18%, transparent); }
+  .rw-step[data-state='active'] .rw-step__label { color: var(--rw-side-ink); font-weight: 700; }
+  .rw-stepper[data-dir='next'] .rw-step[data-state='active'] .rw-step__dot,
+  .rw-stepper[data-dir='next'] .rw-step[data-state='active'] .rw-step__label { transition-delay: 0.22s; }
 
   button.rw-step__row:active { scale: none; }
-  button.rw-step__row:active .rw-step__dot { scale: 0.93; }
+  button.rw-step__row:active .rw-step__dot { scale: 0.96; }
   @media (hover: hover) and (pointer: fine) {
     button.rw-step__row:hover .rw-step__label { color: var(--rw-side-ink); text-decoration: underline; text-underline-offset: 5px; }
     button.rw-step__row:hover .rw-step__dot { border-color: var(--rw-side-ink); }
@@ -1660,6 +1681,8 @@ html[data-theme="dark"] .rw-due {
 @media (prefers-reduced-motion: reduce) {
   .rw-step-view,
   .rw-receipt,
+  .rw-banner,
+  .rw-withdraw--open,
   .rw-ref-sub,
   .rw-ref-other,
   .rw-step__dot,

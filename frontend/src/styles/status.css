@@ -80,10 +80,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .st-card, .st-highlight, .st-notice, .st-alert, .st-warning { transition: none !important; }
-}
-
 .st-card--compact { padding-top: 16px; }
 @media (min-width: 640px) {
   .st-card--compact { padding: 20px 24px; }
@@ -101,9 +97,19 @@
 }
 
 .st-highlight,
+.st-result > .st-card,
 .st-card[data-lookup="phone"],
 .st-alert {
   animation: st-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+}
+
+.st-disclosure,
+.st-notice--enter {
+  animation: st-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+}
+
+.st-withdraw-toggle {
+  transition: color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -120,10 +126,24 @@
   .st-highlight a:not(.rounded-full):hover {
     color: var(--color-tech) !important;
   }
+  .st-withdraw-toggle:hover {
+    color: var(--color-ink) !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-card, .st-highlight, .st-notice, .st-alert, .st-warning {
+  .st-card,
+  .st-card *,
+  .st-highlight,
+  .st-highlight *,
+  .st-notice,
+  .st-notice *,
+  .st-alert,
+  .st-alert *,
+  .st-warning,
+  .st-warning *,
+  .st-disclosure,
+  .st-disclosure * {
     transition: none !important;
     animation: none !important;
     translate: none !important;

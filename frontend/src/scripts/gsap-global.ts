@@ -11,5 +11,9 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
+// Mobile in-app browsers (FB/LINE/Safari) resize the viewport continuously as the URL bar hides/shows.
+// Ignoring mobile resize events avoids mid-scroll ScrollTrigger recalculation stutters.
+ScrollTrigger.config({ ignoreMobileResize: true });
 
 Object.assign(window, { gsap, ScrollTrigger });
+window.dispatchEvent(new CustomEvent('cc25:gsap-ready'));

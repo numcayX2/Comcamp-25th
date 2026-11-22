@@ -52,31 +52,36 @@ const {
     {/* Anti-FOUC instant inline theme detection & background style */}
     <script is:inline>
       (function() {
-        try {
-          var stored = localStorage.getItem('comcamp-theme');
-          var isDark = stored ? stored === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          if (isDark) {
-            document.documentElement.classList.add('dark');
-            document.documentElement.setAttribute('data-theme', 'dark');
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.setAttribute('data-theme', 'light');
-          }
-        } catch (e) {}
-
-        document.addEventListener('astro:after-swap', function() {
+        function applyTheme(root) {
+          if (!root) return;
           try {
-            var s = localStorage.getItem('comcamp-theme');
-            var d = s ? s === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-            if (d) {
-              document.documentElement.classList.add('dark');
-              document.documentElement.setAttribute('data-theme', 'dark');
+            var stored = localStorage.getItem('comcamp-theme');
+            var isDark = stored ? stored === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (isDark) {
+              root.classList.add('dark');
+              root.setAttribute('data-theme', 'dark');
             } else {
-              document.documentElement.classList.remove('dark');
-              document.documentElement.setAttribute('data-theme', 'light');
+              root.classList.remove('dark');
+              root.setAttribute('data-theme', 'light');
             }
           } catch (e) {}
-        });
+        }
+
+        applyTheme(document.documentElement);
+
+        if (!window.__CC25_BASE_THEME_HOOK__) {
+          window.__CC25_BASE_THEME_HOOK__ = true;
+          // Apply theme to the incoming document before ClientRouter swaps DOM so Dark Mode
+          // navigations never flash light or trigger a canvas background-color transition.
+          document.addEventListener('astro:before-swap', function(ev) {
+            if (ev && ev.newDocument) {
+              applyTheme(ev.newDocument.documentElement);
+            }
+          });
+          document.addEventListener('astro:after-swap', function() {
+            applyTheme(document.documentElement);
+          });
+        }
       })();
 
       // Unregister any stale legacy service workers on port 4321

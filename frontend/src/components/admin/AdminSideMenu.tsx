@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   AnimatePresence,
+  LayoutGroup,
   motion,
   useMotionValue,
   useReducedMotion,
@@ -10,7 +11,17 @@ import {
 } from 'motion/react';
 import { Ellipsis, LogOut, PanelLeftClose, PanelLeftOpen, RotateCw, type LucideIcon } from 'lucide-react';
 import { AMBER_TEXT, BTN_DARK, BTN_DARK_TEXT, FOCUS, INK, INK_2, INK_3, RULE, TECH, WARNING } from '../admin-ui';
-import { FADE, PILL_SPRING, SIZE_SPRING, isFinePointer } from './ui/motion';
+import {
+  EASE_OUT,
+  FADE,
+  FADE_EXIT,
+  ICON_SPRING,
+  PILL_SPRING,
+  SIZE_SPRING,
+  TAP_SCALE,
+  isFinePointer,
+  useMediaQuery,
+} from './ui/motion';
 
 export type AdminMenuItem<K extends string = string> = {
   key: K;
@@ -56,48 +67,78 @@ const WIDE = 224;
 const RAIL = 76;
 
 function AdminSidebar<K extends string>({ items, active, onSelect, onRefresh, onLogout, busy }: Props<K>) {
+  const isXl = useMediaQuery('(min-width: 1280px)');
+  const reduce = Boolean(useReducedMotion());
   const [open, setOpen] = useState(true);
-  const [peek, setPeek] = useState(false);
+  const [hoverPeek, setHoverPeek] = useState(false);
+  const [kbPeek, setKbPeek] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const timer = useRef(0);
   const groupId = useId();
+  const peek = !open && (hoverPeek || kbPeek);
   const expanded = open || peek;
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const startPeek = () => {
+  useEffect(() => {
+    if (isXl) return;
+    window.clearTimeout(timer.current);
+    setHoverPeek(false);
+    setKbPeek(false);
+    setHover(null);
+  }, [isXl]);
+
+  const startHoverPeek = () => {
     if (open) return;
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setPeek(true), 120);
+    timer.current = window.setTimeout(() => setHoverPeek(true), 120);
   };
-  const endPeek = () => {
+  const endHoverPeek = () => {
     window.clearTimeout(timer.current);
-    setPeek(false);
+    setHoverPeek(false);
   };
 
-  const row = (key: string, label: string, icon: ReactNode, extra: ReactNode, onClick: () => void, opts: { current?: boolean; disabled?: boolean } = {}) => (
-    <li
-      key={key}
-      className="relative"
-      onPointerEnter={(e) => isFinePointer(e) && setHover(key)}
-    >
-      {opts.current && (
-        <motion.span
-          aria-hidden="true"
-          layoutId={`${groupId}-well`}
-          transition={PILL_SPRING}
-          className="pointer-events-none absolute inset-0 rounded-full bg-[var(--bg-surface)] [box-shadow:var(--shadow-well)]"
-        />
-      )}
-      <AnimatePresence>
-        {hover === key && !opts.current && (
+  const toggleOpen = () => {
+    window.clearTimeout(timer.current);
+    setHoverPeek(false);
+    setKbPeek(false);
+    setOpen((v) => !v);
+  };
+
+  const row = (
+    key: string,
+    label: string,
+    icon: ReactNode,
+    extra: ReactNode,
+    onClick: () => void,
+    opts: { current?: boolean; disabled?: boolean } = {},
+  ) => (
+    <li key={key} className="relative" onPointerEnter={(e) => isFinePointer(e) && setHover(key)}>
+      {opts.current &&
+        (isXl ? (
+          <motion.span
+            aria-hidden="true"
+            layoutId={`${groupId}-well`}
+            transition={PILL_SPRING}
+            style={{ borderRadius: 9999 }}
+            className="pointer-events-none absolute inset-0 rounded-full bg-[var(--bg-surface)] [box-shadow:var(--shadow-well)]"
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full bg-[var(--bg-surface)] [box-shadow:var(--shadow-well)]"
+          />
+        ))}
+      <AnimatePresence initial={false}>
+        {isXl && hover === key && !opts.current && (
           <motion.span
             aria-hidden="true"
             layoutId={`${groupId}-hover`}
-            transition={PILL_SPRING}
+            style={{ borderRadius: 9999 }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.15, delay: 0.1 } }}
+            animate={{ opacity: 1, transition: FADE }}
+            exit={{ opacity: 0, transition: FADE_EXIT }}
+            transition={{ layout: PILL_SPRING }}
             className="pointer-events-none absolute inset-0 rounded-full bg-[var(--color-btn-ghost-hover)]"
           />
         )}
@@ -108,16 +149,17 @@ function AdminSidebar<K extends string>({ items, active, onSelect, onRefresh, on
         disabled={opts.disabled}
         aria-busy={opts.disabled || undefined}
         onClick={onClick}
-        className={`group relative flex min-h-11 w-full items-center rounded-full text-left text-sm disabled:opacity-60 ${opts.current ? 'font-semibold' : 'font-medium'} ${FOCUS}`}
+        className={`group relative flex min-h-11 w-full items-center rounded-full text-left text-sm transition-colors duration-150 disabled:opacity-60 motion-reduce:transition-none ${opts.current ? 'font-semibold' : 'font-medium'} ${FOCUS}`}
         style={{ color: opts.current ? INK : INK_2 }}
       >
         <span className="relative flex w-[52px] shrink-0 items-center justify-center">{icon}</span>
         <motion.span
-          className="min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-4"
+          initial={false}
+          className="min-w-0 flex-1 overflow-hidden whitespace-nowrap"
           animate={{ opacity: expanded ? 1 : 0 }}
-          transition={FADE}
+          transition={expanded ? FADE : FADE_EXIT}
         >
-          {label}
+          <span className={`block truncate ${extra ? 'pr-1.5' : 'pr-3'}`}>{label}</span>
         </motion.span>
         {expanded && extra}
       </button>
@@ -135,102 +177,120 @@ function AdminSidebar<K extends string>({ items, active, onSelect, onRefresh, on
         initial={false}
         animate={{ width: expanded ? WIDE : RAIL }}
         transition={SIZE_SPRING}
-        onPointerEnter={(e) => isFinePointer(e) && startPeek()}
+        onPointerEnter={(e) => isFinePointer(e) && startHoverPeek()}
         onPointerLeave={() => {
-          endPeek();
+          endHoverPeek();
           setHover(null);
         }}
-        onFocusCapture={startPeek}
-        onBlurCapture={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) endPeek();
+        onPointerCancel={() => {
+          endHoverPeek();
+          setHover(null);
         }}
-        className="absolute left-0 top-0 overflow-hidden rounded-[28px] bg-[var(--bg-card)] p-3 transition-shadow duration-200"
-        style={{ boxShadow: peek && !open ? 'var(--shadow-float)' : 'var(--shadow-card)' }}
+        onFocusCapture={(e) => {
+          if (!open && (e.target as HTMLElement).matches?.(':focus-visible')) setKbPeek(true);
+        }}
+        onBlurCapture={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setKbPeek(false);
+        }}
+        className="absolute left-0 top-0 overflow-hidden rounded-[28px] bg-[var(--bg-card)] p-3 transition-shadow duration-200 motion-reduce:transition-none"
+        style={{ boxShadow: peek ? 'var(--shadow-float)' : 'var(--shadow-card)' }}
       >
         <div className="mb-1 flex justify-start">
           <button
             type="button"
-            onClick={() => {
-              setOpen((v) => !v);
-              setPeek(false);
-            }}
+            onClick={toggleOpen}
             aria-expanded={open}
             aria-label={open ? 'ย่อเมนูเหลือไอคอน' : 'ขยายเมนู'}
-            className={`inline-flex h-11 w-[52px] items-center justify-center rounded-full transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
+            className={`inline-flex h-11 w-[52px] items-center justify-center rounded-full transition-[background-color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`}
             style={{ color: INK_3 }}
           >
-            {open ? <PanelLeftClose aria-hidden="true" size={17} strokeWidth={1.5} /> : <PanelLeftOpen aria-hidden="true" size={17} strokeWidth={1.5} />}
+            <span className="relative inline-flex size-[17px] items-center justify-center" aria-hidden="true">
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.span
+                  key={open ? 'close' : 'open'}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.4 }}
+                  animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                  exit={reduce ? { opacity: 0, transition: FADE_EXIT } : { opacity: 0, scale: 0.4, transition: FADE_EXIT }}
+                  transition={reduce ? FADE : ICON_SPRING}
+                  className="inline-flex items-center justify-center"
+                >
+                  {open ? <PanelLeftClose size={17} strokeWidth={1.5} /> : <PanelLeftOpen size={17} strokeWidth={1.5} />}
+                </motion.span>
+              </AnimatePresence>
+            </span>
           </button>
         </div>
 
-        <nav aria-label="เมนูผู้ดูแลระบบ">
-          <ul className="flex flex-col gap-1">
-            {items.map(({ key, label, Icon, n, srCount, alert }) => {
-              const isActive = active === key;
-              const count = n !== undefined && n > 0;
-              return row(
-                key,
-                label,
-                <>
-                  <Icon
-                    aria-hidden="true"
-                    size={17}
-                    strokeWidth={1.5}
-                    className="transition-[translate,color] duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
-                    style={{ color: isActive ? TECH : INK_3 }}
-                  />
-                  {count && !expanded && (
-                    <span
+        <LayoutGroup id={groupId}>
+          <nav aria-label="เมนูผู้ดูแลระบบ">
+            <ul className="flex flex-col gap-1">
+              {items.map(({ key, label, Icon, n, srCount, alert }) => {
+                const isActive = active === key;
+                const count = n !== undefined && n > 0;
+                return row(
+                  key,
+                  label,
+                  <>
+                    <Icon
                       aria-hidden="true"
-                      className="absolute right-3 top-0 size-2 rounded-full ring-2 ring-[var(--bg-card)]"
-                      style={{ backgroundColor: alert ? WARNING : INK_3 }}
+                      size={17}
+                      strokeWidth={1.5}
+                      className="transition-[translate,color] duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
+                      style={{ color: isActive ? TECH : INK_3 }}
                     />
-                  )}
-                  {count && srCount && !expanded && <span className="sr-only">{srCount}</span>}
-                </>,
-                count ? (
-                  <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 pr-3 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
-                    {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
-                    <span aria-hidden="true">{n}</span>
-                    {srCount && <span className="sr-only">{srCount}</span>}
-                  </span>
-                ) : null,
-                () => onSelect(key),
-                { current: isActive },
-              );
-            })}
-          </ul>
-        </nav>
+                    {count && !expanded && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-3 top-0 size-2 rounded-full ring-2 ring-[var(--bg-card)]"
+                        style={{ backgroundColor: alert ? WARNING : INK_3 }}
+                      />
+                    )}
+                    {count && srCount && !expanded && <span className="sr-only">{srCount}</span>}
+                  </>,
+                  count ? (
+                    <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 pr-3 font-mono text-xs tabular-nums" style={{ color: alert ? AMBER_TEXT : INK_3 }}>
+                      {alert && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: WARNING }} />}
+                      <span aria-hidden="true">{n}</span>
+                      {srCount && <span className="sr-only">{srCount}</span>}
+                    </span>
+                  ) : null,
+                  () => onSelect(key),
+                  { current: isActive },
+                );
+              })}
+            </ul>
+          </nav>
 
-        <ul className="mt-2 flex flex-col gap-1 border-t pt-2" style={{ borderColor: RULE }}>
-          {row(
-            'refresh',
-            busy ? 'กำลังโหลด…' : 'รีเฟรช',
-            <RotateCw
-              aria-hidden="true"
-              size={17}
-              strokeWidth={1.5}
-              className={`transition-[rotate] duration-300 group-hover:rotate-90 motion-reduce:transition-none motion-reduce:group-hover:rotate-0 ${busy ? 'motion-safe:animate-spin' : ''}`}
-              style={{ color: INK_3 }}
-            />,
-            null,
-            onRefresh,
-            { disabled: busy },
-          )}
-          {row(
-            'logout',
-            'ออกจากระบบ',
-            <LogOut
-              aria-hidden="true"
-              size={17}
-              strokeWidth={1.5}
-              className="transition-[translate] duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
-              style={{ color: INK_3 }}
-            />,
-            null,
-            onLogout,
-          )}
-        </ul>
+          <ul className="mt-2 flex flex-col gap-1 border-t pt-2" style={{ borderColor: RULE }}>
+            {row(
+              'refresh',
+              busy ? 'กำลังโหลด…' : 'รีเฟรช',
+              <RotateCw
+                aria-hidden="true"
+                size={17}
+                strokeWidth={1.5}
+                className={`transition-[rotate] duration-300 group-hover:rotate-90 motion-reduce:transition-none motion-reduce:group-hover:rotate-0 ${busy ? 'motion-safe:animate-spin' : ''}`}
+                style={{ color: INK_3 }}
+              />,
+              null,
+              onRefresh,
+              { disabled: busy },
+            )}
+            {row(
+              'logout',
+              'ออกจากระบบ',
+              <LogOut
+                aria-hidden="true"
+                size={17}
+                strokeWidth={1.5}
+                className="transition-[translate] duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
+                style={{ color: INK_3 }}
+              />,
+              null,
+              onLogout,
+            )}
+          </ul>
+        </LayoutGroup>
       </motion.div>
     </motion.div>
   );
@@ -248,9 +308,10 @@ function isTextEntry(el: Element | null): boolean {
 }
 
 function AdminDock<K extends string>({ items, active, onSelect, onRefresh, onLogout, busy }: Props<K>) {
+  const isXl = useMediaQuery('(min-width: 1280px)');
   const groupId = useId();
   const moreId = `${groupId}-more`;
-  const reduce = useReducedMotion();
+  const reduce = Boolean(useReducedMotion());
   const mouseX = useMotionValue(Infinity);
   const [typing, setTyping] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -260,11 +321,16 @@ function AdminDock<K extends string>({ items, active, onSelect, onRefresh, onLog
 
   // Step aside for on-screen keyboards: a text field anywhere on the page hides the dock.
   useEffect(() => {
+    let focusOutTimer = 0;
     const sync = () => setTyping(isTextEntry(document.activeElement));
-    const later = () => window.setTimeout(sync, 0);
+    const later = () => {
+      window.clearTimeout(focusOutTimer);
+      focusOutTimer = window.setTimeout(sync, 0);
+    };
     document.addEventListener('focusin', sync);
     document.addEventListener('focusout', later);
     return () => {
+      window.clearTimeout(focusOutTimer);
       document.removeEventListener('focusin', sync);
       document.removeEventListener('focusout', later);
     };
@@ -290,12 +356,33 @@ function AdminDock<K extends string>({ items, active, onSelect, onRefresh, onLog
   }, [moreOpen]);
 
   useEffect(() => {
+    if (isXl && moreOpen) setMoreOpen(false);
+  }, [isXl, moreOpen]);
+
+  useEffect(() => {
     if (!flash) return;
     const t = window.setTimeout(() => setFlash(null), 1200);
     return () => window.clearTimeout(t);
   }, [flash]);
 
   const hidden = typing && !moreOpen;
+
+  // Clear magnification whenever the dock hides, reduced motion turns on, or the viewport scrolls/blurs.
+  useEffect(() => {
+    if (hidden || reduce || isXl) {
+      mouseX.set(Infinity);
+      return;
+    }
+    const reset = () => mouseX.set(Infinity);
+    window.addEventListener('blur', reset);
+    window.addEventListener('scroll', reset, { passive: true });
+    return () => {
+      window.removeEventListener('blur', reset);
+      window.removeEventListener('scroll', reset);
+    };
+  }, [hidden, reduce, isXl, mouseX]);
+
+  const animateWell = !isXl && !hidden;
 
   return (
     <motion.div
@@ -307,103 +394,131 @@ function AdminDock<K extends string>({ items, active, onSelect, onRefresh, onLog
       aria-hidden={hidden || undefined}
       inert={hidden || undefined}
     >
-      <nav
-        aria-label="เมนูผู้ดูแลระบบ"
-        className="pointer-events-auto relative flex items-end gap-0.5 rounded-full bg-[var(--bg-card)] p-1.5 [box-shadow:var(--shadow-float)]"
-        onPointerMove={(e) => isFinePointer(e) && !reduce && mouseX.set(e.clientX)}
-        onPointerLeave={() => mouseX.set(Infinity)}
-      >
-        {items.map(({ key, label, Icon, n, srCount, alert }) => (
-          <DockItem
-            key={key}
-            mouseX={mouseX}
-            label={label}
-            current={active === key}
-            showLabel={flash === key}
-            wellId={`${groupId}-well`}
-            badge={n !== undefined && n > 0 ? (alert ? WARNING : INK_3) : null}
-            srCount={n !== undefined && n > 0 ? srCount : undefined}
-            onClick={() => {
-              setMoreOpen(false);
-              onSelect(key);
-              setFlash(key);
+      <LayoutGroup id={groupId}>
+        <nav
+          aria-label="เมนูผู้ดูแลระบบ"
+          className="pointer-events-auto relative flex items-end gap-0.5 rounded-full bg-[var(--bg-card)] p-1.5 [box-shadow:var(--shadow-float)]"
+          onPointerMove={(e) => {
+            if (isFinePointer(e) && !reduce) mouseX.set(e.clientX);
+          }}
+          onPointerDown={(e) => {
+            if (!isFinePointer(e)) mouseX.set(Infinity);
+          }}
+          onPointerLeave={() => mouseX.set(Infinity)}
+          onPointerCancel={() => mouseX.set(Infinity)}
+        >
+          {items.map(({ key, label, Icon, n, srCount, alert }) => (
+            <DockItem
+              key={key}
+              mouseX={mouseX}
+              reduce={reduce}
+              animateWell={animateWell}
+              label={label}
+              current={active === key}
+              showLabel={flash === key}
+              wellId={`${groupId}-well`}
+              badge={n !== undefined && n > 0 ? (alert ? WARNING : INK_3) : null}
+              srCount={n !== undefined && n > 0 ? srCount : undefined}
+              onClick={() => {
+                setMoreOpen(false);
+                onSelect(key);
+                setFlash(key);
+              }}
+            >
+              <Icon aria-hidden="true" size={18} strokeWidth={1.5} />
+            </DockItem>
+          ))}
+
+          <span aria-hidden="true" className="mx-0.5 mb-3 h-5 w-px self-end" style={{ backgroundColor: RULE }} />
+
+          <div
+            ref={moreWrap}
+            className="relative"
+            onBlurCapture={(e) => {
+              if (moreOpen && !e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setMoreOpen(false);
+              }
             }}
           >
-            <Icon aria-hidden="true" size={18} strokeWidth={1.5} />
-          </DockItem>
-        ))}
-
-        <span aria-hidden="true" className="mx-0.5 mb-3 h-5 w-px self-end" style={{ backgroundColor: RULE }} />
-
-        <div ref={moreWrap} className="relative">
-          <AnimatePresence>
-            {moreOpen && (
-              <motion.ul
-                id={moreId}
-                className="absolute bottom-full right-0 mb-3 flex flex-col items-end gap-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { delay: 0.1 } }}
-              >
-                {[
-                  { key: 'refresh', label: busy ? 'กำลังโหลด…' : 'รีเฟรชข้อมูล', Icon: RotateCw, onClick: onRefresh, disabled: busy },
-                  { key: 'logout', label: 'ออกจากระบบ', Icon: LogOut, onClick: onLogout, disabled: false },
-                ].map((a, idx, arr) => (
-                  <motion.li
-                    key={a.key}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0, transition: { delay: (arr.length - 1 - idx) * 0.05 } }}
-                    exit={{ opacity: 0, y: 10, transition: { delay: idx * 0.05 } }}
-                  >
-                    <button
-                      type="button"
-                      disabled={a.disabled}
-                      aria-busy={a.disabled || undefined}
-                      onClick={() => {
-                        setMoreOpen(false);
-                        a.onClick();
+            <AnimatePresence initial={false}>
+              {moreOpen && (
+                <motion.ul
+                  id={moreId}
+                  className="absolute bottom-full right-0 mb-3 flex flex-col items-end gap-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1, transition: FADE }}
+                  exit={{ opacity: 0, transition: { duration: 0.14, ease: EASE_OUT } }}
+                >
+                  {[
+                    { key: 'refresh', label: busy ? 'กำลังโหลด…' : 'รีเฟรชข้อมูล', Icon: RotateCw, onClick: onRefresh, disabled: busy },
+                    { key: 'logout', label: 'ออกจากระบบ', Icon: LogOut, onClick: onLogout, disabled: false },
+                  ].map((a, idx, arr) => (
+                    <motion.li
+                      key={a.key}
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        transition: { duration: 0.2, ease: EASE_OUT, delay: reduce ? 0 : (arr.length - 1 - idx) * 0.04 },
                       }}
-                      className={`inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--bg-card)] px-4 text-sm font-medium [box-shadow:var(--shadow-float)] disabled:opacity-60 ${FOCUS}`}
-                      style={{ color: INK }}
+                      exit={
+                        reduce
+                          ? { opacity: 0, transition: FADE_EXIT }
+                          : { opacity: 0, y: 4, transition: { duration: 0.12, ease: EASE_OUT, delay: idx * 0.025 } }
+                      }
                     >
-                      <a.Icon
-                        aria-hidden="true"
-                        size={17}
-                        strokeWidth={1.5}
-                        className={a.key === 'refresh' && busy ? 'motion-safe:animate-spin' : ''}
-                        style={{ color: INK_3 }}
-                      />
-                      {a.label}
-                    </button>
-                  </motion.li>
-                ))}
-              </motion.ul>
-            )}
-          </AnimatePresence>
-          <button
-            ref={moreBtn}
-            type="button"
-            aria-label="เมนูเพิ่มเติม: รีเฟรช, ออกจากระบบ"
-            aria-expanded={moreOpen}
-            aria-controls={moreOpen ? moreId : undefined}
-            onClick={() => setMoreOpen((v) => !v)}
-            className={`relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-btn-ghost-hover)] ${FOCUS}`}
-            style={{ color: INK_2, backgroundColor: moreOpen ? 'var(--color-btn-ghost-hover)' : undefined }}
-          >
-            {busy ? (
-              <RotateCw aria-hidden="true" size={18} strokeWidth={1.5} className="motion-safe:animate-spin" />
-            ) : (
-              <Ellipsis aria-hidden="true" size={18} strokeWidth={1.5} />
-            )}
-          </button>
-        </div>
-      </nav>
+                      <button
+                        type="button"
+                        disabled={a.disabled}
+                        aria-busy={a.disabled || undefined}
+                        onClick={() => {
+                          setMoreOpen(false);
+                          a.onClick();
+                        }}
+                        className={`inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--bg-card)] px-4 text-sm font-medium [box-shadow:var(--shadow-float)] transition-[background-color,transform] duration-150 hover:bg-[var(--bg-surface)] active:scale-[0.96] disabled:opacity-60 motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`}
+                        style={{ color: INK }}
+                      >
+                        <a.Icon
+                          aria-hidden="true"
+                          size={17}
+                          strokeWidth={1.5}
+                          className={a.key === 'refresh' && busy ? 'motion-safe:animate-spin' : ''}
+                          style={{ color: INK_3 }}
+                        />
+                        {a.label}
+                      </button>
+                    </motion.li>
+                  ))}
+                </motion.ul>
+              )}
+            </AnimatePresence>
+            <button
+              ref={moreBtn}
+              type="button"
+              aria-label="เมนูเพิ่มเติม: รีเฟรช, ออกจากระบบ"
+              aria-expanded={moreOpen}
+              aria-controls={moreOpen ? moreId : undefined}
+              onClick={() => setMoreOpen((v) => !v)}
+              className={`relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-[background-color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`}
+              style={{ color: INK_2, backgroundColor: moreOpen ? 'var(--color-btn-ghost-hover)' : undefined }}
+            >
+              {busy ? (
+                <RotateCw aria-hidden="true" size={18} strokeWidth={1.5} className="motion-safe:animate-spin" />
+              ) : (
+                <Ellipsis aria-hidden="true" size={18} strokeWidth={1.5} />
+              )}
+            </button>
+          </div>
+        </nav>
+      </LayoutGroup>
     </motion.div>
   );
 }
 
 function DockItem({
   mouseX,
+  reduce,
+  animateWell,
   label,
   current,
   showLabel,
@@ -414,6 +529,8 @@ function DockItem({
   children,
 }: {
   mouseX: MotionValue<number>;
+  reduce: boolean;
+  animateWell: boolean;
   label: string;
   current: boolean;
   showLabel: boolean;
@@ -430,7 +547,7 @@ function DockItem({
     const b = ref.current?.getBoundingClientRect();
     return b ? x - b.left - b.width / 2 : Infinity;
   });
-  const size = useSpring(useTransform(distance, [-110, 0, 110], [44, 54, 44]), { mass: 0.1, stiffness: 170, damping: 14 });
+  const size = useSpring(useTransform(distance, [-110, 0, 110], [44, 54, 44]), { mass: 0.1, stiffness: 200, damping: 16 });
 
   return (
     <motion.button
@@ -441,20 +558,25 @@ function DockItem({
       onClick={onClick}
       onPointerEnter={(e) => isFinePointer(e) && setHovered(true)}
       onPointerLeave={() => setHovered(false)}
+      onPointerCancel={() => setHovered(false)}
       onFocus={(e) => setHovered(e.currentTarget.matches(':focus-visible'))}
       onBlur={() => setHovered(false)}
-      style={{ width: size, height: size, color: current ? BTN_DARK_TEXT : INK_2 }}
+      whileTap={TAP_SCALE}
+      style={{ width: reduce ? 44 : size, height: reduce ? 44 : size, color: current ? BTN_DARK_TEXT : INK_2 }}
       className={`relative inline-flex shrink-0 items-center justify-center rounded-full ${FOCUS}`}
     >
-      {current && (
-        <motion.span
-          aria-hidden="true"
-          layoutId={wellId}
-          transition={PILL_SPRING}
-          className="absolute inset-0 rounded-full"
-          style={{ backgroundColor: BTN_DARK }}
-        />
-      )}
+      {current &&
+        (animateWell ? (
+          <motion.span
+            aria-hidden="true"
+            layoutId={wellId}
+            transition={PILL_SPRING}
+            className="absolute inset-0 rounded-full"
+            style={{ backgroundColor: BTN_DARK, borderRadius: 9999 }}
+          />
+        ) : (
+          <span aria-hidden="true" className="absolute inset-0 rounded-full" style={{ backgroundColor: BTN_DARK }} />
+        ))}
       <span className="relative">{children}</span>
       {badge && (
         <span
@@ -464,21 +586,21 @@ function DockItem({
         />
       )}
       {srCount && <span className="sr-only">{srCount}</span>}
-      <AnimatePresence>
-        {(hovered || showLabel) && (
-          <motion.span
-            aria-hidden="true"
-            initial={{ opacity: 0, y: 8, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: 2, x: '-50%' }}
-            transition={FADE}
-            className="pointer-events-none absolute bottom-full left-1/2 mb-2.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold [box-shadow:var(--shadow-float)]"
-            style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-          >
-            {label}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <span aria-hidden="true" className="pointer-events-none absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2">
+        <AnimatePresence initial={false}>
+          {(hovered || showLabel) && (
+            <motion.span
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: FADE }}
+              exit={reduce ? { opacity: 0, transition: FADE_EXIT } : { opacity: 0, y: 2, transition: FADE_EXIT }}
+              className="block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold [box-shadow:var(--shadow-float)]"
+              style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
+            >
+              {label}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </span>
     </motion.button>
   );
 }

@@ -31,6 +31,7 @@ const pageLinks = isAdmin ? [] : [
   { href: '/applicants', label: 'รายชื่อผู้สมัคร', current: active === 'applicants' },
   { href: '/sponsor', label: 'สนับสนุนค่าย', current: active === 'sponsor' },
 ];
+const drawerBaseIdx = sectionLinks.length + pageLinks.length;
 ---
 
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหาหลัก</a>
@@ -69,19 +70,19 @@ const pageLinks = isAdmin ? [] : [
             </svg>
           </button>
           <div class="nav-group__panel" id="nav-about-panel">
-            {sectionLinks.map((link) => (
-              <a class="nav-sec" href={link.href}>{link.label}</a>
+            {sectionLinks.map((link, idx) => (
+              <a class="nav-sec" href={link.href} style={`--nav-i: ${idx}`}>{link.label}</a>
             ))}
           </div>
         </div>
       )}
-      {pageLinks.map((link) => (
-        <a class="nav-sec" href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
+      {pageLinks.map((link, idx) => (
+        <a class="nav-sec" href={link.href} aria-current={link.current ? 'page' : undefined} style={`--nav-i: ${sectionLinks.length + idx}`}>{link.label}</a>
       ))}
 
       <!-- Mobile-only drawer items -->
       {isAdmin ? (
-        <a href="/" class="nav-mobile-item">← กลับหน้าเว็บไซต์</a>
+        <a href="/" class="nav-mobile-item" style="--nav-i: 0">← กลับหน้าเว็บไซต์</a>
       ) : (
         <>
           <div class="nav-mobile-divider" aria-hidden="true"></div>
@@ -91,6 +92,7 @@ const pageLinks = isAdmin ? [] : [
             data-register-link
             class:list={['nav-mobile-item', active === 'register' && 'is-active']}
             aria-current={active === 'register' ? 'page' : undefined}
+            style={`--nav-i: ${drawerBaseIdx}`}
           >
             <span data-nav-register-label data-nav-label-style="wide">ลงทะเบียนวันที่ {formatThaiDateShort(REGISTRATION_OPEN_AT)} (<span class="font-mono tabular-nums" data-nav-open-time>{openTime}</span> น.)</span>
           </a>
@@ -99,6 +101,7 @@ const pageLinks = isAdmin ? [] : [
             href="/status"
             class:list={['nav-mobile-item', active === 'status' && 'is-active']}
             aria-current={active === 'status' ? 'page' : undefined}
+            style={`--nav-i: ${drawerBaseIdx + 1}`}
           >
             ตรวจสอบสถานะ
           </a>
@@ -110,28 +113,31 @@ const pageLinks = isAdmin ? [] : [
         class="nav-mobile-item theme-toggle-drawer"
         type="button"
         aria-label="เปลี่ยนโหมดการแสดงผล (Light / Dark Mode)"
+        style={`--nav-i: ${isAdmin ? 1 : drawerBaseIdx + 2}`}
       >
         <span class="theme-drawer-text">โหมดการแสดงผล</span>
         <span class="theme-drawer-badge">
           <span class="theme-drawer-state">โหมดสว่าง</span>
-          <svg class="theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v2"></path>
-            <path d="M12 20v2"></path>
-            <path d="m4.93 4.93 1.41 1.41"></path>
-            <path d="m17.66 17.66 1.41 1.41"></path>
-            <path d="M2 12h2"></path>
-            <path d="M20 12h2"></path>
-            <path d="m6.34 17.66-1.41 1.41"></path>
-            <path d="m19.07 4.93-1.41 1.41"></path>
-          </svg>
-          <svg class="theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-          </svg>
+          <span class="theme-icon-stack theme-icon-stack--sm" aria-hidden="true">
+            <svg class="theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path>
+              <path d="M12 20v2"></path>
+              <path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path>
+              <path d="M2 12h2"></path>
+              <path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path>
+              <path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+            <svg class="theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+            </svg>
+          </span>
         </span>
       </button>
       {!isAdmin && (
-        <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย">
+        <div class="nav-overlay-footer" aria-label="ข้อมูลค่าย" style={`--nav-i: ${drawerBaseIdx + 3}`}>
           <p class="nav-overlay-label">[ ข้อมูลค่าย ]</p>
           <p class="nav-overlay-text">คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้</p>
           <p class="nav-overlay-text">ลงทะเบียนวันที่ <span class="font-mono tabular-nums" data-nav-open-dot>{formatThaiDateDot(REGISTRATION_OPEN_AT)}</span> · <span class="font-mono tabular-nums" data-nav-max-cap>{MAX_CAPACITY}</span> ที่นั่ง</p>
@@ -203,20 +209,22 @@ const pageLinks = isAdmin ? [] : [
         aria-label="สลับโหมดสว่าง/มืด (Light / Dark Mode)"
         title="สลับโหมดสว่าง/มืด"
       >
-        <svg class="theme-icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2"></path>
-          <path d="M12 20v2"></path>
-          <path d="m4.93 4.93 1.41 1.41"></path>
-          <path d="m17.66 17.66 1.41 1.41"></path>
-          <path d="M2 12h2"></path>
-          <path d="M20 12h2"></path>
-          <path d="m6.34 17.66-1.41 1.41"></path>
-          <path d="m19.07 4.93-1.41 1.41"></path>
-        </svg>
-        <svg class="theme-icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-        </svg>
+        <span class="theme-icon-stack" aria-hidden="true">
+          <svg class="theme-icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          </svg>
+          <svg class="theme-icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          </svg>
+        </span>
       </button>
     </div>
   </div>
@@ -255,7 +263,12 @@ const pageLinks = isAdmin ? [] : [
     overflow-x: clip;
     background: transparent;
     border-bottom: 1px solid transparent;
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.12s linear;
+    /* `transform` is written every scroll frame by main.js while the gallery pushes the bar up:
+       keep it short and linear so the bar tracks the gallery edge instead of easing behind it. */
+    transition:
+      background-color var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      border-color var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      transform 0.12s linear;
     font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
   }
   .site-nav.is-scrolled {
@@ -460,27 +473,24 @@ const pageLinks = isAdmin ? [] : [
     position: absolute;
     left: 0;
     right: 0;
+    top: 50%;
     height: 1.5px;
+    margin-top: -0.75px;
     border-radius: 2px;
     background: currentColor;
-    transition:
-      transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-      top 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-      bottom 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.22s var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
   .nav-toggle-icon::before {
-    top: 0;
+    transform: translateY(-4px);
   }
   .nav-toggle-icon::after {
-    bottom: 0;
+    transform: translateY(4px);
   }
   .nav-toggle[aria-expanded="true"] .nav-toggle-icon::before {
-    top: 4px;
-    transform: rotate(45deg);
+    transform: translateY(0) rotate(45deg);
   }
   .nav-toggle[aria-expanded="true"] .nav-toggle-icon::after {
-    bottom: 4px;
-    transform: rotate(-45deg);
+    transform: translateY(0) rotate(-45deg);
   }
 
   /* Nav Actions (Desktop) */
@@ -639,7 +649,8 @@ const pageLinks = isAdmin ? [] : [
 
   /* Mobile Responsive — full-screen overlay menu (<56.25em so tablet portrait never overflows).
      Big stacked type up top, camp info pinned to the bottom.
-     The panel wipes in as one piece; items appear with it, no stagger. */
+     The drawer slides on the compositor; items cascade in with `backwards` fill so they replay
+     cleanly on reopen and can never be left stuck invisible. */
   @media (max-width: 56.1875em) {
     .nav-actions {
       display: none;
@@ -673,15 +684,23 @@ const pageLinks = isAdmin ? [] : [
       overflow-x: clip;
       overflow-y: auto;
       overscroll-behavior: contain;
-      transform: translateX(102%);
+      transform: translateX(100%);
+      opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.45s;
+      /* Stay transition-free until first opened on mobile so resizing down across 56.25em never ghost-slides the drawer. */
+      transition: none;
+    }
+    .nav-links[data-drawer-animated="true"] {
+      transition:
+        transform 0.26s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        opacity 0.2s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        visibility 0s linear 0.26s;
     }
     @keyframes nav-drawer-item-in {
       from {
-        opacity: 0.65;
-        translate: 10px 0;
+        opacity: 0;
+        translate: 14px 0;
       }
       to {
         opacity: 1;
@@ -690,15 +709,21 @@ const pageLinks = isAdmin ? [] : [
     }
     .nav-links.is-open {
       display: flex;
-      transform: none;
+      transform: translateX(0);
+      opacity: 1;
       visibility: visible;
       pointer-events: auto;
-      transition: transform 0.36s var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+      transition:
+        transform 0.34s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        opacity 0.24s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        background-color var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        visibility 0s linear 0s;
     }
     .nav-links.is-open > a,
+    .nav-links.is-open > .nav-group a,
     .nav-links.is-open > .theme-toggle-drawer,
     .nav-links.is-open > .nav-overlay-footer {
-      animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+      animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)) calc(35ms + min(var(--nav-i, 0), 10) * 24ms) backwards;
     }
     /* The desktop disclosure dissolves in the drawer: its anchors render as plain drawer rows. */
     .nav-group,
@@ -707,9 +732,6 @@ const pageLinks = isAdmin ? [] : [
     }
     .nav-group__btn {
       display: none;
-    }
-    .nav-links.is-open > .nav-group a {
-      animation: nav-drawer-item-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     }
     /* Section links: editorial Table-of-Contents rows with mono chapter index */
     .nav-links a.nav-sec {
@@ -749,7 +771,6 @@ const pageLinks = isAdmin ? [] : [
       text-decoration: none;
       font-weight: 600;
     }
-    /* Section links sit static; only the panel itself animates. */
     .nav-mobile-divider {
       display: block;
       height: 1px;
@@ -813,10 +834,31 @@ const pageLinks = isAdmin ? [] : [
       outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
     touch-action: manipulation;
   }
-  .theme-toggle-btn svg {
+  .theme-icon-stack {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    transition: rotate var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  }
+  .theme-icon-stack--sm {
+    width: 16px;
+    height: 16px;
+  }
+  .theme-icon-stack svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
     transition:
-      rotate var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
-      color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+      opacity var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      transform var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+      color var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
   }
   @media (hover: hover) and (pointer: fine) {
     .theme-toggle-btn:hover {
@@ -824,7 +866,7 @@ const pageLinks = isAdmin ? [] : [
       background: rgba(18, 19, 22, 0.05);
       scale: 1.04;
     }
-    .theme-toggle-btn:hover svg {
+    .theme-toggle-btn:hover .theme-icon-stack {
       rotate: -12deg;
     }
   }
@@ -839,25 +881,29 @@ const pageLinks = isAdmin ? [] : [
   }
 
   .theme-icon-sun {
-    display: none;
+    opacity: 0;
+    transform: scale(0.5) rotate(-45deg);
     color: #B45309;
   }
 
   .theme-icon-moon {
-    display: block;
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
     color: #4A4D55;
   }
 
   /* When dark mode is active on html root */
   :global(html.dark) .theme-icon-sun,
   :global(html[data-theme="dark"]) .theme-icon-sun {
-    display: block !important;
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
     color: #F59E0B;
   }
 
   :global(html.dark) .theme-icon-moon,
   :global(html[data-theme="dark"]) .theme-icon-moon {
-    display: none !important;
+    opacity: 0;
+    transform: scale(0.5) rotate(45deg);
   }
 
   :global(html.dark) .theme-toggle-btn,
@@ -1298,10 +1344,14 @@ const pageLinks = isAdmin ? [] : [
       translate: 0 -4px;
       visibility: hidden;
       pointer-events: none;
+      /* Stay transition-free until opened on desktop so crossing 56.25em from display:contents never ghost-flashes. */
+      transition: none;
+    }
+    .nav-group__panel[data-animated="true"] {
       transition:
-        opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
-        translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
-        visibility 0s linear var(--dur-fast, .16s);
+        opacity 0.14s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        translate 0.14s var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        visibility 0s linear 0.14s;
     }
     .nav-group__btn[aria-expanded="true"] + .nav-group__panel {
       opacity: 1;
@@ -1310,7 +1360,9 @@ const pageLinks = isAdmin ? [] : [
       pointer-events: auto;
       transition:
         opacity var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
-        translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+        translate var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        background-color var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+        visibility 0s linear 0s;
     }
     /* No-JS fallback: before the script binds the disclosure, hover or keyboard focus opens it. */
     .nav-group:not([data-cc-group-bound="true"]):hover .nav-group__panel,
@@ -1391,6 +1443,7 @@ const pageLinks = isAdmin ? [] : [
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .skip-link,
     .site-nav,
     .nav-inner,
     .brand,
@@ -1402,7 +1455,7 @@ const pageLinks = isAdmin ? [] : [
     .nav-quick-cta,
     .btn,
     .theme-toggle-btn,
-    .theme-toggle-btn svg,
+    .theme-icon-stack,
     .theme-toggle-drawer,
     .theme-drawer-badge,
     .nav-toggle-icon::before,
@@ -1413,11 +1466,13 @@ const pageLinks = isAdmin ? [] : [
       scale: none !important;
       rotate: none !important;
     }
-    .nav-links,
+    .theme-icon-stack svg {
+      transition: none !important;
+    }
     .nav-links > *,
-    .nav-links.is-open > * {
+    .nav-links.is-open > *,
+    .nav-links.is-open > .nav-group a {
       opacity: 1 !important;
-      transform: none !important;
     }
     .nav-group__chev,
     .nav-group__panel {
@@ -1446,15 +1501,29 @@ const pageLinks = isAdmin ? [] : [
   document.addEventListener('astro:before-swap', () => {
     navAbort?.abort();
     navAbort = null;
+    document.body.style.overflow = '';
+    const openToggle = document.querySelector<HTMLButtonElement>('.site-nav .nav-toggle[aria-expanded="true"]');
+    openToggle?.setAttribute('aria-expanded', 'false');
+    const openMenu = document.getElementById('site-menu');
+    if (openMenu) {
+      openMenu.classList.remove('is-open');
+      delete openMenu.dataset.drawerAnimated;
+    }
+    document.querySelectorAll<HTMLButtonElement>('.site-nav .nav-group__btn[aria-expanded="true"]').forEach((btn) => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+    document.querySelectorAll<HTMLElement>('.site-nav .nav-group__panel').forEach((p) => {
+      delete p.dataset.animated;
+    });
   });
 
   function initSiteNav() {
     const nav = document.querySelector<HTMLElement>('.site-nav');
     const toggle = document.querySelector<HTMLButtonElement>('.site-nav .nav-toggle');
     const menu = document.getElementById('site-menu');
+    const wide = window.matchMedia('(min-width: 56.25em)');
 
     if (toggle && menu) {
-      const wide = window.matchMedia('(min-width: 56.25em)');
       const syncInert = (open: boolean) => {
         menu.inert = !open && !wide.matches;
       };
@@ -1462,8 +1531,10 @@ const pageLinks = isAdmin ? [] : [
 
       if (toggle.dataset.ccNavBound !== 'true') {
         toggle.dataset.ccNavBound = 'true';
+        const signal = navSignal();
 
         const setOpen = (open: boolean) => {
+          if (open) menu.dataset.drawerAnimated = 'true';
           toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
           menu.classList.toggle('is-open', open);
           syncInert(open);
@@ -1494,20 +1565,22 @@ const pageLinks = isAdmin ? [] : [
             setOpen(false);
             toggle.focus();
           }
-        }, { signal: navSignal() });
+        }, { signal });
 
         const onWide = () => {
           if (wide.matches) {
             setOpen(false);
+            delete menu.dataset.drawerAnimated;
             menu.inert = false;
           } else {
             syncInert(toggle.getAttribute('aria-expanded') === 'true');
           }
         };
         if (wide.addEventListener) {
-          wide.addEventListener('change', onWide, { signal: navSignal() });
+          wide.addEventListener('change', onWide, { signal });
         } else if ('addListener' in wide) {
           (wide as any).addListener(onWide);
+          signal.addEventListener('abort', () => (wide as any).removeListener(onWide), { once: true });
         }
       }
     }
@@ -1519,9 +1592,13 @@ const pageLinks = isAdmin ? [] : [
     const panel = group?.querySelector<HTMLElement>('.nav-group__panel');
     if (group && groupBtn && panel && group.dataset.ccGroupBound !== 'true') {
       group.dataset.ccGroupBound = 'true';
+      const signal = navSignal();
       const links = () => Array.from(panel.querySelectorAll<HTMLAnchorElement>('a'));
       const isOpen = () => groupBtn.getAttribute('aria-expanded') === 'true';
-      const setGroup = (open: boolean) => groupBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const setGroup = (open: boolean) => {
+        if (open) panel.dataset.animated = 'true';
+        groupBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
 
       groupBtn.addEventListener('click', () => setGroup(!isOpen()));
       groupBtn.addEventListener('keydown', (e) => {
@@ -1548,13 +1625,15 @@ const pageLinks = isAdmin ? [] : [
       panel.addEventListener('click', (e) => {
         if ((e.target as HTMLElement | null)?.closest('a')) setGroup(false);
       });
-      group.addEventListener('keydown', (e) => {
+      // Handle Escape on document so closing works even if focus drifted to body after clicking panel padding.
+      document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && isOpen()) {
           e.stopPropagation();
+          const hadFocus = group.contains(document.activeElement);
           setGroup(false);
-          groupBtn.focus();
+          if (hadFocus) groupBtn.focus();
         }
-      });
+      }, { signal });
       // Tabbing out closes it; a click on the panel's padding (relatedTarget null) does not.
       group.addEventListener('focusout', (e) => {
         const to = e.relatedTarget as Node | null;
@@ -1562,17 +1641,43 @@ const pageLinks = isAdmin ? [] : [
       });
       document.addEventListener('pointerdown', (e) => {
         if (isOpen() && !group.contains(e.target as Node)) setGroup(false);
-      }, { signal: navSignal() });
-      window.matchMedia('(min-width: 56.25em)').addEventListener?.('change', () => setGroup(false), { signal: navSignal() });
+      }, { signal });
+      const onGroupWide = () => {
+        setGroup(false);
+        delete panel.dataset.animated;
+      };
+      if (wide.addEventListener) {
+        wide.addEventListener('change', onGroupWide, { signal });
+      } else if ('addListener' in wide) {
+        (wide as any).addListener(onGroupWide);
+        signal.addEventListener('abort', () => (wide as any).removeListener(onGroupWide), { once: true });
+      }
     }
 
     if (nav && nav.dataset.ccScrollBound !== 'true') {
       nav.dataset.ccScrollBound = 'true';
-      const onScroll = () => {
-        nav.classList.toggle('is-scrolled', window.scrollY > 8);
+      const signal = navSignal();
+      let rafId = 0;
+      let lastScrolled: boolean | null = null;
+      const syncScroll = () => {
+        rafId = 0;
+        const next = window.scrollY > 8;
+        if (next !== lastScrolled) {
+          lastScrolled = next;
+          nav.classList.toggle('is-scrolled', next);
+        }
       };
-      onScroll();
-      window.addEventListener('scroll', onScroll, { passive: true, signal: navSignal() });
+      const onScroll = () => {
+        if (!rafId) rafId = window.requestAnimationFrame(syncScroll);
+      };
+      syncScroll();
+      window.addEventListener('scroll', onScroll, { passive: true, signal });
+      signal.addEventListener('abort', () => {
+        if (rafId) {
+          window.cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+      }, { once: true });
     }
   }
 
@@ -1720,27 +1825,27 @@ const pageLinks = isAdmin ? [] : [
   initNavRegisterState();
   document.addEventListener('astro:page-load', initNavRegisterState);
 
+  const isCurrentDark = () => document.documentElement.classList.contains('dark');
+
+  function updateThemeUI(isDark: boolean) {
+    document.querySelectorAll<HTMLElement>('.theme-toggle-btn, .theme-toggle-drawer').forEach((btn) => {
+      btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+      btn.setAttribute(
+        'title',
+        isDark ? 'เปลี่ยนเป็นโหมดสว่าง (Light Mode)' : 'เปลี่ยนเป็นโหมดมืด (Dark Mode)'
+      );
+      const drawerState = btn.querySelector('.theme-drawer-state');
+      if (drawerState) {
+        drawerState.textContent = isDark ? 'โหมดมืด' : 'โหมดสว่าง';
+      }
+    });
+  }
+
   function initThemeToggle() {
     const btns = document.querySelectorAll<HTMLElement>('.theme-toggle-btn, .theme-toggle-drawer');
     if (!btns.length) return;
 
-    const isCurrentDark = () => document.documentElement.classList.contains('dark');
-
-    const updateUI = (isDark: boolean) => {
-      btns.forEach((btn) => {
-        btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
-        btn.setAttribute(
-          'title',
-          isDark ? 'เปลี่ยนเป็นโหมดสว่าง (Light Mode)' : 'เปลี่ยนเป็นโหมดมืด (Dark Mode)'
-        );
-        const drawerState = btn.querySelector('.theme-drawer-state');
-        if (drawerState) {
-          drawerState.textContent = isDark ? 'โหมดมืด' : 'โหมดสว่าง';
-        }
-      });
-    };
-
-    updateUI(isCurrentDark());
+    updateThemeUI(isCurrentDark());
 
     btns.forEach((btn) => {
       if (btn.dataset.themeBound === 'true') return;
@@ -1759,7 +1864,7 @@ const pageLinks = isAdmin ? [] : [
           document.documentElement.setAttribute('data-theme', 'light');
           try { localStorage.setItem('comcamp-theme', 'light'); } catch (err) {}
         }
-        updateUI(nextDark);
+        updateThemeUI(nextDark);
         window.dispatchEvent(new CustomEvent('theme-changed', { detail: { dark: nextDark } }));
       });
     });
@@ -1767,7 +1872,7 @@ const pageLinks = isAdmin ? [] : [
     if (!(window as any).__CC25_THEME_LISTENER_ATTACHED__) {
       (window as any).__CC25_THEME_LISTENER_ATTACHED__ = true;
       window.addEventListener('theme-changed', () => {
-        updateUI(isCurrentDark());
+        updateThemeUI(isCurrentDark());
       });
     }
   }

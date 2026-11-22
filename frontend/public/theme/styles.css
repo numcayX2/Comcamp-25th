@@ -88,7 +88,7 @@ section{padding:clamp(64px,9vw,112px) 0}
 .lead-num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-weight:500;font-size:.8125rem;color:var(--ink-3);margin-bottom:10px;letter-spacing:.02em}
 /* Buttons — AGENTS v2.1: full pill (9999px), fern CTA uses ink text.
    No coloured glow: elevation comes from the fill, feedback from colour + a 1px press. */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;cursor:pointer;font-weight:600;font-size:1rem;line-height:1.5;border-radius:var(--r-pill);padding:13px 26px;min-height:48px;text-decoration:none;white-space:nowrap;transition:background .18s ease,transform .18s ease,color .18s ease;touch-action:manipulation}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;cursor:pointer;font-weight:600;font-size:1rem;line-height:1.5;border-radius:var(--r-pill);padding:13px 26px;min-height:48px;text-decoration:none;white-space:nowrap;transition:background-color .18s ease,border-color .18s ease,opacity .18s ease,transform .18s ease,color .18s ease;touch-action:manipulation}
 .btn .ic{flex:none}
 .btn-primary{background:var(--fern-500);color:var(--ink)}
 .btn-primary:hover:not(:disabled):not(.is-disabled){background:var(--fern-600);color:var(--ink);text-decoration:none}
@@ -240,9 +240,9 @@ html[data-theme="dark"] {
   font-weight: 500;
   font-size: clamp(0.82rem, 1.2vh, 0.92rem);
   text-decoration: none;
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s var(--ease-out), color 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
 }
-.hero__cta svg { transition: transform 0.2s; }
+.hero__cta svg { transition: transform 0.2s var(--ease-out); }
 .hero__cta:hover {
   background: var(--hero-cta-hover-bg);
   color: var(--hero-cta-hover-ink);
@@ -270,6 +270,7 @@ html[data-reg-open="true"] .hero__cta:hover { border-color: var(--fern-600); bac
   text-decoration: underline;
   text-decoration-color: var(--hero-line-strong);
   text-underline-offset: 0.3em;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 .hero__link:hover { color: var(--hero-ink); }
 /* Register + guide pills; wrap to two rows only when too narrow (long pre-open/full labels on phones). */
@@ -294,7 +295,7 @@ html[data-reg-open="true"] .hero__cta:hover { border-color: var(--fern-600); bac
   font-weight: 500;
   font-size: clamp(0.82rem, 1.2vh, 0.92rem);
   text-decoration: none;
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
 }
 .hero__btn svg { flex: none; }
 .hero__btn:hover {
@@ -671,7 +672,8 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 @media (prefers-reduced-motion: reduce) {
   .hero__explore-line { animation: none; }
   .hero-stage__loading { animation: none; }
-  .hero-stage canvas, .hero__cta, .hero__cta svg { transition: none; }
+  .hero-stage canvas, .hero__cta, .hero__cta svg, .hero__btn, .hero__link { transition: none; }
+  .hero__cta:hover svg, .btn:active { transform: none; }
 }
 
 
@@ -701,8 +703,8 @@ html[data-theme="dark"] .hero[data-title-style="pixel"] .hero__title {
 .journey-rail::after{content:"";position:absolute;left:0;top:0;width:100%;height:calc(var(--jp) * 100%);background:var(--blue-600);border-radius:2px}
 .step{position:relative;z-index:1;display:grid;grid-template-columns:calc(var(--jx) * 2) minmax(0,1fr);gap:0 22px;padding:22px 0 28px}
 .step-marker{position:relative;display:flex;justify-content:center;align-items:flex-start;padding-top:2px}
-.step-dot{width:20px;height:20px;border-radius:9999px;background:var(--canvas-0);border:2px solid var(--border-input);display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:2;flex:none;box-sizing:border-box;transition:background .25s var(--ease-out),border-color .25s var(--ease-out),box-shadow .25s var(--ease-out),transform .25s var(--ease-out)}
-.step-dot::after{content:"";display:block;width:8px;height:8px;border-radius:50%;background:transparent;transition:background .2s var(--ease-out)}
+.step-dot{width:20px;height:20px;border-radius:9999px;background:var(--canvas-0);border:2px solid var(--border-input);display:inline-flex;align-items:center;justify-content:center;position:relative;z-index:2;flex:none;box-sizing:border-box;transition:background-color .25s var(--ease-out),border-color .25s var(--ease-out),box-shadow .25s var(--ease-out),transform .25s var(--ease-out)}
+.step-dot::after{content:"";display:block;width:8px;height:8px;border-radius:50%;background:transparent;transition:background-color .2s var(--ease-out)}
 .step.is-active .step-dot{border-color:var(--blue-600);background:var(--blue-600);transform:scale(1.06);box-shadow:0 0 0 4px rgba(26,95,224,.18)}
 .step.is-active .step-dot::after{background:#FFFFFF}
 .step.is-done .step-dot{border-color:var(--fern-500);background:var(--fern-500);transform:none;box-shadow:none}
@@ -809,15 +811,15 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 .mt__sticky{position:-webkit-sticky;position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;isolation:isolate}
 .mt__sticky::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.85) 100%)}
 .mt__stage{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;-webkit-perspective:var(--mt-perspective,1000px);perspective:var(--mt-perspective,1000px);-webkit-perspective-origin:50% 50%;perspective-origin:50% 50%;pointer-events:none}
-.mt__card{position:absolute;left:calc(50% - var(--mt-card-w) / 2);top:calc(50% - var(--mt-card-h) / 2);width:var(--mt-card-w);height:var(--mt-card-h);margin:0;border-radius:0;overflow:hidden;background:#111;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);display:none;opacity:0;will-change:transform,opacity;-webkit-backface-visibility:hidden;backface-visibility:hidden}
-.mt__card.is-active{display:block}
+.mt__card{position:absolute;left:calc(50% - var(--mt-card-w) / 2);top:calc(50% - var(--mt-card-h) / 2);width:var(--mt-card-w);height:var(--mt-card-h);margin:0;border-radius:0;overflow:hidden;background:#111;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);display:none;opacity:0;-webkit-backface-visibility:hidden;backface-visibility:hidden}
+.mt__card.is-active{display:block;will-change:transform,opacity}
 .mt__card img{display:block;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .4s ease;user-select:none}
 .mt__card.is-loaded img{opacity:1}
 /* Longhand offsets: `inset` is unsupported before Safari 14.1 / Chrome 87 (old iOS in-app
    WebViews), which collapsed these layers to 0x0 and pinned the tunnel to the top-left corner. */
 .mt__intro,.mt__outro{position:absolute;top:0;right:0;bottom:0;left:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 clamp(20px,6vw,80px)}
-.mt__intro{will-change:opacity,transform,filter;z-index:5}
-.mt__intro-content{display:flex;flex-direction:column;align-items:center;will-change:transform,filter,opacity}
+.mt__intro{will-change:opacity;z-index:5}
+.mt__intro-content{display:flex;flex-direction:column;align-items:center;will-change:transform,filter}
 /* Eyebrows are Thai-first now (AGENTS.md 5.3): Thai font, no tracking, no uppercase */
 .mt__eyebrow{margin:0 0 1.2em;font-size:clamp(13px,1.1vw,15px);line-height:1.5;letter-spacing:0;text-transform:none;color:var(--mt-muted);font-family:var(--mt-font);font-weight:600}
 .mt__intro-title{margin:0;font-size:clamp(36px,7vw,96px);font-weight:700;line-height:1.25;white-space:pre-line}
@@ -825,7 +827,7 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 .mt__reveal{opacity:0;transform:translateY(24px);transition:opacity 1s ease,transform 1s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--d,0) * 150ms)}
 .mt.is-entered .mt__reveal{opacity:1;transform:none}
 .mt__scroll-hint{position:absolute;bottom:clamp(24px,6vh,56px);left:50%;width:1px;height:56px;margin-left:-.5px;overflow:hidden;background:rgba(255,255,255,.15)}
-.mt__scroll-hint::after{content:"";position:absolute;left:0;top:-50%;width:100%;height:50%;background:#fff;animation:mt-hint 1.8s ease-in-out infinite}
+.mt__scroll-hint::after{content:"";position:absolute;left:0;top:0;width:100%;height:50%;background:#fff;transform:translateY(-100%);animation:mt-hint 1.8s ease-in-out infinite}
 .mt__outro{visibility:hidden;pointer-events:none}
 .mt__outro.is-visible{visibility:visible;pointer-events:auto}
 .mt__outro-eyebrow,.mt__outro-sub,.mt__cta,.mt__outro-line{opacity:0}
@@ -842,7 +844,7 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 .is-visible .mt__outro-line{animation:mt-rise .8s ease calc(.18s + var(--i) * .12s) both}
 .is-visible .mt__outro-sub{animation:mt-rise .7s ease .5s both}
 .is-visible .mt__cta{animation:mt-rise .7s ease .65s both}
-@keyframes mt-hint{to{top:100%}}
+@keyframes mt-hint{from{transform:translateY(-100%)}to{transform:translateY(200%)}}
 @keyframes mt-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media(max-width:768px){.mt{--mt-card-w:clamp(140px,46vw,260px)}.mt__outro-title{font-size:clamp(2rem,10vw,3rem)}.mt__cta{margin-top:1.75rem}}
 /* clamp() arrived in Safari 13.1 / Chrome 79; without it the card vars are invalid and cards collapse.
@@ -850,7 +852,10 @@ footer{background:transparent;padding:clamp(56px,8vw,96px) 0 calc(28px + env(saf
 @supports not (width:clamp(1px,1vw,2px)){.mt{--mt-card-w:22vw}@media(max-width:768px){.mt{--mt-card-w:46vw}}}
 /* Reduced motion: no travel and no loops, but state changes still read through a short colour/opacity fade. */
 @media(prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-property:color,background-color,border-color,text-decoration-color,box-shadow,opacity,outline-color !important;transition-duration:.15s !important;transition-delay:0s !important;scroll-behavior:auto !important}
+  *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-property:color,background-color,border-color,text-decoration-color,box-shadow,opacity,outline-color !important;transition-duration:.15s !important;transition-delay:0s !important;scroll-behavior:auto !important}
+  .mt__scroll-hint::after{animation:none !important;transform:translateY(50%) !important;opacity:.45}
+  .mt__cta:hover .mt__cta-icon{transform:none !important}
+  .mt__intro,.mt__intro-content,.mt__card.is-active{will-change:auto !important}
 }
 
 /* Dark Mode Component Overrides */

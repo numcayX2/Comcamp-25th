@@ -501,8 +501,10 @@
     scale var(--dur-fast) var(--ease-out),
     outline-offset var(--dur-fast) var(--ease-out);
 }
-.sp-copy:active {
-  scale: 0.975;
+@media (prefers-reduced-motion: no-preference) {
+  .sp-copy:active {
+    scale: 0.975;
+  }
 }
 @media (hover: hover) and (pointer: fine) {
   .sp-copy:hover {
@@ -738,6 +740,8 @@
     color: var(--color-tech);
     text-decoration-color: var(--color-tech);
   }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .sp-link:hover .sp-ico:last-child {
     translate: 2px 0;
   }
@@ -823,8 +827,16 @@
   gap: 18px;
   margin-top: 20px;
 }
+.sp-tax-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  min-width: 0;
+}
 @media (min-width: 640px) {
-  .sp-form {
+  .sp-form,
+  .sp-tax-group {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 24px;
   }
@@ -885,6 +897,14 @@
   appearance: none;
   -webkit-appearance: none;
   scroll-margin: 120px 0 120px;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sp-input:hover:not(:disabled):not(:focus):not([aria-invalid='true']) {
+    border-color: var(--rule-strong);
+  }
 }
 .sp-input::placeholder {
   color: var(--color-ink-subtle);
@@ -1004,8 +1024,10 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
-.sp-choice:active .sp-choice__input:not(:disabled) + .sp-choice__pill {
-  scale: 0.975;
+@media (prefers-reduced-motion: no-preference) {
+  .sp-choice:active .sp-choice__input:not(:disabled) + .sp-choice__pill {
+    scale: 0.975;
+  }
 }
 @media (hover: hover) and (pointer: fine) {
   .sp-choice:hover .sp-choice__input:not(:checked):not(:disabled) + .sp-choice__pill {
@@ -1123,8 +1145,10 @@
     color: var(--color-on-success);
   }
 }
-.sp-btn:active:not(:disabled) {
-  scale: 0.975;
+@media (prefers-reduced-motion: no-preference) {
+  .sp-btn:active:not(:disabled) {
+    scale: 0.975;
+  }
 }
 .sp-btn:disabled {
   opacity: 0.6;
@@ -1133,7 +1157,7 @@
 .sp-btn .sp-ico:last-child:not(:first-child) {
   transition: translate var(--dur-fast) var(--ease-out);
 }
-@media (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .sp-btn:hover:not(:disabled) .sp-ico:last-child:not(:first-child) {
     translate: 2px 0;
   }
@@ -1221,7 +1245,9 @@
   touch-action: manipulation;
   transition:
     border-color var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
 .sp-drop[data-filled] {
   border-style: solid;
@@ -1243,9 +1269,18 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .sp-drop:active:not(:has(.sp-drop__input:disabled)) {
+    scale: 0.99;
+  }
+}
 @media (hover: hover) and (pointer: fine) {
   .sp-drop:hover {
     border-color: var(--color-ink);
+  }
+  .sp-drop:hover .sp-drop__action {
+    color: var(--color-tech);
+    text-decoration-color: var(--color-tech);
   }
 }
 .sp-drop__input {
@@ -1263,9 +1298,20 @@
 .sp-drop__icon {
   flex: none;
   color: var(--color-ink-subtle);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    translate var(--dur-fast) var(--ease-out);
 }
 .sp-drop[data-filled] .sp-drop__icon {
   color: var(--color-ink);
+}
+.sp-drop[data-drag] .sp-drop__icon {
+  color: var(--color-tech);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sp-drop[data-drag] .sp-drop__icon {
+    translate: 0 -2px;
+  }
 }
 .sp-drop__text {
   display: flex;
@@ -1295,6 +1341,9 @@
   text-decoration: underline;
   text-decoration-color: var(--rule-strong);
   text-underline-offset: 4px;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out);
 }
 /* "ลบไฟล์" sits under the drop zone, outside the label (a button may not live inside it). */
 .sp-drop__actions {
@@ -1436,6 +1485,24 @@
   font-weight: 600;
   line-height: 1.5;
   cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    scale var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sp-captcha .rw-btn:hover {
+    border-color: var(--color-ink);
+    background: var(--color-btn-ghost-hover);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sp-captcha .rw-btn:active {
+    scale: 0.975;
+  }
 }
 .sp-captcha .rw-btn:focus-visible {
   outline: 2px solid var(--color-tech);
@@ -1480,6 +1547,10 @@
     color var(--dur-fast) var(--ease-out),
     outline-offset var(--dur-fast) var(--ease-out);
 }
+.sp-contact__row:active {
+  color: var(--color-tech);
+  transition-duration: 0s;
+}
 /* global.css keeps every tel: anchor on one line; here only the number must stay unbroken. */
 .sp-contact__row[href^='tel:'] {
   white-space: normal;
@@ -1488,6 +1559,7 @@
   flex: none;
   margin-top: 3px;
   color: var(--color-ink-subtle);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 .sp-contact__text {
   display: flex;
@@ -1511,7 +1583,9 @@
   margin-left: auto;
   margin-top: 3px;
   color: var(--color-ink-subtle);
-  transition: translate var(--dur-fast) var(--ease-out);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    translate var(--dur-fast) var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .sp-contact__row:hover {
@@ -1521,6 +1595,8 @@
   .sp-contact__row:hover .sp-contact__ext {
     color: var(--color-tech);
   }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .sp-contact__row:hover .sp-contact__ext {
     translate: 2px -2px;
   }
@@ -1565,6 +1641,55 @@
   gap: 4px 24px;
 }
 
+/* ── Conditional form-group & feedback reveals (guarded by no-preference) ─── */
+@keyframes sp-reveal-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes sp-fade-up-sm {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes sp-mark-pop {
+  from {
+    opacity: 0;
+    scale: 0.86;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sp-method,
+  .sp-upload,
+  .sp-tax-group,
+  .sp-success {
+    animation: sp-reveal-in var(--dur-base) var(--ease-out);
+  }
+  .sp-success__mark {
+    animation: sp-mark-pop var(--dur-base) var(--ease-out);
+  }
+  .sp-error,
+  .sp-alert,
+  .sp-drop__actions,
+  .sp-copy-status[data-state] {
+    animation: sp-fade-up-sm var(--dur-fast) var(--ease-out);
+  }
+}
+
 /* ── Reduced motion (no motion on this page; keep state changes instant) ──── */
 @media (prefers-reduced-motion: reduce) {
   .sp-copy,
@@ -1574,11 +1699,24 @@
   .sp-btn .sp-ico,
   .sp-choice__pill,
   .sp-contact__row,
+  .sp-contact__row > svg:first-child,
   .sp-contact__row .sp-contact__ext,
   .sp-input,
-  .sp-drop {
+  .sp-drop,
+  .sp-drop__icon,
+  .sp-drop__action,
+  .sp-captcha .rw-btn {
     transition: none;
-    translate: none;
-    scale: none;
+  }
+  .sp-method,
+  .sp-upload,
+  .sp-tax-group,
+  .sp-success,
+  .sp-success__mark,
+  .sp-error,
+  .sp-alert,
+  .sp-drop__actions,
+  .sp-copy-status[data-state] {
+    animation: none;
   }
 }

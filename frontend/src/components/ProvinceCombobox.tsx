@@ -38,13 +38,22 @@ export function ProvinceCombobox({ id, value, onChange, onBlur, className, style
   useLayoutEffect(() => {
     const input = inputRef.current;
     if (!open || !input) return;
-    const rect = input.getBoundingClientRect();
-    const viewport = window.visualViewport?.height ?? window.innerHeight;
-    // Room left for sticky bars: the mobile action bar below, the progress bar or nav above.
-    const below = viewport - rect.bottom - 112;
-    const above = rect.top - 96;
-    const up = below < 200 && above > below;
-    setPlacement({ up, maxHeight: Math.max(160, Math.min(288, up ? above : below)) });
+    const update = () => {
+      const rect = input.getBoundingClientRect();
+      const viewport = window.visualViewport?.height ?? window.innerHeight;
+      // Room left for sticky bars: the mobile action bar below, the progress bar or nav above.
+      const below = viewport - rect.bottom - 112;
+      const above = rect.top - 96;
+      const up = below < 200 && above > below;
+      const maxHeight = Math.max(160, Math.min(288, up ? above : below));
+      setPlacement((prev) => (prev.up === up && prev.maxHeight === maxHeight ? prev : { up, maxHeight }));
+    };
+    update();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', update, { passive: true });
+    return () => {
+      vv?.removeEventListener('resize', update);
+    };
   }, [open]);
 
   // Keep the highlighted option visible by scrolling the list itself, never the page.

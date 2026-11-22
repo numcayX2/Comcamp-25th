@@ -68,10 +68,11 @@ import { AdminOverview } from './admin/AdminOverview';
 import { AdminLogistics, isMeaningfulNote } from './admin/AdminLogistics';
 import { AdminSideMenu } from './admin/AdminSideMenu';
 import { AdminFilterTabs } from './admin/AdminFilterTabs';
-import { MotionConfig, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { StatefulButton } from './admin/ui/StatefulButton';
 import { VanishSearchInput } from './admin/ui/VanishSearchInput';
-import { EXPAND, useDoneSignal } from './admin/ui/motion';
+import { RevealPanel } from './admin/ui/RevealPanel';
+import { EXPAND, FADE_EXIT, useDoneSignal } from './admin/ui/motion';
 import { SlipLightbox } from './slip/SlipLightbox';
 import {
   BG_CANVAS,
@@ -1665,50 +1666,60 @@ export function AdminSection() {
       )}
 
       {/* ── Floating toast feedback bar when logged in (visible anywhere on page without scrolling up) ── */}
-      {token && (error || actionSuccess) && (
+      {token && (
         <div
           className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:left-auto sm:right-6 sm:w-full sm:max-w-lg"
           aria-live="polite"
         >
-          {error && (
-            <div
-              role="alert"
-              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
-              style={{ backgroundColor: DANGER, borderColor: DANGER, color: 'var(--bg-canvas)' }}
-            >
-              <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
-                <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
+          <AnimatePresence initial={false}>
+            {error && (
+              <motion.div
+                key="toast-error"
+                role="alert"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0, transition: EXPAND }}
+                exit={{ opacity: 0, y: 6, transition: FADE_EXIT }}
+                className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
+                style={{ backgroundColor: DANGER, borderColor: DANGER, color: 'var(--bg-canvas)' }}
               >
-                ปิด
-              </button>
-            </div>
-          )}
+                <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
+                  <TriangleAlert aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current motion-reduce:transition-none"
+                >
+                  ปิด
+                </button>
+              </motion.div>
+            )}
 
-          {actionSuccess && (
-            <div
-              role="status"
-              className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
-              style={{ backgroundColor: SUCCESS, borderColor: SUCCESS, color: 'var(--color-on-success)' }}
-            >
-              <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
-                <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-                <span>{actionSuccess}</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => setActionSuccess(null)}
-                className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current"
+            {actionSuccess && (
+              <motion.div
+                key="toast-success"
+                role="status"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0, transition: EXPAND }}
+                exit={{ opacity: 0, y: 6, transition: FADE_EXIT }}
+                className="pointer-events-auto flex w-full items-start justify-between gap-4 rounded-xl border px-4 py-3.5 [box-shadow:var(--shadow-float)]"
+                style={{ backgroundColor: SUCCESS, borderColor: SUCCESS, color: 'var(--color-on-success)' }}
               >
-                ปิด
-              </button>
-            </div>
-          )}
+                <p className="flex items-start gap-2.5 text-sm font-semibold leading-6">
+                  <CircleCheck aria-hidden="true" size={18} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+                  <span>{actionSuccess}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActionSuccess(null)}
+                  className="-my-2 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold underline underline-offset-4 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current motion-reduce:transition-none"
+                >
+                  ปิด
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -1891,6 +1902,7 @@ export function AdminSection() {
                     canEdit={can.editSettings}
                     onAuthError={handleAuthError}
                     onUnhandledCount={setSponsorInquiryCount}
+                    visible={view === 'sponsors'}
                   />
                 </div>
               </div>
@@ -1955,7 +1967,7 @@ export function AdminSection() {
                 slipKey="SLIP_PENDING"
                 awaitKey="AWAITING_PAY"
                 overduePayCount={overduePayCount}
-                hidden={isWithdrawnTab}
+                hidden={isWithdrawnTab || view !== 'applications'}
                 groupRef={filterGroupRef}
               />
 
@@ -2115,8 +2127,8 @@ export function AdminSection() {
                     return (
                       <li
                         key={a.id}
-                        className={`border-b bg-[var(--bg-card)] transition-[margin,border-radius,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] last:border-b-0 motion-reduce:transition-none ${
-                          rowExpanded ? 'relative z-[1] mx-1.5 my-2 overflow-hidden rounded-[24px] border-b-0 [box-shadow:var(--shadow-float)] sm:mx-2' : ''
+                        className={`border-b bg-[var(--bg-card)] transition-[margin,border-radius,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] last:border-b-0 motion-reduce:transition-none ${
+                          rowExpanded ? 'relative z-[1] mx-1.5 my-2 rounded-[24px] border-b-0 [box-shadow:var(--shadow-float)] sm:mx-2' : ''
                         }`}
                         style={{ borderColor: RULE }}
                       >
@@ -2287,16 +2299,15 @@ export function AdminSection() {
                         </div>
 
                     {/* Every status change waits for a confirm: picking a value only proposes it. */}
-                    {pendingChange && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={EXPAND}
-                        role="region"
-                        aria-label={`ยืนยันการเปลี่ยนสถานะ ${a.id}`}
-                        className="border-t px-5 py-4"
-                        style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
-                      >
+                    <AnimatePresence initial={false}>
+                      {pendingChange && (
+                        <RevealPanel key="pending">
+                          <div
+                            role="region"
+                            aria-label={`ยืนยันการเปลี่ยนสถานะ ${a.id}`}
+                            className={`border-t px-5 py-4 ${!detailOpen && !editing && !(open && can.viewSlip) ? 'rounded-b-[24px]' : ''}`}
+                            style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
+                          >
                         <p className="text-sm font-semibold leading-7" style={{ color: INK }}>
                           เปลี่ยนสถานะ {a.fullName} จาก “{STATUS_LABELS[pendingChange.from]}” เป็น “{STATUS_LABELS[pendingChange.to]}”
                         </p>
@@ -2445,20 +2456,21 @@ export function AdminSection() {
                             </div>
                           </div>
                         )}
-                      </motion.div>
-                    )}
+                          </div>
+                        </RevealPanel>
+                      )}
+                    </AnimatePresence>
 
                     {/* Applicant details: expands under its own row */}
-                    {detailOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={EXPAND}
-                        className="border-t px-5 py-6"
-                        style={{ borderColor: RULE }}
-                        role="region"
-                        aria-label={`รายละเอียดใบสมัคร ${a.id}`}
-                      >
+                    <AnimatePresence initial={false}>
+                      {detailOpen && (
+                        <RevealPanel key="detail">
+                          <div
+                            className="border-t px-5 py-6"
+                            style={{ borderColor: RULE }}
+                            role="region"
+                            aria-label={`รายละเอียดใบสมัคร ${a.id}`}
+                          >
                         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
                           <div>
                             <p className="text-xs font-semibold" style={{ color: INK_3 }}>การยืนยันสิทธิ์เข้าร่วมค่าย</p>
@@ -2633,40 +2645,52 @@ export function AdminSection() {
                             )}
                           </div>
                         )}
-                      </motion.div>
-                    )}
+                          </div>
+                        </RevealPanel>
+                      )}
+                    </AnimatePresence>
 
                     {/* Profile editor: expands under its own row */}
-                    {editing && token && can.editProfile && (
-                      <motion.div className="px-5" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={EXPAND}>
-                        <AdminProfileEditor
-                          key={a.id}
-                          app={a}
-                          token={token}
-                          onSaved={onProfileSaved}
-                          onClose={() => {
-                            setEditingDirty(false);
-                            setEditingId(null);
-                          }}
-                          onAuthError={handleAuthError}
-                          onDirtyChange={setEditingDirty}
-                        />
-                      </motion.div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {editing && token && can.editProfile && (
+                        <RevealPanel key="edit">
+                          <div className="px-5">
+                            <AdminProfileEditor
+                              key={a.id}
+                              app={a}
+                              token={token}
+                              onSaved={onProfileSaved}
+                              onClose={() => {
+                                setEditingDirty(false);
+                                setEditingId(null);
+                              }}
+                              onAuthError={handleAuthError}
+                              onDirtyChange={setEditingDirty}
+                            />
+                          </div>
+                        </RevealPanel>
+                      )}
+                    </AnimatePresence>
 
                     {/* Slip review: expands under its own row */}
-                    {open && can.viewSlip && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={EXPAND}
-                        ref={slipPanelRef}
-                        tabIndex={-1}
-                        className={`grid gap-8 border-t px-5 py-6 md:grid-cols-[minmax(0,22rem)_1fr] ${FOCUS}`}
-                        style={{ borderColor: RULE }}
-                        role="region"
-                        aria-label={`ตรวจสอบหลักฐานการชำระเงิน ${a.id}`}
-                      >
+                    <AnimatePresence initial={false}>
+                      {open && can.viewSlip && (
+                        <RevealPanel key="slip">
+                          <div
+                            ref={(el) => {
+                              if (el) {
+                                slipPanelRef.current = el;
+                              } else if (slipPanelRef.current?.dataset.slipApp === a.id) {
+                                slipPanelRef.current = null;
+                              }
+                            }}
+                            data-slip-app={a.id}
+                            tabIndex={-1}
+                            className={`grid gap-8 border-t px-5 py-6 md:grid-cols-[minmax(0,22rem)_1fr] ${FOCUS}`}
+                            style={{ borderColor: RULE }}
+                            role="region"
+                            aria-label={`ตรวจสอบหลักฐานการชำระเงิน ${a.id}`}
+                          >
                         <div>
                           <div
                             className="flex min-h-48 items-center justify-center overflow-hidden rounded-xl border"
@@ -3120,8 +3144,10 @@ export function AdminSection() {
                             กด Esc เพื่อปิดหน้าตรวจสลิป
                           </p>
                         </div>
-                      </motion.div>
-                    )}
+                          </div>
+                        </RevealPanel>
+                      )}
+                    </AnimatePresence>
                       </li>
                     );
                   })}

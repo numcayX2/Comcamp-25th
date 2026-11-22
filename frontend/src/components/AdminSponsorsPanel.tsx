@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { ArrowDown, ArrowUp, CircleCheck, Pencil, Plus, Save, Trash2, TriangleAlert } from 'lucide-react';
 import { FileDropzone } from './admin/ui/FileDropzone';
+import { RevealPanel } from './admin/ui/RevealPanel';
 import { StatefulButton } from './admin/ui/StatefulButton';
-import { useDoneSignal } from './admin/ui/motion';
+import { EXPAND, SIZE_SPRING, useDoneSignal } from './admin/ui/motion';
 import {
   ApiHttpError,
   SPONSOR_LOGO_MAX_BYTES,
@@ -167,6 +169,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
   const deletingRef = useRef(false);
   const reorderingRef = useRef(false);
   const [saveDone, bumpSave] = useDoneSignal();
+  const listGroupId = useId();
 
   const busy = saving || deletingId !== null || reorderingId !== null;
   const editing = typeof formTarget === 'number' ? (sponsors?.find((s) => s.id === formTarget) ?? null) : null;
@@ -410,7 +413,10 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     const shownPreview = previewUrl ?? currentLogo;
     const previewAlt = nameInput.trim() || editing?.name || 'ตัวอย่างโลโก้';
     return (
-      <form
+      <motion.form
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={EXPAND}
         onSubmit={onSave}
         noValidate
         aria-busy={saving}
@@ -553,13 +559,13 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
             ยกเลิก
           </button>
         </div>
-      </form>
+      </motion.form>
     );
   }
 
   const panelId = 'admin-sponsors-body';
   const count = sponsors?.length ?? null;
-  const iconBtn = `inline-flex size-11 shrink-0 items-center justify-center rounded-full border transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-40 ${FOCUS}`;
+  const iconBtn = `inline-flex size-11 shrink-0 items-center justify-center rounded-full border transition-[background-color,color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] disabled:opacity-40 motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`;
 
   return (
     <section aria-label="ผู้สนับสนุน (หน้าแรก)">
@@ -617,13 +623,20 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
           )}
 
           {sponsors && sponsors.length > 0 && (
+            <LayoutGroup id={listGroupId}>
             <ol className="flex flex-col border-t" style={{ borderColor: RULE }} aria-label="ลำดับโลโก้บนหน้าแรก">
               {sponsors.map((s, i) => {
                 const confirming = confirmDeleteId === s.id;
                 const deleting = deletingId === s.id;
                 const moving = reorderingId === s.id;
                 return (
-                  <li key={s.id} className="border-b py-4" style={{ borderColor: RULE }}>
+                  <motion.li
+                    key={s.id}
+                    layout="position"
+                    transition={SIZE_SPRING}
+                    className="border-b py-4"
+                    style={{ borderColor: RULE }}
+                  >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
                         <span
@@ -727,53 +740,58 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
                       )}
                     </div>
 
-                    {canEdit && confirming && (
-                      <div
-                        id={`sponsor-delete-strip-${s.id}`}
-                        role="region"
-                        aria-label={`ยืนยันการลบ ${s.name}`}
-                        className="mt-4 rounded-xl border p-4"
-                        style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
-                      >
-                        <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
-                          <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
-                          <span className="min-w-0 break-words">ยืนยันลบ “{s.name}”?</span>
-                        </p>
-                        <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                          โลโก้จะหายจากหน้าแรกทันทีและลบไฟล์ออกจากเซิร์ฟเวอร์ กู้คืนไม่ได้
-                        </p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={deleting}
-                            aria-busy={deleting || undefined}
-                            onClick={() => onConfirmDelete(s)}
-                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                            style={{ borderColor: DANGER, color: DANGER }}
+                    <AnimatePresence initial={false}>
+                      {canEdit && confirming && (
+                        <RevealPanel key="confirm-delete">
+                          <div
+                            id={`sponsor-delete-strip-${s.id}`}
+                            role="region"
+                            aria-label={`ยืนยันการลบ ${s.name}`}
+                            className="mt-4 rounded-xl border p-4"
+                            style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
                           >
-                            {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={deleting}
-                            onClick={() => {
-                              setConfirmDeleteId(null);
-                              focusLater(`sponsor-delete-${s.id}`);
-                            }}
-                            className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                            style={{ color: INK_2 }}
-                          >
-                            ยกเลิก
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
+                              <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
+                              <span className="min-w-0 break-words">ยืนยันลบ “{s.name}”?</span>
+                            </p>
+                            <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
+                              โลโก้จะหายจากหน้าแรกทันทีและลบไฟล์ออกจากเซิร์ฟเวอร์ กู้คืนไม่ได้
+                            </p>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={deleting}
+                                aria-busy={deleting || undefined}
+                                onClick={() => onConfirmDelete(s)}
+                                className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-[background-color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`}
+                                style={{ borderColor: DANGER, color: DANGER }}
+                              >
+                                {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deleting}
+                                onClick={() => {
+                                  setConfirmDeleteId(null);
+                                  focusLater(`sponsor-delete-${s.id}`);
+                                }}
+                                className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                                style={{ color: INK_2 }}
+                              >
+                                ยกเลิก
+                              </button>
+                            </div>
+                          </div>
+                        </RevealPanel>
+                      )}
+                    </AnimatePresence>
 
                     {canEdit && formTarget === s.id && <div className="mt-4">{renderForm()}</div>}
-                  </li>
+                  </motion.li>
                 );
               })}
             </ol>
+            </LayoutGroup>
           )}
 
           {canEdit && sponsors && formTarget === 'new' && renderForm()}

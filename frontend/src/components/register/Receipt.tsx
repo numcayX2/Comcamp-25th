@@ -333,7 +333,7 @@ export function Receipt({
           <button type="button" className="rw-btn rw-btn--primary" onClick={() => onWithdrawn(appId, true)}>
             กลับไปหน้าสมัครค่าย
           </button>
-          <a href="/status" className="rw-btn rw-btn--ghost">
+          <a href="/status" className="rw-btn rw-btn--ghost rw-btn--forward">
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
@@ -487,7 +487,7 @@ export function Receipt({
             />
             <div className="rw-line-card__body">
               <p>สแกน QR หรือกดปุ่มด้านล่างเพื่อเข้ากลุ่ม รับข่าวสารและติดต่อสื่อสารกับพี่ค่ายก่อนวันจัดค่าย</p>
-              <a href={LINE_OPENCHAT_URL} target="_blank" rel="noopener noreferrer" className="rw-btn rw-btn--primary">
+              <a href={LINE_OPENCHAT_URL} target="_blank" rel="noopener noreferrer" className="rw-btn rw-btn--primary rw-btn--forward">
                 เข้ากลุ่ม LINE OpenChat ทันที
                 <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
               </a>
@@ -519,7 +519,7 @@ export function Receipt({
           </li>
         </ol>
         <div className="rw-actions">
-          <a href="/status" className="rw-btn rw-btn--ghost">
+          <a href="/status" className="rw-btn rw-btn--ghost rw-btn--forward">
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>

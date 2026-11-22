@@ -125,13 +125,8 @@ const tocItems = [
             </li>
           ))}
         </ul>
-        {/* Refraction for the glass marker. initGuideToc() draws the map and switches it on in Chromium only. */}
-        <svg class="gd-toc__filters" width="0" height="0" aria-hidden="true" focusable="false">
-          <filter id="gd-glass" filterUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
-            <feImage id="gd-glass-map" x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="map" />
-            <feDisplacementMap id="gd-glass-bend" in="SourceGraphic" in2="map" scale="0" xChannelSelector="R" yChannelSelector="G" />
-          </filter>
-        </svg>
+        {/* Aceternity Liquid Glass SVG filter host. initGuideToc() mounts fresh-ID Snell's-law + RGB aberration filters in Chromium. */}
+        <span class="gd-toc__filter-host" aria-hidden="true"></span>
       </div>
     </nav>
 
@@ -542,6 +537,13 @@ const tocItems = [
   import { API_BASE } from '../lib/api';
   import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
   import { formatBangkokTime, formatThaiDateFull } from '../lib/camp-facts';
+  import {
+    createLiquidGlassFilter,
+    detectLiquidGlassMode,
+    generateDisplacementMapUrl,
+    updateLiquidGlassScale,
+    type LiquidGlassFilterNodes,
+  } from '../lib/liquid-glass';
 
   function formatGuideDateTime(iso: string): string {
     return `${formatThaiDateFull(iso)} เวลา ${formatBangkokTime(iso)} น.`;
@@ -624,8 +626,17 @@ const tocItems = [
 
     const wide = window.matchMedia('(min-width: 900px)');
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    // Glass mode is worked out once and again only when one of these settings changes; paint()
+    // runs every spring frame and must not rebuild media queries or re-test CSS support each time.
+    const glassPrefs = [
+      '(prefers-reduced-transparency: reduce)',
+      '(prefers-contrast: more)',
+      '(forced-colors: active)',
+    ].map((q) => window.matchMedia(q));
+    let glassMode = detectLiquidGlassMode();
     let current: HTMLAnchorElement | null = null;
     let lockUntil = 0;
+    let lockTimer = 0;
     let tick = 0;
 
     // The marker and the rail end ride one critically damped spring (damping ratio 1, response
@@ -634,102 +645,258 @@ const tocItems = [
     const RESPONSE_S = 0.35;
     const STIFFNESS = (2 * Math.PI / RESPONSE_S) ** 2;
     const DAMPING = (4 * Math.PI) / RESPONSE_S;
+    const SUBSTEP = 1 / 240;
+    const MAX_DT = 0.05;
     const springY = { x: 0, v: 0, to: 0 };
     const springH = { x: 0, v: 0, to: 0 };
     let railTop = 0;
     let railHeight = 0;
+    let markerWidth = 0;
     let placed = false;
     let frame = 0;
     let lastFrame = 0;
+    let layoutRaf = 0;
 
-    // Glass marker. In Chromium the pill sits over the links and bends what passes under its rim
-    // through the SVG displacement map in the markup (`backdrop-filter: url()` is Chromium-only). The
-    // bend grows with the spring's speed, so text flexes while the pill glides and lies flat once it
-    // rests. Other engines keep the frosted pill behind the text (guide.css).
+    // Aceternity Liquid Glass marker:
+    // - Chromium ('refract'): Snell's-law squircle-dome displacement map (pre-decoded PNG blob URL)
+    //   + RGB chromatic-aberration SVG filter applied via `backdrop-filter: url(#id)`. The interior
+    //   plateau stays optically flat so active Thai text stays razor-sharp, while the curved 11px
+    //   bevel bends light & swells smoothly as the spring glides over neighbouring links.
+    // - Safari / Firefox ('simple'): Aceternity frosted glass fallback behind text.
+    // - Reduced transparency / high contrast / forced colors ('opaque'): solid pill behind text.
+    // At rest the bend is 0, so the active label inside the pill is as sharp as plain text; the rim
+    // bends only while the pill glides (AGENTS.md §0.2 /guide). Reduced motion keeps it at 0.
     const marker = toc.querySelector<HTMLElement>('.gd-toc__marker');
-    const glassFilter = document.getElementById('gd-glass');
-    const glassMap = document.getElementById('gd-glass-map');
-    const glassBend = document.getElementById('gd-glass-bend');
-    const uaBrands = (navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] } })
-      .userAgentData?.brands;
-    const refract = !!(marker && glassFilter && glassMap && glassBend && uaBrands?.some((b) => b.brand === 'Chromium'));
-    // feDisplacementMap moves a pixel by up to scale / 2, so at full bend the rim reaches 20px past
-    // the pill and pulls the neighbouring label in, squeezed hard against the edge (heavy glass).
-    const BEND_MAX = 40;
-    const BEND_PER_SPEED = 0.08; // scale per px/s of marker speed: a one-row step (~300 px/s) ≈ 24
-    const glassMaps = new Map<string, string>();
+    const filterHost = toc.querySelector<HTMLElement>('.gd-toc__filter-host');
+    const GLASS_RADIUS = 999;
+    const GLASS_BEVEL = 11;
+    const GLASS_SCALE_REST = 0;
+    const GLASS_SCALE_MAX = 48;
+    const GLASS_ABERRATION_REST = 0;
+    const GLASS_ABERRATION_MAX = 5;
+    const GLASS_FROST = 0;
+    const GLASS_SPEED_SATURATE = 320; // px/s spring speed that reaches full Aceternity 48px refraction
+
+    interface CachedMap {
+      url: string;
+      isBlob: boolean;
+    }
+    const glassMaps = new Map<string, CachedMap>();
+    let activeFilter: LiquidGlassFilterNodes | null = null;
     let glassKey = '';
-    // Displacement map for a w × h pill shaped like a thick glass dome: neutral on the centre line
-    // and pointing outward along the edge normal, rising with the cube of the distance so the middle
-    // stays clear and the bend piles up at the rim, where what lies just beyond the pill shows
-    // squeezed. The vertical pull is stronger mid-pill than near the ends, so a label crossing the
-    // top or bottom edge bows into an arc. R / G carry x / y around 128.
-    const drawGlassMap = (w: number, h: number): string => {
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return '';
-      const img = ctx.createImageData(w, h);
-      const r = h / 2;
-      // Outward pull grows with the cube of the distance from the centre line (0 → 1 at the rim).
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          // Offset from the pill's centre line; its length is the distance from that line.
-          const dx = x + 0.5 - Math.min(Math.max(x + 0.5, r), w - r);
-          const dy = y + 0.5 - r;
-          const dist = Math.hypot(dx, dy);
-          const k = dist > 0 ? Math.min(1, dist / r) ** 3 / dist : 0;
-          const across = (x + 0.5) / w * 2 - 1;
-          const bow = 1 - 0.5 * across * across;
-          const i = (y * w + x) * 4;
-          img.data[i] = 128 + dx * k * 127;
-          img.data[i + 1] = 128 + dy * k * bow * 127;
-          img.data[i + 2] = 128;
-          img.data[i + 3] = 255;
-        }
+    let pendingGlassKey = '';
+    let glassBuildSeq = 0;
+    let glassFilterCounter = 0;
+    let lastMapWidth = 0;
+    let glassResizeTimer = 0;
+    let lastGlassH = '';
+    let lastGlassScale = '';
+    let lastMarkerY = '';
+    let lastMarkerH = '';
+    let lastProgress = '';
+
+    const revokeGlassMaps = () => {
+      for (const entry of glassMaps.values()) {
+        if (entry.isBlob) URL.revokeObjectURL(entry.url);
       }
-      ctx.putImageData(img, 0, 0);
-      return canvas.toDataURL();
+      glassMaps.clear();
     };
-    const paintGlass = () => {
-      if (!refract || !marker || !glassFilter || !glassMap || !glassBend) return;
-      const w = marker.offsetWidth;
+
+    const getGlassDynamics = (): { scale: number; aberration: number } => {
+      if (reduceMotion.matches) {
+        return { scale: GLASS_SCALE_REST, aberration: GLASS_ABERRATION_REST };
+      }
+      const speed = Math.abs(springY.v) + Math.abs(springH.v);
+      const boost = Math.min(1, speed / GLASS_SPEED_SATURATE);
+      return {
+        scale: GLASS_SCALE_REST + (GLASS_SCALE_MAX - GLASS_SCALE_REST) * boost,
+        aberration: GLASS_ABERRATION_REST + (GLASS_ABERRATION_MAX - GLASS_ABERRATION_REST) * boost,
+      };
+    };
+
+    const resetGlassBend = () => {
+      if (!activeFilter) return;
+      const restingKey = `${GLASS_SCALE_REST.toFixed(2)}:${GLASS_ABERRATION_REST.toFixed(2)}`;
+      if (lastGlassScale === restingKey) return;
+      updateLiquidGlassScale(activeFilter, GLASS_SCALE_REST, GLASS_ABERRATION_REST);
+      lastGlassScale = restingKey;
+    };
+
+    const teardownGlassFilter = () => {
+      glassBuildSeq += 1;
+      pendingGlassKey = '';
+      glassKey = '';
+      activeFilter = null;
+      lastGlassH = '';
+      lastGlassScale = '';
+      filterHost?.replaceChildren();
+      marker?.style.removeProperty('--gd-glass-filter');
+    };
+
+    const mountLiquidGlass = (w: number, h: number, mapUrl: string) => {
+      if (!marker || !filterHost) return;
+      // Fresh ID per rebuild because Chromium caches SVG filter output by ID.
+      glassFilterCounter += 1;
+      const id = `lg-toc-${w}x${h}-${glassFilterCounter.toString(36)}`;
+      const { scale, aberration } = getGlassDynamics();
+      const nodes = createLiquidGlassFilter({
+        id,
+        mapUrl,
+        width: w,
+        height: Math.max(1, springH.x || h),
+        scale,
+        maxScale: GLASS_SCALE_MAX,
+        aberration,
+        maxAberration: GLASS_ABERRATION_MAX,
+        frost: GLASS_FROST,
+      });
+      filterHost.replaceChildren(nodes.svg);
+      activeFilter = nodes;
+      glassKey = `${w}x${h}`;
+      lastGlassH = Math.max(1, springH.x || h).toFixed(2);
+      lastGlassScale = `${scale.toFixed(2)}:${aberration.toFixed(2)}`;
+      marker.style.setProperty('--gd-glass-filter', `url(#${id})`);
+      if (toc.dataset.glass !== 'refract') toc.dataset.glass = 'refract';
+    };
+
+    const applyGlassMap = (w: number, h: number) => {
+      if (!marker || !filterHost || w <= 0 || h <= 0) return;
+      const key = `${w}x${h}`;
+      if (key === glassKey || key === pendingGlassKey) return;
+
+      // Width changed (viewport resize): drop maps from the previous width so memory stays tiny.
+      if (w !== lastMapWidth) {
+        revokeGlassMaps();
+        lastMapWidth = w;
+      }
+
+      const cached = glassMaps.get(key);
+      if (cached) {
+        pendingGlassKey = '';
+        mountLiquidGlass(w, h, cached.url);
+        return;
+      }
+
+      const seq = ++glassBuildSeq;
+      pendingGlassKey = key;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      generateDisplacementMapUrl({
+        width: w,
+        height: h,
+        radius: Math.min(GLASS_RADIUS, w / 2, h / 2),
+        bevelDepth: Math.min(GLASS_BEVEL, Math.min(w, h) / 2),
+        dpr,
+      })
+        .then((entry) => {
+          if (signal.aborted || seq !== glassBuildSeq || !wide.matches || glassMode !== 'refract') {
+            if (entry.isBlob) URL.revokeObjectURL(entry.url);
+            return;
+          }
+          pendingGlassKey = '';
+          const existing = glassMaps.get(key);
+          if (existing && existing.isBlob) URL.revokeObjectURL(existing.url);
+          glassMaps.set(key, entry);
+          mountLiquidGlass(w, h, entry.url);
+        })
+        .catch(() => {
+          if (seq === glassBuildSeq) pendingGlassKey = '';
+        });
+    };
+
+    const paintGlass = (deferWidthRedraw = false) => {
+      if (!marker) return;
+      if (!wide.matches) {
+        if (toc.dataset.glass) delete toc.dataset.glass;
+        return;
+      }
+
+      const mode = glassMode;
+      if (mode === 'opaque') {
+        teardownGlassFilter();
+        if (toc.dataset.glass !== 'opaque') toc.dataset.glass = 'opaque';
+        return;
+      }
+      if (mode === 'simple' || !filterHost) {
+        teardownGlassFilter();
+        if (toc.dataset.glass !== 'simple') toc.dataset.glass = 'simple';
+        return;
+      }
+
+      const w = markerWidth;
       const h = Math.round(springH.to);
       if (w <= 0 || h <= 0) return;
+
+      // Keep the frosted pill visible for the few ms while the first PNG displacement map decodes.
+      if (!activeFilter && toc.dataset.glass !== 'simple') {
+        toc.dataset.glass = 'simple';
+      }
+
       const key = `${w}x${h}`;
-      if (key !== glassKey) {
-        let url = glassMaps.get(key);
-        if (!url) {
-          url = drawGlassMap(w, h);
-          glassMaps.set(key, url);
+      if (key !== glassKey && key !== pendingGlassKey) {
+        if (deferWidthRedraw && glassKey && w !== lastMapWidth) {
+          // While resizing the window, keep the active filter and rebuild once resize settles.
+          window.clearTimeout(glassResizeTimer);
+          glassResizeTimer = window.setTimeout(() => {
+            glassResizeTimer = 0;
+            if (signal.aborted || !wide.matches || glassMode !== 'refract') return;
+            applyGlassMap(markerWidth, Math.round(springH.to));
+          }, 120);
+        } else {
+          window.clearTimeout(glassResizeTimer);
+          glassResizeTimer = 0;
+          applyGlassMap(w, h);
         }
-        if (!url) return;
-        glassMap.setAttribute('href', url);
-        glassKey = key;
       }
-      // The map is drawn for the target height and stretched while the height spring catches up.
-      for (const el of [glassFilter, glassMap]) {
-        el.setAttribute('width', String(w));
-        el.setAttribute('height', springH.x.toFixed(2));
+      if (!activeFilter) return;
+
+      // Stretch feImage height cleanly while springH interpolates between 1-line and 2-line items.
+      const hStr = Math.max(1, springH.x).toFixed(2);
+      if (hStr !== lastGlassH) {
+        activeFilter.image.setAttribute('height', hStr);
+        lastGlassH = hStr;
       }
-      // Flat at rest (the label in the pill stays crisp); the rim bends only while the pill moves.
-      const speed = Math.abs(springY.v) + Math.abs(springH.v);
-      glassBend.setAttribute('scale', Math.min(BEND_MAX, speed * BEND_PER_SPEED).toFixed(2));
+
+      // Live Snell's-law refraction + RGB aberration: crisp resting rim, stronger bend while gliding.
+      const { scale, aberration } = getGlassDynamics();
+      const scaleKey = `${scale.toFixed(2)}:${aberration.toFixed(2)}`;
+      if (scaleKey !== lastGlassScale) {
+        updateLiquidGlassScale(activeFilter, scale, aberration);
+        lastGlassScale = scaleKey;
+      }
       if (toc.dataset.glass !== 'refract') toc.dataset.glass = 'refract';
+    };
+
+    // Cached layout metrics for every ToC link (measured outside the spring rAF loop to avoid
+    // read-after-write layout thrashing). Preserves `zoom` so unchanged links skip style writes.
+    const LENS_ZOOM = 0.06;
+    interface LinkMetric {
+      link: HTMLAnchorElement;
+      top: number;
+      height: number;
+      mid: number;
+      zoom: string;
+    }
+    const linkMetrics: LinkMetric[] = items.map(({ link }) => ({ link, top: 0, height: 0, mid: 0, zoom: '' }));
+    const metricByLink = new Map<HTMLAnchorElement, LinkMetric>(linkMetrics.map((m) => [m.link, m]));
+
+    const measureToc = () => {
+      railTop = rail?.offsetTop ?? 0;
+      railHeight = rail?.offsetHeight ?? 0;
+      markerWidth = wide.matches ? (marker?.offsetWidth || list.offsetWidth) : 0;
+      for (const box of linkMetrics) {
+        box.top = box.link.offsetTop;
+        box.height = box.link.offsetHeight;
+        box.mid = box.top + box.height / 2;
+      }
     };
 
     // Lens zoom: a label grows as the glass passes over it, up to LENS_ZOOM when the pill is centred
     // on it, so the highlighted title reads as magnified and the next one swells as the pill arrives.
     // Driven by the same spring, written as --gd-lens per link; guide.css scales the label with it.
-    const LENS_ZOOM = 0.06;
-    let lensBoxes: { link: HTMLAnchorElement; mid: number; zoom: string }[] = [];
-    const measureLens = () => {
-      lensBoxes = items.map(({ link }) => ({ link, mid: link.offsetTop + link.offsetHeight / 2, zoom: '' }));
-    };
     const paintLens = (on: boolean) => {
       const centre = springY.x + springH.x / 2;
-      for (const box of lensBoxes) {
+      for (const box of linkMetrics) {
         const t = on && springH.x > 0 ? Math.max(0, 1 - Math.abs(box.mid - centre) / springH.x) : 0;
         const zoom = (1 + LENS_ZOOM * t * t * (3 - 2 * t)).toFixed(4);
         if (zoom === box.zoom) continue;
@@ -738,31 +905,47 @@ const tocItems = [
       }
     };
 
-    const paint = () => {
-      track.style.setProperty('--gd-marker-y', `${springY.x.toFixed(2)}px`);
-      track.style.setProperty('--gd-marker-h', `${springH.x.toFixed(2)}px`);
+    const paint = (deferWidthRedraw = false) => {
+      const yStr = `${springY.x.toFixed(2)}px`;
+      const hStr = `${springH.x.toFixed(2)}px`;
+      if (yStr !== lastMarkerY) {
+        track.style.setProperty('--gd-marker-y', yStr);
+        lastMarkerY = yStr;
+      }
+      if (hStr !== lastMarkerH) {
+        track.style.setProperty('--gd-marker-h', hStr);
+        lastMarkerH = hStr;
+      }
       // The rail fills down to the dot beside the marker, so the line always ends at the dot.
       if (railHeight > 0) {
         const dot = springY.x + springH.x / 2 - railTop;
-        track.style.setProperty('--gd-progress', Math.min(1, Math.max(0, dot / railHeight)).toFixed(4));
+        const progressStr = Math.min(1, Math.max(0, dot / railHeight)).toFixed(4);
+        if (progressStr !== lastProgress) {
+          track.style.setProperty('--gd-progress', progressStr);
+          lastProgress = progressStr;
+        }
       }
+      // Reduced motion: the marker is placed without gliding, so the active label shows magnified at once.
       paintLens(wide.matches);
-      paintGlass();
+      paintGlass(deferWidthRedraw);
     };
 
     const step = (now: number) => {
-      const dt = Math.min(0.064, (now - lastFrame) / 1000);
+      // Clamp dt to 50ms so returning from a background tab or a slow frame never overshoots or stalls,
+      // and treat a non-positive first-frame delta as one 120Hz step so motion begins without a 1-frame hitch.
+      const rawDt = lastFrame > 0 ? (now - lastFrame) / 1000 : 1 / 120;
+      const dt = rawDt <= 0 ? 1 / 120 : Math.min(MAX_DT, rawDt);
       lastFrame = now;
-      // Fixed sub-steps keep the integration stable when a frame arrives late.
-      for (let left = dt; left > 0; left -= 1 / 240) {
-        const h = Math.min(1 / 240, left);
+      // Fixed 1/240s sub-steps keep symplectic integration stable across 60Hz/120Hz displays.
+      for (let left = dt; left > 0; left -= SUBSTEP) {
+        const h = Math.min(SUBSTEP, left);
         for (const s of [springY, springH]) {
           s.v += (-STIFFNESS * (s.x - s.to) - DAMPING * s.v) * h;
           s.x += s.v * h;
         }
       }
-      // Sub-pixel remainders are invisible; stop the loop there instead of chasing the long tail.
-      const settled = [springY, springH].every((s) => Math.abs(s.x - s.to) < 0.3 && Math.abs(s.v) < 2);
+      // Sub-pixel remainders are invisible; settle tightly to zero velocity (crisp scale = 0, zero idle CPU).
+      const settled = [springY, springH].every((s) => Math.abs(s.x - s.to) < 0.15 && Math.abs(s.v) < 1.2);
       if (settled) {
         for (const s of [springY, springH]) {
           s.x = s.to;
@@ -774,20 +957,27 @@ const tocItems = [
     };
 
     // `instant` places without motion: first appearance, layout changes and reduced motion.
-    const placeMarker = (instant = false) => {
+    const placeMarker = (instant = false, remeasure = false, deferWidthRedraw = false) => {
       if (!current) {
         placed = false;
         cancelAnimationFrame(frame);
         frame = 0;
-        track.style.setProperty('--gd-progress', '0');
+        lastFrame = 0;
+        if (lastProgress !== '0') {
+          track.style.setProperty('--gd-progress', '0');
+          lastProgress = '0';
+        }
         paintLens(false);
+        resetGlassBend();
         return;
       }
-      railTop = rail?.offsetTop ?? 0;
-      railHeight = rail?.offsetHeight ?? 0;
-      measureLens();
-      springY.to = current.offsetTop;
-      springH.to = current.offsetHeight;
+      if (remeasure || (wide.matches && markerWidth === 0)) {
+        measureToc();
+      }
+      const box = metricByLink.get(current);
+      if (!box) return;
+      springY.to = box.top;
+      springH.to = box.height;
       if (instant || !placed || reduceMotion.matches || !wide.matches) {
         for (const s of [springY, springH]) {
           s.x = s.to;
@@ -795,12 +985,13 @@ const tocItems = [
         }
         cancelAnimationFrame(frame);
         frame = 0;
+        lastFrame = 0;
         placed = true;
-        paint();
+        paint(deferWidthRedraw);
         return;
       }
       if (!frame) {
-        lastFrame = performance.now();
+        lastFrame = 0;
         frame = requestAnimationFrame(step);
       }
     };
@@ -816,20 +1007,24 @@ const tocItems = [
       }
       link.setAttribute('aria-current', 'true');
       // Shown first, so the glass can measure the marker on its first placement.
-      toc.setAttribute('data-spy', '');
-      placeMarker();
+      const firstReveal = !toc.hasAttribute('data-spy');
+      if (firstReveal) toc.setAttribute('data-spy', '');
+      placeMarker(false, firstReveal);
       // Mobile: the chips scroll sideways; bring the active one into view without moving the page.
       if (!wide.matches && list.scrollWidth > list.clientWidth) {
         const left = link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2;
-        list.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+        list.scrollTo({ left: Math.max(0, left), behavior: reduceMotion.matches ? 'auto' : 'smooth' });
       }
     };
 
     const update = () => {
       tick = 0;
+      if (lockUntil) {
+        if (performance.now() < lockUntil) return;
+        lockUntil = 0;
+      }
       const probe = Math.max(120, Math.round(window.innerHeight * 0.3));
       const box = content.getBoundingClientRect();
-      if (performance.now() < lockUntil) return;
       const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       let active: HTMLAnchorElement | null = null;
       for (const it of items) {
@@ -842,11 +1037,79 @@ const tocItems = [
       if (!tick) tick = requestAnimationFrame(update);
     };
 
+    // Mobile chip row: fade the edge that has more chips behind it, so the row reads as scrollable.
+    const markEdges = () => {
+      const max = list.scrollWidth - list.clientWidth;
+      list.toggleAttribute('data-more-start', !wide.matches && list.scrollLeft > 2);
+      list.toggleAttribute('data-more-end', !wide.matches && max - list.scrollLeft > 2);
+    };
+
+    const scheduleRelayout = (deferWidthRedraw = true) => {
+      if (layoutRaf) return;
+      layoutRaf = requestAnimationFrame(() => {
+        layoutRaf = 0;
+        if (signal.aborted) return;
+        measureToc();
+        placeMarker(true, false, deferWidthRedraw);
+        markEdges();
+        request();
+      });
+    };
+
+    // Re-measure ToC links when the sidebar resizes and re-check scroll-spy when FAQ accordions
+    // or live settings change the reading column height.
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastListW = -1;
+      let lastListH = -1;
+      let lastContentH = -1;
+      resizeObserver = new ResizeObserver((entries) => {
+        if (signal.aborted) return;
+        let listChanged = false;
+        let contentChanged = false;
+        for (const entry of entries) {
+          const { width: w, height: h } = entry.contentRect;
+          if (entry.target === list) {
+            if (lastListW < 0) {
+              lastListW = w;
+              lastListH = h;
+            } else if (Math.abs(w - lastListW) > 0.5 || Math.abs(h - lastListH) > 0.5) {
+              lastListW = w;
+              lastListH = h;
+              listChanged = true;
+            }
+          } else if (entry.target === content) {
+            if (lastContentH < 0) {
+              lastContentH = h;
+            } else if (Math.abs(h - lastContentH) > 1) {
+              lastContentH = h;
+              contentChanged = true;
+            }
+          }
+        }
+        if (listChanged) scheduleRelayout(true);
+        else if (contentChanged) request();
+      });
+      resizeObserver.observe(list);
+      resizeObserver.observe(content);
+    }
+
     signal.addEventListener('abort', () => {
       cancelAnimationFrame(frame);
       cancelAnimationFrame(tick);
+      cancelAnimationFrame(layoutRaf);
+      window.clearTimeout(lockTimer);
+      window.clearTimeout(glassResizeTimer);
+      resizeObserver?.disconnect();
       frame = 0;
       tick = 0;
+      layoutRaf = 0;
+      lockTimer = 0;
+      glassResizeTimer = 0;
+      teardownGlassFilter();
+      revokeGlassMaps();
+      delete toc.dataset.glass;
+      delete toc.dataset.spyBound;
     });
 
     // A ToC click marks its target right away and holds it while the smooth scroll passes the
@@ -854,16 +1117,25 @@ const tocItems = [
     list.addEventListener('click', (e) => {
       const link = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.gd-toc__link');
       if (!link) return;
-      lockUntil = performance.now() + 1200;
+      const holdMs = reduceMotion.matches ? 150 : 1200;
+      lockUntil = performance.now() + holdMs;
       setActive(link);
       // Browsers without `scrollend` (older Safari) re-check once the lock has run out.
-      window.setTimeout(() => { if (!signal.aborted) request(); }, 1250);
-    });
+      window.clearTimeout(lockTimer);
+      lockTimer = window.setTimeout(() => {
+        lockTimer = 0;
+        if (signal.aborted) return;
+        lockUntil = 0;
+        request();
+      }, holdMs + 50);
+    }, { signal });
     // The reader takes over mid-scroll (wheel, finger, scroll keys): drop the hold at once so the
     // marker follows what they do instead of staying parked on the clicked target.
     const release = () => {
       if (!lockUntil) return;
       lockUntil = 0;
+      window.clearTimeout(lockTimer);
+      lockTimer = 0;
       request();
     };
     window.addEventListener('wheel', release, { passive: true, signal });
@@ -874,34 +1146,30 @@ const tocItems = [
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) release();
     }, { signal });
     window.addEventListener('scrollend', () => {
-      lockUntil = 0;
+      if (lockUntil) {
+        lockUntil = 0;
+        window.clearTimeout(lockTimer);
+        lockTimer = 0;
+      }
       request();
     }, { signal });
     window.addEventListener('scroll', request, { passive: true, signal });
 
-    // Mobile chip row: fade the edge that has more chips behind it, so the row reads as scrollable.
-    const markEdges = () => {
-      const max = list.scrollWidth - list.clientWidth;
-      list.toggleAttribute('data-more-start', !wide.matches && list.scrollLeft > 2);
-      list.toggleAttribute('data-more-end', !wide.matches && max - list.scrollLeft > 2);
-    };
-    list.addEventListener('scroll', markEdges, { passive: true });
-    window.addEventListener('resize', () => {
-      placeMarker(true);
-      markEdges();
-      request();
-    }, { signal });
-    wide.addEventListener?.('change', () => {
-      placeMarker(true);
-      markEdges();
-      request();
-    }, { signal });
+    list.addEventListener('scroll', markEdges, { passive: true, signal });
+    window.addEventListener('resize', () => scheduleRelayout(true), { signal });
+    wide.addEventListener?.('change', () => scheduleRelayout(false), { signal });
+    reduceMotion.addEventListener?.('change', () => placeMarker(true), { signal });
+    for (const mq of glassPrefs) {
+      mq.addEventListener?.('change', () => {
+        glassMode = detectLiquidGlassMode();
+        paintGlass(false);
+      }, { signal });
+    }
     document.fonts?.ready.then(() => {
       if (signal.aborted) return;
-      placeMarker(true);
-      markEdges();
-      request();
+      scheduleRelayout(false);
     });
+    measureToc();
     markEdges();
     update();
   }

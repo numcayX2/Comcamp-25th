@@ -207,6 +207,8 @@ export default function SponsorInquiryForm() {
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   const kindRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadAnchorRef = useRef<HTMLFieldSetElement>(null);
+  const uploadScrollRafRef = useRef(0);
   const successRef = useRef<HTMLDivElement>(null);
   /** Latest `done` for the document-level link listener, which is bound once. */
   const doneRef = useRef<Mode | null>(null);
@@ -221,14 +223,34 @@ export default function SponsorInquiryForm() {
     }
   }, [done]);
 
+  function scrollUploadIntoView(force = false) {
+    window.cancelAnimationFrame(uploadScrollRafRef.current);
+    // Double-rAF waits until React commits the newly revealed .sp-method / .sp-upload layout.
+    uploadScrollRafRef.current = window.requestAnimationFrame(() => {
+      uploadScrollRafRef.current = window.requestAnimationFrame(() => {
+        uploadScrollRafRef.current = 0;
+        const target = uploadAnchorRef.current;
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        const comfortablyVisible = rect.top >= 64 && rect.top <= window.innerHeight * 0.7;
+        if (!force && comfortablyVisible) return;
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      });
+    });
+  }
+
   useEffect(() => {
     setHydrated(true);
     const syncHash = () => {
-      if (window.location.hash === UPLOAD_HASH && !busyRef.current) openUpload();
+      if (window.location.hash === UPLOAD_HASH && !busyRef.current) openUpload({ scroll: true });
     };
     syncHash();
     window.addEventListener('hashchange', syncHash);
-    return () => window.removeEventListener('hashchange', syncHash);
+    return () => {
+      window.removeEventListener('hashchange', syncHash);
+      window.cancelAnimationFrame(uploadScrollRafRef.current);
+    };
   }, []);
 
   // A link to #sponsor-upload clicked again (hash already set) fires no hashchange.
@@ -236,7 +258,7 @@ export default function SponsorInquiryForm() {
     const onUploadLinkClick = (event: MouseEvent) => {
       if (busyRef.current) return;
       if (!(event.target instanceof Element) || !event.target.closest(`a[href="${UPLOAD_HASH}"]`)) return;
-      openUpload();
+      openUpload({ scroll: true, forceScroll: window.location.hash === UPLOAD_HASH });
     };
     document.addEventListener('click', onUploadLinkClick);
     return () => document.removeEventListener('click', onUploadLinkClick);
@@ -276,7 +298,7 @@ export default function SponsorInquiryForm() {
   }
 
   /** Any route into the upload mode (hash, link click) — also from the success panel, as a fresh form. */
-  function openUpload() {
+  function openUpload(options?: { scroll?: boolean; forceScroll?: boolean }) {
     if (doneRef.current) {
       clearFields();
       setDone(null);
@@ -285,6 +307,7 @@ export default function SponsorInquiryForm() {
     setMode('file');
     setErrors({});
     setFormError(null);
+    if (options?.scroll) scrollUploadIntoView(Boolean(options.forceScroll));
   }
 
   function clearUploadHash() {
@@ -648,6 +671,7 @@ export default function SponsorInquiryForm() {
 
             <fieldset
               id="sponsor-upload"
+              ref={uploadAnchorRef}
               className="sp-fieldset sp-kind sp-field--full"
               aria-describedby={`sp-kind-hint${errors.kind ? ' sp-kind-err' : ''}`}
             >
@@ -923,7 +947,7 @@ export default function SponsorInquiryForm() {
             </div>
 
             {kind === 'money' && !fileMode && (
-              <>
+              <div className="sp-tax-group sp-field--full">
                 <div className="sp-field sp-field--full mt-1 border-t border-[var(--color-border)] pt-5">
                   <h3 className="m-0 text-base font-bold leading-[1.45] text-[var(--color-ink)]">
                     ข้อมูลสำหรับออกเอกสารลดหย่อนภาษี
@@ -1138,7 +1162,7 @@ export default function SponsorInquiryForm() {
                     </p>
                   )}
                 </div>
-              </>
+              </div>
             )}
 
             <div className="sp-field sp-field--full">

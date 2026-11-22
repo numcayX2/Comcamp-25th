@@ -253,13 +253,18 @@
     background: var(--color-btn-ghost-hover);
     border-color: var(--color-ink);
   }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .gd-btn:hover .gd-ico:last-child:not(:first-child) {
     translate: 3px 0;
   }
 }
 
-.gd-btn:active:not(:disabled):not([aria-disabled="true"]) {
-  scale: 0.975;
+@media (prefers-reduced-motion: no-preference) {
+  .gd-btn:active:not(:disabled):not([aria-disabled="true"]) {
+    scale: 0.975;
+  }
 }
 
 .gd-btn:focus-visible,
@@ -288,10 +293,22 @@
   }
 }
 
+:root {
+  --gd-in-oklab: ;
+}
+@supports (background: linear-gradient(in oklab, white, black)) {
+  :root {
+    --gd-in-oklab: in oklab;
+  }
+}
+
 /* On-page contents: horizontal pill row on <900px, sticky vertical list on >=900px. */
 .gd-toc {
-  /* Light catching the glass marker's top edge: white paper in light mode, a faint ink glint in dark. */
+  /* Aceternity Liquid Glass surface tokens (derived strictly from global.css tokens via oklab). */
   --gd-glass-hi: var(--bg-card);
+  --gd-glass-tint: color-mix(in oklab, var(--bg-card) 16%, transparent);
+  --gd-glass-simple-bg: color-mix(in oklab, var(--bg-card) 72%, transparent);
+  --gd-glass-inset-lo: color-mix(in oklab, var(--color-ink) 10%, transparent);
   min-width: 0;
   border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
@@ -300,14 +317,19 @@
 }
 html.dark .gd-toc,
 html[data-theme="dark"] .gd-toc {
-  --gd-glass-hi: color-mix(in srgb, var(--color-ink) 14%, transparent);
+  --gd-glass-hi: color-mix(in oklab, var(--color-ink) 26%, transparent);
+  --gd-glass-tint: color-mix(in oklab, var(--color-ink) 6%, transparent);
+  --gd-glass-simple-bg: color-mix(in oklab, var(--bg-card) 62%, transparent);
+  --gd-glass-inset-lo: color-mix(in oklab, var(--color-ink) 8%, transparent);
 }
-/* Holds the #gd-glass SVG filter; takes no space and is never painted. */
+/* Holds the mounted Liquid Glass SVG filter; takes no space and is never painted. */
+.gd-toc__filter-host,
 .gd-toc__filters {
   position: absolute;
   width: 0;
   height: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .gd-toc__heading {
@@ -359,8 +381,10 @@ html[data-theme="dark"] .gd-toc {
     outline-offset var(--dur-fast) var(--ease-out);
 }
 
-.gd-toc__link:active:not([aria-disabled="true"]) {
-  scale: 0.98;
+@media (prefers-reduced-motion: no-preference) {
+  .gd-toc__link:active:not([aria-disabled="true"]) {
+    scale: 0.98;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -466,8 +490,11 @@ html[data-theme="dark"] .gd-toc {
     transform: scaleY(var(--gd-progress, 0));
     transform-origin: top;
   }
-  /* Glass pill: a thin tint of the card colour, light catching the top edge, and the card shadow.
-     Behind the text everywhere; GuidePage.astro lifts it over the text in Chromium (refract below). */
+  /* Aceternity Liquid Glass marker:
+     - Default / Safari & Firefox ('simple'): frosted glass behind text (blur 20px, saturate 140%).
+     - Chromium ('refract' below): lifted over the links with Snell's-law SVG refraction + RGB
+       chromatic aberration at the rim while it glides.
+     - Reduced transparency / more contrast / forced colors ('opaque'): solid card behind text. */
   .gd-toc[data-spy] .gd-toc__marker {
     position: absolute;
     top: 0;
@@ -478,18 +505,18 @@ html[data-theme="dark"] .gd-toc {
     border-radius: 9999px;
     background: var(--bg-card);
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--gd-glass-hi) 60%, transparent), transparent 58%),
-      color-mix(in srgb, var(--bg-card) 52%, transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(160%);
-    backdrop-filter: blur(12px) saturate(160%);
+      linear-gradient(180deg var(--gd-in-oklab), color-mix(in oklab, var(--gd-glass-hi) 56%, transparent), transparent 54%),
+      var(--gd-glass-simple-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
     box-shadow:
-      inset 0 1px 0 var(--gd-glass-hi),
-      inset 0 -1px 0 color-mix(in srgb, var(--color-ink) 6%, transparent),
+      inset 0 1px 0 color-mix(in oklab, var(--gd-glass-hi) 85%, transparent),
+      inset 0 -1px 0 var(--gd-glass-inset-lo),
       var(--shadow-card);
-    transform: translateY(var(--gd-marker-y, 0));
+    transform: translate3d(0, var(--gd-marker-y, 0), 0);
     pointer-events: none;
   }
-  /* The dot rides the rail next to the active link. */
+  /* The dot rides the rail next to the active link (kept outside via no overflow:hidden). */
   .gd-toc[data-spy] .gd-toc__marker::before {
     content: '';
     position: absolute;
@@ -509,27 +536,40 @@ html[data-theme="dark"] .gd-toc {
     background: transparent;
     color: var(--color-ink);
   }
-  /* Chromium (data-glass set by GuidePage.astro): the pill lies over the links and its rim bends
-     the labels passing under it (#gd-glass). The sheen stops above the label and the body tint is
-     thin, so the label inside keeps its ink. Skipped for reduced transparency, more contrast and
-     forced colours: the solid pill there must stay behind the text. */
+  /* Chromium ('refract' set by GuidePage.astro after pre-decoding the Snell's-law PNG map):
+     the lens floats over the links so its 11px bevel refracts passing text with subtle chromatic
+     aberration while keeping the centre plateau flat and crisp over the active label. */
   @media (prefers-reduced-transparency: no-preference) and (prefers-contrast: no-preference) and (forced-colors: none) {
     .gd-toc[data-spy][data-glass='refract'] .gd-toc__marker {
       z-index: 1;
       background:
-        linear-gradient(180deg, color-mix(in srgb, var(--gd-glass-hi) 45%, transparent), transparent 26%),
-        color-mix(in srgb, var(--bg-card) 8%, transparent);
-      -webkit-backdrop-filter: url(#gd-glass) saturate(140%);
-      backdrop-filter: url(#gd-glass) saturate(140%);
+        linear-gradient(180deg var(--gd-in-oklab), color-mix(in oklab, var(--gd-glass-hi) 42%, transparent), transparent 34%),
+        var(--gd-glass-tint);
+      -webkit-backdrop-filter: var(--gd-glass-filter) saturate(185%) brightness(1.02);
+      backdrop-filter: var(--gd-glass-filter) saturate(185%) brightness(1.02);
     }
   }
-}
-@media (min-width: 900px) and (prefers-reduced-transparency: reduce),
-  (min-width: 900px) and (prefers-contrast: more) {
-  .gd-toc[data-spy] .gd-toc__marker {
+  .gd-toc[data-spy][data-glass='opaque'] .gd-toc__marker {
+    z-index: 0;
     background: var(--bg-card);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    box-shadow:
+      inset 0 0 0 1px var(--color-border-input),
+      var(--shadow-card);
+  }
+}
+@media (min-width: 900px) and (prefers-reduced-transparency: reduce),
+  (min-width: 900px) and (prefers-contrast: more),
+  (min-width: 900px) and (forced-colors: active) {
+  .gd-toc[data-spy] .gd-toc__marker {
+    z-index: 0;
+    background: var(--bg-card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow:
+      inset 0 0 0 1px var(--color-border-input),
+      var(--shadow-card);
   }
 }
 @media (min-width: 900px) and (hover: hover) and (pointer: fine) {
@@ -537,11 +577,15 @@ html[data-theme="dark"] .gd-toc {
     background: var(--color-btn-ghost-hover);
     border-color: transparent;
     color: var(--color-ink);
-    translate: 2px 0;
   }
   .gd-toc__link[aria-current]:hover {
     background: transparent;
     border-color: transparent;
+  }
+}
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .gd-toc__link:not([aria-current]):hover {
+    translate: 2px 0;
   }
 }
 
@@ -624,6 +668,7 @@ html[data-theme="dark"] .gd-toc {
   text-underline-offset: 4px;
   transition:
     color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out),
     outline-offset var(--dur-fast) var(--ease-out);
 }
 .gd-inline-link--icon {
@@ -641,6 +686,8 @@ html[data-theme="dark"] .gd-toc {
     color: var(--color-tech);
     text-decoration-color: var(--color-tech);
   }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .gd-inline-link[target="_blank"]:hover .gd-ico:last-child:not(:first-child) {
     translate: 2px -2px;
   }
@@ -781,15 +828,20 @@ html[data-theme="dark"] .gd-toc {
   white-space: normal;
 }
 
-.gd-pill-link:active:not([aria-disabled="true"]) {
-  scale: 0.975;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .gd-pill-link:hover {
     background: var(--color-btn-ghost-hover);
     border-color: var(--color-ink);
   }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gd-pill-link:active:not([aria-disabled="true"]) {
+    scale: 0.975;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .gd-pill-link[target="_blank"]:hover .gd-ico:last-child:not(:first-child) {
     translate: 2px -2px;
   }
@@ -856,8 +908,10 @@ html[data-theme="dark"] .gd-toc {
   display: none;
 }
 
-.gd-faq__summary:active {
-  scale: 0.99;
+@media (prefers-reduced-motion: no-preference) {
+  .gd-faq__summary:active {
+    scale: 0.99;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -883,8 +937,8 @@ html[data-theme="dark"] .gd-toc {
 
 @keyframes gd-faq-in {
   from {
-    opacity: 0.65;
-    translate: 0 -6px;
+    opacity: 0;
+    translate: 0 -4px;
   }
   to {
     opacity: 1;
@@ -897,8 +951,10 @@ html[data-theme="dark"] .gd-toc {
   max-width: 60ch;
 }
 
-.gd-faq__item[open] .gd-faq__body {
-  animation: gd-faq-in var(--dur-base) var(--ease-out);
+@media (prefers-reduced-motion: no-preference) {
+  .gd-faq__item[open] .gd-faq__body {
+    animation: gd-faq-in var(--dur-base) var(--ease-out);
+  }
 }
 
 .gd-faq__body p {
@@ -966,6 +1022,8 @@ html[data-theme="dark"] .gd-toc {
   .gd-contact-link:hover {
     color: var(--color-tech);
   }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .gd-contact-link[target="_blank"]:hover .gd-contact-link__text > .gd-ico {
     translate: 2px -2px;
   }
@@ -1007,9 +1065,6 @@ html[data-theme="dark"] .gd-toc {
   .gd-contact-link,
   .gd-contact-link__text > .gd-ico {
     transition: none;
-    translate: none;
-    scale: none;
-    rotate: none;
   }
   .gd-faq__item[open] .gd-faq__body {
     animation: none;

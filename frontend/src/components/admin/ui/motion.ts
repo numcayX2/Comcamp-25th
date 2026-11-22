@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Transition } from 'motion/react';
 
 /**
@@ -7,17 +7,28 @@ import type { Transition } from 'motion/react';
  * transform and layout animations stop for `prefers-reduced-motion: reduce`.
  */
 
-/** Sliding pills and wells (Aceternity "Animated Tabs"), a little calmer than the original bounce. */
-export const PILL_SPRING: Transition = { type: 'spring', bounce: 0.18, duration: 0.5 };
+/** Shared ease-out curve for enters and exits across /admin. */
+export const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
-/** Width/size changes (sidebar, dock magnification). */
-export const SIZE_SPRING: Transition = { type: 'spring', stiffness: 380, damping: 34, mass: 0.9 };
+/** Sliding pills, wells, and hover plates (snappy, critically damped — zero overshoot jitter). */
+export const PILL_SPRING: Transition = { type: 'spring', stiffness: 480, damping: 38, mass: 0.8 };
 
-/** Short opacity fades for labels and trackers. */
-export const FADE: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] };
+/** Width/size and reorder changes (sidebar collapse/peek, list reorder, card lift). */
+export const SIZE_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 36, mass: 0.85 };
 
-/** Row panels opening under an applicant (Aceternity "Expandable Card", in place). */
-export const EXPAND: Transition = { duration: 0.28, ease: [0.22, 1, 0.36, 1] };
+/** Contextual icon swaps (spinner ↔ check ↔ idle icon): zero bounce for optical calm. */
+export const ICON_SPRING: Transition = { type: 'spring', duration: 0.3, bounce: 0 };
+
+/** Short opacity fades for labels, tooltips, and trackers (exit is faster/softer than enter). */
+export const FADE: Transition = { duration: 0.16, ease: EASE_OUT };
+export const FADE_EXIT: Transition = { duration: 0.12, ease: EASE_OUT };
+
+/** Row panels opening/closing under an applicant or sponsor item (exit faster than enter). */
+export const EXPAND: Transition = { duration: 0.24, ease: EASE_OUT };
+export const COLLAPSE: Transition = { duration: 0.18, ease: EASE_OUT };
+
+/** Tactile button press scale (subtle, disabled automatically under reduced motion). */
+export const TAP_SCALE = { scale: 0.96 } as const;
 
 /**
  * A counter that a successful action bumps; pass it as `doneSignal` to StatefulButton so the
@@ -32,4 +43,17 @@ export function useDoneSignal(): [number, () => void] {
 /** True for a mouse or pen pointer (hover effects never fire for touch). */
 export function isFinePointer(e: { pointerType?: string }): boolean {
   return e.pointerType === 'mouse' || e.pointerType === 'pen';
+}
+
+/** SSR-safe media query hook used to guard `layoutId` elements that are CSS-hidden at other breakpoints. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const sync = () => setMatches(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, [query]);
+  return matches;
 }

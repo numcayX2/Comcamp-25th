@@ -29,6 +29,7 @@ import {
   WARNING,
 } from '../admin-ui';
 import { HoverGroup, HoverItem } from './ui/HoverHighlight';
+import { SIZE_SPRING, isFinePointer, useMediaQuery } from './ui/motion';
 
 export interface AdminOverviewProps {
   apps: Application[];
@@ -109,17 +110,7 @@ function usePalette(): Palette | null {
   return palette;
 }
 
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setReduced(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-  return reduced;
-}
+const CHART_ANIMATION = { duration: 420, easing: 'easeOutQuart' as const };
 
 /* ── Chart.js loader + canvas ─────────────────────────────────────────── */
 
@@ -261,7 +252,7 @@ function hBarConfig(env: ChartEnv, rows: CountRow[], color: string, seriesLabel:
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      animation: env.reducedMotion ? false : undefined,
+      animation: env.reducedMotion ? false : CHART_ANIMATION,
       plugins: { legend: { display: false }, tooltip: tooltip(p) },
       scales: {
         x: valueAxis(p),
@@ -312,7 +303,7 @@ function NumbersTable({ headers, rows }: { headers: [string, ...string[]]; rows:
         <ChevronDown
           aria-hidden="true"
           strokeWidth={1.5}
-          className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+          className="h-4 w-4 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
         />
       </summary>
       <div className="mt-2 max-h-72 overflow-auto">
@@ -393,9 +384,8 @@ function PlotPlaceholder({ height }: { height: number }) {
 }
 
 /** Lift on hover for tiles that carry an action (Aceternity bento hover), mouse/pen only. */
+const LIFT_REST = { y: 0 } as const;
 const LIFT_HOVER = { y: -2 } as const;
-const LIFT_TRANSITION = { type: 'spring', stiffness: 420, damping: 32 } as const;
-const LIFT_STYLE = { background: BG_CARD, padding: PANEL_STYLE.padding } as const;
 
 function Kpi({
   label,
@@ -415,6 +405,7 @@ function Kpi({
   /** Amber dot beside the label (decorative; the sub text carries the meaning). */
   accent?: boolean;
 }) {
+  const [lifted, setLifted] = useState(false);
   const body = (
     <>
       <span className="flex items-center gap-2 text-sm leading-[1.6]" style={{ color: INK_2 }}>
@@ -442,10 +433,18 @@ function Kpi({
   }
   return (
     <motion.div
-      whileHover={LIFT_HOVER}
-      transition={LIFT_TRANSITION}
-      className={`${PANEL_CLASS} flex h-full flex-col gap-1 shadow-[var(--shadow-card)] transition-shadow duration-200 hover:shadow-[var(--shadow-float)] motion-reduce:transition-none`}
-      style={LIFT_STYLE}
+      initial={false}
+      animate={lifted ? LIFT_HOVER : LIFT_REST}
+      transition={SIZE_SPRING}
+      onPointerEnter={(e) => isFinePointer(e) && setLifted(true)}
+      onPointerLeave={() => setLifted(false)}
+      onPointerCancel={() => setLifted(false)}
+      className={`${PANEL_CLASS} flex h-full flex-col gap-1 transition-shadow duration-200 motion-reduce:transition-none`}
+      style={{
+        background: BG_CARD,
+        padding: PANEL_STYLE.padding,
+        boxShadow: lifted ? 'var(--shadow-float)' : 'var(--shadow-card)',
+      }}
     >
       {body}
     </motion.div>
@@ -558,7 +557,9 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
   } = props;
 
   const palette = usePalette();
-  const reducedMotion = useReducedMotion();
+  // A live media query (motion's useReducedMotion reads the setting once), so charts stop animating
+  // as soon as Reduce Motion is switched on while /admin is open.
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const seats = useMemo(() => seatBreakdown(apps, maxCapacity), [apps, maxCapacity]);
   const daily = useMemo(() => dailyApplications(apps, Date.now()), [apps]);
@@ -608,7 +609,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        animation: env.reducedMotion ? false : undefined,
+        animation: env.reducedMotion ? false : CHART_ANIMATION,
         plugins: { legend: { display: false }, tooltip: tooltip(p) },
         scales: {
           x: valueAxis(p, { stacked: true, max: Math.max(seats.capacity, seats.held) }),
@@ -656,7 +657,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: env.reducedMotion ? false : undefined,
+        animation: env.reducedMotion ? false : CHART_ANIMATION,
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false }, tooltip: tooltip(p) },
         scales: {
@@ -689,7 +690,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: env.reducedMotion ? false : undefined,
+        animation: env.reducedMotion ? false : CHART_ANIMATION,
         cutout: '64%',
         plugins: { legend: { display: false }, tooltip: tooltip(p) },
       },
@@ -777,7 +778,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
           action={
             <button
               type="button"
-              className={`${PILL_GHOST} w-full sm:w-fit sm:px-6`}
+              className={`${PILL_GHOST} w-full transition-[background-color,opacity,transform] duration-150 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 sm:w-fit sm:px-6`}
               style={
                 pendingSlipCount > 0
                   ? { background: BTN_DARK, borderColor: BTN_DARK, color: BTN_DARK_TEXT }
@@ -854,7 +855,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
           action={
             <button
               type="button"
-              className={`${PILL_GHOST} w-full sm:w-fit sm:px-6`}
+              className={`${PILL_GHOST} w-full transition-[background-color,transform] duration-150 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 sm:w-fit sm:px-6`}
               style={{ borderColor: RULE, color: INK }}
               onClick={() => onOpenQueue('AWAITING_PAY')}
             >

@@ -135,165 +135,303 @@ const {
 
   gsap.registerPlugin(SplitText);
 
-  (function loadHeroStage() {
-    // The 3D stage (three.js ≈ 600 KB + 933 KB of .glb) is decorative — it
-    // must never compete with the headline/CTA for bandwidth. Defer the whole
-    // module graph until the page has finished loading and the main thread is idle.
-    const start = () => {
-      import('../scripts/hero-3d.js').catch((err) => {
-        console.warn('[hero] 3D stage failed to load:', err);
-        const stage = document.getElementById('heroStage');
-        if (stage) stage.dataset.state = 'fallback';
-      });
-    };
+  type CleanupFn = (isSwap?: boolean) => void;
+  let activeHeroCleanup: CleanupFn | null = null;
 
-    if (document.readyState === 'complete') {
-      start();
-      return;
+  function mountHero() {
+    const section = document.getElementById('sec-hero');
+    if (!section || section.dataset.heroMounted === '1') return;
+
+    if (activeHeroCleanup) {
+      activeHeroCleanup(false);
+      activeHeroCleanup = null;
     }
-    window.addEventListener('load', () => {
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(start, { timeout: 1200 });
-      } else {
-        setTimeout(start, 200);
-      }
-    }, { once: true });
-  })();
 
-  (function initHeroIntro() {
-    const title = document.getElementById('hero-title');
-    const sub = document.querySelector<HTMLElement>('.hero__sub');
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    section.dataset.heroMounted = '1';
+    let cancelled = false;
+    const cleanups: CleanupFn[] = [];
 
-    const spans = title ? Array.from(title.querySelectorAll('span')) : [];
-    const targets = spans.map((el) => el.textContent ?? '');
-    const GLYPHS = '01#@$%*+=<>[]/\\ABCDEFGHKMNPQRSTUVWXYZ25';
-    const DURATION_MS = 1450;
-    const STEP_MS = 38;
+    // 1) Deferred 3D stage loader — never competes with headline/CTA LCP bandwidth.
+    // Always defers until window.load + requestIdleCallback; cancels cleanly on swap.
+    const stage = document.getElementById('heroStage');
+    const canvas = document.getElementById('heroStageCanvas') as HTMLCanvasElement | null;
+    if (stage && canvas) {
+      let destroy3D: ((forceLoss?: boolean) => void) | null = null;
+      let idleId = 0;
+      let timerId = 0;
+      const loadAc = new AbortController();
 
-    const randomGlyph = () => GLYPHS[(Math.random() * GLYPHS.length) | 0];
-
-    const startScramble = () => {
-      if (!title || title.dataset.scrambled === '1' || spans.length === 0) return;
-      title.dataset.scrambled = '1';
-
-      const totalChars = targets.reduce((acc, s) => acc + s.length, 0);
-      if (totalChars === 0) return;
-
-      // Scrambled glyphs are wider/narrower than the real letters; pin each word's box so
-      // "25th" does not jitter sideways (that movement was counted as layout shift).
-      spans.forEach((el) => {
-        el.style.display = 'inline-block';
-        el.style.width = `${el.getBoundingClientRect().width}px`;
-      });
-      const release = () => spans.forEach((el) => {
-        el.style.removeProperty('display');
-        el.style.removeProperty('width');
-      });
-
-      const t0 = performance.now();
-      let lastTick = 0;
-
-      const frame = (now: number) => {
-        const elapsed = now - t0;
-        const progress = Math.min(1, elapsed / DURATION_MS);
-
-        if (progress >= 1) {
-          spans.forEach((el, i) => {
-            el.textContent = targets[i];
+      const start3D = () => {
+        if (cancelled || !stage.isConnected) return;
+        import('../scripts/hero-3d.js')
+          .then((mod) => {
+            if (cancelled || !stage.isConnected) return;
+            destroy3D = mod.mountHero3D(stage, canvas);
+          })
+          .catch((err) => {
+            if (cancelled || !stage.isConnected) return;
+            console.warn('[hero] 3D stage failed to load:', err);
+            stage.dataset.state = 'fallback';
           });
-          release();
-          return;
-        }
-
-        if (now - lastTick >= STEP_MS) {
-          lastTick = now;
-          const eased = 1 - Math.pow(1 - progress, 2.2);
-          const lockedGlobal = Math.floor(eased * totalChars);
-
-          let offset = 0;
-          spans.forEach((el, sIdx) => {
-            const target = targets[sIdx];
-            let out = '';
-            for (let c = 0; c < target.length; c++) {
-              const ch = target[c];
-              if (ch === ' ') {
-                out += ' ';
-              } else if (offset + c < lockedGlobal) {
-                out += ch;
-              } else {
-                out += randomGlyph();
-              }
-            }
-            el.textContent = out;
-            offset += target.length;
-          });
-        }
-
-        requestAnimationFrame(frame);
       };
 
-      requestAnimationFrame(frame);
-    };
+      const schedule3D = () => {
+        if (cancelled) return;
+        if ('requestIdleCallback' in window) {
+          idleId = window.requestIdleCallback(start3D, { timeout: 1200 });
+        } else {
+          timerId = window.setTimeout(start3D, 200);
+        }
+      };
 
-    const startSubtitleReveal = () => {
-      if (!sub || sub.dataset.revealed === '1') return;
-      sub.dataset.revealed = '1';
-      // Split after the web font has swapped, otherwise the measured line breaks
-      // would be computed against the fallback font and re-wrap once it loads.
-      const ready = document.fonts?.ready ?? Promise.resolve();
-      ready.then(() => {
-        SplitText.create(sub, {
-          type: 'lines',
-          mask: 'lines',
-          // `auto` would stamp aria-label onto the <p>, which is prohibited on a
-          // generic role and fails axe `aria-prohibited-attr`.
-          aria: 'none',
-          onSplit(self) {
-            return gsap.from(self.lines, {
-              x: 44,
-              opacity: 0,
-              duration: 0.72,
-              stagger: 0.09,
-              ease: 'power3.out',
-              clearProps: 'transform,opacity',
-            });
-          },
-        });
+      if (document.readyState === 'complete') {
+        schedule3D();
+      } else {
+        window.addEventListener('load', schedule3D, { once: true, signal: loadAc.signal });
+      }
+
+      cleanups.push((isSwap?: boolean) => {
+        loadAc.abort();
+        if (idleId && 'cancelIdleCallback' in window) window.cancelIdleCallback(idleId);
+        if (timerId) window.clearTimeout(timerId);
+        if (destroy3D) {
+          destroy3D(Boolean(isSwap));
+          destroy3D = null;
+        }
       });
-    };
-
-    const startAll = (animateSub: boolean) => {
-      startScramble();
-      if (animateSub) startSubtitleReveal();
-    };
-
-    const veil = document.getElementById('veil');
-    const veilActive =
-      veil &&
-      !veil.hidden &&
-      !veil.classList.contains('is-done') &&
-      !document.documentElement.classList.contains('veil-skip');
-
-    if (!veilActive) {
-      // Repeat visit / reduced motion / anchor jump: the veil is already gone,
-      // so a subtitle entrance would flash the text from hidden → visible.
-      startAll(false);
-      return;
     }
 
-    let started = false;
-    const trigger = () => {
-      if (started) return;
-      started = true;
-      mo.disconnect();
-      setTimeout(() => startAll(true), 120);
-    };
+    // 2) Hero title scramble + SplitText subtitle reveal (zero CLS, instant static under reduced motion)
+    const reduceMQ = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null;
+    if (!reduceMQ?.matches) {
+      const title = document.getElementById('hero-title');
+      const sub = section.querySelector<HTMLElement>('.hero__sub');
+      const spans = title ? Array.from(title.querySelectorAll('span')) : [];
+      const targets = spans.map((el) => el.textContent ?? '');
+      const GLYPHS = '01#@$%*+=<>[]/\\ABCDEFGHKMNPQRSTUVWXYZ25';
+      const DURATION_MS = 1450;
+      const STEP_MS = 38;
+      const introAc = new AbortController();
 
-    const mo = new MutationObserver(() => {
-      if (veil.classList.contains('is-done') || veil.hidden) trigger();
-    });
-    mo.observe(veil, { attributes: true, attributeFilter: ['class', 'hidden'] });
-    setTimeout(trigger, 1000);
-  })();
+      let scrambleRaf = 0;
+      let splitInstance: ReturnType<typeof SplitText.create> | null = null;
+      let subTween: gsap.core.Tween | null = null;
+      let veilMo: MutationObserver | null = null;
+      let veilFallbackTimer = 0;
+      let startDelayTimer = 0;
+
+      const randomGlyph = () => GLYPHS[(Math.random() * GLYPHS.length) | 0];
+
+      const releaseSpans = () => {
+        spans.forEach((el, i) => {
+          el.textContent = targets[i];
+          el.style.removeProperty('display');
+          el.style.removeProperty('width');
+        });
+      };
+
+      const settleImmediately = () => {
+        if (scrambleRaf) {
+          cancelAnimationFrame(scrambleRaf);
+          scrambleRaf = 0;
+        }
+        releaseSpans();
+        if (subTween) {
+          subTween.kill();
+          subTween = null;
+        }
+        if (splitInstance) {
+          splitInstance.revert();
+          splitInstance = null;
+        }
+      };
+
+      const startScramble = () => {
+        if (cancelled || reduceMQ?.matches || !title || title.dataset.scrambled === '1' || spans.length === 0) return;
+        title.dataset.scrambled = '1';
+
+        const totalChars = targets.reduce((acc, s) => acc + s.length, 0);
+        if (totalChars === 0) return;
+
+        // Scrambled glyphs are wider/narrower than the real letters; pin each word's box so
+        // "25th" does not jitter sideways (that movement was counted as layout shift).
+        spans.forEach((el) => {
+          const w = el.getBoundingClientRect().width;
+          if (w > 0) {
+            el.style.display = 'inline-block';
+            el.style.width = `${w}px`;
+          }
+        });
+
+        let t0 = 0;
+        let lastTick = 0;
+
+        const frame = (now: number) => {
+          scrambleRaf = 0;
+          if (cancelled || reduceMQ?.matches) {
+            releaseSpans();
+            return;
+          }
+          if (!t0) t0 = now;
+          const elapsed = Math.max(0, now - t0);
+          const progress = Math.min(1, elapsed / DURATION_MS);
+
+          if (progress >= 1) {
+            releaseSpans();
+            return;
+          }
+
+          if (!lastTick || now - lastTick >= STEP_MS) {
+            lastTick = now;
+            const eased = 1 - Math.pow(1 - progress, 2.2);
+            const lockedGlobal = Math.floor(eased * totalChars);
+
+            let offset = 0;
+            spans.forEach((el, sIdx) => {
+              const target = targets[sIdx];
+              let out = '';
+              for (let c = 0; c < target.length; c++) {
+                const ch = target[c];
+                if (ch === ' ') {
+                  out += ' ';
+                } else if (offset + c < lockedGlobal) {
+                  out += ch;
+                } else {
+                  out += randomGlyph();
+                }
+              }
+              el.textContent = out;
+              offset += target.length;
+            });
+          }
+
+          scrambleRaf = requestAnimationFrame(frame);
+        };
+
+        scrambleRaf = requestAnimationFrame(frame);
+      };
+
+      const startSubtitleReveal = () => {
+        if (cancelled || reduceMQ?.matches || !sub || sub.dataset.revealed === '1') return;
+        sub.dataset.revealed = '1';
+        const triggeredAt = performance.now();
+        // Split after the web font has swapped, otherwise the measured line breaks
+        // would be computed against the fallback font and re-wrap once it loads.
+        const ready = document.fonts?.ready ?? Promise.resolve();
+        ready.then(() => {
+          if (cancelled || reduceMQ?.matches || !sub.isConnected) return;
+          // If fonts took too long after the veil already lifted, keep the visible text static
+          // instead of flashing it hidden → visible.
+          if (performance.now() - triggeredAt > 700) return;
+
+          splitInstance = SplitText.create(sub, {
+            type: 'lines',
+            mask: 'lines',
+            // `auto` would stamp aria-label onto the <p>, which is prohibited on a
+            // generic role and fails axe `aria-prohibited-attr`.
+            aria: 'none',
+            onSplit(self) {
+              subTween = gsap.from(self.lines, {
+                x: 44,
+                opacity: 0,
+                duration: 0.72,
+                stagger: 0.09,
+                ease: 'power3.out',
+                clearProps: 'transform,opacity',
+                onComplete() {
+                  // Revert line wrappers once settled so responsive reflows on resize/rotate stay natural.
+                  self.revert();
+                  if (splitInstance === self) splitInstance = null;
+                  subTween = null;
+                },
+              });
+              return subTween;
+            },
+          });
+        });
+      };
+
+      const startAll = (animateSub: boolean) => {
+        if (cancelled || reduceMQ?.matches) return;
+        startScramble();
+        if (animateSub) startSubtitleReveal();
+      };
+
+      if (reduceMQ) {
+        reduceMQ.addEventListener(
+          'change',
+          (e) => {
+            if (e.matches) settleImmediately();
+          },
+          { signal: introAc.signal }
+        );
+      }
+      window.addEventListener('beforeprint', settleImmediately, { signal: introAc.signal });
+
+      const veil = document.getElementById('veil');
+      const veilActive =
+        veil &&
+        !veil.hidden &&
+        !veil.classList.contains('is-done') &&
+        !document.documentElement.classList.contains('veil-skip');
+
+      if (!veilActive) {
+        // Repeat visit / reduced motion / anchor jump: the veil is already gone,
+        // so a subtitle entrance would flash the text from hidden → visible.
+        startAll(false);
+      } else {
+        let started = false;
+        const trigger = () => {
+          if (started || cancelled) return;
+          started = true;
+          if (veilMo) {
+            veilMo.disconnect();
+            veilMo = null;
+          }
+          if (veilFallbackTimer) {
+            window.clearTimeout(veilFallbackTimer);
+            veilFallbackTimer = 0;
+          }
+          startDelayTimer = window.setTimeout(() => {
+            startDelayTimer = 0;
+            startAll(true);
+          }, 120);
+        };
+
+        veilMo = new MutationObserver(() => {
+          if (veil.classList.contains('is-done') || veil.hidden) trigger();
+        });
+        veilMo.observe(veil, { attributes: true, attributeFilter: ['class', 'hidden'] });
+        veilFallbackTimer = window.setTimeout(trigger, 1000);
+      }
+
+      cleanups.push(() => {
+        introAc.abort();
+        if (veilMo) {
+          veilMo.disconnect();
+          veilMo = null;
+        }
+        if (veilFallbackTimer) window.clearTimeout(veilFallbackTimer);
+        if (startDelayTimer) window.clearTimeout(startDelayTimer);
+        settleImmediately();
+      });
+    }
+
+    activeHeroCleanup = (isSwap?: boolean) => {
+      if (cancelled) return;
+      cancelled = true;
+      delete section.dataset.heroMounted;
+      for (const fn of cleanups) fn(isSwap);
+      cleanups.length = 0;
+    };
+  }
+
+  mountHero();
+  document.addEventListener('astro:before-swap', () => {
+    if (activeHeroCleanup) {
+      activeHeroCleanup(true);
+      activeHeroCleanup = null;
+    }
+  });
+  document.addEventListener('astro:page-load', mountHero);
 </script>

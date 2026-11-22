@@ -916,7 +916,7 @@ export function StatusSection() {
       {storedNotice && (
         <div
           role="status"
-          className="st-notice mt-6 flex items-start justify-between gap-4"
+          className="st-notice st-notice--enter mt-6 flex items-start justify-between gap-4"
         >
           <p className="flex items-start gap-2.5 text-sm leading-7" style={{ color: INK_MUTED }}>
             <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
@@ -985,13 +985,13 @@ export function StatusSection() {
       )}
 
       {phoneResult && !app && (
-        <div className="mt-8 space-y-8">
+        <div key={`${phoneResult.phone}-${phoneResult.status}`} className="mt-8 space-y-8">
           <PhoneLookupCard result={phoneResult} source={source} nowMs={nowMs} onSearchByCode={focusCodeSearch} />
         </div>
       )}
 
       {app && (
-        <div className="mt-8 space-y-8">
+        <div key={app.id} className="st-result mt-8 space-y-8">
           <StatusHighlight app={app} seats={seats} feeText={feeText} nowMs={nowMs} />
 
           {/* ── Payment: the next task for a PASSED applicant, so it comes before the record ── */}
@@ -1298,6 +1298,7 @@ export function StatusSection() {
                   <div
                     role="group"
                     aria-labelledby="withdraw-title"
+                    className="st-disclosure"
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') {
                         e.preventDefault();
@@ -1381,7 +1382,7 @@ export function StatusSection() {
                     type="button"
                     onClick={() => setWithdrawOpen(true)}
                     aria-expanded={withdrawOpen}
-                    className={`inline-flex min-h-11 items-center rounded-full px-3 py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS_RING}`}
+                    className={`st-withdraw-toggle inline-flex min-h-11 items-center rounded-full px-3 py-2 text-sm font-semibold underline underline-offset-4 ${FOCUS_RING}`}
                     style={{ color: INK_MUTED }}
                   >
                     สละสิทธิ์ / ยกเลิกใบสมัคร

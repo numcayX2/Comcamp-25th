@@ -160,30 +160,87 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
 
       var num = veil.querySelector('[data-veil-num]');
       var bar = veil.querySelector('.veil-rule i');
+      var reduceMq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      if (reduceMq && reduceMq.matches) {
+        veil.hidden = true;
+        return;
+      }
       var domReady = document.readyState !== 'loading';
+      var onDomReady = function () { domReady = true; };
       if (!domReady) {
-        document.addEventListener('DOMContentLoaded', function () { domReady = true; }, { once: true });
+        document.addEventListener('DOMContentLoaded', onDomReady, { once: true });
       }
 
       /* Short, smooth editorial curtain (min 480ms, max 820ms) so LCP & mobile 4G interaction stay fast */
       var MIN_MS = 480;
       var MAX_MS = 820;
-      var t0 = performance.now();
+      var t0 = 0;
+      var veilRaf = 0;
+      var hideTimer = 0;
+      var failsafeTimer = 0;
       var finished = false;
       document.body.style.overflow = 'hidden';
 
-      function finish() {
-        if (finished) return;
-        finished = true;
-        if (num) num.textContent = '100';
-        if (bar) bar.style.transform = 'scaleX(1)';
-        veil.classList.add('is-done');
-        document.body.style.overflow = '';
-        setTimeout(function () { veil.hidden = true; }, 680);
+      function cleanupListeners() {
+        document.removeEventListener('DOMContentLoaded', onDomReady);
+        document.removeEventListener('astro:before-swap', onAbort);
+        window.removeEventListener('beforeprint', onAbort);
+        window.removeEventListener('pagehide', onPageHide);
+        veil.removeEventListener('transitionend', onTransitionEnd);
+        if (reduceMq) {
+          if (reduceMq.removeEventListener) reduceMq.removeEventListener('change', onReduceChange);
+          else if (reduceMq.removeListener) reduceMq.removeListener(onReduceChange);
+        }
       }
 
+      function hideVeil() {
+        clearTimeout(hideTimer);
+        hideTimer = 0;
+        veil.hidden = true;
+        cleanupListeners();
+      }
+
+      function onTransitionEnd(e) {
+        if (e.target === veil && e.propertyName === 'transform') hideVeil();
+      }
+
+      function finish(instant) {
+        if (finished) return;
+        finished = true;
+        if (veilRaf) { cancelAnimationFrame(veilRaf); veilRaf = 0; }
+        clearTimeout(failsafeTimer);
+        failsafeTimer = 0;
+        if (num) num.textContent = '100';
+        if (bar) bar.style.transform = 'scaleX(1)';
+        document.body.style.overflow = '';
+        veil.classList.add('is-done');
+        if (instant || (reduceMq && reduceMq.matches)) {
+          hideVeil();
+          return;
+        }
+        veil.addEventListener('transitionend', onTransitionEnd);
+        hideTimer = setTimeout(hideVeil, 680);
+      }
+
+      function onAbort() { finish(true); }
+      function onPageHide(e) { if (!e.persisted) finish(true); }
+      function onReduceChange(e) { if (e.matches) finish(true); }
+
+      document.addEventListener('astro:before-swap', onAbort, { once: true });
+      window.addEventListener('beforeprint', onAbort, { once: true });
+      window.addEventListener('pagehide', onPageHide, { once: true });
+      if (reduceMq) {
+        if (reduceMq.addEventListener) reduceMq.addEventListener('change', onReduceChange);
+        else if (reduceMq.addListener) reduceMq.addListener(onReduceChange);
+      }
+      /* Fail-safe: dismiss even if rAF is suspended (background tab / stalled in-app WebView) */
+      failsafeTimer = setTimeout(function () { finish(false); }, MAX_MS + 350);
+
       function tick(now) {
-        var elapsed = now - t0;
+        veilRaf = 0;
+        if (finished) return;
+        if (!t0) t0 = now;
+        var elapsed = Math.max(0, now - t0);
         var raw = Math.min(1, elapsed / (domReady ? MIN_MS : MAX_MS));
         var eased = 1 - Math.pow(1 - raw, 3);
         var cap = (!domReady && elapsed < MAX_MS) ? Math.min(0.92, eased) : eased;
@@ -192,12 +249,12 @@ const ogImage = siteUrl ? `${siteUrl}/assets/og-cover.jpg` : '';
         if (bar) bar.style.transform = 'scaleX(' + cap.toFixed(3) + ')';
 
         if ((domReady && elapsed >= MIN_MS) || elapsed >= MAX_MS) {
-          finish();
+          finish(false);
           return;
         }
-        requestAnimationFrame(tick);
+        veilRaf = requestAnimationFrame(tick);
       }
-      requestAnimationFrame(tick);
+      veilRaf = requestAnimationFrame(tick);
     })();
   </script>
   <SiteNav active="home" isHome={true} />

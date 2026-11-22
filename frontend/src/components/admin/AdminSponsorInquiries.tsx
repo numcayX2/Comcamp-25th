@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { Check, Eye, FilePlus2, FileText, Mail, Phone, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
 import {
   SPONSOR_KIND_LABELS,
@@ -11,6 +12,7 @@ import {
 import { formatBytes } from '../../lib/slip-upload';
 import { formatThaiAddress, formatThaiTaxId } from '../../lib/thai-tax-id';
 import { DANGER, FOCUS, INK, INK_2, INK_3, PILL_DANGER, PILL_GHOST, RULE, SUCCESS, SURFACE_SUBTLE, WARNING } from '../admin-ui';
+import { RevealPanel } from './ui/RevealPanel';
 import { StatefulButton } from './ui/StatefulButton';
 import {
   NoticeBanner,
@@ -234,7 +236,7 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
           className={`${PILL_GHOST} gap-1.5`}
           style={{ borderColor: RULE, color: INK }}
         >
-          <RotateCw aria-hidden="true" size={16} strokeWidth={1.5} />
+          <RotateCw aria-hidden="true" size={16} strokeWidth={1.5} className={loading ? 'motion-safe:animate-spin' : ''} />
           {loading ? 'กำลังโหลด…' : 'โหลดใหม่'}
         </button>
       </div>
@@ -413,49 +415,53 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                   </div>
                 </div>
 
-                {confirming && (
-                  <div
-                    id={`inquiry-delete-strip-${inq.id}`}
-                    role="region"
-                    aria-label={`ยืนยันการลบรายการของ ${inq.name}`}
-                    className="mt-4 rounded-xl border p-4"
-                    style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
-                  >
-                    <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
-                      <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
-                      <span className="min-w-0 break-words">ยืนยันลบรายการของ “{inq.name}”?</span>
-                    </p>
-                    <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                      {inq.file
-                        ? 'ข้อมูลติดต่อและไฟล์แบบฟอร์มที่แนบมาจะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'
-                        : 'ข้อมูลติดต่อนี้จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'}
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-busy={deleting || undefined}
-                        onClick={() => onConfirmDelete(inq)}
-                        className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-colors hover:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-                        style={{ borderColor: DANGER, color: DANGER }}
+                <AnimatePresence initial={false}>
+                  {confirming && (
+                    <RevealPanel key="confirm-delete">
+                      <div
+                        id={`inquiry-delete-strip-${inq.id}`}
+                        role="region"
+                        aria-label={`ยืนยันการลบรายการของ ${inq.name}`}
+                        className="mt-4 rounded-xl border p-4"
+                        style={{ borderColor: DANGER, backgroundColor: SURFACE_SUBTLE }}
                       >
-                        {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deleting}
-                        onClick={() => {
-                          setConfirmDeleteId(null);
-                          focusLater(`inquiry-delete-${inq.id}`);
-                        }}
-                        className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
-                        style={{ color: INK_2 }}
-                      >
-                        ยกเลิก
-                      </button>
-                    </div>
-                  </div>
-                )}
+                        <p className="flex items-start gap-2 text-sm font-semibold leading-6" style={{ color: INK }}>
+                          <TriangleAlert aria-hidden="true" size={16} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: DANGER }} />
+                          <span className="min-w-0 break-words">ยืนยันลบรายการของ “{inq.name}”?</span>
+                        </p>
+                        <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
+                          {inq.file
+                            ? 'ข้อมูลติดต่อและไฟล์แบบฟอร์มที่แนบมาจะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'
+                            : 'ข้อมูลติดต่อนี้จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-busy={deleting || undefined}
+                            onClick={() => onConfirmDelete(inq)}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-2 text-sm font-semibold transition-[background-color,transform] duration-150 hover:bg-[var(--color-btn-ghost-hover)] active:scale-[0.96] disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100 ${FOCUS}`}
+                            style={{ borderColor: DANGER, color: DANGER }}
+                          >
+                            {deleting ? 'กำลังลบ…' : 'ยืนยันลบ'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => {
+                              setConfirmDeleteId(null);
+                              focusLater(`inquiry-delete-${inq.id}`);
+                            }}
+                            className={`inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-sm underline underline-offset-4 disabled:opacity-50 ${FOCUS}`}
+                            style={{ color: INK_2 }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      </div>
+                    </RevealPanel>
+                  )}
+                </AnimatePresence>
               </li>
             );
           })}

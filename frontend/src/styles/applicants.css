@@ -15,14 +15,27 @@
   padding-top: 16px;
 }
 
+@keyframes ap-in {
+  from {
+    opacity: 0.72;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 .ap-state {
   border-top: 1px solid var(--color-border);
   padding: 20px 0 0;
+  animation: ap-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 
 .ap-alert {
   border-top: 2px solid var(--color-danger);
   padding: 14px 0 0;
+  animation: ap-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 @media (min-width: 640px) {
   .ap-alert {
@@ -118,22 +131,37 @@
   position: relative;
   z-index: 1;
   transition:
-    border-color var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
+    background-color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)),
     color 0.2s ease 0.06s,
-    box-shadow var(--dur-fast) var(--ease-out);
+    box-shadow var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 /* GSAP owns the press scale here (global.css :active scale would stack on it). */
 .ap-seg__btn:active {
   scale: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ap-seg__btn[aria-pressed='false']:hover {
+    border-color: var(--color-ink) !important;
+    background-color: var(--color-btn-ghost-hover) !important;
+  }
 }
 .ap-seg[data-thumb] .ap-seg__btn[aria-pressed='true'] {
   background-color: transparent !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ap-controls *,
+  .ap-summary *,
+  .ap-state,
+  .ap-state *,
+  .ap-alert,
+  .ap-alert *,
   .ap-table td,
   .ap-seg__btn {
-    transition: none;
+    transition: none !important;
+    animation: none !important;
+    translate: none !important;
+    scale: none !important;
   }
 }

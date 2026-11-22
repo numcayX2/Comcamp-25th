@@ -45,6 +45,17 @@
 .su-msg:empty { display: none; }
 .su-msg--err { color: var(--su-danger); font-weight: 600; }
 .su-msg--warn { color: var(--su-warn); font-weight: 600; }
+@keyframes su-in {
+  from {
+    opacity: 0.72;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 .su-msg--ok {
   display: flex;
   align-items: flex-start;
@@ -58,6 +69,7 @@
   background: var(--su-ok-bg);
   color: var(--su-ok-fg);
   font-weight: 400;
+  animation: su-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 .su-msg__icon { flex: none; margin-top: 3px; } /* centres the 18px icon on the first 24px headline line */
 .su-msg__body { min-width: 0; display: grid; gap: 4px; }
@@ -86,7 +98,15 @@
   .su-zone:hover { border-color: var(--su-ink); background: var(--su-fill); }
 }
 .su-zone:active:not([data-busy]) { scale: 0.985; }
-.su-zone[data-drag], .su-zone[data-busy] { border-color: var(--su-focus); background: var(--su-fill); }
+.su-zone[data-drag] {
+  border-style: solid;
+  border-color: var(--su-focus);
+  background: color-mix(in srgb, var(--su-focus) 8%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .su-zone[data-drag] { scale: 1.008; }
+}
+.su-zone[data-busy] { border-color: var(--su-focus); background: var(--su-fill); }
 .su-sr:focus-visible + .su-zone { outline: 2px solid var(--su-focus); outline-offset: 3px; }
 .su-zone__title { font-size: 1.0625rem; font-weight: 700; line-height: 1.5; color: var(--su-ink); }
 .su-zone__hint { max-width: 40ch; font-size: 0.875rem; line-height: 1.7; color: var(--su-ink-2); }
@@ -101,6 +121,7 @@
   align-items: start;
   padding: 16px 0;
   border-block: 1px solid var(--su-rule);
+  animation: su-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 .su-strip--sent:not(:has(.su-strip__thumb)) { grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 520px) { .su-strip { grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 24px; } }
@@ -206,6 +227,25 @@
 .su-btn--cancel { width: 100%; }
 @media (min-width: 520px) { .su-btn--cancel { width: auto; } }
 
+/* Flat GPU-composited upload progress bar (transform: scaleX avoids layout reflows). */
+.su-progress {
+  height: 4px;
+  margin-top: 12px;
+  border-radius: 9999px;
+  background: var(--su-rule);
+  overflow: hidden;
+}
+.su-progress__fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--su-btn-bg);
+  transform-origin: left center;
+  transform: scaleX(var(--su-p, 0));
+  transition: transform 180ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
 .su-defer { margin-top: 12px; font-size: 0.9375rem; line-height: 1.7; }
 .su-defer a {
   display: inline-flex;
@@ -221,21 +261,7 @@
   .su-defer a:hover { color: var(--su-ink); text-decoration-color: var(--su-ink); }
 }
 
-/* ---------- Lightbox: edge-to-edge image, no card ---------- */
-@keyframes su-lightbox-in {
-  from { opacity: 0.65; }
-  to { opacity: 1; }
-}
-@keyframes su-lightbox-img-in {
-  from {
-    opacity: 0.65;
-    scale: 0.96;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
-  }
-}
+/* ---------- Lightbox: edge-to-edge image, no card (top-layer @starting-style transitions) ---------- */
 .su-lightbox {
   position: fixed;
   inset: 0;
@@ -253,13 +279,33 @@
   color: #F5F4EF;
   overflow: hidden;
   overscroll-behavior: contain;
+  opacity: 0;
+  transition-property: opacity, display, overlay;
+  transition-duration: var(--dur-fast, .18s);
+  transition-timing-function: var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  transition-behavior: allow-discrete;
 }
 .su-lightbox[open] {
-  animation: su-lightbox-in var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  opacity: 1;
+}
+/* While it fades out, the closing dialog still covers the screen: let taps through to the page. */
+.su-lightbox:not([open]) {
+  pointer-events: none;
 }
 html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); }
 .su-lightbox:modal { inset: 0; margin: 0; overscroll-behavior: contain; }
-.su-lightbox::backdrop { background: rgba(8, 10, 16, 0.96); }
+.su-lightbox::backdrop {
+  background-color: rgba(8, 10, 16, 0);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  transition-property: background-color, display, overlay;
+  transition-duration: var(--dur-fast, .18s);
+  transition-timing-function: var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  transition-behavior: allow-discrete;
+}
+.su-lightbox[open]::backdrop {
+  background-color: rgba(8, 10, 16, 0.96);
+}
 .su-lightbox__close {
   position: absolute;
   top: calc(12px + env(safe-area-inset-top, 0px));
@@ -284,14 +330,47 @@ html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); 
   height: 100%;
   object-fit: contain;
   object-position: center;
+  opacity: 0;
+  transition-property: opacity, scale;
+  transition-duration: var(--dur-base, .24s);
+  transition-timing-function: var(--ease-out, cubic-bezier(.2, .8, .2, 1));
 }
 .su-lightbox[open] .su-lightbox__img {
-  animation: su-lightbox-img-in var(--dur-base, .26s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .su-lightbox__img {
+    scale: 0.96;
+  }
+  .su-lightbox[open] .su-lightbox__img {
+    scale: 1;
+  }
+}
+
+/* Top-level @starting-style placed after [open] rules; unsupported browsers degrade cleanly to instant open. */
+@starting-style {
+  .su-lightbox[open] {
+    opacity: 0;
+  }
+  .su-lightbox[open]::backdrop {
+    background-color: rgba(8, 10, 16, 0);
+  }
+  .su-lightbox[open] .su-lightbox__img {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    .su-lightbox[open] .su-lightbox__img {
+      scale: 0.96;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .su *,
   .su-lightbox,
+  .su-lightbox::backdrop,
   .su-lightbox * {
     transition: none !important;
     animation: none !important;

@@ -434,19 +434,29 @@ const PHOTOS = [
     '.sp-foot',
   ].join(', ');
   const REVEAL_FROM = { opacity: 0, y: 20 };
-  const REVEAL_TO = { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', clearProps: 'opacity,transform' };
+  const REVEAL_TO = {
+    opacity: 1,
+    y: 0,
+    duration: 0.75,
+    ease: 'power3.out',
+    overwrite: 'auto' as const,
+    clearProps: 'opacity,transform,clipPath,willChange',
+  };
   // The two payment slips feed out like a receipt printer: revealed top to bottom while easing down.
+  // Desktop tilt (`rotate: -0.6deg / 0.5deg`) lives on the `.sp-way` wrapper, so translating
+  // `.sp-receipt` along Y feeds cleanly along the tilted paper axis without fighting rotation.
   const RECEIPT = '.sp-receipt';
   const PRINT_FROM = { clipPath: 'inset(0% 0% 100% 0%)', y: -14 };
   const PRINT_TO = {
     clipPath: 'inset(0% 0% 0% 0%)',
     y: 0,
-    duration: 1.1,
+    duration: 0.95,
     ease: 'power2.out',
-    stagger: 0.18,
-    clearProps: 'clipPath,transform',
+    stagger: 0.16,
+    overwrite: 'auto' as const,
+    clearProps: 'opacity,transform,clipPath,willChange',
   };
-  const CLEAR_ALL = { clearProps: 'opacity,transform,clipPath' };
+  const CLEAR_ALL = { clearProps: 'opacity,transform,clipPath,willChange' };
   let motionAbort: AbortController | null = null;
 
   /** Stagger that keeps a long batch from trailing on: at most 0.5s spread in total. */
@@ -467,8 +477,14 @@ const PHOTOS = [
 
   function playIn(els: HTMLElement[]) {
     const [receipts, blocks] = splitReceipts(els);
-    if (blocks.length) gsap.to(blocks, { ...REVEAL_TO, stagger: staggerFor(blocks.length) });
-    if (receipts.length) gsap.to(receipts, PRINT_TO);
+    if (blocks.length) {
+      gsap.set(blocks, { willChange: 'transform, opacity' });
+      gsap.to(blocks, { ...REVEAL_TO, stagger: staggerFor(blocks.length) });
+    }
+    if (receipts.length) {
+      gsap.set(receipts, { willChange: 'transform, clip-path' });
+      gsap.to(receipts, PRINT_TO);
+    }
   }
 
   function initSponsorMotion() {
@@ -479,6 +495,8 @@ const PHOTOS = [
     const mm = gsap.matchMedia();
 
     mm.add('(prefers-reduced-motion: no-preference)', (ctx) => {
+      const innerAbort = new AbortController();
+      const innerSignal = innerAbort.signal;
       const items = Array.from(page.querySelectorAll<HTMLElement>(REVEAL_SELECTOR));
       const viewH = window.innerHeight;
       const inView: HTMLElement[] = [];
@@ -493,28 +511,188 @@ const PHOTOS = [
         holdBack(inView);
         playIn(inView);
       }
-      if (!below.length) return;
+      if (!below.length) {
+        // Printing must still clear any in-view tween that happens to be mid-flight.
+        window.addEventListener(
+          'beforeprint',
+          () => {
+            gsap.killTweensOf(items);
+            gsap.set(items, CLEAR_ALL);
+          },
+          { signal: innerSignal },
+        );
+        return () => innerAbort.abort();
+      }
       holdBack(below);
 
+      const pending = new Set<HTMLElement>(below);
+      const triggerMap = new Map<Element, ScrollTrigger>();
+      let inquiryObserver: ResizeObserver | null = null;
+      let refreshTimer = 0;
+      let scrollSettleTimer = 0;
+      let hashTimerA = 0;
+      let hashTimerB = 0;
+
+      const clearTimers = () => {
+        window.clearTimeout(refreshTimer);
+        window.clearTimeout(scrollSettleTimer);
+        window.clearTimeout(hashTimerA);
+        window.clearTimeout(hashTimerB);
+        refreshTimer = 0;
+        scrollSettleTimer = 0;
+        hashTimerA = 0;
+        hashTimerB = 0;
+      };
+
+      const stopWatchersIfDone = () => {
+        if (pending.size > 0) return;
+        inquiryObserver?.disconnect();
+        inquiryObserver = null;
+        clearTimers();
+        ScrollTrigger.removeEventListener('refresh', revealVisibleOrPassed);
+      };
+
+      const revealBatch = (els: HTMLElement[]) => {
+        const toReveal: HTMLElement[] = [];
+        for (const el of els) {
+          if (!pending.has(el)) continue;
+          pending.delete(el);
+          triggerMap.get(el)?.kill();
+          triggerMap.delete(el);
+          toReveal.push(el);
+        }
+        if (toReveal.length) {
+          ctx.add(() => playIn(toReveal));
+        }
+        stopWatchersIfDone();
+      };
+
+      const clearPassed = (els: HTMLElement[]) => {
+        if (!els.length) return;
+        for (const el of els) {
+          pending.delete(el);
+          triggerMap.get(el)?.kill();
+          triggerMap.delete(el);
+        }
+        gsap.killTweensOf(els);
+        gsap.set(els, CLEAR_ALL);
+        stopWatchersIfDone();
+      };
+
+      // Safety net for deep links (#sponsor-upload, #inquiry, #contact), rapid scroll jumps,
+      // dynamic form expansion/contraction, and short footers near max scroll.
+      function revealVisibleOrPassed() {
+        if (innerSignal.aborted || pending.size === 0) return;
+        const vh = window.innerHeight;
+        const atBottom = vh + window.scrollY >= document.documentElement.scrollHeight - 4;
+        const passed: HTMLElement[] = [];
+        const visible: HTMLElement[] = [];
+        for (const el of pending) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          if (rect.bottom <= 0) passed.push(el);
+          else if (atBottom || rect.top < vh * 0.95) visible.push(el);
+        }
+        if (passed.length) clearPassed(passed);
+        if (visible.length) revealBatch(visible);
+      }
+
       // Blocks that cross the start line together (fast scroll, anchor jumps) play as one
-      // staggered batch; once: true so scrolling back up never hides them again.
-      ScrollTrigger.batch(below, {
+      // staggered batch; once: true + onEnterBack ensure neither direction ever leaves items hidden.
+      const batchTriggers = ScrollTrigger.batch(below, {
         start: 'top 92%',
         once: true,
-        onEnter: (batch) => {
-          ctx.add(() => playIn(batch as HTMLElement[]));
-        },
+        onEnter: (batch) => revealBatch(batch as HTMLElement[]),
+        onEnterBack: (batch) => revealBatch(batch as HTMLElement[]),
       });
+      for (const st of batchTriggers) {
+        if (st.trigger) triggerMap.set(st.trigger, st);
+      }
+
+      ScrollTrigger.addEventListener('refresh', revealVisibleOrPassed);
+
+      // Re-measure below-fold trigger positions whenever #inquiry changes height (e.g. choosing
+      // "money" reveals 6 tax/address fields, or switching to "file" upload mode).
+      const inquiry = document.getElementById('inquiry');
+      if (inquiry && typeof ResizeObserver !== 'undefined') {
+        let lastInquiryH = -1;
+        inquiryObserver = new ResizeObserver((entries) => {
+          if (innerSignal.aborted || pending.size === 0) return;
+          const h = entries[0]?.contentRect.height ?? inquiry.offsetHeight;
+          if (lastInquiryH < 0) {
+            lastInquiryH = h;
+            return;
+          }
+          if (Math.abs(h - lastInquiryH) <= 1) return;
+          lastInquiryH = h;
+          window.clearTimeout(refreshTimer);
+          refreshTimer = window.setTimeout(() => {
+            refreshTimer = 0;
+            if (!innerSignal.aborted && pending.size > 0) {
+              ScrollTrigger.refresh();
+            }
+          }, 120);
+        });
+        inquiryObserver.observe(inquiry);
+      }
+
+      // Hash jumps (#sponsor-upload, #inquiry, #contact) can leap past triggers before refresh.
+      const onHashJump = () => {
+        if (innerSignal.aborted || pending.size === 0) return;
+        requestAnimationFrame(revealVisibleOrPassed);
+        window.clearTimeout(hashTimerA);
+        window.clearTimeout(hashTimerB);
+        hashTimerA = window.setTimeout(revealVisibleOrPassed, 180);
+        hashTimerB = window.setTimeout(revealVisibleOrPassed, 450);
+      };
+      window.addEventListener('hashchange', onHashJump, { signal: innerSignal });
+
+      // Settle check after fast scroll or programmatic scrollIntoView; no-op once all revealed.
+      window.addEventListener('scrollend', revealVisibleOrPassed, { passive: true, signal: innerSignal });
+      window.addEventListener(
+        'scroll',
+        () => {
+          if (pending.size === 0) return;
+          window.clearTimeout(scrollSettleTimer);
+          scrollSettleTimer = window.setTimeout(() => {
+            scrollSettleTimer = 0;
+            revealVisibleOrPassed();
+          }, 140);
+        },
+        { passive: true, signal: innerSignal },
+      );
+
       // Web fonts change line wraps, so trigger positions are measured again once they load.
       document.fonts?.ready.then(() => {
-        if (!signal.aborted) ScrollTrigger.refresh();
+        if (!innerSignal.aborted && pending.size > 0) ScrollTrigger.refresh();
       });
-      // Printing must never capture blocks that were still waiting below the fold.
+
+      // Printing must never capture blocks that were still waiting or mid-tween.
       window.addEventListener(
         'beforeprint',
-        () => gsap.set(below, CLEAR_ALL),
-        { signal },
+        () => {
+          gsap.killTweensOf(items);
+          gsap.set(items, CLEAR_ALL);
+          for (const st of triggerMap.values()) st.kill();
+          triggerMap.clear();
+          pending.clear();
+          stopWatchersIfDone();
+        },
+        { signal: innerSignal },
       );
+
+      // Catch initial hash jump or elements already within 95% on first paint.
+      requestAnimationFrame(revealVisibleOrPassed);
+
+      return () => {
+        innerAbort.abort();
+        inquiryObserver?.disconnect();
+        inquiryObserver = null;
+        clearTimers();
+        ScrollTrigger.removeEventListener('refresh', revealVisibleOrPassed);
+        triggerMap.clear();
+        pending.clear();
+      };
     });
 
     signal.addEventListener('abort', () => mm.revert());
@@ -572,7 +750,10 @@ const PHOTOS = [
 
     try {
       const sponsors = await fetchSponsors();
-      if (sponsors.length > 0) link.removeAttribute('hidden');
+      if (sponsors.length > 0 && link.isConnected) {
+        link.removeAttribute('hidden');
+        if (motionAbort && !motionAbort.signal.aborted) ScrollTrigger.refresh();
+      }
     } catch {
       /* List unreachable: keep the link hidden so it never lands on an empty section. */
     }

@@ -1,7 +1,7 @@
 import { useId, useState, type DragEvent, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FileText, Upload } from 'lucide-react';
-import { FADE } from './motion';
+import { FADE, FADE_EXIT, PILL_SPRING, SIZE_SPRING, isFinePointer } from './motion';
 
 export type DropzoneFile = { name: string; size: number; type?: string };
 
@@ -28,8 +28,9 @@ type Props = {
   describedBy?: string;
 };
 
-const lift = { rest: { x: 0, y: 0 }, hover: { x: 10, y: -10 } };
-const ghost = { rest: { opacity: 0 }, hover: { opacity: 1 } };
+const LIFT_REGULAR = { rest: { x: 0, y: 0 }, hover: { x: 6, y: -6 } } as const;
+const LIFT_COMPACT = { rest: { x: 0, y: 0 }, hover: { x: 4, y: -4 } } as const;
+const GHOST = { rest: { opacity: 0 }, hover: { opacity: 1 } } as const;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -39,8 +40,8 @@ function formatSize(bytes: number): string {
 /**
  * Aceternity "File Upload": the whole zone is the label of a visually hidden (still focusable)
  * file input, so click, keyboard and screen readers work without script tricks; drag-and-drop is
- * an extra on pointer devices. The icon tile lifts off its dashed outline on hover/drag, and the
- * chosen file's card grows out of the tile (shared layout).
+ * an extra on pointer devices. The icon tile lifts off its dashed outline on fine-pointer hover or
+ * drag (suppressed under reduced motion), and the chosen file card enters cleanly below.
  */
 export function FileDropzone({
   accept,
@@ -58,10 +59,13 @@ export function FileDropzone({
 }: Props) {
   const autoId = useId();
   const inputId = id ?? `dz-${autoId}`;
-  const layoutKey = `dz-tile-${autoId}`;
+  const reduce = Boolean(useReducedMotion());
   const [drag, setDrag] = useState(false);
-  const off = disabled || busy;
-  const showCard = !!file || !!busy;
+  const [hovered, setHovered] = useState(false);
+  const off = Boolean(disabled || busy);
+  const showCard = Boolean(file || busy);
+  const lifted = !off && !reduce && (drag || hovered);
+  const liftVariants = compact ? LIFT_COMPACT : LIFT_REGULAR;
 
   const take = (list: FileList | null | undefined) => {
     const f = list?.[0];
@@ -84,11 +88,13 @@ export function FileDropzone({
 
   return (
     <div className="w-full">
-      <motion.label
+      <label
         htmlFor={inputId}
-        initial="rest"
-        animate={drag ? 'hover' : 'rest'}
-        whileHover={off ? undefined : 'hover'}
+        onPointerEnter={(e) => {
+          if (!off && isFinePointer(e)) setHovered(true);
+        }}
+        onPointerLeave={() => setHovered(false)}
+        onPointerCancel={() => setHovered(false)}
         onDragOver={onDragOver}
         onDragEnter={onDragOver}
         onDragLeave={(e) => {
@@ -96,7 +102,7 @@ export function FileDropzone({
         }}
         onDrop={onDrop}
         aria-disabled={off || undefined}
-        className={`group/dz relative flex w-full items-center gap-4 overflow-hidden rounded-[24px] border border-dashed bg-[var(--bg-surface)] text-left transition-colors focus-within:ring-2 focus-within:ring-[var(--color-tech)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg-card)] ${
+        className={`group/dz relative flex w-full items-center gap-4 overflow-hidden rounded-[24px] border border-dashed bg-[var(--bg-surface)] text-left transition-colors duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--color-tech)] has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-[var(--bg-card)] motion-reduce:transition-none ${
           compact ? 'p-3' : 'p-4 sm:p-5'
         } ${off ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
         style={{ borderColor: drag ? 'var(--color-tech)' : 'var(--color-border-input)' }}
@@ -115,18 +121,26 @@ export function FileDropzone({
         />
 
         <span className={`relative shrink-0 ${compact ? 'h-12 w-12' : 'h-14 w-14'}`} aria-hidden="true">
+          {!reduce && (
+            <motion.span
+              initial={false}
+              animate={lifted ? 'hover' : 'rest'}
+              variants={GHOST}
+              transition={lifted ? FADE : FADE_EXIT}
+              className="absolute inset-0 rounded-[12px] border border-dashed"
+              style={{ borderColor: 'var(--color-tech)' }}
+            />
+          )}
           <motion.span
-            variants={ghost}
-            transition={FADE}
-            className="absolute inset-0 rounded-[12px] border border-dashed"
-            style={{ borderColor: 'var(--color-tech)' }}
-          />
-          <motion.span
-            layoutId={showCard ? undefined : layoutKey}
-            variants={lift}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className="absolute inset-0 flex items-center justify-center rounded-[12px] bg-[var(--bg-card)] [box-shadow:var(--shadow-card)] group-hover/dz:[box-shadow:var(--shadow-float)]"
-            style={{ color: drag ? 'var(--color-tech)' : 'var(--color-ink-muted)' }}
+            initial={false}
+            animate={lifted ? 'hover' : 'rest'}
+            variants={liftVariants}
+            transition={PILL_SPRING}
+            className="absolute inset-0 flex items-center justify-center rounded-[12px] bg-[var(--bg-card)] transition-[box-shadow,color] duration-200 motion-reduce:transition-none"
+            style={{
+              color: drag ? 'var(--color-tech)' : 'var(--color-ink-muted)',
+              boxShadow: lifted || (!off && drag) ? 'var(--shadow-float)' : 'var(--shadow-card)',
+            }}
           >
             <Upload size={18} strokeWidth={1.5} />
           </motion.span>
@@ -142,18 +156,21 @@ export function FileDropzone({
             </span>
           )}
         </span>
-      </motion.label>
+      </label>
 
       <AnimatePresence initial={false}>
         {showCard && (
           <motion.div
             key="card"
-            layoutId={layoutKey}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-[var(--bg-card)] px-3 py-2.5 [box-shadow:var(--shadow-card)]"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={
+              reduce
+                ? { opacity: 0, transition: FADE_EXIT }
+                : { opacity: 0, y: -4, scale: 0.98, transition: FADE_EXIT }
+            }
+            transition={reduce ? FADE : { ...SIZE_SPRING, opacity: FADE }}
+            className="mt-2 flex min-w-0 origin-top-left flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-[var(--bg-card)] px-3 py-2.5 [box-shadow:var(--shadow-card)]"
           >
             <FileText aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0" style={{ color: 'var(--color-ink-subtle)' }} />
             <span className="min-w-0 flex-1">

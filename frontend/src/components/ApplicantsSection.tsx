@@ -91,6 +91,7 @@ function StatusChips({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLSpanElement>(null);
+  const ctxRef = useRef<gsap.Context | null>(null);
   const placed = useRef(false);
 
   /** Geometry of the pressed button, relative to the row (the buttons' offsetParent). */
@@ -99,46 +100,96 @@ function StatusChips({
     return btn ? { x: btn.offsetLeft, y: btn.offsetTop, width: btn.offsetWidth, height: btn.offsetHeight } : null;
   }
 
+  /** Instant, non-animated snap (used on resize, 360px 2-line wrap, font load, and count hydration). */
+  const snap = useCallback(() => {
+    const el = thumb.current;
+    const ctx = ctxRef.current;
+    if (!el || !ctx || !placed.current) return;
+    const to = target();
+    if (!to) return;
+    ctx.add(() => {
+      gsap.killTweensOf(el);
+      gsap.set(el, { ...to, autoAlpha: 1, scaleX: 1, scaleY: 1 });
+    });
+  }, []);
+
+  // Scope GSAP tweens to this filter row for clean unmount revert; keep thumb glued on resize/wrap/fonts.
+  useLayoutEffect(() => {
+    const root = box.current;
+    const el = thumb.current;
+    if (!root || !el) return;
+    const ctx = gsap.context(() => {}, root);
+    ctxRef.current = ctx;
+
+    let alive = true;
+    const sync = () => {
+      if (alive) snap();
+    };
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null;
+    if (ro) {
+      ro.observe(root);
+      root.querySelectorAll('.ap-seg__btn').forEach((b) => ro.observe(b));
+    }
+    document.fonts?.ready.then(sync).catch(() => {});
+
+    return () => {
+      alive = false;
+      ro?.disconnect();
+      ctx.revert();
+      ctxRef.current = null;
+      placed.current = false;
+    };
+  }, [snap]);
+
   useLayoutEffect(() => {
     const el = thumb.current;
     const root = box.current;
+    const ctx = ctxRef.current;
     const to = target();
-    if (!el || !root || !to) return;
+    if (!el || !root || !ctx || !to) return;
     root.setAttribute('data-thumb', '');
-    if (!placed.current || prefersReducedMotion()) {
+
+    ctx.add(() => {
+      if (!placed.current || prefersReducedMotion()) {
+        gsap.killTweensOf(el);
+        gsap.set(el, { ...to, autoAlpha: 1, scaleX: 1, scaleY: 1 });
+        placed.current = true;
+        return;
+      }
+      // Kill any in-flight tween while keeping live x/y/size so rapid clicks retarget smoothly
+      // without stacking or leaving scaleX/scaleY stuck stretched.
+      const prevX = Number(gsap.getProperty(el, 'x')) || 0;
+      const prevY = Number(gsap.getProperty(el, 'y')) || 0;
+      const horizontal = Math.abs(to.x - prevX) >= Math.abs(to.y - prevY);
       gsap.killTweensOf(el);
-      gsap.set(el, { ...to, autoAlpha: 1, scaleX: 1 });
-      placed.current = true;
-      return;
-    }
-    // Moving between filters: slide, with a small stretch while in motion.
-    gsap.to(el, { ...to, autoAlpha: 1, duration: 0.5, ease: 'back.out(1.25)', overwrite: 'auto' });
-    gsap.fromTo(el, { scaleX: 1.06 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' });
+      gsap.to(el, { ...to, autoAlpha: 1, duration: 0.28, ease: 'back.out(0.6)', overwrite: 'auto' });
+      gsap.fromTo(
+        el,
+        horizontal ? { scaleX: 1.04, scaleY: 1 } : { scaleX: 1, scaleY: 1.03 },
+        { scaleX: 1, scaleY: 1, duration: 0.28, ease: 'power2.out', overwrite: 'auto' },
+      );
+    });
   }, [value]);
 
-  // Counts arrive after the first paint and widen the buttons; wrapping can move them too.
-  useEffect(() => {
-    const root = box.current;
-    const el = thumb.current;
-    if (!root || !el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
-      const to = target();
-      if (to && placed.current) gsap.set(el, to);
-    });
-    ro.observe(root);
-    root.querySelectorAll('.ap-seg__btn').forEach((b) => ro.observe(b));
-    return () => {
-      ro.disconnect();
-      gsap.killTweensOf(el);
-    };
-  }, []);
+  // Counts arrive asynchronously and widen buttons; snap synchronously before paint to avoid a 1-frame mismatch.
+  useLayoutEffect(() => {
+    snap();
+  }, [counts, snap]);
 
-  /** Tactile press: shrinks while held, springs back. */
+  /** Tactile press: firm 0.96 dip while held, crisp settle on release (no wobble). Interruptible. */
   function press(btn: HTMLElement, down: boolean) {
     if (prefersReducedMotion()) return;
-    gsap.to(btn, down
-      ? { scale: 0.93, duration: 0.12, ease: 'power2.out', overwrite: 'auto' }
-      : { scale: 1, duration: 0.55, ease: 'elastic.out(1, 0.45)', overwrite: 'auto' });
+    const run = () => {
+      gsap.to(
+        btn,
+        down
+          ? { scale: 0.96, duration: 0.08, ease: 'power2.out', overwrite: 'auto' }
+          : { scale: 1, duration: 0.18, ease: 'power2.out', overwrite: 'auto' },
+      );
+    };
+    if (ctxRef.current) ctxRef.current.add(run);
+    else run();
   }
 
   return (

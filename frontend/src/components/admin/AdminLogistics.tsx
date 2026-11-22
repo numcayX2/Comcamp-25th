@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { ChevronDown, Copy } from 'lucide-react';
+import { Check, ChevronDown, Copy } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { holdsSeat, type Application } from '../../lib/api';
 import { summarizeShirtSizes } from '../../lib/applicant-tools';
 import { SHIRT_SIZES } from '../register/model';
-import { BG_CARD, FOCUS, INK, INK_2, INK_3, PILL_GHOST, RULE, TECH } from '../admin-ui';
+import { BG_CARD, FOCUS, INK, INK_2, INK_3, PILL_GHOST, RULE, SUCCESS, TECH } from '../admin-ui';
 import { HoverGroup, HoverItem } from './ui/HoverHighlight';
+import { FADE, FADE_EXIT, ICON_SPRING, TAP_SCALE } from './ui/motion';
 
 export interface AdminLogisticsProps {
   apps: Application[];
@@ -113,7 +115,9 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 function CopyButton({ title, entries }: { title: string; entries: readonly NoteEntry[] }): JSX.Element {
+  const reduce = Boolean(useReducedMotion());
   const [status, setStatus] = useState('');
+  const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -121,22 +125,49 @@ function CopyButton({ title, entries }: { title: string; entries: readonly NoteE
   const onCopy = async () => {
     const ok = await copyText(toPlainText(title, entries));
     setStatus(ok ? 'คัดลอกแล้ว' : 'คัดลอกไม่สำเร็จ');
+    setCopied(ok);
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setStatus(''), 2000);
+    timer.current = window.setTimeout(() => {
+      setStatus('');
+      setCopied(false);
+    }, 2000);
   };
+
+  const iconMotion = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0, transition: FADE_EXIT }, transition: FADE }
+    : {
+        initial: { opacity: 0, scale: 0.25 },
+        animate: { opacity: 1, scale: 1 },
+        exit: { opacity: 0, scale: 0.25 },
+        transition: ICON_SPRING,
+      };
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <button
+      <motion.button
         type="button"
         onClick={() => void onCopy()}
         disabled={entries.length === 0}
+        whileTap={entries.length === 0 ? undefined : TAP_SCALE}
+        transition={ICON_SPRING}
         className={`${PILL_GHOST} gap-2`}
-        style={{ borderColor: RULE, color: INK }}
+        style={{ borderColor: copied ? SUCCESS : RULE, color: INK }}
       >
-        <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+        <span aria-hidden="true" className="relative inline-flex size-4 shrink-0 items-center justify-center">
+          <AnimatePresence initial={false} mode="popLayout">
+            {copied ? (
+              <motion.span key="copied" className="inline-flex items-center justify-center" {...iconMotion}>
+                <Check size={16} strokeWidth={1.75} style={{ color: SUCCESS }} />
+              </motion.span>
+            ) : (
+              <motion.span key="copy" className="inline-flex items-center justify-center" {...iconMotion}>
+                <Copy size={16} strokeWidth={1.5} />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </span>
         คัดลอกรายการ
-      </button>
+      </motion.button>
       <span role="status" className="text-xs leading-6" style={{ color: INK_2 }}>
         {status}
       </span>
@@ -336,7 +367,7 @@ export function AdminLogistics({ apps }: AdminLogisticsProps): JSX.Element {
                             aria-hidden="true"
                             size={14}
                             strokeWidth={1.5}
-                            className="shrink-0 transition-transform group-open/size:rotate-180 motion-reduce:transition-none"
+                            className="shrink-0 transition-transform duration-200 group-open/size:rotate-180 motion-reduce:transition-none"
                           />
                           <span>
                             ไซส์ <span className="font-mono font-semibold tabular-nums">{r.size}</span>

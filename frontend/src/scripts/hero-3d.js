@@ -100,16 +100,55 @@ const isDark = () => {
   return r.classList.contains('dark') || r.getAttribute('data-theme') === 'dark';
 };
 
+function disposeMaterial(mat) {
+  if (!mat) return;
+  for (const val of Object.values(mat)) {
+    if (val && val.isTexture) val.dispose();
+  }
+  mat.dispose();
+}
+
+function disposeObject3D(root) {
+  if (!root) return;
+  root.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (Array.isArray(obj.material)) {
+      for (const m of obj.material) disposeMaterial(m);
+    } else if (obj.material) {
+      disposeMaterial(obj.material);
+    }
+  });
+}
+
 /* ==========================================================================
-   3. INIT
+   3. MOUNT / INIT (idempotent per canvas; clean teardown on route swap)
    ========================================================================== */
-const stage = document.getElementById('heroStage');
-const canvas = document.getElementById('heroStageCanvas');
-if (stage && canvas) init(stage, canvas);
+let activeCanvas = null;
+let activeDestroy = null;
+
+export function mountHero3D(
+  stage = document.getElementById('heroStage'),
+  canvas = document.getElementById('heroStageCanvas')
+) {
+  if (!stage || !canvas) return () => {};
+  if (activeCanvas === canvas && activeDestroy) return activeDestroy;
+  if (activeDestroy) activeDestroy(true);
+
+  const destroy = init(stage, canvas);
+  activeCanvas = canvas;
+  activeDestroy = destroy;
+  return destroy;
+}
 
 function init(stage, canvas) {
   const section = stage.closest('.hero') || stage;
-  const setState = (s) => (stage.dataset.state = s);
+  const setState = (s) => {
+    if (stage.isConnected) stage.dataset.state = s;
+  };
+  const ac = new AbortController();
+  const { signal } = ac;
+  let disposed = false;
+  let contextLost = false;
 
   /* ---- Renderer (transparent, sRGB) ---- */
   let renderer;
@@ -123,7 +162,7 @@ function init(stage, canvas) {
   } catch (err) {
     console.warn('[hero-3d] WebGL unavailable, showing fallback.', err);
     setState('fallback');
-    return;
+    return () => {};
   }
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -144,8 +183,13 @@ function init(stage, canvas) {
 
   /* ---- Lighting: studio setup ---- */
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const envScene = new RoomEnvironment();
+  const pmremRT = pmrem.fromScene(envScene, 0.04);
+  scene.environment = pmremRT.texture;
   scene.environmentIntensity = 0.55;
+  // RoomEnvironment geometry/materials and PMREMGenerator are only needed during bake
+  envScene.dispose();
+  pmrem.dispose();
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xd9ccff, 1.0));
   const key = new THREE.DirectionalLight(0xffffff, 2.4);
@@ -160,7 +204,7 @@ function init(stage, canvas) {
   const shadowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   const items = new Map();
 
-  for (const [key, cfg] of Object.entries(HERO_3D_CONFIG)) {
+  for (const [itemKey, cfg] of Object.entries(HERO_3D_CONFIG)) {
     const pivot = new THREE.Group();
     tilt.add(pivot);
 
@@ -177,7 +221,7 @@ function init(stage, canvas) {
     shadow.visible = false;
     rig.add(shadow);
 
-    items.set(key, { cfg, pivot, shadow, holder: null, shadowBase: 0.4, ready: false });
+    items.set(itemKey, { cfg, pivot, shadow, holder: null, shadowBase: 0.4, ready: false });
   }
 
   /* ---- Theme (shadow tint follows light / dark) ---- */
@@ -189,10 +233,12 @@ function init(stage, canvas) {
     }
   }
   applyTheme();
-  new MutationObserver(() => {
+  const themeMo = new MutationObserver(() => {
+    if (disposed) return;
     applyTheme();
-    if (!raf) renderNow();
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    if (ready && !raf && !contextLost) renderNow();
+  });
+  themeMo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
 
   /* ==========================================================================
      4. INTERACTION STATE
@@ -202,72 +248,112 @@ function init(stage, canvas) {
   const pointer = { x: 0, y: 0 };
   const parallax = { x: 0, y: 0 };
   const drag = { active: false, lastX: 0, lastY: 0, tgtX: 0, tgtY: 0, x: 0, y: 0 };
+  let inView = true;
 
   window.addEventListener(
     'pointermove',
     (e) => {
-      if (e.pointerType !== 'mouse') return;
-      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-      pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
+      if (e.pointerType !== 'mouse' || !inView || document.hidden || reduced) return;
+      pointer.x = (e.clientX / (window.innerWidth || 1)) * 2 - 1;
+      pointer.y = (e.clientY / (window.innerHeight || 1)) * 2 - 1;
     },
-    { passive: true }
+    { passive: true, signal }
   );
 
   // Drag / touch-to-rotate inspection (horizontal swipe on touch; vertical still scrolls the page)
-  canvas.addEventListener('pointerdown', (e) => {
-    if (!SCENE.drag.enabled) return;
-    drag.active = true;
-    drag.lastX = e.clientX;
-    drag.lastY = e.clientY;
-    canvas.setPointerCapture(e.pointerId);
-    stage.classList.add('is-dragging');
-  });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!drag.active) return;
-    drag.tgtY += (e.clientX - drag.lastX) * SCENE.drag.speed;
-    drag.tgtX = THREE.MathUtils.clamp(
-      drag.tgtX + (e.clientY - drag.lastY) * SCENE.drag.speed,
-      -SCENE.drag.maxTiltX,
-      SCENE.drag.maxTiltX
-    );
-    drag.lastX = e.clientX;
-    drag.lastY = e.clientY;
-    if (reduced) {
-      drag.x = drag.tgtX;
-      drag.y = drag.tgtY;
-      renderNow();
-    }
-  });
+  canvas.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!SCENE.drag.enabled || disposed) return;
+      drag.active = true;
+      drag.lastX = e.clientX;
+      drag.lastY = e.clientY;
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // Synthetic or detached pointer events may not support capture
+      }
+      stage.classList.add('is-dragging');
+    },
+    { signal }
+  );
+  canvas.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!drag.active || disposed) return;
+      drag.tgtY += (e.clientX - drag.lastX) * SCENE.drag.speed;
+      drag.tgtX = THREE.MathUtils.clamp(
+        drag.tgtX + (e.clientY - drag.lastY) * SCENE.drag.speed,
+        -SCENE.drag.maxTiltX,
+        SCENE.drag.maxTiltX
+      );
+      drag.lastX = e.clientX;
+      drag.lastY = e.clientY;
+      if (reduced && ready && !contextLost) {
+        drag.x = drag.tgtX;
+        drag.y = drag.tgtY;
+        renderNow();
+      }
+    },
+    { signal }
+  );
   const endDrag = () => {
     drag.active = false;
     stage.classList.remove('is-dragging');
   };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
-  canvas.addEventListener('lostpointercapture', endDrag);
+  canvas.addEventListener('pointerup', endDrag, { signal });
+  canvas.addEventListener('pointercancel', endDrag, { signal });
+  canvas.addEventListener('lostpointercapture', endDrag, { signal });
 
   // Keyboard inspection: arrows rotate the rig for keyboard / screen-reader users.
-  canvas.addEventListener('keydown', (e) => {
-    if (!SCENE.drag.enabled) return;
-    const step = 0.12;
-    if (e.key === 'ArrowLeft') {
-      drag.tgtY -= step;
-    } else if (e.key === 'ArrowRight') {
-      drag.tgtY += step;
-    } else if (e.key === 'ArrowUp') {
-      drag.tgtX = THREE.MathUtils.clamp(drag.tgtX - step, -SCENE.drag.maxTiltX, SCENE.drag.maxTiltX);
-    } else if (e.key === 'ArrowDown') {
-      drag.tgtX = THREE.MathUtils.clamp(drag.tgtX + step, -SCENE.drag.maxTiltX, SCENE.drag.maxTiltX);
-    } else {
-      return;
-    }
-    e.preventDefault();
-    if (reduced) {
-      drag.x = drag.tgtX;
-      drag.y = drag.tgtY;
-      renderNow();
-    }
-  });
+  canvas.addEventListener(
+    'keydown',
+    (e) => {
+      if (!SCENE.drag.enabled || disposed) return;
+      const step = 0.12;
+      if (e.key === 'ArrowLeft') {
+        drag.tgtY -= step;
+      } else if (e.key === 'ArrowRight') {
+        drag.tgtY += step;
+      } else if (e.key === 'ArrowUp') {
+        drag.tgtX = THREE.MathUtils.clamp(drag.tgtX - step, -SCENE.drag.maxTiltX, SCENE.drag.maxTiltX);
+      } else if (e.key === 'ArrowDown') {
+        drag.tgtX = THREE.MathUtils.clamp(drag.tgtX + step, -SCENE.drag.maxTiltX, SCENE.drag.maxTiltX);
+      } else {
+        return;
+      }
+      e.preventDefault();
+      if (reduced && ready && !contextLost) {
+        drag.x = drag.tgtX;
+        drag.y = drag.tgtY;
+        renderNow();
+      }
+    },
+    { signal }
+  );
+
+  // Gracefully pause/resume if the mobile browser reclaims the WebGL context in background.
+  canvas.addEventListener(
+    'webglcontextlost',
+    (e) => {
+      e.preventDefault();
+      contextLost = true;
+      syncLoop();
+    },
+    { signal }
+  );
+  canvas.addEventListener(
+    'webglcontextrestored',
+    () => {
+      contextLost = false;
+      if (!disposed && ready) {
+        resize();
+        renderNow();
+        syncLoop();
+      }
+    },
+    { signal }
+  );
 
   /* ==========================================================================
      5. LOAD BOTH .glb MODELS
@@ -289,6 +375,10 @@ function init(stage, canvas) {
   Promise.allSettled(
     [...items.entries()].map(async ([name, it]) => {
       const gltf = await loadGlb(it.cfg.url); // ← '/models/esp8266.glb' and '/models/ArduinoR3.glb'
+      if (disposed) {
+        disposeObject3D(gltf.scene);
+        return name;
+      }
       const holder = normalizeGlbModel(gltf, it.cfg.targetSize);
       holder.traverse((o) => {
         if (o.isMesh && o.material?.map) o.material.map.anisotropy = maxAniso;
@@ -301,6 +391,7 @@ function init(stage, canvas) {
     })
   ).then(async (results) => {
     disposeDraco();
+    if (disposed) return;
     results.forEach((r) => r.status === 'rejected' && console.warn('[hero-3d] model failed:', r.reason));
     if (!results.some((r) => r.status === 'fulfilled')) {
       setState('fallback');
@@ -314,29 +405,38 @@ function init(stage, canvas) {
     } catch (err) {
       console.warn('[hero-3d] async shader compile failed; compiling on first render.', err);
     }
+    if (disposed) return;
     ready = true;
     setState('ready');
     resize();
-    renderNow();
+    if (!contextLost) renderNow();
     syncLoop();
   });
 
   /* ==========================================================================
-     6. UPDATE + RENDER
+     6. UPDATE + RENDER (delta-time exponential damping, zero pause jump)
      ========================================================================== */
-  const timer = new THREE.Timer();
+  let elapsed = 0;
+  let lastNow = 0;
   let raf = 0;
 
   function update(dt, t) {
-    const kp = 1 - Math.exp(-dt * SCENE.parallax.rate);
-    parallax.x += ((reduced ? 0 : pointer.x) - parallax.x) * kp;
-    parallax.y += ((reduced ? 0 : pointer.y) - parallax.y) * kp;
+    if (reduced) {
+      parallax.x = 0;
+      parallax.y = 0;
+      drag.x = drag.tgtX;
+      drag.y = drag.tgtY;
+    } else {
+      const kp = 1 - Math.exp(-dt * SCENE.parallax.rate);
+      parallax.x += (pointer.x - parallax.x) * kp;
+      parallax.y += (pointer.y - parallax.y) * kp;
 
-    if (!reduced) {
       if (!drag.active && SCENE.drag.springBack) {
         const ks = 1 - Math.exp(-dt * 2.5);
-        drag.tgtX -= drag.tgtX * ks;
-        drag.tgtY -= drag.tgtY * ks;
+        drag.tgtX *= 1 - ks;
+        drag.tgtY *= 1 - ks;
+        if (Math.abs(drag.tgtX) < 1e-5) drag.tgtX = 0;
+        if (Math.abs(drag.tgtY) < 1e-5) drag.tgtY = 0;
       }
       const kd = 1 - Math.exp(-dt * SCENE.drag.rate);
       drag.x += (drag.tgtX - drag.x) * kd;
@@ -367,52 +467,69 @@ function init(stage, canvas) {
   }
 
   function renderNow() {
-    update(0.016, reduced ? 0 : timer.getElapsed());
+    if (disposed || contextLost) return;
+    update(0, reduced ? 0 : elapsed);
     renderer.render(scene, camera);
   }
 
-  function tick() {
-    raf = requestAnimationFrame(tick);
-    timer.update();
-    const dt = Math.min(timer.getDelta(), 0.05);
-    update(dt, timer.getElapsed());
+  const shouldRunLoop = () => !disposed && ready && inView && !document.hidden && !reduced && !contextLost;
+
+  function tick(now) {
+    raf = 0;
+    if (!shouldRunLoop()) return;
+    // Clamp dt <= 50ms so tab switches or frame stalls never snap damping or float phase.
+    const dt = lastNow ? Math.min(Math.max((now - lastNow) / 1000, 0), 0.05) : 0;
+    lastNow = now;
+    elapsed += dt;
+    update(dt, elapsed);
     renderer.render(scene, camera);
+    if (shouldRunLoop()) raf = requestAnimationFrame(tick);
   }
 
   /* ==========================================================================
      7. LIFECYCLE: visibility, reduced motion, resize, cleanup
      ========================================================================== */
-  let inView = true;
-
   function syncLoop() {
-    const shouldRun = ready && inView && !document.hidden && !reduced;
-    if (shouldRun && !raf) {
-      timer.update(); // discard the paused gap
-      raf = requestAnimationFrame(tick);
-    } else if (!shouldRun && raf) {
+    if (shouldRunLoop()) {
+      if (!raf) {
+        lastNow = 0; // discard any paused gap so elapsed continues seamlessly
+        raf = requestAnimationFrame(tick);
+      }
+    } else if (raf) {
       cancelAnimationFrame(raf);
       raf = 0;
+      lastNow = 0;
     }
   }
 
-  // Pause when the hero is scrolled out of view
-  new IntersectionObserver(
+  // Pause when the hero is scrolled out of view (0% GPU/CPU while reading sections 02–06)
+  const io = new IntersectionObserver(
     ([entry]) => {
       inView = entry.isIntersecting;
       syncLoop();
     },
     { threshold: 0.02 }
-  ).observe(section);
+  );
+  io.observe(section);
 
-  document.addEventListener('visibilitychange', syncLoop);
+  document.addEventListener('visibilitychange', syncLoop, { signal });
 
-  reduceMQ.addEventListener('change', (e) => {
-    reduced = e.matches;
-    syncLoop();
-    if (ready && !raf) renderNow();
-  });
+  reduceMQ.addEventListener(
+    'change',
+    (e) => {
+      reduced = e.matches;
+      if (reduced && !drag.active && SCENE.drag.springBack) {
+        drag.tgtX = 0;
+        drag.tgtY = 0;
+      }
+      syncLoop();
+      if (ready && !raf) renderNow();
+    },
+    { signal }
+  );
 
   function resize() {
+    if (disposed) return;
     const w = stage.clientWidth;
     const h = stage.clientHeight;
     if (!w || !h) return;
@@ -421,7 +538,7 @@ function init(stage, canvas) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     fitRig();
-    if (ready && !raf) renderNow();
+    if (ready && !raf && !contextLost) renderNow();
   }
 
   /* Auto-frame: scale + centre the rig so the projected outline of BOTH boards
@@ -503,18 +620,82 @@ function init(stage, canvas) {
     centre();
     tilt.rotation.copy(saved);
   }
-  new ResizeObserver(resize).observe(stage);
+
+  const ro = new ResizeObserver(resize);
+  ro.observe(stage);
   resize();
 
-  window.addEventListener('pagehide', () => {
-    if (raf) cancelAnimationFrame(raf);
+  function destroy(forceLoss = false) {
+    if (disposed) return;
+    disposed = true;
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+    ac.abort();
+    themeMo.disconnect();
+    io.disconnect();
+    ro.disconnect();
     disposeDraco();
+
+    for (const it of items.values()) {
+      if (it.holder) disposeObject3D(it.holder);
+      if (it.shadow.material) it.shadow.material.dispose();
+    }
+    items.clear();
     shadowTex.dispose();
     shadowGeo.dispose();
-    pmrem.dispose();
+    pmremRT.dispose();
+    scene.environment = null;
+    scene.clear();
     renderer.dispose();
-  });
+    if (forceLoss) {
+      try {
+        renderer.forceContextLoss();
+      } catch {
+        // Ignore if context is already lost
+      }
+    }
+    if (import.meta.env?.DEV && window.HERO_3D?.renderer === renderer) {
+      delete window.HERO_3D;
+    }
+    if (activeCanvas === canvas) {
+      activeCanvas = null;
+      activeDestroy = null;
+    }
+  }
+
+  // Respect bfcache on pagehide: pause if persisted, full teardown only when discarded.
+  window.addEventListener(
+    'pagehide',
+    (e) => {
+      if (e.persisted) {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+          lastNow = 0;
+        }
+      } else {
+        destroy(false);
+      }
+    },
+    { signal }
+  );
+  window.addEventListener(
+    'pageshow',
+    (e) => {
+      if (e.persisted && !disposed) {
+        resize();
+        if (ready && !raf && !contextLost) renderNow();
+        syncLoop();
+      }
+    },
+    { signal }
+  );
+  document.addEventListener('astro:before-swap', () => destroy(true), { once: true, signal });
 
   // Dev-only live tuning: HERO_3D.config.arduino.position.x = 1.2
   if (import.meta.env?.DEV) window.HERO_3D = { config: HERO_3D_CONFIG, scene: SCENE, rig, camera, items, fitRig, renderer };
+
+  return destroy;
 }
