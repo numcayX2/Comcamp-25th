@@ -1309,7 +1309,7 @@
     var nav = document.querySelector('.site-nav');
     var menu = $('site-menu');
     var toggle = document.querySelector('.nav-toggle');
-    var wideMq = window.matchMedia ? window.matchMedia('(min-width:900px)') : null;
+    var wideMq = window.matchMedia ? window.matchMedia('(min-width:56.25em)') : null;
     var isMobileNav = function(){
       return wideMq ? !wideMq.matches : window.innerWidth < 900;
     };

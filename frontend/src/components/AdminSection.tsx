@@ -1883,7 +1883,7 @@ export function AdminSection() {
               <div data-view="sponsors" hidden={view !== 'sponsors'}>
                 <ViewHeading
                   title="ผู้สนับสนุน"
-                  sub="ผู้แจ้งความประสงค์จาก /sponsor รายการบริจาคและฟอร์มของคณะ โลโก้ท้ายหน้าแรก และอีเมลแจ้งเตือน"
+                  sub="ผู้แจ้งความประสงค์จาก /sponsor รายการบริจาคและฟอร์มของคณะ โลโก้บนหน้าแรก และอีเมลแจ้งเตือน"
                 />
                 <div className={PANEL}>
                   <AdminSponsorHub

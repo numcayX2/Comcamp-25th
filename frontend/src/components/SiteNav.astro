@@ -282,7 +282,10 @@ const pageLinks = isAdmin ? [] : [
     width: min(1120px, calc(100% - 40px));
     margin: 0 auto;
   }
-  @media (min-width: 900px) {
+  /* Breakpoints are in em (56.25em = 900px at the default 16px) so a reader who raises the
+     browser's default font size gets the menu drawer before the desktop row runs off-screen.
+     The matchMedia queries in this file and in public/theme/main.js use the same values. */
+  @media (min-width: 56.25em) {
     .wrap {
       width: min(1120px, calc(100% - 48px));
     }
@@ -634,10 +637,10 @@ const pageLinks = isAdmin ? [] : [
     font-size: 0.9375rem;
   }
 
-  /* Mobile Responsive — full-screen overlay menu (<900px so tablet portrait never overflows).
+  /* Mobile Responsive — full-screen overlay menu (<56.25em so tablet portrait never overflows).
      Big stacked type up top, camp info pinned to the bottom.
      The panel wipes in as one piece; items appear with it, no stagger. */
-  @media (max-width: 899px) {
+  @media (max-width: 56.1875em) {
     .nav-actions {
       display: none;
     }
@@ -722,6 +725,12 @@ const pageLinks = isAdmin ? [] : [
       letter-spacing: 0;
       color: #121316;
       border-bottom: 1px solid rgba(18, 19, 22, 0.08);
+    }
+    /* Rows keep their height and the drawer scrolls (overflow-y: auto) instead of the flex
+       column squeezing the big labels into each other when the text is enlarged. */
+    .nav-links > *,
+    .nav-links a {
+      flex-shrink: 0;
     }
     @media (hover: hover) and (pointer: fine) {
       .nav-links a.nav-sec:hover {
@@ -875,7 +884,7 @@ const pageLinks = isAdmin ? [] : [
 
   /* Enlarged text (150–200%): the brand word gives way (ellipsis) so the quick action and the
      menu button always stay on screen. The link keeps its aria-label. */
-  @media (max-width: 899px) {
+  @media (max-width: 56.1875em) {
     .brand {
       flex: 0 1 auto;
       min-width: 0;
@@ -1065,7 +1074,7 @@ const pageLinks = isAdmin ? [] : [
   :global(html[data-theme="dark"]) .nav-group:has(a[aria-current]) .nav-group__btn span {
     text-decoration-color: #F5F4EF;
   }
-  @media (min-width: 900px) {
+  @media (min-width: 56.25em) {
     :global(html.dark) .nav-group__panel,
     :global(html[data-theme="dark"]) .nav-group__panel {
       background: var(--surface, #1A1D22);
@@ -1131,7 +1140,7 @@ const pageLinks = isAdmin ? [] : [
     }
   }
 
-  @media (max-width: 899px) {
+  @media (max-width: 56.1875em) {
     .theme-toggle-btn--desktop {
       display: none !important;
     }
@@ -1195,7 +1204,7 @@ const pageLinks = isAdmin ? [] : [
     }
   }
 
-  @media (min-width: 900px) {
+  @media (min-width: 56.25em) {
     .nav-mobile-controls {
       display: none !important;
     }
@@ -1227,7 +1236,7 @@ const pageLinks = isAdmin ? [] : [
   }
 
   /* Desktop "เกี่ยวกับค่าย" disclosure: click/tap to open (no hover-open), panel drops below the trigger. */
-  @media (min-width: 900px) {
+  @media (min-width: 56.25em) {
     .nav-group {
       position: relative;
       display: flex;
@@ -1318,8 +1327,8 @@ const pageLinks = isAdmin ? [] : [
     }
   }
 
-  /* Compact desktop tier (900px–1119px): keeps 6 numbered links + CTAs on one row without wrap or collision */
-  @media (min-width: 900px) and (max-width: 1119px) {
+  /* Compact desktop tier (56.25em–69.9375em = 900–1119px at 16px): keeps the links + CTAs on one row without wrap or collision */
+  @media (min-width: 56.25em) and (max-width: 69.9375em) {
     .nav-inner {
       gap: 10px;
     }
@@ -1445,7 +1454,7 @@ const pageLinks = isAdmin ? [] : [
     const menu = document.getElementById('site-menu');
 
     if (toggle && menu) {
-      const wide = window.matchMedia('(min-width: 900px)');
+      const wide = window.matchMedia('(min-width: 56.25em)');
       const syncInert = (open: boolean) => {
         menu.inert = !open && !wide.matches;
       };
@@ -1554,7 +1563,7 @@ const pageLinks = isAdmin ? [] : [
       document.addEventListener('pointerdown', (e) => {
         if (isOpen() && !group.contains(e.target as Node)) setGroup(false);
       }, { signal: navSignal() });
-      window.matchMedia('(min-width: 900px)').addEventListener?.('change', () => setGroup(false), { signal: navSignal() });
+      window.matchMedia('(min-width: 56.25em)').addEventListener?.('change', () => setGroup(false), { signal: navSignal() });
     }
 
     if (nav && nav.dataset.ccScrollBound !== 'true') {

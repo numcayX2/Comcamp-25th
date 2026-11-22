@@ -55,7 +55,9 @@ export async function prepareSponsorFormFile(file: File): Promise<SponsorFormChe
     return { ok: true, file, resized: false };
   }
   const mime = uploadType(file);
-  if (!mime.startsWith('image/')) return { ok: false, message: WRONG_TYPE };
+  // Any other photo format the browser can decode (e.g. `image/jpg` from some Android browsers, BMP)
+  // is re-encoded below; GIF and SVG are never a photo or scan of the form.
+  if (!mime.startsWith('image/') || mime === 'image/gif' || mime === 'image/svg+xml') return { ok: false, message: WRONG_TYPE };
 
   const img = await decodeImage(file);
   if (!img) return { ok: false, message: SERVER_IMAGE_TYPES.includes(mime) ? UNREADABLE : WRONG_TYPE };

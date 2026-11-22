@@ -102,7 +102,8 @@ type FieldKey =
   | 'subdistrict'
   | 'district'
   | 'province'
-  | 'postcode';
+  | 'postcode'
+  | 'details';
 type FieldErrors = Partial<Record<FieldKey, ReactNode>>;
 
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/;
@@ -203,6 +204,7 @@ export default function SponsorInquiryForm() {
   const subdistrictRef = useRef<HTMLInputElement>(null);
   const districtRef = useRef<HTMLInputElement>(null);
   const postcodeRef = useRef<HTMLInputElement>(null);
+  const detailsRef = useRef<HTMLTextAreaElement>(null);
   const kindRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
@@ -373,6 +375,7 @@ export default function SponsorInquiryForm() {
     if (next.district) return districtRef.current;
     if (next.province) return document.getElementById('sp-province');
     if (next.postcode) return postcodeRef.current;
+    if (next.details) return detailsRef.current;
     return null;
   }
 
@@ -380,16 +383,20 @@ export default function SponsorInquiryForm() {
     event.preventDefault();
     if (busyRef.current || preparing) return;
 
-    const cleanName = stripZeroWidth(name).trim();
+    // Tabs arrive when a name or a list is pasted from a spreadsheet; the server refuses them as
+    // control characters, so they become spaces here instead of failing the whole submission.
+    const cleanName = stripZeroWidth(name).replace(/\t/g, ' ').trim();
     const digits = sanitizeDigits(phone);
     const cleanEmail = stripZeroWidth(email).trim();
-    const cleanDetails = stripZeroWidth(details).trim();
+    const cleanDetails = stripZeroWidth(details).replace(/\r\n?/g, '\n').replace(/\t/g, ' ').trim();
     const next: FieldErrors = {};
 
     if (!cleanName) {
       next.name = 'กรุณากรอกชื่อผู้สนับสนุน ร้าน หรือบริษัท';
-    } else if (cleanName.length > SPONSOR_NAME_MAX) {
+    } else if (runeLength(cleanName) > SPONSOR_NAME_MAX) {
       next.name = 'ชื่อผู้สนับสนุนยาวเกินกำหนด';
+    } else if (CONTROL_CHARS_RE.test(cleanName)) {
+      next.name = 'ชื่อมีอักขระที่ใช้ไม่ได้';
     }
 
     if (!PHONE_RE.test(digits)) {
@@ -475,6 +482,16 @@ export default function SponsorInquiryForm() {
           </>
         );
       }
+    }
+
+    if (runeLength(cleanDetails) > SPONSOR_DETAILS_MAX) {
+      next.details = (
+        <>
+          รายละเอียดยาวได้ไม่เกิน <span className="font-mono tabular-nums">{SPONSOR_DETAILS_MAX}</span> ตัวอักษร
+        </>
+      );
+    } else if (/[\u0000-\u0009\u000B-\u001F\u007F]/.test(cleanDetails)) {
+      next.details = 'รายละเอียดมีอักขระที่ใช้ไม่ได้';
     }
 
     setErrors(next);
@@ -1140,14 +1157,26 @@ export default function SponsorInquiryForm() {
               <textarea
                 id="sp-details"
                 name="details"
+                ref={detailsRef}
                 className="sp-input sp-textarea"
                 rows={5}
                 maxLength={SPONSOR_DETAILS_MAX}
                 placeholder={detailsPlaceholder(kind, mode)}
                 disabled={busy}
                 value={details}
-                onChange={(event) => setDetails(event.target.value)}
+                onChange={(event) => {
+                  setDetails(event.target.value);
+                  clearError('details');
+                }}
+                aria-invalid={errors.details ? true : undefined}
+                aria-describedby={errors.details ? 'sp-details-err' : undefined}
               />
+              {errors.details && (
+                <p id="sp-details-err" className="sp-error">
+                  <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{errors.details}</span>
+                </p>
+              )}
             </div>
 
             <div className="sp-field sp-field--full sp-captcha">
