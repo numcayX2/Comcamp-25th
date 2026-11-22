@@ -14,6 +14,15 @@ export const NO_QR_NOTE = 'ไม่มี QR Code สำหรับชำร�
 /** Digits only, so banking apps accept the paste. */
 export const PAY_ACCOUNT_DIGITS = PAY_ACCOUNT.number.replace(/\D/g, '');
 
+/** Faculty of Science account for sponsor money (not the camp fee). */
+export const SPONSOR_PAY_ACCOUNT = {
+  bank: 'ธนาคารกรุงไทย',
+  name: 'คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้',
+  number: '375-3-25658-7',
+  qrSrc: '/assets/sponsor-faculty-qr.svg?v=1',
+} as const;
+export const SPONSOR_PAY_ACCOUNT_DIGITS = SPONSOR_PAY_ACCOUNT.number.replace(/\D/g, '');
+
 /** Clipboard API first; fall back to execCommand for Facebook / LINE in-app browsers. */
 export async function copyText(text: string): Promise<boolean> {
   try {

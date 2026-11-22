@@ -16,7 +16,7 @@ import {
   SPONSOR_FORM_PDF,
 } from '../lib/camp-facts';
 import { GALLERY_BASE_URL } from '../lib/gallery';
-import { PAY_ACCOUNT, PAY_ACCOUNT_DIGITS } from '../lib/payment';
+import { SPONSOR_PAY_ACCOUNT, SPONSOR_PAY_ACCOUNT_DIGITS } from '../lib/payment';
 import { FB_URL, PROJECT_ADVISOR, STAFF_CONTACTS } from './register/model';
 
 /* Hands-on lab shots already curated for the home page (#essentials photo strip). */
@@ -42,6 +42,9 @@ const PHOTOS = [
       <h1 class="sp-title">
         ร่วมสนับสนุนค่ายยุวชนคอมพิวเตอร์ ครั้งที่ <span class="font-mono tabular-nums">25</span>
       </h1>
+      <p class="sp-tax-note">
+        สามารถนำไปลดหย่อนภาษีได้ <span class="font-mono tabular-nums">1</span> เท่า
+      </p>
       <p class="sp-lead">
         ComCamp <span class="font-mono tabular-nums">#25</span> คือค่ายยุวชนคอมพิวเตอร์ของสาขาวิชาวิทยาการคอมพิวเตอร์
         คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ การสนับสนุนของท่านช่วยให้ค่ายจัดชุดอุปกรณ์ อาหาร และกิจกรรมให้น้อง ๆ
@@ -223,7 +226,8 @@ const PHOTOS = [
         <div class="sp-receipt">
           <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
           <p class="sp-way__text">
-            โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้สตาฟค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
+            โอนเข้าบัญชีคณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ด้วย QR Code หรือเลขบัญชีด้านล่าง
+            หรือมอบเงินสดให้สตาฟค่ายโดยตรง
           </p>
 
           <p class="sp-account__pre">
@@ -232,29 +236,47 @@ const PHOTOS = [
           <dl class="sp-ledger">
             <div class="sp-ledger__row">
               <dt>ธนาคาร</dt>
-              <dd>{PAY_ACCOUNT.bank}</dd>
+              <dd><span class="sp-bank-pill">{SPONSOR_PAY_ACCOUNT.bank}</span></dd>
             </div>
             <div class="sp-ledger__row">
               <dt>ชื่อบัญชี</dt>
-              <dd>{PAY_ACCOUNT.name}</dd>
-            </div>
-            <div class="sp-ledger__row sp-ledger__row--stack">
-              <dt>ผู้ถือบัญชี</dt>
-              <dd>{PAY_ACCOUNT.holders}</dd>
+              <dd>
+                {SPONSOR_PAY_ACCOUNT.name.split(' ').map((part, i) => (
+                  <>{i > 0 && ' '}<span class="whitespace-nowrap">{part}</span></>
+                ))}
+              </dd>
             </div>
             <div class="sp-ledger__row sp-ledger__row--total">
               <dt>เลขที่บัญชี</dt>
-              <dd class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</dd>
+              <dd class="sp-account__no font-mono tabular-nums">{SPONSOR_PAY_ACCOUNT.number}</dd>
             </div>
           </dl>
 
           <div class="sp-copy-row">
-            <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT_DIGITS} aria-describedby="sp-copy-status">
+            <button
+              class="sp-copy"
+              type="button"
+              data-sp-copy={SPONSOR_PAY_ACCOUNT_DIGITS}
+              aria-describedby="sp-copy-status"
+            >
               <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
               <span>คัดลอกเลขบัญชี</span>
             </button>
             <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
           </div>
+
+          <figure class="sp-qr-fig">
+            <img
+              class="sp-qr"
+              src={SPONSOR_PAY_ACCOUNT.qrSrc}
+              width="200"
+              height="200"
+              alt="QR Code โอนเงินเข้าบัญชีคณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้ ธนาคารกรุงไทย"
+              loading="lazy"
+              decoding="async"
+            />
+            <figcaption class="sp-qr-fig__cap">สแกนด้วยแอปธนาคาร แล้วกรอกจำนวนเงินเอง</figcaption>
+          </figure>
 
           <dl class="sp-ledger">
             <div class="sp-ledger__row">
@@ -273,9 +295,6 @@ const PHOTOS = [
               <span>แบบฟอร์มบริจาคเงิน</span>
               <span class="sp-btn__meta font-mono">PDF</span>
             </a>
-            <p class="sp-taxform__note">
-              ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้ สตาฟค่ายจะสอบถามตอนติดต่อกลับ
-            </p>
             <a class="sp-link" href="#sponsor-upload">
               <span>กรอกแล้ว แนบไฟล์ส่งให้สตาฟค่าย</span>
               <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />

@@ -70,6 +70,15 @@
   color: var(--color-ink-muted);
 }
 
+.sp-tax-note {
+  margin: 10px 0 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+}
+
 .sp-hero__actions {
   display: flex;
   flex-wrap: wrap;
@@ -284,6 +293,9 @@
 :where(html.dark, html[data-theme='dark']) .sp-way {
   filter: drop-shadow(0 0 0.75px rgba(255, 255, 255, 0.24)) drop-shadow(0 14px 18px rgba(0, 0, 0, 0.5));
 }
+.sp-way--money {
+  --sp-ktb: #1BA5E1;
+}
 @media (min-width: 900px) {
   /* Two slips laid on the desk, not stamped from one mould. */
   .sp-way--money {
@@ -386,32 +398,32 @@
   text-wrap: pretty;
   color: var(--color-ink);
 }
-/* Long values (three account holders) wrap under their label instead of fighting a leader. */
-.sp-ledger__row--stack,
+.sp-bank-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 3px 14px;
+  border-radius: 9999px;
+  background: var(--sp-ktb);
+  color: #121316;
+  font-weight: 700;
+  line-height: 1.7;
+}
+/* The account number is the receipt's total line and wraps under its label. */
 .sp-ledger__row--total {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-}
-.sp-ledger__row--stack dt::after,
-.sp-ledger__row--total dt::after {
-  content: none;
-}
-.sp-ledger__row--stack dd,
-.sp-ledger__row--total dd {
-  max-width: none;
-  text-align: left;
-}
-.sp-ledger__row--stack dd {
-  font-size: 0.875rem;
-  font-weight: 400;
-  color: var(--color-ink-muted);
-}
-/* The account number is the receipt's total line. */
-.sp-ledger__row--total {
   margin-top: 8px;
   padding-top: 12px;
   border-top: 1px dashed var(--rc-rule);
+}
+.sp-ledger__row--total dt::after {
+  content: none;
+}
+.sp-ledger__row--total dd {
+  max-width: none;
+  text-align: left;
 }
 .sp-account__no {
   margin: 2px 0 0;
@@ -422,6 +434,26 @@
   overflow-wrap: anywhere;
   -webkit-user-select: all;
   user-select: all;
+}
+.sp-qr-fig {
+  margin: 18px 0 0;
+}
+/* Always on white, dark mode too: banking apps need the light quiet zone. */
+.sp-qr {
+  display: block;
+  width: clamp(168px, 44vw, 200px);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: #FFFFFF;
+}
+.sp-qr-fig__cap {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
 }
 
 .sp-receipt__label {
@@ -525,20 +557,11 @@
   background: var(--color-ink-subtle);
 }
 
-/* Cash-only faculty form: download, the blank tax-ID note, and the attach shortcut. */
+/* Cash-only faculty form: download and the attach shortcut. */
 .sp-taxform {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px dashed var(--rc-rule);
-}
-.sp-taxform__note {
-  margin: 10px 0 0;
-  max-width: 34em;
-  font-size: 0.875rem;
-  line-height: 1.7;
-  letter-spacing: 0;
-  text-wrap: pretty;
-  color: var(--color-ink-muted);
 }
 
 /* ── 3. Ordered steps ─────────────────────────────────────────────────────── */
