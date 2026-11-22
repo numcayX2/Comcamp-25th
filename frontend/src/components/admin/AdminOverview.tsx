@@ -1,9 +1,11 @@
 /**
- * /admin overview view: KPI row plus Chart.js charts, all counted in the browser from the loaded
- * applications. Chart.js is loaded with a dynamic import so the admin island's first bundle stays
- * small, and every chart keeps a readable list or table of its numbers beside the canvas.
+ * /admin overview view: KPI tiles plus Chart.js charts laid out as a bento grid (Aceternity "Bento
+ * Grid"), all counted in the browser from the loaded applications. Chart.js is loaded with a dynamic
+ * import so the admin island's first bundle stays small, and every chart keeps a readable list or
+ * table of its numbers beside the canvas.
  */
 import { ChevronDown } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import type * as ChartJsModule from 'chart.js';
 import type { Chart, ChartConfiguration, ChartType } from 'chart.js';
@@ -26,6 +28,7 @@ import {
   TECH,
   WARNING,
 } from '../admin-ui';
+import { HoverGroup, HoverItem } from './ui/HoverHighlight';
 
 export interface AdminOverviewProps {
   apps: Application[];
@@ -358,16 +361,17 @@ function NumbersTable({ headers, rows }: { headers: [string, ...string[]]; rows:
 function ChartPanel({
   title,
   caption,
-  wide,
+  className = '',
   children,
 }: {
   title: string;
   caption?: ReactNode;
-  wide?: boolean;
+  /** Bento spans (e.g. 'md:col-span-2 lg:col-span-4'). */
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <figure className={`${PANEL_CLASS} m-0 ${wide ? 'lg:col-span-2' : ''}`} style={PANEL_STYLE}>
+    <figure className={`${PANEL_CLASS} m-0 flex flex-col ${className}`} style={PANEL_STYLE}>
       <figcaption className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="text-base font-semibold leading-[1.3]" style={{ color: INK }}>
           {title}
@@ -388,6 +392,11 @@ function PlotPlaceholder({ height }: { height: number }) {
   return <div aria-hidden="true" className="w-full rounded-xl" style={{ height, background: SURFACE_SUBTLE }} />;
 }
 
+/** Lift on hover for tiles that carry an action (Aceternity bento hover), mouse/pen only. */
+const LIFT_HOVER = { y: -2 } as const;
+const LIFT_TRANSITION = { type: 'spring', stiffness: 420, damping: 32 } as const;
+const LIFT_STYLE = { background: BG_CARD, padding: PANEL_STYLE.padding } as const;
+
 function Kpi({
   label,
   value,
@@ -395,20 +404,19 @@ function Kpi({
   action,
   primary = false,
   accent = false,
-  className = '',
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
+  /** A tile with an action lifts slightly on hover; tiles without one stay still. */
   action?: ReactNode;
   /** Larger number; used for the one tile that needs staff attention. */
   primary?: boolean;
   /** Amber dot beside the label (decorative; the sub text carries the meaning). */
   accent?: boolean;
-  className?: string;
 }) {
-  return (
-    <div className={`${PANEL_CLASS} flex flex-col gap-1 ${className}`} style={PANEL_STYLE}>
+  const body = (
+    <>
       <span className="flex items-center gap-2 text-sm leading-[1.6]" style={{ color: INK_2 }}>
         {accent ? (
           <span aria-hidden="true" className="inline-block size-2 shrink-0 rounded-full" style={{ background: WARNING }} />
@@ -416,14 +424,31 @@ function Kpi({
         {label}
       </span>
       <span
-        className={`font-mono font-semibold leading-[1.22] tabular-nums ${primary ? 'text-5xl' : 'text-3xl'}`}
+        className={`font-mono font-semibold leading-[1.22] tabular-nums ${primary ? 'text-5xl lg:text-6xl' : 'text-3xl'}`}
         style={{ color: INK }}
       >
         {value}
       </span>
       {sub ? <span className="text-sm leading-[1.6]">{sub}</span> : null}
       {action ? <div className="mt-auto pt-3">{action}</div> : null}
-    </div>
+    </>
+  );
+  if (!action) {
+    return (
+      <div className={`${PANEL_CLASS} flex h-full flex-col gap-1`} style={PANEL_STYLE}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <motion.div
+      whileHover={LIFT_HOVER}
+      transition={LIFT_TRANSITION}
+      className={`${PANEL_CLASS} flex h-full flex-col gap-1 shadow-[var(--shadow-card)] transition-shadow duration-200 hover:shadow-[var(--shadow-float)] motion-reduce:transition-none`}
+      style={LIFT_STYLE}
+    >
+      {body}
+    </motion.div>
   );
 }
 
@@ -479,19 +504,31 @@ function SkeletonBlock({ height, className = '' }: { height: number; className?:
   );
 }
 
+/** Bento spans shared by the live grid and its skeleton, so loading does not reflow the layout. */
+const KPI_GRID = 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4';
+const SPAN_PRIMARY = 'sm:col-span-2 lg:row-span-2';
+const SPAN_PAIR = 'sm:col-span-2';
+const CHART_GRID = 'grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-12';
+const SPAN_FULL = 'md:col-span-2 lg:col-span-12';
+const SPAN_DAILY = 'md:col-span-2 lg:col-span-8';
+const SPAN_THIRD = 'lg:col-span-4';
+
 function OverviewSkeleton() {
   return (
     <div aria-busy="true" aria-label="กำลังโหลดข้อมูลภาพรวม" className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, i) => (
-          <SkeletonBlock key={i} height={92} />
-        ))}
+      <div className={KPI_GRID}>
+        <SkeletonBlock height={92} className={SPAN_PRIMARY} />
+        <SkeletonBlock height={92} />
+        <SkeletonBlock height={92} />
+        <SkeletonBlock height={92} className={SPAN_PAIR} />
       </div>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <SkeletonBlock height={150} className="lg:col-span-2" />
-        <SkeletonBlock height={300} className="lg:col-span-2" />
-        <SkeletonBlock height={300} />
-        <SkeletonBlock height={300} />
+      <div className={CHART_GRID}>
+        <SkeletonBlock height={150} className={SPAN_FULL} />
+        <SkeletonBlock height={300} className={SPAN_DAILY} />
+        <SkeletonBlock height={300} className={SPAN_THIRD} />
+        <SkeletonBlock height={300} className={SPAN_THIRD} />
+        <SkeletonBlock height={300} className={SPAN_THIRD} />
+        <SkeletonBlock height={300} className={SPAN_THIRD} />
       </div>
     </div>
   );
@@ -722,11 +759,11 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
     <section className="flex flex-col gap-6">
       {heading}
 
-      {/* KPI row */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5">
+      {/* KPI tiles: bento cells; Aceternity "Hover Effect" plate slides between them */}
+      <HoverGroup className={KPI_GRID}>
+        <HoverItem k="slips" className={`min-w-0 ${SPAN_PRIMARY}`}>
         <Kpi
           primary
-          className="col-span-2 md:row-span-2 xl:row-span-1"
           label="สลิปรอตรวจ"
           accent={pendingSlipCount > 0}
           value={fmt(pendingSlipCount)}
@@ -752,6 +789,8 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             </button>
           }
         />
+        </HoverItem>
+        <HoverItem k="seats" className="min-w-0">
         <Kpi
           label="ที่นั่งที่ใช้"
           value={
@@ -783,6 +822,8 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             </>
           }
         />
+        </HoverItem>
+        <HoverItem k="confirmed" className="min-w-0">
         <Kpi
           label="ยืนยันสิทธิ์แล้ว"
           value={fmt(confirmedCount)}
@@ -796,8 +837,9 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             )
           }
         />
+        </HoverItem>
+        <HoverItem k="awaiting" className={`min-w-0 ${SPAN_PAIR}`}>
         <Kpi
-          className="col-span-2 md:col-span-2 xl:col-span-1"
           label="รอโอน/ส่งสลิป"
           value={fmt(awaitingPayCount)}
           sub={
@@ -812,7 +854,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
           action={
             <button
               type="button"
-              className={`${PILL_GHOST} w-full`}
+              className={`${PILL_GHOST} w-full sm:w-fit sm:px-6`}
               style={{ borderColor: RULE, color: INK }}
               onClick={() => onOpenQueue('AWAITING_PAY')}
             >
@@ -820,13 +862,14 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             </button>
           }
         />
-      </div>
+        </HoverItem>
+      </HoverGroup>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className={CHART_GRID}>
         {/* Seats */}
         <ChartPanel
           title="ที่นั่ง"
-          wide
+          className={SPAN_FULL}
           caption={
             seats.capacity == null ? undefined : (
               <>
@@ -853,7 +896,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
         </ChartPanel>
 
         {totalApps === 0 ? (
-          <div className={`${PANEL_CLASS} lg:col-span-2`} style={PANEL_STYLE}>
+          <div className={`${PANEL_CLASS} ${SPAN_FULL}`} style={PANEL_STYLE}>
             <p className="py-10 text-center text-base leading-[1.75]" style={{ color: INK_2 }}>
               ยังไม่มีใบสมัคร
             </p>
@@ -863,7 +906,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
             {/* Daily applications */}
             <ChartPanel
               title="ใบสมัครรายวัน"
-              wide
+              className={SPAN_DAILY}
               caption={
                 <>
                   รวม <span className="font-mono tabular-nums">{fmt(totalApps)}</span> ใบ
@@ -906,6 +949,7 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
 
             {/* Status */}
             <ChartPanel
+              className={SPAN_THIRD}
               title="สถานะใบสมัคร"
               caption={
                 <>
@@ -931,8 +975,23 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
               />
             </ChartPanel>
 
+            {/* Province top 10 */}
+            <ChartPanel title="จังหวัด" caption="10 อันดับแรก" className={SPAN_THIRD}>
+              {provinceConfig ? (
+                <ChartCanvas
+                  config={provinceConfig}
+                  height={barsHeight(provinces.length)}
+                  label={rowsAria('จังหวัดของผู้สมัคร', provinces)}
+                />
+              ) : (
+                <PlotPlaceholder height={barsHeight(provinces.length)} />
+              )}
+              <NumbersTable headers={['จังหวัด', 'คน']} rows={provinces.map((r) => [r.label, r.count])} />
+            </ChartPanel>
+
             {/* Referral channels */}
             <ChartPanel
+              className={SPAN_THIRD}
               title="ช่องทางที่รู้จักค่าย"
               caption={
                 <>
@@ -955,22 +1014,8 @@ export function AdminOverview(props: AdminOverviewProps): JSX.Element {
               <NumbersTable headers={['ช่องทาง', 'คน']} rows={referralRows.map((r) => [r.label, r.count])} />
             </ChartPanel>
 
-            {/* Province top 10 */}
-            <ChartPanel title="จังหวัด" caption="10 อันดับแรก">
-              {provinceConfig ? (
-                <ChartCanvas
-                  config={provinceConfig}
-                  height={barsHeight(provinces.length)}
-                  label={rowsAria('จังหวัดของผู้สมัคร', provinces)}
-                />
-              ) : (
-                <PlotPlaceholder height={barsHeight(provinces.length)} />
-              )}
-              <NumbersTable headers={['จังหวัด', 'คน']} rows={provinces.map((r) => [r.label, r.count])} />
-            </ChartPanel>
-
             {/* Grade */}
-            <ChartPanel title="ระดับชั้น">
+            <ChartPanel title="ระดับชั้น" className={SPAN_THIRD}>
               {gradeConfig ? (
                 <ChartCanvas
                   config={gradeConfig}

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
-import { Check, Eye, FileUp, Pencil, Plus, Printer, RefreshCw, RotateCw, Trash2, TriangleAlert, X } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Check, Eye, Pencil, Plus, Printer, RotateCw, Save, Trash2, TriangleAlert, X } from 'lucide-react';
 import {
   SPONSOR_ADDRESS_LINE_MAX,
   SPONSOR_AREA_MAX,
@@ -50,6 +50,9 @@ import {
   WARNING,
 } from '../admin-ui';
 import { SponsorFormPrint, type PrintableDonation } from './SponsorFormPrint';
+import { FileDropzone } from './ui/FileDropzone';
+import { StatefulButton } from './ui/StatefulButton';
+import { useDoneSignal } from './ui/motion';
 import {
   CONTROL_CHARS,
   NoticeBanner,
@@ -430,8 +433,9 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
   const actionRef = useRef(false);
   const viewRef = useRef(false);
   const loadingRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const uploadTargetRef = useRef<{ id: number; kind: SponsorFileKind } | null>(null);
+  const [saveDone, bumpSave] = useDoneSignal();
+  /** Last successful "ส่งคณะแล้ว" toggle, so only that row's button plays the success beat. */
+  const [facultyDone, setFacultyDone] = useState<{ id: number; n: number } | null>(null);
   const viewUrlsRef = useRef(new Set<string>());
 
   const busy = busyKey !== null;
@@ -584,12 +588,14 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
         setItems((prev) => [created, ...(prev ?? [])]);
         setNotice({ kind: 'ok', text: `บันทึกรายการบริจาคของ “${created.donorName}” แล้ว พิมพ์ฟอร์มให้ผู้บริจาคเซ็นได้จากรายการด้านล่าง` });
         closeForm(false);
+        bumpSave();
         focusLater(`donation-print-${created.id}`, 'donation-add-button');
       } else {
         const updated = await updateSponsorDonation(token, formTarget, input);
         replaceItem(updated);
         setNotice({ kind: 'ok', text: `บันทึกการแก้ไข “${updated.donorName}” แล้ว` });
         closeForm();
+        bumpSave();
       }
     } catch (err) {
       failed(
@@ -610,6 +616,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
       replaceItem(updated);
       // Keep an open editor of this donation from writing the old flag back on save.
       if (formTarget === d.id) setForm((prev) => ({ ...prev, facultySubmitted: updated.facultySubmitted }));
+      setFacultyDone((prev) => ({ id: d.id, n: (prev?.n ?? 0) + 1 }));
       setNotice({
         kind: 'ok',
         text: updated.facultySubmitted ? `ทำเครื่องหมาย “${updated.donorName}” ว่าส่งคณะแล้ว` : `ยกเลิกสถานะส่งคณะของ “${updated.donorName}” แล้ว`,
@@ -638,20 +645,8 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     }
   }
 
-  function pickFile(d: SponsorDonation, kind: SponsorFileKind) {
+  async function uploadFile(target: { id: number; kind: SponsorFileKind }, file: File) {
     if (busy || actionRef.current) return;
-    uploadTargetRef.current = { id: d.id, kind };
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  }
-
-  async function onFileChosen(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    const target = uploadTargetRef.current;
-    e.target.value = '';
-    if (!file || !target) return;
     const problem = fileProblem(file);
     if (problem) {
       setNotice({ kind: 'error', text: `อัปโหลด${SPONSOR_FILE_LABELS[target.kind]}ไม่ได้: ${problem}` });
@@ -666,7 +661,6 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     } catch (err) {
       failed(err, `อัปโหลด${SPONSOR_FILE_LABELS[target.kind]}`, 'ไฟล์ไม่ถูกต้อง รองรับเฉพาะ PDF, JPG, PNG หรือ WebP ไม่เกิน 8 MB');
     } finally {
-      uploadTargetRef.current = null;
       unlock();
     }
   }
@@ -1064,15 +1058,19 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
         </label>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
+          <StatefulButton
             type="submit"
             disabled={busy}
-            aria-busy={saving || undefined}
+            busy={saving}
+            busyLabel="กำลังบันทึก…"
+            doneSignal={saveDone}
+            doneLabel="บันทึกแล้ว"
+            icon={<Save aria-hidden="true" size={16} strokeWidth={1.5} />}
             className={PRIMARY_BTN}
             style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
           >
-            {saving ? 'กำลังบันทึก…' : isNew ? 'บันทึกรายการบริจาค' : 'บันทึกการแก้ไข'}
-          </button>
+            {isNew ? 'บันทึกรายการบริจาค' : 'บันทึกการแก้ไข'}
+          </StatefulButton>
           <button type="button" disabled={saving} onClick={() => closeForm()} className={PILL_GHOST} style={{ borderColor: RULE, color: INK_2 }}>
             ยกเลิก
           </button>
@@ -1090,7 +1088,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     const viewing = viewingKey === key;
     const confirming = confirmFileKey === key;
     return (
-      <div className="flex flex-col gap-2 rounded-xl border p-3" style={{ borderColor: file ? SUCCESS : RULE }}>
+      <div className="flex min-w-0 flex-col gap-2">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-6" style={{ color: INK }}>
           <span
             className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-5"
@@ -1110,110 +1108,86 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
             )}
           </span>
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {file ? (
-            <>
-              <button
-                id={`donation-fileview-${key}`}
-                type="button"
-                disabled={viewing}
-                aria-busy={viewing || undefined}
-                aria-label={`ดู${label}ของ ${d.donorName} (เปิดในแท็บใหม่)`}
-                onClick={() => onViewFile(d, kind)}
-                className={`${PILL_GHOST} gap-1.5`}
-                style={{ borderColor: RULE, color: INK }}
-              >
-                <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
-                {viewing ? 'กำลังเปิด…' : 'ดู'}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                aria-busy={uploading || undefined}
-                aria-label={`เปลี่ยน${label}ของ ${d.donorName}`}
-                onClick={() => pickFile(d, kind)}
-                className={`${PILL_GHOST} gap-1.5`}
-                style={{ borderColor: RULE, color: INK }}
-              >
-                <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
-                {uploading ? 'กำลังอัปโหลด…' : 'เปลี่ยนไฟล์'}
-              </button>
-              {confirming ? (
-                <>
+        <FileDropzone
+          compact
+          id={`donation-upload-${key}`}
+          accept={FILE_ACCEPT}
+          onFile={(f) => uploadFile({ id: d.id, kind }, f)}
+          label={file ? `เปลี่ยน${label}ของ ${d.donorName}` : `อัปโหลด${label}ของ ${d.donorName}`}
+          hint="PDF, JPG, PNG หรือ WebP ไม่เกิน 8 MB · คลิกหรือลากไฟล์มาวาง"
+          file={file ? { name: label, size: file.size, type: file.mime } : null}
+          busy={uploading}
+          busyText="กำลังอัปโหลด…"
+          disabled={busy && !uploading}
+          fileActions={
+            file ? (
+              <>
+                <button
+                  id={`donation-fileview-${key}`}
+                  type="button"
+                  disabled={viewing}
+                  aria-busy={viewing || undefined}
+                  aria-label={`ดู${label}ของ ${d.donorName} (เปิดในแท็บใหม่)`}
+                  onClick={() => onViewFile(d, kind)}
+                  className={`${PILL_GHOST} gap-1.5`}
+                  style={{ borderColor: RULE, color: INK }}
+                >
+                  <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
+                  {viewing ? 'กำลังเปิด…' : 'ดู'}
+                </button>
+                {confirming ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-busy={deleting || undefined}
+                      onClick={() => onDeleteFile(d, kind)}
+                      className={CONFIRM_BTN}
+                      style={{ borderColor: DANGER, color: DANGER, backgroundColor: DANGER_TINT }}
+                    >
+                      {deleting ? 'กำลังลบ…' : `ยืนยันลบ${label}`}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={() => {
+                        setConfirmFileKey(null);
+                        focusLater(`donation-filedel-${key}`);
+                      }}
+                      className={LINK_BTN}
+                      style={{ color: INK_2 }}
+                    >
+                      ยกเลิก
+                    </button>
+                  </>
+                ) : (
                   <button
+                    id={`donation-filedel-${key}`}
                     type="button"
                     disabled={busy}
-                    aria-busy={deleting || undefined}
-                    onClick={() => onDeleteFile(d, kind)}
-                    className={CONFIRM_BTN}
-                    style={{ borderColor: DANGER, color: DANGER, backgroundColor: DANGER_TINT }}
-                  >
-                    {deleting ? 'กำลังลบ…' : `ยืนยันลบ${label}`}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deleting}
+                    aria-label={`ลบ${label}ของ ${d.donorName}`}
                     onClick={() => {
-                      setConfirmFileKey(null);
-                      focusLater(`donation-filedel-${key}`);
+                      setNotice(null);
+                      setConfirmDeleteId(null);
+                      setConfirmFileKey(key);
                     }}
-                    className={LINK_BTN}
-                    style={{ color: INK_2 }}
+                    className={PILL_DANGER}
+                    style={{ borderColor: DANGER, color: DANGER }}
                   >
-                    ยกเลิก
+                    <X aria-hidden="true" size={16} strokeWidth={1.5} />
+                    ลบไฟล์
                   </button>
-                </>
-              ) : (
-                <button
-                  id={`donation-filedel-${key}`}
-                  type="button"
-                  disabled={busy}
-                  aria-label={`ลบ${label}ของ ${d.donorName}`}
-                  onClick={() => {
-                    setNotice(null);
-                    setConfirmDeleteId(null);
-                    setConfirmFileKey(key);
-                  }}
-                  className={PILL_DANGER}
-                  style={{ borderColor: DANGER, color: DANGER }}
-                >
-                  <X aria-hidden="true" size={16} strokeWidth={1.5} />
-                  ลบไฟล์
-                </button>
-              )}
-            </>
-          ) : (
-            <button
-              id={`donation-upload-${key}`}
-              type="button"
-              disabled={busy}
-              aria-busy={uploading || undefined}
-              aria-label={`อัปโหลด${label}ของ ${d.donorName}`}
-              onClick={() => pickFile(d, kind)}
-              className={`${PILL_GHOST} gap-1.5`}
-              style={{ borderColor: RULE, color: INK }}
-            >
-              <FileUp aria-hidden="true" size={16} strokeWidth={1.5} />
-              {uploading ? 'กำลังอัปโหลด…' : 'อัปโหลด'}
-            </button>
-          )}
-        </div>
+                )}
+              </>
+            ) : null
+          }
+        />
       </div>
     );
   }
 
   return (
     <section aria-label="รายการบริจาค" aria-busy={loading} className="flex flex-col gap-5">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={FILE_ACCEPT}
-        onChange={onFileChosen}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="sr-only"
-      />
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm leading-7" style={{ color: INK_2 }}>
           {items === null ? (
@@ -1418,18 +1392,20 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
                       <Printer aria-hidden="true" size={16} strokeWidth={1.5} />
                       {printing === d ? 'กำลังเปิดหน้าพิมพ์…' : 'พิมพ์ฟอร์ม'}
                     </button>
-                    <button
+                    <StatefulButton
                       type="button"
                       disabled={busy}
                       aria-pressed={d.facultySubmitted}
-                      aria-busy={toggling || undefined}
+                      busy={toggling}
+                      busyLabel="กำลังบันทึก…"
+                      doneSignal={facultyDone?.id === d.id ? facultyDone.n : undefined}
+                      icon={<Check aria-hidden="true" size={16} strokeWidth={1.5} style={{ color: d.facultySubmitted ? SUCCESS : INK_3 }} />}
                       onClick={() => onToggleFaculty(d)}
                       className={`${PILL_GHOST} gap-1.5`}
                       style={{ borderColor: d.facultySubmitted ? SUCCESS : RULE, color: INK }}
                     >
-                      <Check aria-hidden="true" size={16} strokeWidth={1.5} style={{ color: d.facultySubmitted ? SUCCESS : INK_3 }} />
-                      {toggling ? 'กำลังบันทึก…' : 'ส่งคณะแล้ว'}
-                    </button>
+                      ส่งคณะแล้ว
+                    </StatefulButton>
                     <button
                       id={`donation-delete-${d.id}`}
                       type="button"

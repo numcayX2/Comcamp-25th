@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, Save, X } from 'lucide-react';
 import { fetchSponsorNotifyEmails, stripZeroWidth, updateSponsorNotifyEmails } from '../../lib/api';
 import { BTN_DARK, BTN_DARK_TEXT, DANGER, FOCUS, INK, INK_2, INK_3, INPUT_BASE, INPUT_BORDER, PILL_GHOST, RULE } from '../admin-ui';
 import { NoticeBanner, UNKNOWN_ERROR, focusLater, sponsorErrorText, type Notice } from './sponsor-ui';
+import { StatefulButton } from './ui/StatefulButton';
+import { useDoneSignal } from './ui/motion';
 
 /** Contract: max 10 addresses, each a bare address ≤ 150 characters (server lowercases + dedupes). */
 const MAX_EMAILS = 10;
@@ -26,6 +28,7 @@ export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
   const [notice, setNotice] = useState<Notice>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const [saveDone, bumpSave] = useDoneSignal();
 
   async function load(signal?: { cancelled: boolean }) {
     try {
@@ -86,6 +89,7 @@ export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
       const list = await updateSponsorNotifyEmails(token, emails);
       setSaved(list);
       setEmails(list);
+      bumpSave();
       setNotice({
         kind: 'ok',
         text: list.length > 0 ? `บันทึกแล้ว ระบบจะแจ้งเตือนไปยัง ${list.length} อีเมล` : 'บันทึกแล้ว ตอนนี้ไม่มีอีเมลรับแจ้งเตือน',
@@ -213,16 +217,20 @@ export function AdminSponsorNotify({ token, canEdit, onAuthError }: Props) {
           {notice && <NoticeBanner notice={notice} />}
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <StatefulButton
               type="button"
-              disabled={saving || !dirty}
-              aria-busy={saving || undefined}
+              disabled={!dirty}
+              busy={saving}
+              busyLabel="กำลังบันทึก…"
+              doneSignal={saveDone}
+              doneLabel="บันทึกแล้ว"
+              icon={<Save aria-hidden="true" size={16} strokeWidth={1.5} />}
               onClick={onSave}
-              className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+              className={`min-h-11 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 motion-reduce:transition-none ${FOCUS}`}
               style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
             >
-              {saving ? 'กำลังบันทึก…' : 'บันทึก'}
-            </button>
+              บันทึก
+            </StatefulButton>
             {dirty && !saving && (
               <button
                 type="button"

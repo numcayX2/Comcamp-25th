@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { ArrowDown, ArrowUp, CircleCheck, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ArrowDown, ArrowUp, CircleCheck, Pencil, Plus, Save, Trash2, TriangleAlert } from 'lucide-react';
+import { FileDropzone } from './admin/ui/FileDropzone';
+import { StatefulButton } from './admin/ui/StatefulButton';
+import { useDoneSignal } from './admin/ui/motion';
 import {
   ApiHttpError,
   SPONSOR_LOGO_MAX_BYTES,
@@ -163,7 +166,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
   const savingRef = useRef(false);
   const deletingRef = useRef(false);
   const reorderingRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [saveDone, bumpSave] = useDoneSignal();
 
   const busy = saving || deletingId !== null || reorderingId !== null;
   const editing = typeof formTarget === 'number' ? (sponsors?.find((s) => s.id === formTarget) ?? null) : null;
@@ -214,7 +217,6 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
 
   function clearFile() {
     setLogoFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function openForm(target: 'new' | AdminSponsor) {
@@ -247,12 +249,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     else focusLater('sponsor-add-button');
   }
 
-  function onFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    if (!file) {
-      setLogoFile(null);
-      return;
-    }
+  function onFileChange(file: File) {
     const problem = logoProblem(file);
     if (problem) {
       clearFile();
@@ -328,6 +325,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
         setSponsors((prev) => [...(prev ?? []), created]);
         setNotice({ kind: 'ok', text: `เพิ่ม “${created.name}” แล้ว` });
         closeForm(false);
+        bumpSave();
         focusLater(`sponsor-edit-${created.id}`, 'sponsor-add-button');
       } else {
         const updated = await updateSponsor(token, formTarget, {
@@ -339,6 +337,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
         setSponsors((prev) => (prev ?? []).map((s) => (s.id === updated.id ? updated : s)));
         setNotice({ kind: 'ok', text: `บันทึก “${updated.name}” แล้ว` });
         closeForm();
+        bumpSave();
       }
     } catch (err) {
       if (onAuthError(err)) return;
@@ -499,20 +498,18 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
         </label>
 
         <div>
-          <label htmlFor="sponsor-logo-input" className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
+          <p className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
             {isNew ? 'ไฟล์โลโก้' : 'เปลี่ยนโลโก้ (ไม่บังคับ)'}
-          </label>
-          <input
-            ref={fileInputRef}
+          </p>
+          <FileDropzone
             id="sponsor-logo-input"
-            type="file"
             accept={LOGO_ACCEPT}
-            onChange={onFileChange}
+            onFile={onFileChange}
+            label={isNew ? 'เลือกไฟล์โลโก้' : 'เลือกไฟล์โลโก้ใหม่'}
+            hint="คลิกหรือลากไฟล์มาวาง"
+            file={logoFile ? { name: logoFile.name, size: logoFile.size, type: logoFile.type } : null}
             disabled={saving}
-            aria-invalid={fieldErrors.logo ? true : undefined}
-            aria-describedby={fieldErrors.logo ? 'sponsor-logo-help sponsor-logo-error' : 'sponsor-logo-help'}
-            className={`block w-full min-w-0 rounded-xl text-sm leading-7 file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-full file:border file:border-solid file:border-[var(--color-border)] file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[var(--color-ink)] hover:file:bg-[var(--color-btn-ghost-hover)] disabled:opacity-50 ${FOCUS}`}
-            style={{ color: INK_2 }}
+            describedBy={fieldErrors.logo ? 'sponsor-logo-help sponsor-logo-error' : 'sponsor-logo-help'}
           />
           <p id="sponsor-logo-help" className="mt-1.5 text-xs leading-5" style={{ color: INK_3 }}>
             PNG, JPG หรือ WebP ไม่เกิน 2 MB และไม่เกิน 4096×4096 px (ไม่รับ SVG)
@@ -534,15 +531,18 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
+          <StatefulButton
             type="submit"
-            disabled={saving}
-            aria-busy={saving || undefined}
-            className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+            busy={saving}
+            busyLabel="กำลังบันทึก…"
+            doneSignal={saveDone}
+            doneLabel="บันทึกแล้ว"
+            icon={isNew ? <Plus aria-hidden="true" size={16} strokeWidth={1.5} /> : <Save aria-hidden="true" size={16} strokeWidth={1.5} />}
+            className={`min-h-11 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 motion-reduce:transition-none ${FOCUS}`}
             style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
           >
-            {saving ? 'กำลังบันทึก…' : isNew ? 'เพิ่มผู้สนับสนุน' : 'บันทึกการแก้ไข'}
-          </button>
+            {isNew ? 'เพิ่มผู้สนับสนุน' : 'บันทึกการแก้ไข'}
+          </StatefulButton>
           <button
             type="button"
             disabled={saving}

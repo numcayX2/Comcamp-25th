@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleCheck, RotateCcw, TriangleAlert } from 'lucide-react';
+import { StatefulButton } from './admin/ui/StatefulButton';
+import { useDoneSignal } from './admin/ui/motion';
 import {
   ApiHttpError,
   fetchAdminSettings,
@@ -181,6 +183,7 @@ export function AdminSettingsPanel({
   const settingsRef = useRef<AdminSettings | null>(null);
   const savingRef = useRef(false);
   const togglingRef = useRef(false);
+  const [saveDone, bumpSaveDone] = useDoneSignal();
   const inputsRef = useRef({ quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput });
   inputsRef.current = { quotaInput, feeInput, openAtInput, closeAtInput, certReleaseInput };
 
@@ -357,6 +360,7 @@ export function AdminSettingsPanel({
       const res = await updateAdminSettings(token, payload);
       receive(res.data);
       resetInputs(res.data);
+      bumpSaveDone();
       const savedFee = Number(res.data.campFee);
       setNotice({
         kind: 'ok',
@@ -595,15 +599,18 @@ export function AdminSettingsPanel({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <button
+                  <StatefulButton
                     type="submit"
-                    disabled={saving || !canEdit}
-                    aria-busy={saving || undefined}
-                    className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                    busy={saving}
+                    busyLabel="กำลังบันทึก…"
+                    doneSignal={saveDone}
+                    doneLabel="บันทึกแล้ว"
+                    disabled={!canEdit}
+                    className={`min-h-11 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
                     style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
                   >
-                    {saving ? 'กำลังบันทึก…' : 'บันทึกการตั้งค่า'}
-                  </button>
+                    บันทึกการตั้งค่า
+                  </StatefulButton>
                   <button
                     type="button"
                     disabled={saving}

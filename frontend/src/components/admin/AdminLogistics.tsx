@@ -4,6 +4,7 @@ import { holdsSeat, type Application } from '../../lib/api';
 import { summarizeShirtSizes } from '../../lib/applicant-tools';
 import { SHIRT_SIZES } from '../register/model';
 import { BG_CARD, FOCUS, INK, INK_2, INK_3, PILL_GHOST, RULE, TECH } from '../admin-ui';
+import { HoverGroup, HoverItem } from './ui/HoverHighlight';
 
 export interface AdminLogisticsProps {
   apps: Application[];
@@ -155,7 +156,7 @@ function NotePanel({
   emptyText: string;
 }): JSX.Element {
   return (
-    <section aria-labelledby={headingId} className={PANEL} style={PANEL_STYLE}>
+    <section aria-labelledby={headingId} className={`${PANEL} h-full`} style={PANEL_STYLE}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id={headingId} className="text-lg font-semibold leading-[1.3]" style={{ color: INK }}>
@@ -222,9 +223,11 @@ export function AdminLogistics({ apps }: AdminLogisticsProps): JSX.Element {
         ข้อมูลสุขภาพใช้เพื่อดูแลผู้เข้าค่ายเท่านั้น ห้ามส่งต่อ
       </p>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Aceternity "Hover Effect": one soft plate slides between the sibling cards. */}
+      <HoverGroup className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* ── Shirt sizes ─────────────────────────────────────── */}
-        <section aria-labelledby="logistics-shirt" className={`${PANEL} lg:col-span-2`} style={PANEL_STYLE}>
+        <HoverItem k="shirt" className="min-w-0 lg:col-span-2">
+        <section aria-labelledby="logistics-shirt" className={`${PANEL} h-full`} style={PANEL_STYLE}>
           <h3 id="logistics-shirt" className="text-lg font-semibold leading-[1.3]" style={{ color: INK }}>
             ไซส์เสื้อ{' '}
             <span className="text-sm font-normal" style={{ color: INK_3 }}>
@@ -364,23 +367,28 @@ export function AdminLogistics({ apps }: AdminLogisticsProps): JSX.Element {
             </div>
           )}
         </section>
+        </HoverItem>
 
         {/* ── Dietary restrictions / allergies ─────────────────── */}
-        <NotePanel
-          title="อาหารและการแพ้"
-          headingId="logistics-allergies"
-          entries={allergies}
-          emptyText="ไม่มีผู้แจ้งข้อจำกัดด้านอาหาร"
-        />
+        <HoverItem k="allergies" className="min-w-0">
+          <NotePanel
+            title="อาหารและการแพ้"
+            headingId="logistics-allergies"
+            entries={allergies}
+            emptyText="ไม่มีผู้แจ้งข้อจำกัดด้านอาหาร"
+          />
+        </HoverItem>
 
         {/* ── Medical conditions / medication ──────────────────── */}
-        <NotePanel
-          title="โรคประจำตัว / ยา"
-          headingId="logistics-medical"
-          entries={medical}
-          emptyText="ไม่มีผู้แจ้งโรคประจำตัวหรือยาที่ใช้"
-        />
-      </div>
+        <HoverItem k="medical" className="min-w-0">
+          <NotePanel
+            title="โรคประจำตัว / ยา"
+            headingId="logistics-medical"
+            entries={medical}
+            emptyText="ไม่มีผู้แจ้งโรคประจำตัวหรือยาที่ใช้"
+          />
+        </HoverItem>
+      </HoverGroup>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, TriangleAlert } from 'lucide-react';
+import { StatefulButton } from './admin/ui/StatefulButton';
+import { useDoneSignal } from './admin/ui/motion';
 import {
   ApiHttpError,
   REFERRAL_GROUPS,
@@ -317,6 +319,7 @@ export function AdminProfileEditor({
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const [saveDone, bumpSaveDone] = useDoneSignal();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -418,6 +421,7 @@ export function AdminProfileEditor({
     setSaving(true);
     try {
       const res = await updateApplicantProfile(token, app.id, payload);
+      bumpSaveDone();
       onDirtyChange?.(false);
       onSaved(res.data);
     } catch (err) {
@@ -710,15 +714,17 @@ export function AdminProfileEditor({
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
+        <StatefulButton
           type="submit"
-          disabled={saving}
-          aria-busy={saving || undefined}
-          className={`inline-flex min-h-11 items-center justify-center rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+          busy={saving}
+          busyLabel="กำลังบันทึก…"
+          doneSignal={saveDone}
+          doneLabel="บันทึกแล้ว"
+          className={`min-h-11 rounded-full px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
           style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
         >
-          {saving ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
-        </button>
+          บันทึกการแก้ไข
+        </StatefulButton>
         <button
           type="button"
           onClick={requestClose}

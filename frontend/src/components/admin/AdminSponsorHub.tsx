@@ -1,11 +1,12 @@
-import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import type { SponsorInquiry } from '../../lib/api';
 import { AdminSponsorsPanel } from '../AdminSponsorsPanel';
 import { BTN_DARK, BTN_DARK_TEXT, FOCUS, INK_2, RULE, WARNING } from '../admin-ui';
 import { AdminSponsorDonations, type DonationPrefill } from './AdminSponsorDonations';
 import { AdminSponsorInquiries } from './AdminSponsorInquiries';
 import { AdminSponsorNotify } from './AdminSponsorNotify';
-import { useSlidingMarker } from './useSlidingMarker';
+import { FADE, PILL_SPRING, isFinePointer } from './ui/motion';
 
 type SponsorTab = 'inquiries' | 'donations' | 'logos' | 'notify';
 const TABS: { key: SponsorTab; label: string }[] = [
@@ -34,7 +35,8 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
   const [unhandled, setUnhandled] = useState<number | null>(null);
   const [prefill, setPrefill] = useState<DonationPrefill | null>(null);
   const tabEls = useRef(new Map<SponsorTab, HTMLButtonElement>());
-  const m = useSlidingMarker(tab, `${unhandled ?? ''}`);
+  const [hovered, setHovered] = useState<SponsorTab | null>(null);
+  const groupId = useId();
 
   const onCount = useCallback(
     (n: number | null) => {
@@ -82,23 +84,12 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
   return (
     <div className="flex flex-col gap-6">
       <div
-        ref={m.listRef}
         role="tablist"
         aria-label="ส่วนของผู้สนับสนุน"
-        onPointerLeave={m.onListPointerLeave}
+        onPointerLeave={() => setHovered(null)}
         className="relative flex max-w-full gap-1 self-start overflow-x-auto rounded-full border p-1 [scrollbar-width:thin]"
         style={{ borderColor: RULE }}
       >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 top-0 z-0 rounded-full bg-[var(--color-btn-ghost-hover)]"
-          style={m.trackerStyle}
-        />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 top-0 z-0 rounded-full"
-          style={{ ...m.wellStyle, backgroundColor: BTN_DARK }}
-        />
         {TABS.map((t) => {
           const active = tab === t.key;
           const badge = t.key === 'inquiries' && unhandled ? unhandled : 0;
@@ -106,7 +97,6 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
             <button
               key={t.key}
               ref={(el) => {
-                m.itemRef(t.key)(el);
                 if (el) tabEls.current.set(t.key, el);
                 else tabEls.current.delete(t.key);
               }}
@@ -118,14 +108,38 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
               tabIndex={active ? 0 : -1}
               onClick={() => setTab(t.key)}
               onKeyDown={onTabKeyDown}
-              onPointerEnter={m.onItemPointerEnter(t.key)}
-              className={`relative z-10 inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm transition-colors duration-200 motion-reduce:transition-none ${FOCUS}`}
+              onPointerEnter={(e) => {
+                if (isFinePointer(e)) setHovered(t.key);
+              }}
+              className={`relative inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-4 py-2 text-sm transition-colors duration-200 motion-reduce:transition-none ${FOCUS}`}
               style={{
-                backgroundColor: active && !m.positioned ? BTN_DARK : 'transparent',
                 color: active ? BTN_DARK_TEXT : INK_2,
                 fontWeight: active ? 600 : 500,
               }}
             >
+              <AnimatePresence>
+                {hovered === t.key && !active && (
+                  <motion.span
+                    aria-hidden="true"
+                    layoutId={`${groupId}-hover`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ ...PILL_SPRING, opacity: FADE }}
+                    className="pointer-events-none absolute -inset-px rounded-full bg-[var(--color-btn-ghost-hover)]"
+                  />
+                )}
+              </AnimatePresence>
+              {active && (
+                <motion.span
+                  aria-hidden="true"
+                  layoutId={`${groupId}-pill`}
+                  transition={PILL_SPRING}
+                  className="pointer-events-none absolute -inset-px rounded-full"
+                  style={{ backgroundColor: BTN_DARK }}
+                />
+              )}
+              <span className="relative inline-flex items-center gap-2">
               <span>{t.label}</span>
               {badge > 0 && (
                 <span
@@ -137,12 +151,13 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
                   <span className="sr-only"> รายการ</span>
                 </span>
               )}
+              </span>
             </button>
           );
         })}
       </div>
 
-      <div id="sponsor-panel-inquiries" role="tabpanel" aria-labelledby="sponsor-tab-inquiries" hidden={tab !== 'inquiries'}>
+      <TabPanel id="inquiries" active={tab === 'inquiries'}>
         <AdminSponsorInquiries
           token={token}
           canEdit={canEdit}
@@ -150,16 +165,33 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
           onUnhandledCount={onCount}
           onCreateDonation={onCreateDonation}
         />
-      </div>
-      <div id="sponsor-panel-donations" role="tabpanel" aria-labelledby="sponsor-tab-donations" hidden={tab !== 'donations'}>
+      </TabPanel>
+      <TabPanel id="donations" active={tab === 'donations'}>
         <AdminSponsorDonations token={token} canEdit={canEdit} onAuthError={onAuthError} prefill={prefill} />
-      </div>
-      <div id="sponsor-panel-logos" role="tabpanel" aria-labelledby="sponsor-tab-logos" hidden={tab !== 'logos'}>
+      </TabPanel>
+      <TabPanel id="logos" active={tab === 'logos'}>
         <AdminSponsorsPanel token={token} canEdit={canEdit} onAuthError={onAuthError} />
-      </div>
-      <div id="sponsor-panel-notify" role="tabpanel" aria-labelledby="sponsor-tab-notify" hidden={tab !== 'notify'}>
+      </TabPanel>
+      <TabPanel id="notify" active={tab === 'notify'}>
         <AdminSponsorNotify token={token} canEdit={canEdit} onAuthError={onAuthError} />
-      </div>
+      </TabPanel>
     </div>
+  );
+}
+
+/** A tabpanel that stays mounted while hidden (keeps unsaved edits) and fades up when shown. */
+function TabPanel({ id, active, children }: { id: SponsorTab; active: boolean; children: ReactNode }) {
+  return (
+    <motion.div
+      id={`sponsor-panel-${id}`}
+      role="tabpanel"
+      aria-labelledby={`sponsor-tab-${id}`}
+      hidden={!active}
+      initial={false}
+      animate={active ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
+      transition={active ? { duration: 0.25, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }}
+    >
+      {children}
+    </motion.div>
   );
 }

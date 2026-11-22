@@ -11,6 +11,7 @@ import {
 import { formatBytes } from '../../lib/slip-upload';
 import { formatThaiAddress, formatThaiTaxId } from '../../lib/thai-tax-id';
 import { DANGER, FOCUS, INK, INK_2, INK_3, PILL_DANGER, PILL_GHOST, RULE, SUCCESS, SURFACE_SUBTLE, WARNING } from '../admin-ui';
+import { StatefulButton } from './ui/StatefulButton';
 import {
   NoticeBanner,
   UNKNOWN_ERROR,
@@ -54,6 +55,8 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
   /** Key of the running mutation (`handled-<id>` / `delete-<id>`), mirrored by `actionRef`. */
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const actionRef = useRef(false);
+  /** Last successful "ติดต่อแล้ว" toggle, so only that row's button plays the success beat. */
+  const [handledDone, setHandledDone] = useState<{ id: number; n: number } | null>(null);
   const loadingRef = useRef(false);
   /** Inquiry id whose attached form is being fetched, mirrored by `viewRef`. */
   const [viewingId, setViewingId] = useState<number | null>(null);
@@ -122,6 +125,7 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
     try {
       const updated = await setSponsorInquiryHandled(token, inq.id, !inq.handled);
       setItems((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)));
+      setHandledDone((prev) => ({ id: inq.id, n: (prev?.n ?? 0) + 1 }));
       setNotice({
         kind: 'ok',
         text: updated.handled ? `ทำเครื่องหมาย “${updated.name}” ว่าติดต่อแล้ว` : `ย้าย “${updated.name}” กลับเป็นยังไม่ได้ติดต่อ`,
@@ -361,18 +365,20 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                         {viewingId === inq.id ? 'กำลังเปิด…' : 'ดูแบบฟอร์ม'}
                       </button>
                     )}
-                    <button
+                    <StatefulButton
                       type="button"
                       disabled={busy}
                       aria-pressed={inq.handled}
-                      aria-busy={toggling || undefined}
+                      busy={toggling}
+                      busyLabel="กำลังบันทึก…"
+                      doneSignal={handledDone?.id === inq.id ? handledDone.n : undefined}
+                      icon={<Check aria-hidden="true" size={16} strokeWidth={1.5} style={{ color: inq.handled ? SUCCESS : INK_3 }} />}
                       onClick={() => onToggleHandled(inq)}
                       className={`${PILL_GHOST} gap-1.5`}
                       style={{ borderColor: inq.handled ? SUCCESS : RULE, color: INK }}
                     >
-                      <Check aria-hidden="true" size={16} strokeWidth={1.5} style={{ color: inq.handled ? SUCCESS : INK_3 }} />
-                      {toggling ? 'กำลังบันทึก…' : 'ติดต่อแล้ว'}
-                    </button>
+                      ติดต่อแล้ว
+                    </StatefulButton>
                     <button
                       type="button"
                       disabled={busy}
