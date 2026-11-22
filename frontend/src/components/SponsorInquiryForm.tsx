@@ -16,6 +16,8 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type For
 import { Check, FileDown, FileText, Image as ImageIcon, Send, TriangleAlert, Upload } from 'lucide-react';
 import {
   ApiHttpError,
+  SPONSOR_ADDRESS_LINE_MAX,
+  SPONSOR_AREA_MAX,
   SPONSOR_DETAILS_MAX,
   SPONSOR_KIND_LABELS,
   SPONSOR_NAME_MAX,
@@ -26,8 +28,11 @@ import {
   type SponsorKind,
 } from '../lib/api';
 import { SPONSOR_FORM_FILENAME, SPONSOR_FORM_PDF } from '../lib/camp-facts';
+import { canonicalProvince } from '../lib/provinces';
 import { formatBytes, middleTruncate } from '../lib/slip-upload';
 import { SPONSOR_FORM_ACCEPT, prepareSponsorFormFile } from '../lib/sponsor-upload';
+import { isValidPostcode, isValidThaiTaxId, normalizePostcode, normalizeThaiTaxId } from '../lib/thai-tax-id';
+import { ProvinceCombobox } from './ProvinceCombobox';
 import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
 import { formatPhone } from './admin/sponsor-ui';
 
@@ -86,8 +91,22 @@ function detailsPlaceholder(kind: SponsorKind | '', mode: Mode): string {
   return 'เช่น จำนวนเงินโดยประมาณ หรือรายการสิ่งของ';
 }
 
-type FieldKey = 'name' | 'phone' | 'email' | 'kind' | 'file';
+type FieldKey =
+  | 'name'
+  | 'phone'
+  | 'email'
+  | 'kind'
+  | 'file'
+  | 'taxId'
+  | 'addressLine'
+  | 'subdistrict'
+  | 'district'
+  | 'province'
+  | 'postcode';
 type FieldErrors = Partial<Record<FieldKey, ReactNode>>;
+
+const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/;
+const runeLength = (s: string) => [...s].length;
 
 function emailError(value: string): ReactNode | undefined {
   const email = stripZeroWidth(value).trim();
@@ -149,6 +168,12 @@ export default function SponsorInquiryForm() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [kind, setKind] = useState<SponsorKind | ''>('');
+  const [taxId, setTaxId] = useState('');
+  const [addressLine, setAddressLine] = useState('');
+  const [subdistrict, setSubdistrict] = useState('');
+  const [district, setDistrict] = useState('');
+  const [province, setProvince] = useState('');
+  const [postcode, setPostcode] = useState('');
   const [details, setDetails] = useState('');
   const [website, setWebsite] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -173,6 +198,11 @@ export default function SponsorInquiryForm() {
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  const taxIdRef = useRef<HTMLInputElement>(null);
+  const addressLineRef = useRef<HTMLInputElement>(null);
+  const subdistrictRef = useRef<HTMLInputElement>(null);
+  const districtRef = useRef<HTMLInputElement>(null);
+  const postcodeRef = useRef<HTMLInputElement>(null);
   const kindRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
@@ -227,6 +257,12 @@ export default function SponsorInquiryForm() {
     setPhone('');
     setEmail('');
     setKind('');
+    setTaxId('');
+    setAddressLine('');
+    setSubdistrict('');
+    setDistrict('');
+    setProvince('');
+    setPostcode('');
     setDetails('');
     setWebsite('');
     clearFile();
@@ -272,6 +308,15 @@ export default function SponsorInquiryForm() {
       setMode('web');
       clearUploadHash();
       clearFile();
+      setErrors((prev) => ({
+        ...prev,
+        taxId: undefined,
+        addressLine: undefined,
+        subdistrict: undefined,
+        district: undefined,
+        province: undefined,
+        postcode: undefined,
+      }));
     }
   }
 
@@ -322,6 +367,12 @@ export default function SponsorInquiryForm() {
     if (next.name) return nameRef.current;
     if (next.phone) return phoneRef.current;
     if (next.email) return emailRef.current;
+    if (next.taxId) return taxIdRef.current;
+    if (next.addressLine) return addressLineRef.current;
+    if (next.subdistrict) return subdistrictRef.current;
+    if (next.district) return districtRef.current;
+    if (next.province) return document.getElementById('sp-province');
+    if (next.postcode) return postcodeRef.current;
     return null;
   }
 
@@ -355,6 +406,75 @@ export default function SponsorInquiryForm() {
     if (!kind) next.kind = 'กรุณาเลือกประเภทการสนับสนุน';
     if (mode === 'file' && !file) {
       next.file = errors.file ?? 'กรุณาแนบไฟล์แบบฟอร์มที่กรอกแล้ว';
+    }
+
+    const needsTaxAddress = kind === 'money' && mode === 'web';
+    const cleanTaxId = normalizeThaiTaxId(taxId);
+    const cleanAddressLine = stripZeroWidth(addressLine).trim();
+    const cleanSubdistrict = stripZeroWidth(subdistrict).trim();
+    const cleanDistrict = stripZeroWidth(district).trim();
+    const cleanProvinceRaw = stripZeroWidth(province).trim();
+    const officialProvince = canonicalProvince(cleanProvinceRaw) ?? '';
+    const cleanPostcode = normalizePostcode(postcode);
+
+    if (needsTaxAddress) {
+      if (!cleanTaxId) {
+        next.taxId = 'กรุณากรอกเลขประจำตัวประชาชน หรือเลขประจำตัวผู้เสียภาษี';
+      } else if (!isValidThaiTaxId(cleanTaxId)) {
+        next.taxId = 'เลขไม่ถูกต้อง กรุณาตรวจอีกครั้ง';
+      }
+
+      if (!cleanAddressLine) {
+        next.addressLine = 'กรุณากรอกบ้านเลขที่ หมู่ ซอย หรือถนน';
+      } else if (runeLength(cleanAddressLine) > SPONSOR_ADDRESS_LINE_MAX) {
+        next.addressLine = (
+          <>
+            บ้านเลขที่/ถนนยาวได้ไม่เกิน <span className="font-mono tabular-nums">{SPONSOR_ADDRESS_LINE_MAX}</span> ตัวอักษร
+          </>
+        );
+      } else if (CONTROL_CHARS_RE.test(cleanAddressLine)) {
+        next.addressLine = 'ที่อยู่มีอักขระที่ใช้ไม่ได้';
+      }
+
+      if (!cleanSubdistrict) {
+        next.subdistrict = 'กรุณากรอกตำบล/แขวง';
+      } else if (runeLength(cleanSubdistrict) > SPONSOR_AREA_MAX) {
+        next.subdistrict = (
+          <>
+            ตำบล/แขวงยาวได้ไม่เกิน <span className="font-mono tabular-nums">{SPONSOR_AREA_MAX}</span> ตัวอักษร
+          </>
+        );
+      } else if (CONTROL_CHARS_RE.test(cleanSubdistrict)) {
+        next.subdistrict = 'ตำบล/แขวงมีอักขระที่ใช้ไม่ได้';
+      }
+
+      if (!cleanDistrict) {
+        next.district = 'กรุณากรอกอำเภอ/เขต';
+      } else if (runeLength(cleanDistrict) > SPONSOR_AREA_MAX) {
+        next.district = (
+          <>
+            อำเภอ/เขตยาวได้ไม่เกิน <span className="font-mono tabular-nums">{SPONSOR_AREA_MAX}</span> ตัวอักษร
+          </>
+        );
+      } else if (CONTROL_CHARS_RE.test(cleanDistrict)) {
+        next.district = 'อำเภอ/เขตมีอักขระที่ใช้ไม่ได้';
+      }
+
+      if (!cleanProvinceRaw) {
+        next.province = 'กรุณาเลือกจังหวัด';
+      } else if (!officialProvince) {
+        next.province = 'กรุณาเลือกจังหวัดจากรายการ';
+      }
+
+      if (!cleanPostcode) {
+        next.postcode = 'กรุณากรอกรหัสไปรษณีย์';
+      } else if (!isValidPostcode(cleanPostcode)) {
+        next.postcode = (
+          <>
+            รหัสไปรษณีย์ต้องเป็นตัวเลข <span className="font-mono tabular-nums">5</span> หลัก
+          </>
+        );
+      }
     }
 
     setErrors(next);
@@ -394,6 +514,16 @@ export default function SponsorInquiryForm() {
           email: cleanEmail,
           kind,
           details: cleanDetails,
+          ...(needsTaxAddress
+            ? {
+                taxId: cleanTaxId,
+                addressLine: cleanAddressLine,
+                subdistrict: cleanSubdistrict,
+                district: cleanDistrict,
+                province: officialProvince,
+                postcode: cleanPostcode,
+              }
+            : {}),
           turnstileToken,
           website,
         });
@@ -584,8 +714,8 @@ export default function SponsorInquiryForm() {
                       2
                     </span>
                     <p className="sp-upload__text">
-                      กรอกข้อมูลและลงนาม จะพิมพ์ออกมาเขียน หรือกรอกในไฟล์ PDF ก็ได้
-                      ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้
+                      กรอกข้อมูลในแบบฟอร์มให้ครบ รวมเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนและที่อยู่ พร้อมลงนาม
+                      จะพิมพ์ออกมาเขียน หรือกรอกในไฟล์ PDF ก็ได้
                     </p>
                   </li>
                   <li className="sp-upload__step">
@@ -775,6 +905,225 @@ export default function SponsorInquiryForm() {
               )}
             </div>
 
+            {kind === 'money' && !fileMode && (
+              <>
+                <div className="sp-field sp-field--full mt-1 border-t border-[var(--color-border)] pt-5">
+                  <h3 className="m-0 text-base font-bold leading-[1.45] text-[var(--color-ink)]">
+                    ข้อมูลสำหรับออกเอกสารลดหย่อนภาษี
+                  </h3>
+                  <p className="sp-hint sp-hint--wrap">
+                    ใช้เพื่อดำเนินเรื่องออกเอกสารลดหย่อนภาษีกับคณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้เท่านั้น
+                  </p>
+                </div>
+
+                <div className="sp-field sp-field--full">
+                  <label className="sp-label" htmlFor="sp-tax-id">
+                    <span>
+                      <span className="whitespace-nowrap">เลขประจำตัวประชาชน</span> /{' '}
+                      <span className="whitespace-nowrap">เลขประจำตัวผู้เสียภาษี</span>{' '}
+                      <span className="whitespace-nowrap">
+                        (<span className="font-mono tabular-nums">13</span> หลัก)
+                      </span>{' '}
+                      <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <input
+                    id="sp-tax-id"
+                    name="taxId"
+                    ref={taxIdRef}
+                    className="sp-input sp-input--mono"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={25}
+                    placeholder="X-XXXX-XXXXX-XX-X"
+                    required
+                    disabled={busy}
+                    value={taxId}
+                    onChange={(event) => {
+                      setTaxId(event.target.value);
+                      clearError('taxId');
+                    }}
+                    aria-invalid={errors.taxId ? true : undefined}
+                    aria-describedby={errors.taxId ? 'sp-tax-id-err' : undefined}
+                  />
+                  {errors.taxId && (
+                    <p id="sp-tax-id-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.taxId}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="sp-field sp-field--full">
+                  <label className="sp-label" htmlFor="sp-address-line">
+                    <span>
+                      บ้านเลขที่ / หมู่ / ซอย / ถนน <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <input
+                    id="sp-address-line"
+                    name="addressLine"
+                    ref={addressLineRef}
+                    className="sp-input"
+                    type="text"
+                    autoComplete="address-line1"
+                    maxLength={SPONSOR_ADDRESS_LINE_MAX}
+                    placeholder="เช่น 63 หมู่ 4 ถ.เชียงใหม่-พร้าว"
+                    required
+                    disabled={busy}
+                    value={addressLine}
+                    onChange={(event) => {
+                      setAddressLine(event.target.value);
+                      clearError('addressLine');
+                    }}
+                    aria-invalid={errors.addressLine ? true : undefined}
+                    aria-describedby={errors.addressLine ? 'sp-address-line-err' : undefined}
+                  />
+                  {errors.addressLine && (
+                    <p id="sp-address-line-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.addressLine}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="sp-field">
+                  <label className="sp-label" htmlFor="sp-subdistrict">
+                    <span>
+                      ตำบล / แขวง <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <input
+                    id="sp-subdistrict"
+                    name="subdistrict"
+                    ref={subdistrictRef}
+                    className="sp-input"
+                    type="text"
+                    autoComplete="off"
+                    maxLength={SPONSOR_AREA_MAX}
+                    placeholder="เช่น หนองหาร"
+                    required
+                    disabled={busy}
+                    value={subdistrict}
+                    onChange={(event) => {
+                      setSubdistrict(event.target.value);
+                      clearError('subdistrict');
+                    }}
+                    aria-invalid={errors.subdistrict ? true : undefined}
+                    aria-describedby={errors.subdistrict ? 'sp-subdistrict-err' : undefined}
+                  />
+                  {errors.subdistrict && (
+                    <p id="sp-subdistrict-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.subdistrict}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="sp-field">
+                  <label className="sp-label" htmlFor="sp-district">
+                    <span>
+                      อำเภอ / เขต <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <input
+                    id="sp-district"
+                    name="district"
+                    ref={districtRef}
+                    className="sp-input"
+                    type="text"
+                    autoComplete="off"
+                    maxLength={SPONSOR_AREA_MAX}
+                    placeholder="เช่น สันทราย"
+                    required
+                    disabled={busy}
+                    value={district}
+                    onChange={(event) => {
+                      setDistrict(event.target.value);
+                      clearError('district');
+                    }}
+                    aria-invalid={errors.district ? true : undefined}
+                    aria-describedby={errors.district ? 'sp-district-err' : undefined}
+                  />
+                  {errors.district && (
+                    <p id="sp-district-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.district}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="sp-field">
+                  <label className="sp-label" htmlFor="sp-province">
+                    <span>
+                      จังหวัด <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <fieldset className="sp-fieldset" disabled={busy}>
+                    <ProvinceCombobox
+                      id="sp-province"
+                      className="sp-input"
+                      value={province}
+                      onChange={(value) => {
+                        setProvince(value);
+                        clearError('province');
+                      }}
+                      invalid={Boolean(errors.province)}
+                      describedBy={errors.province ? 'sp-province-err' : undefined}
+                      required
+                    />
+                  </fieldset>
+                  {errors.province && (
+                    <p id="sp-province-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.province}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="sp-field">
+                  <label className="sp-label" htmlFor="sp-postcode">
+                    <span>
+                      รหัสไปรษณีย์ <span className="sp-req" aria-hidden="true">*</span>
+                      <span className="sr-only"> (จำเป็น)</span>
+                    </span>
+                  </label>
+                  <input
+                    id="sp-postcode"
+                    name="postcode"
+                    ref={postcodeRef}
+                    className="sp-input sp-input--mono"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    maxLength={5}
+                    placeholder="50290"
+                    required
+                    disabled={busy}
+                    value={postcode}
+                    onChange={(event) => {
+                      setPostcode(sanitizeDigits(event.target.value).slice(0, 5));
+                      clearError('postcode');
+                    }}
+                    aria-invalid={errors.postcode ? true : undefined}
+                    aria-describedby={errors.postcode ? 'sp-postcode-err' : undefined}
+                  />
+                  {errors.postcode && (
+                    <p id="sp-postcode-err" className="sp-error">
+                      <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <span>{errors.postcode}</span>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
             <div className="sp-field sp-field--full">
               <label className="sp-label" htmlFor="sp-details">
                 <span>รายละเอียดเพิ่มเติม</span>
@@ -848,7 +1197,9 @@ export default function SponsorInquiryForm() {
               <p className="sp-form__note">
                 {fileMode
                   ? 'ไฟล์นี้เปิดดูได้เฉพาะสตาฟค่ายที่ดูแลผู้สนับสนุน และใช้เพื่อดำเนินเรื่องบริจาคเท่านั้น'
-                  : 'ข้อมูลนี้ใช้เพื่อติดต่อกลับเรื่องการสนับสนุนค่ายเท่านั้น'}
+                  : kind === 'money'
+                    ? 'ข้อมูลนี้ใช้เพื่อติดต่อกลับและดำเนินเรื่องเอกสารลดหย่อนภาษีกับคณะวิทยาศาสตร์เท่านั้น'
+                    : 'ข้อมูลนี้ใช้เพื่อติดต่อกลับเรื่องการสนับสนุนค่ายเท่านั้น'}
               </p>
             </div>
           </form>

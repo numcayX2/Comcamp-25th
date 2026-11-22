@@ -136,12 +136,14 @@ func expectCode(t *testing.T, rec *httptest.ResponseRecorder, status int, code s
 	}
 }
 
+const validMoneyTaxAddrJSON = `"taxId":"๑-๑๐๑๗-๐๐๒๐๓-๔๕-๐\u200b","addressLine":" 63 หมู่ 4 ถ.เชียงใหม่-พร้าว ","subdistrict":"หนองหาร","district":"สันทราย","province":"จ. เชียงใหม่","postcode":"๕๐๒๙๐"`
+
 func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	token := app.login(t)
 	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com","boss@example.com"]}`), http.StatusOK, "")
 
-	rec := app.postInquiry(t, `{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ"}`)
+	rec := app.postInquiry(t, `{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ",`+validMoneyTaxAddrJSON+`}`)
 	expectCode(t, rec, http.StatusCreated, "")
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
 		t.Fatalf("body = %q, want {\"ok\":true}", got)
@@ -152,12 +154,26 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 		t.Fatalf("stored inquiries = %d, want 1", len(list))
 	}
 	got := list[0]
-	if got.Name != "ร้านตัวอย่าง" || got.Phone != "0812345678" || got.Email != "shop@example.com" || got.Details != "ติดต่อช่วงเย็น\nขอบคุณ" {
+	if got.Name != "ร้านตัวอย่าง" || got.Phone != "0812345678" || got.Email != "shop@example.com" || got.Details != "ติดต่อช่วงเย็น\nขอบคุณ" ||
+		got.TaxID != "1101700203450" || got.AddressLine != "63 หมู่ 4 ถ.เชียงใหม่-พร้าว" || got.Subdistrict != "หนองหาร" ||
+		got.District != "สันทราย" || got.Province != "เชียงใหม่" || got.Postcode != "50290" {
 		t.Fatalf("stored inquiry not normalised: %+v", got)
 	}
 	if app.notifier.count() != 2 {
 		t.Fatalf("notifications = %d, want 2", app.notifier.count())
 	}
+	// Notification emails must never carry taxId or address fields.
+	app.notifier.mu.Lock()
+	for _, n := range app.notifier.sent {
+		rawMail, _ := json.Marshal(n)
+		s := string(rawMail)
+		for _, secret := range []string{"1101700203450", "63 หมู่ 4", "หนองหาร", "สันทราย", "50290"} {
+			if strings.Contains(s, secret) {
+				t.Fatalf("notification payload leaked %q: %s", secret, s)
+			}
+		}
+	}
+	app.notifier.mu.Unlock()
 	if app.auditCount(domain.AuditSponsorInquiryCreate) != 1 {
 		t.Fatal("missing sponsor.inquiry.create audit row")
 	}
@@ -169,14 +185,20 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 		}
 	}
 
-	// Admin list shows it; PATCH handled; DELETE.
+	// Admin list returns full unmasked taxId + address; PATCH handled; DELETE.
 	rec = app.authed(t, token, http.MethodGet, "/api/admin/sponsor-inquiries", "")
 	expectCode(t, rec, http.StatusOK, "")
 	var res struct {
 		Inquiries []service.SponsorInquiryEntry `json:"inquiries"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &res)
-	if len(res.Inquiries) != 1 || res.Inquiries[0].Handled {
+	if len(res.Inquiries) != 1 || res.Inquiries[0].Handled ||
+		res.Inquiries[0].TaxID != "1101700203450" ||
+		res.Inquiries[0].AddressLine != "63 หมู่ 4 ถ.เชียงใหม่-พร้าว" ||
+		res.Inquiries[0].Subdistrict != "หนองหาร" ||
+		res.Inquiries[0].District != "สันทราย" ||
+		res.Inquiries[0].Province != "เชียงใหม่" ||
+		res.Inquiries[0].Postcode != "50290" {
 		t.Fatalf("admin list = %+v", res.Inquiries)
 	}
 	id := res.Inquiries[0].ID
@@ -194,15 +216,37 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 func TestSponsorInquiry_ValidationFailures(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	long := strings.Repeat("ก", 501)
+	longAddr := strings.Repeat("ก", 201)
+	longArea := strings.Repeat("ก", 101)
 	for name, body := range map[string]string{
-		"bad phone":       `{"name":"ร้าน","phone":"12345","kind":"money"}`,
-		"phone no lead 0": `{"name":"ร้าน","phone":"812345678","kind":"money"}`,
-		"phone 11 digits": `{"name":"ร้าน","phone":"08123456789","kind":"money"}`,
-		"missing name":    `{"name":"  ","phone":"0812345678","kind":"money"}`,
-		"bad kind":        `{"name":"ร้าน","phone":"0812345678","kind":"alcohol"}`,
-		"long details":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","details":"` + long + `"}`,
-		"bad email":       `{"name":"ร้าน","phone":"0812345678","kind":"goods","email":"not-an-email"}`,
-		"control in name": `{"name":"ร้าน\u0007","phone":"0812345678","kind":"goods"}`,
+		"bad phone":          `{"name":"ร้าน","phone":"12345","kind":"goods"}`,
+		"phone no lead 0":    `{"name":"ร้าน","phone":"812345678","kind":"goods"}`,
+		"phone 11 digits":    `{"name":"ร้าน","phone":"08123456789","kind":"goods"}`,
+		"missing name":       `{"name":"  ","phone":"0812345678","kind":"goods"}`,
+		"bad kind":           `{"name":"ร้าน","phone":"0812345678","kind":"alcohol"}`,
+		"long details":       `{"name":"ร้าน","phone":"0812345678","kind":"goods","details":"` + long + `"}`,
+		"bad email":          `{"name":"ร้าน","phone":"0812345678","kind":"goods","email":"not-an-email"}`,
+		"control in name":    `{"name":"ร้าน\u0007","phone":"0812345678","kind":"goods"}`,
+		"money missing all":  `{"name":"ร้าน","phone":"0812345678","kind":"money"}`,
+		"money missing tax":  `{"name":"ร้าน","phone":"0812345678","kind":"money","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money bad checksum": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money short tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"110170020345","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money alpha tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"110170020345a","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing addr": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money long addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"` + longAddr + `","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money ctrl addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1\n2","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing sub":  `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money long sub":     `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"` + longArea + `","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing dist": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","province":"เชียงใหม่","postcode":"50290"}`,
+		"money bad province": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"ดาวอังคาร","postcode":"50290"}`,
+		"money bad postcode": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"5029"}`,
+		"money dash post":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50-290"}`,
+		"goods with taxId":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","taxId":"1101700203450"}`,
+		"goods with addr":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","addressLine":"1"}`,
+		"goods with sub":     `{"name":"ร้าน","phone":"0812345678","kind":"goods","subdistrict":"หนองหาร"}`,
+		"goods with dist":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","district":"สันทราย"}`,
+		"goods with prov":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","province":"เชียงใหม่"}`,
+		"goods with post":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","postcode":"50290"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			expectCode(t, app.postInquiry(t, body), http.StatusBadRequest, response.CodeValidation)
@@ -240,17 +284,19 @@ func TestSponsorInquiry_HoneypotStoresNothing(t *testing.T) {
 func TestSponsorInquiry_TurnstileFailureIs403(t *testing.T) {
 	captcha := &cloudflareLike{used: map[string]bool{}}
 	app := setupSponsorDeskApp(t, captcha)
-	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","turnstileToken":"bad"}`)
+	// Invalid taxId fails validation before Turnstile, so the single-use token is not burnt.
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290","turnstileToken":"good-1"}`), http.StatusBadRequest, response.CodeValidation)
+	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyTaxAddrJSON+`,"turnstileToken":"bad"}`)
 	expectCode(t, rec, http.StatusForbidden, response.CodeCaptchaFailed)
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatal("inquiry stored despite captcha failure")
 	}
-	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","turnstileToken":"good-1"}`), http.StatusCreated, "")
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyTaxAddrJSON+`,"turnstileToken":"good-1"}`), http.StatusCreated, "")
 }
 
 func TestSponsorInquiry_RateLimited(t *testing.T) {
 	app := setupSponsorDeskAppWith(t, nil, server.DefaultRateLimits())
-	body := `{"name":"ร้าน","phone":"0812345678","kind":"money"}`
+	body := `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyTaxAddrJSON + `}`
 	for range server.SponsorInquiryRatePer10Min {
 		expectCode(t, app.postInquiry(t, body), http.StatusCreated, "")
 	}
@@ -335,8 +381,9 @@ func TestSponsorDonation_CreateUpdateAndValidation(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	token := app.login(t)
 
-	d := app.createDonation(t, token, `{"donorName":"บริษัท ก","address":"1 ถ.เชียงใหม่\nแม่โจ้","phone":"053-123456","kind":"money","amount":"1500.50","goodsDescription":"","donatedOn":"2026-11-20","note":"","facultySubmitted":false}`)
-	if d.Amount == nil || *d.Amount != "1500.5" || d.Phone != "053123456" || d.DonatedOn != "2026-11-20" || d.FacultySubmitted || d.Files.Signed != nil {
+	d := app.createDonation(t, token, `{"donorName":"บริษัท ก","address":"1 ถ.เชียงใหม่\nแม่โจ้","phone":"053-123456","kind":"money","amount":"1500.50","goodsDescription":"","donatedOn":"2026-11-20","note":"","taxId":"0-1055-58001-23-1","addressLine":"63 หมู่ 4","subdistrict":"หนองหาร","district":"สันทราย","province":"กทม","postcode":"10110","facultySubmitted":false}`)
+	if d.Amount == nil || *d.Amount != "1500.5" || d.Phone != "053123456" || d.DonatedOn != "2026-11-20" || d.FacultySubmitted || d.Files.Signed != nil ||
+		d.TaxID != "0105558001231" || d.AddressLine != "63 หมู่ 4" || d.Province != "กรุงเทพมหานคร" || d.Postcode != "10110" {
 		t.Fatalf("created donation = %+v", d)
 	}
 
@@ -346,7 +393,15 @@ func TestSponsorDonation_CreateUpdateAndValidation(t *testing.T) {
 		"money too many decimals":  `{"donorName":"ก","kind":"money","amount":"1.005"}`,
 		"money over cap":           `{"donorName":"ก","kind":"money","amount":"10000000.01"}`,
 		"money with goods":         `{"donorName":"ก","kind":"money","amount":"100","goodsDescription":"น้ำดื่ม"}`,
+		"money bad taxId":          `{"donorName":"ก","kind":"money","amount":"100","taxId":"1101700203451"}`,
+		"money bad province":       `{"donorName":"ก","kind":"money","amount":"100","province":"ดาวอังคาร"}`,
+		"money bad postcode":       `{"donorName":"ก","kind":"money","amount":"100","postcode":"5029"}`,
+		"money ctrl addressLine":   `{"donorName":"ก","kind":"money","amount":"100","addressLine":"1\n2"}`,
 		"goods without desc":       `{"donorName":"ก","kind":"goods","amount":null}`,
+		"goods with taxId":         `{"donorName":"ก","kind":"goods","goodsDescription":"น้ำดื่ม","taxId":"1101700203450"}`,
+		"goods with addressLine":   `{"donorName":"ก","kind":"goods","goodsDescription":"น้ำดื่ม","addressLine":"1"}`,
+		"goods with province":      `{"donorName":"ก","kind":"goods","goodsDescription":"น้ำดื่ม","province":"เชียงใหม่"}`,
+		"goods with postcode":      `{"donorName":"ก","kind":"goods","goodsDescription":"น้ำดื่ม","postcode":"50290"}`,
 		"bad date":                 `{"donorName":"ก","kind":"money","amount":"100","donatedOn":"2026-02-30"}`,
 		"bad phone":                `{"donorName":"ก","kind":"money","amount":"100","phone":"12345"}`,
 		"missing donor":            `{"donorName":"","kind":"money","amount":"100"}`,
@@ -363,19 +418,30 @@ func TestSponsorDonation_CreateUpdateAndValidation(t *testing.T) {
 		t.Fatalf("goods donation = %+v", g)
 	}
 
+	// PATCH rejects bad taxId or goods with tax/address.
+	expectCode(t, app.authed(t, token, http.MethodPatch, fmt.Sprintf("/api/admin/sponsor-donations/%d", d.ID),
+		`{"donorName":"บริษัท ก","kind":"money","amount":"1500.5","taxId":"1101700203451"}`), http.StatusBadRequest, response.CodeValidation)
+	expectCode(t, app.authed(t, token, http.MethodPatch, fmt.Sprintf("/api/admin/sponsor-donations/%d", g.ID),
+		`{"donorName":"ร้าน ข","kind":"goods","goodsDescription":"น้ำดื่ม","postcode":"50290"}`), http.StatusBadRequest, response.CodeValidation)
+
 	rec := app.authed(t, token, http.MethodPatch, fmt.Sprintf("/api/admin/sponsor-donations/%d", d.ID),
-		`{"donorName":"บริษัท ก จำกัด","address":"1 ถ.เชียงใหม่\nแม่โจ้","phone":"053123456","kind":"money","amount":"1500.5","goodsDescription":"","donatedOn":"2026-11-20","note":"","facultySubmitted":true}`)
+		`{"donorName":"บริษัท ก จำกัด","address":"1 ถ.เชียงใหม่\nแม่โจ้","phone":"053123456","kind":"money","amount":"1500.5","goodsDescription":"","donatedOn":"2026-11-20","note":"","taxId":"1101700203450","addressLine":"63 หมู่ 4","subdistrict":"หนองหาร","district":"สันทราย","province":"กรุงเทพมหานคร","postcode":"10110","facultySubmitted":true}`)
 	expectCode(t, rec, http.StatusOK, "")
 	var upd service.SponsorDonationEntry
 	_ = json.Unmarshal(rec.Body.Bytes(), &upd)
-	if upd.DonorName != "บริษัท ก จำกัด" || !upd.FacultySubmitted || upd.FacultySubmittedAt == nil {
+	if upd.DonorName != "บริษัท ก จำกัด" || !upd.FacultySubmitted || upd.FacultySubmittedAt == nil || upd.TaxID != "1101700203450" {
 		t.Fatalf("updated = %+v", upd)
 	}
 	for _, e := range app.auditRepo.Entries() {
 		if e.Action == domain.AuditSponsorDonationUpdate {
 			fields, _ := e.Details["fields"].([]string)
-			if strings.Join(fields, ",") != "donorName,facultySubmitted" {
+			if strings.Join(fields, ",") != "donorName,taxId,facultySubmitted" {
 				t.Fatalf("update audit fields = %v", e.Details["fields"])
+			}
+			// Audit details must carry field names only, never sensitive values.
+			rawAudit, _ := json.Marshal(e.Details)
+			if strings.Contains(string(rawAudit), "1101700203450") || strings.Contains(string(rawAudit), "63 หมู่ 4") {
+				t.Fatalf("donation audit leaked values: %s", string(rawAudit))
 			}
 		}
 	}
@@ -544,7 +610,11 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com"]}`), http.StatusOK, "")
 
 	pdf := []byte("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
-	rec := app.postInquiryUpload(t, map[string]string{"name": " ร้าน ค ", "phone": "081-234-5678"}, "form.pdf", pdf)
+	// Upload route neither requires nor accepts taxId/address fields (even invalid values sent alongside are ignored).
+	rec := app.postInquiryUpload(t, map[string]string{
+		"name": " ร้าน ค ", "phone": "081-234-5678",
+		"taxId": "not-a-tax-id", "addressLine": "should be ignored", "province": "ดาวอังคาร", "postcode": "abc",
+	}, "form.pdf", pdf)
 	expectCode(t, rec, http.StatusCreated, "")
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
 		t.Fatalf("body = %q, want {\"ok\":true}", got)
@@ -570,7 +640,8 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 		}
 	}
 	if withFile.Kind != "money" || withFile.Phone != "0812345678" || withFile.File == nil ||
-		withFile.File.MIME != "application/pdf" || withFile.File.Size != len(pdf) {
+		withFile.File.MIME != "application/pdf" || withFile.File.Size != len(pdf) ||
+		withFile.TaxID != "" || withFile.AddressLine != "" || withFile.Province != "" || withFile.Postcode != "" {
 		t.Fatalf("uploaded inquiry = %+v (file %+v)", withFile, withFile.File)
 	}
 	if typed.File != nil {

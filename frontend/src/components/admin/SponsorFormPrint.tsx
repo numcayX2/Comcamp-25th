@@ -2,17 +2,30 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { SponsorDonation } from '../../lib/api';
 import { bahtText, formatThaiLongDate } from '../../lib/thai-baht-text';
+import { formatThaiAddress, formatThaiTaxId } from '../../lib/thai-tax-id';
 import { formatAmount, formatPhone } from './sponsor-ui';
 import '../../styles/sponsor-print.css';
 
 /**
- * The donation fields printed on the faculty form. The tax / national ID is never stored: on a money
- * (or blank) form its line stays blank for the donor to write; a goods donation cannot be claimed as a
- * tax deduction, so its form has no such line.
+ * The donation fields printed on the faculty form. On a money form, taxId and structured address
+ * are printed when present and left blank for handwriting when empty (same for a blank form).
+ * A goods donation cannot be claimed as a tax deduction, so its form omits the tax ID line.
  */
 export type PrintableDonation = Pick<
   SponsorDonation,
-  'donorName' | 'address' | 'phone' | 'kind' | 'amount' | 'goodsDescription' | 'donatedOn'
+  | 'donorName'
+  | 'address'
+  | 'phone'
+  | 'kind'
+  | 'amount'
+  | 'goodsDescription'
+  | 'donatedOn'
+  | 'taxId'
+  | 'addressLine'
+  | 'subdistrict'
+  | 'district'
+  | 'province'
+  | 'postcode'
 >;
 
 interface Props {
@@ -37,8 +50,12 @@ function Fill({ value, min }: { value?: string; min: number }) {
 }
 
 /** A value that takes the rest of its row; every wrapped line gets its own dotted rule. */
-function Rule({ value }: { value?: string }) {
-  return <span className="sponsor-sheet__rule">{value?.trim() || '\u00A0'}</span>;
+function Rule({ value, mono }: { value?: string; mono?: boolean }) {
+  return (
+    <span className={`sponsor-sheet__rule${mono ? ' sponsor-sheet__rule--mono' : ''}`}>
+      {value?.trim() || '\u00A0'}
+    </span>
+  );
 }
 
 function Box({ checked }: { checked: boolean }) {
@@ -120,6 +137,8 @@ export function SponsorFormPrint({ donation, onDone }: Props) {
   const moneyAmount = isMoney && amount ? formatAmount(amount) : '';
   const goodsValue = isGoods && amount ? formatAmount(amount) : '';
   const dateText = d ? formatThaiLongDate(d.donatedOn) : '';
+  const addressText = d ? (isMoney ? formatThaiAddress(d) || d.address : d.address) : '';
+  const taxIdText = isMoney && d?.taxId ? formatThaiTaxId(d.taxId) : '';
 
   return createPortal(
     <div className="sponsor-print-root" aria-hidden="true">
@@ -159,7 +178,7 @@ export function SponsorFormPrint({ donation, onDone }: Props) {
           </p>
           <p className="sponsor-sheet__row">
             <span className="sponsor-sheet__nw">ที่อยู่</span>
-            <Rule value={d?.address} />
+            <Rule value={addressText} />
           </p>
           <p className="sponsor-sheet__row">
             <span className="sponsor-sheet__nw">หมายเลขโทรศัพท์มือถือ</span>
@@ -168,7 +187,7 @@ export function SponsorFormPrint({ donation, onDone }: Props) {
           {!isGoods && (
             <p className="sponsor-sheet__row">
               <span className="sponsor-sheet__nw">เลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชน</span>
-              <Rule />
+              <Rule value={taxIdText} mono={Boolean(taxIdText)} />
             </p>
           )}
         </div>

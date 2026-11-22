@@ -45,6 +45,7 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
   );
 
   const onCreateDonation = useCallback((inq: SponsorInquiry) => {
+    const isMoney = inq.kind === 'money';
     setPrefill((prev) => ({
       nonce: (prev?.nonce ?? 0) + 1,
       values: {
@@ -53,6 +54,12 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount 
         kind: inq.kind,
         goodsDescription: inq.kind === 'goods' ? inq.details : '',
         note: inq.kind === 'goods' ? '' : inq.details,
+        taxId: isMoney ? inq.taxId : '',
+        addressLine: isMoney ? inq.addressLine : '',
+        subdistrict: isMoney ? inq.subdistrict : '',
+        district: isMoney ? inq.district : '',
+        province: isMoney ? inq.province : '',
+        postcode: isMoney ? inq.postcode : '',
       },
     }));
     setTab('donations');

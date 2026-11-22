@@ -970,7 +970,7 @@
       "post": {
         "tags": ["Sponsors"],
         "summary": "Submit Sponsor Inquiry",
-        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจ Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล ไม่เก็บเลขผู้เสียภาษีหรือเลขบัตรประชาชน",
+        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจข้อมูลก่อน Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล เมื่อ kind = money บังคับกรอก taxId (13 หลัก checksum ถูกต้อง) และที่อยู่ครบ 5 ช่อง (addressLine, subdistrict, district, province, postcode) เพื่อใช้ออกเอกสารลดหย่อนภาษี เมื่อ kind = goods หากส่งช่องเหล่านี้ไม่ว่างจะตอบ 400 VALIDATION_ERROR ค่าเหล่านี้ไม่ส่งในอีเมลแจ้งเตือนและไม่บันทึกค่าลง audit_logs",
         "requestBody": {
           "required": true,
           "content": {
@@ -982,6 +982,12 @@
                 "email": "",
                 "kind": "money",
                 "details": "",
+                "taxId": "1101700203450",
+                "addressLine": "63 หมู่ 4 ถ.เชียงใหม่-พร้าว",
+                "subdistrict": "หนองหาร",
+                "district": "สันทราย",
+                "province": "เชียงใหม่",
+                "postcode": "50290",
                 "turnstileToken": "…",
                 "website": ""
               }
@@ -1016,7 +1022,7 @@
       "post": {
         "tags": ["Sponsors"],
         "summary": "Submit Sponsor Inquiry With Filled Form",
-        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ ใช้ช่องเดียวกับ POST /sponsor-inquiries แต่เป็น multipart/form-data และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
+        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ เป็น multipart/form-data มีช่องพื้นฐาน (name, phone, email, kind, details, turnstileToken, website) และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money ไม่บังคับและไม่รับ taxId/ที่อยู่ (ในแบบฟอร์มมีอยู่แล้ว หากส่งมาจะละเว้น) ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
         "requestBody": {
           "required": true,
           "content": {
@@ -1875,13 +1881,59 @@
             "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
           },
           "details": { "type": "string", "maxLength": 500 },
+          "taxId": {
+            "type": "string",
+            "description": "เลขประจำตัวประชาชน / เลขประจำตัวผู้เสียภาษี 13 หลักหลัง normalize พร้อมตรวจ checksum (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
+          "addressLine": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "บ้านเลขที่/หมู่/ซอย/ถนน (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
+          "subdistrict": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "ตำบล/แขวง (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
+          "district": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "อำเภอ/เขต (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "จังหวัด ชื่อทางการ 1 ใน 77 จังหวัด (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
+          "postcode": {
+            "type": "string",
+            "pattern": "^[0-9]{5}$",
+            "description": "รหัสไปรษณีย์ 5 หลัก (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+          },
           "turnstileToken": { "type": "string" },
           "website": { "type": "string", "description": "honeypot ต้องว่าง" }
         }
       },
       "SponsorInquiry": {
         "type": "object",
-        "required": ["id", "name", "phone", "email", "kind", "details", "file", "handled", "handledAt", "createdAt"],
+        "required": [
+          "id",
+          "name",
+          "phone",
+          "email",
+          "kind",
+          "details",
+          "taxId",
+          "addressLine",
+          "subdistrict",
+          "district",
+          "province",
+          "postcode",
+          "file",
+          "handled",
+          "handledAt",
+          "createdAt"
+        ],
         "properties": {
           "id": { "type": "integer", "format": "int64" },
           "name": { "type": "string" },
@@ -1893,6 +1945,12 @@
             "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
           },
           "details": { "type": "string" },
+          "taxId": { "type": "string", "description": "13 หลัก หรือ \"\" (สิ่งของ/แบบฟอร์มแนบ)" },
+          "addressLine": { "type": "string" },
+          "subdistrict": { "type": "string" },
+          "district": { "type": "string" },
+          "province": { "type": "string" },
+          "postcode": { "type": "string" },
           "file": {
             "allOf": [{ "$ref": "#/components/schemas/SponsorDonationFile" }],
             "nullable": true,
@@ -1942,6 +2000,12 @@
           "goodsDescription",
           "donatedOn",
           "note",
+          "taxId",
+          "addressLine",
+          "subdistrict",
+          "district",
+          "province",
+          "postcode",
           "facultySubmitted",
           "facultySubmittedAt",
           "files",
@@ -1967,6 +2031,12 @@
           "goodsDescription": { "type": "string" },
           "donatedOn": { "type": "string", "example": "2026-11-20", "description": "YYYY-MM-DD หรือ \"\"" },
           "note": { "type": "string" },
+          "taxId": { "type": "string" },
+          "addressLine": { "type": "string" },
+          "subdistrict": { "type": "string" },
+          "district": { "type": "string" },
+          "province": { "type": "string" },
+          "postcode": { "type": "string" },
           "facultySubmitted": { "type": "boolean" },
           "facultySubmittedAt": { "type": "string", "format": "date-time", "nullable": true },
           "files": {
@@ -2006,6 +2076,34 @@
           "goodsDescription": { "type": "string", "maxLength": 500, "description": "goods: จำเป็น 1–500; money: ต้องว่าง" },
           "donatedOn": { "type": "string", "description": "\"\" หรือ YYYY-MM-DD" },
           "note": { "type": "string", "maxLength": 500 },
+          "taxId": {
+            "type": "string",
+            "description": "money: ว่าง หรือ 13 หลัก checksum ถูกต้อง; goods: ต้องว่าง"
+          },
+          "addressLine": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "money: ว่าง หรือบ้านเลขที่/หมู่/ซอย/ถนน ≤ 200; goods: ต้องว่าง"
+          },
+          "subdistrict": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "money: ว่าง หรือตำบล/แขวง ≤ 100; goods: ต้องว่าง"
+          },
+          "district": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "money: ว่าง หรืออำเภอ/เขต ≤ 100; goods: ต้องว่าง"
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "money: ว่าง หรือชื่อทางการ 1 ใน 77 จังหวัด; goods: ต้องว่าง"
+          },
+          "postcode": {
+            "type": "string",
+            "description": "money: ว่าง หรือ 5 หลัก; goods: ต้องว่าง"
+          },
           "facultySubmitted": {
             "type": "boolean",
             "description": "true ตั้ง facultySubmittedAt = now() ถ้ายังไม่มี; false ล้างค่า"

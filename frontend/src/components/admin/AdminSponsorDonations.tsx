@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Check, Eye, FileUp, Pencil, Plus, Printer, RefreshCw, RotateCw, Trash2, TriangleAlert, X } from 'lucide-react';
 import {
+  SPONSOR_ADDRESS_LINE_MAX,
+  SPONSOR_AREA_MAX,
   SPONSOR_FILE_LABELS,
   SPONSOR_FILE_MAX_BYTES,
   SPONSOR_FILE_TYPES,
@@ -20,6 +22,16 @@ import {
   type SponsorFileKind,
   type SponsorKind,
 } from '../../lib/api';
+import { canonicalProvince } from '../../lib/provinces';
+import {
+  formatThaiAddress,
+  formatThaiTaxId,
+  isValidPostcode,
+  isValidThaiTaxId,
+  normalizePostcode,
+  normalizeThaiTaxId,
+} from '../../lib/thai-tax-id';
+import { ProvinceCombobox } from '../ProvinceCombobox';
 import {
   BTN_DARK,
   BTN_DARK_TEXT,
@@ -81,9 +93,28 @@ type DonationForm = {
   goodsDescription: string;
   donatedOn: string;
   note: string;
+  taxId: string;
+  addressLine: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postcode: string;
   facultySubmitted: boolean;
 };
-type FieldKey = 'donorName' | 'address' | 'phone' | 'amount' | 'goodsDescription' | 'donatedOn' | 'note';
+type FieldKey =
+  | 'donorName'
+  | 'address'
+  | 'phone'
+  | 'taxId'
+  | 'addressLine'
+  | 'subdistrict'
+  | 'district'
+  | 'province'
+  | 'postcode'
+  | 'amount'
+  | 'goodsDescription'
+  | 'donatedOn'
+  | 'note';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 /** null = editor closed, 'new' = add, number = editing that donation id. */
 type FormTarget = null | 'new' | number;
@@ -91,7 +122,20 @@ type FormTarget = null | 'new' | number;
 /** Values handed over from an inquiry ("สร้างรายการบริจาค"); a new `nonce` opens the editor again. */
 export type DonationPrefill = {
   nonce: number;
-  values: Pick<DonationForm, 'donorName' | 'phone' | 'kind' | 'goodsDescription' | 'note'>;
+  values: Pick<
+    DonationForm,
+    | 'donorName'
+    | 'phone'
+    | 'kind'
+    | 'goodsDescription'
+    | 'note'
+    | 'taxId'
+    | 'addressLine'
+    | 'subdistrict'
+    | 'district'
+    | 'province'
+    | 'postcode'
+  >;
 };
 
 interface Props {
@@ -102,7 +146,21 @@ interface Props {
   prefill: DonationPrefill | null;
 }
 
-const FIELD_ORDER: FieldKey[] = ['donorName', 'address', 'phone', 'goodsDescription', 'amount', 'donatedOn', 'note'];
+const FIELD_ORDER: FieldKey[] = [
+  'donorName',
+  'phone',
+  'taxId',
+  'addressLine',
+  'subdistrict',
+  'district',
+  'province',
+  'postcode',
+  'address',
+  'goodsDescription',
+  'amount',
+  'donatedOn',
+  'note',
+];
 const fieldId = (k: FieldKey) => `donation-${k}-input`;
 
 function emptyForm(): DonationForm {
@@ -115,6 +173,12 @@ function emptyForm(): DonationForm {
     goodsDescription: '',
     donatedOn: todayBangkokYmd(),
     note: '',
+    taxId: '',
+    addressLine: '',
+    subdistrict: '',
+    district: '',
+    province: '',
+    postcode: '',
     facultySubmitted: false,
   };
 }
@@ -129,12 +193,19 @@ function formFromDonation(d: SponsorDonation): DonationForm {
     goodsDescription: d.goodsDescription,
     donatedOn: d.donatedOn,
     note: d.note,
+    taxId: d.kind === 'money' ? d.taxId : '',
+    addressLine: d.kind === 'money' ? d.addressLine : '',
+    subdistrict: d.kind === 'money' ? d.subdistrict : '',
+    district: d.kind === 'money' ? d.district : '',
+    province: d.kind === 'money' ? d.province : '',
+    postcode: d.kind === 'money' ? d.postcode : '',
     facultySubmitted: d.facultySubmitted,
   };
 }
 
 /** The full PATCH body for a stored donation (PATCH replaces every editable field). */
 function inputFromDonation(d: SponsorDonation): SponsorDonationInput {
+  const isMoney = d.kind === 'money';
   return {
     donorName: d.donorName,
     address: d.address,
@@ -144,6 +215,12 @@ function inputFromDonation(d: SponsorDonation): SponsorDonationInput {
     goodsDescription: d.kind === 'goods' ? d.goodsDescription : '',
     donatedOn: d.donatedOn,
     note: d.note,
+    taxId: isMoney ? d.taxId : '',
+    addressLine: isMoney ? d.addressLine : '',
+    subdistrict: isMoney ? d.subdistrict : '',
+    district: isMoney ? d.district : '',
+    province: isMoney ? d.province : '',
+    postcode: isMoney ? d.postcode : '',
     facultySubmitted: d.facultySubmitted,
   };
 }
@@ -165,6 +242,55 @@ function validateForm(f: DonationForm): { input: SponsorDonationInput | null; er
   const phone = sanitizeDigits(rawPhone);
   if (rawPhone && !/^[\d\s-]+$/.test(rawPhone)) errors.phone = 'เบอร์โทรกรอกได้เฉพาะตัวเลข';
   else if (phone && (phone.length < 9 || phone.length > 10)) errors.phone = 'เบอร์โทรต้องมี 9–10 หลัก (หรือเว้นว่าง)';
+
+  let taxId = '';
+  let addressLine = '';
+  let subdistrict = '';
+  let district = '';
+  let province = '';
+  let postcode = '';
+
+  if (f.kind === 'money') {
+    const rawTaxId = normalizeThaiTaxId(f.taxId);
+    if (rawTaxId) {
+      if (!isValidThaiTaxId(rawTaxId)) errors.taxId = 'เลขไม่ถูกต้อง กรุณาตรวจอีกครั้ง';
+      else taxId = rawTaxId;
+    }
+
+    addressLine = stripZeroWidth(f.addressLine).trim();
+    if (runeLength(addressLine) > SPONSOR_ADDRESS_LINE_MAX) {
+      errors.addressLine = `บ้านเลขที่/ถนนยาวได้ไม่เกิน ${SPONSOR_ADDRESS_LINE_MAX} ตัวอักษร`;
+    } else if (/[\r\n]/.test(addressLine) || CONTROL_CHARS.test(addressLine)) {
+      errors.addressLine = 'ที่อยู่ต้องอยู่ในบรรทัดเดียวและไม่มีอักขระควบคุม';
+    }
+
+    subdistrict = stripZeroWidth(f.subdistrict).trim();
+    if (runeLength(subdistrict) > SPONSOR_AREA_MAX) {
+      errors.subdistrict = `ตำบล/แขวงยาวได้ไม่เกิน ${SPONSOR_AREA_MAX} ตัวอักษร`;
+    } else if (/[\r\n]/.test(subdistrict) || CONTROL_CHARS.test(subdistrict)) {
+      errors.subdistrict = 'ตำบล/แขวงมีอักขระที่ใช้ไม่ได้';
+    }
+
+    district = stripZeroWidth(f.district).trim();
+    if (runeLength(district) > SPONSOR_AREA_MAX) {
+      errors.district = `อำเภอ/เขตยาวได้ไม่เกิน ${SPONSOR_AREA_MAX} ตัวอักษร`;
+    } else if (/[\r\n]/.test(district) || CONTROL_CHARS.test(district)) {
+      errors.district = 'อำเภอ/เขตมีอักขระที่ใช้ไม่ได้';
+    }
+
+    const rawProvince = stripZeroWidth(f.province).trim();
+    if (rawProvince) {
+      const official = canonicalProvince(rawProvince);
+      if (!official) errors.province = 'กรุณาเลือกจังหวัดจากรายการ';
+      else province = official;
+    }
+
+    const rawPostcode = normalizePostcode(f.postcode);
+    if (rawPostcode) {
+      if (!isValidPostcode(rawPostcode)) errors.postcode = 'รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก';
+      else postcode = rawPostcode;
+    }
+  }
 
   const amountText = normalizeAmountInput(f.amount);
   let amount: string | null = null;
@@ -202,6 +328,12 @@ function validateForm(f: DonationForm): { input: SponsorDonationInput | null; er
       goodsDescription: f.kind === 'goods' ? goods : '',
       donatedOn: f.donatedOn,
       note,
+      taxId,
+      addressLine,
+      subdistrict,
+      district,
+      province,
+      postcode,
       facultySubmitted: f.facultySubmitted,
     },
     errors,
@@ -460,7 +592,11 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
         closeForm();
       }
     } catch (err) {
-      failed(err, 'บันทึก', 'ข้อมูลไม่ผ่านการตรวจของเซิร์ฟเวอร์ กรุณาตรวจชื่อ เบอร์โทร จำนวนเงิน และรายการสิ่งของอีกครั้ง');
+      failed(
+        err,
+        'บันทึก',
+        'ข้อมูลไม่ผ่านการตรวจของเซิร์ฟเวอร์ กรุณาตรวจชื่อ เบอร์โทร เลขผู้เสียภาษี ที่อยู่ จำนวนเงิน และรายการสิ่งของอีกครั้ง',
+      );
       if (isNotFound(err)) closeForm(false);
     } finally {
       unlock();
@@ -634,19 +770,6 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
           />
         </FieldShell>
 
-        <FieldShell k="address" label="ที่อยู่ (ไม่บังคับ)" help="พิมพ์ลงฟอร์ม เว้นว่างได้ถ้าจะให้ผู้บริจาคเขียนเอง" error={e.address}>
-          <textarea
-            {...a11y('address', e.address, true)}
-            rows={2}
-            maxLength={TEXT_MAX}
-            value={form.address}
-            onChange={(ev) => setField('address', ev.target.value)}
-            disabled={saving}
-            className={`${INPUT_BASE} rounded-xl leading-[1.75]`}
-            style={border('address')}
-          />
-        </FieldShell>
-
         <FieldShell k="phone" label="เบอร์โทร (ไม่บังคับ)" help="มือถือหรือเบอร์บ้าน 9–10 หลัก" error={e.phone}>
           <input
             {...a11y('phone', e.phone, true)}
@@ -687,8 +810,31 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
                     checked={on}
                     disabled={saving}
                     onChange={() => {
-                      setField('kind', k);
-                      setFieldErrors((prev) => ({ ...prev, amount: undefined, goodsDescription: undefined }));
+                      if (k === 'goods') {
+                        setForm((prev) => ({
+                          ...prev,
+                          kind: 'goods',
+                          taxId: '',
+                          addressLine: '',
+                          subdistrict: '',
+                          district: '',
+                          province: '',
+                          postcode: '',
+                        }));
+                      } else {
+                        setField('kind', k);
+                      }
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        amount: undefined,
+                        goodsDescription: undefined,
+                        taxId: undefined,
+                        addressLine: undefined,
+                        subdistrict: undefined,
+                        district: undefined,
+                        province: undefined,
+                        postcode: undefined,
+                      }));
                     }}
                     className="sr-only"
                   />
@@ -698,6 +844,150 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
             })}
           </div>
         </fieldset>
+
+        {form.kind === 'money' ? (
+          <div className="flex flex-col gap-4 border-t pt-4" style={{ borderColor: RULE }}>
+            <div>
+              <p className="text-sm font-semibold leading-6" style={{ color: INK }}>
+                ข้อมูลสำหรับออกเอกสารลดหย่อนภาษี (ไม่บังคับ)
+              </p>
+              <p className="text-xs leading-5" style={{ color: INK_3 }}>
+                พิมพ์ลงแบบฟอร์มบริจาคเงิน เว้นว่างได้ถ้ายังไม่มีข้อมูลหรือจะให้ผู้บริจาคเขียนเอง
+              </p>
+            </div>
+
+            <FieldShell
+              k="taxId"
+              label="เลขประจำตัวประชาชน / เลขประจำตัวผู้เสียภาษี (13 หลัก)"
+              help="ใช้ได้ทั้งบุคคลธรรมดาและนิติบุคคล กรอกได้ทั้งแบบมีขีดและไม่มีขีด"
+              error={e.taxId}
+            >
+              <input
+                {...a11y('taxId', e.taxId, true)}
+                type="text"
+                inputMode="numeric"
+                maxLength={25}
+                autoComplete="off"
+                placeholder="X-XXXX-XXXXX-XX-X"
+                value={form.taxId}
+                onChange={(ev) => setField('taxId', ev.target.value)}
+                disabled={saving}
+                className={`${inputCls} font-mono tabular-nums sm:max-w-[20rem]`}
+                style={border('taxId')}
+              />
+            </FieldShell>
+
+            <FieldShell k="addressLine" label="บ้านเลขที่ / หมู่ / ซอย / ถนน" error={e.addressLine}>
+              <input
+                {...a11y('addressLine', e.addressLine, false)}
+                type="text"
+                maxLength={SPONSOR_ADDRESS_LINE_MAX}
+                autoComplete="address-line1"
+                placeholder="เช่น 63 หมู่ 4 ถ.เชียงใหม่-พร้าว"
+                value={form.addressLine}
+                onChange={(ev) => setField('addressLine', ev.target.value)}
+                disabled={saving}
+                className={inputCls}
+                style={border('addressLine')}
+              />
+            </FieldShell>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldShell k="subdistrict" label="ตำบล / แขวง" error={e.subdistrict}>
+                <input
+                  {...a11y('subdistrict', e.subdistrict, false)}
+                  type="text"
+                  maxLength={SPONSOR_AREA_MAX}
+                  autoComplete="off"
+                  value={form.subdistrict}
+                  onChange={(ev) => setField('subdistrict', ev.target.value)}
+                  disabled={saving}
+                  className={inputCls}
+                  style={border('subdistrict')}
+                />
+              </FieldShell>
+
+              <FieldShell k="district" label="อำเภอ / เขต" error={e.district}>
+                <input
+                  {...a11y('district', e.district, false)}
+                  type="text"
+                  maxLength={SPONSOR_AREA_MAX}
+                  autoComplete="off"
+                  value={form.district}
+                  onChange={(ev) => setField('district', ev.target.value)}
+                  disabled={saving}
+                  className={inputCls}
+                  style={border('district')}
+                />
+              </FieldShell>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldShell k="province" label="จังหวัด" error={e.province}>
+                <fieldset disabled={saving} className="m-0 border-0 p-0">
+                  <ProvinceCombobox
+                    id={fieldId('province')}
+                    value={form.province}
+                    onChange={(v) => setField('province', v)}
+                    className={inputCls}
+                    style={border('province')}
+                    invalid={Boolean(e.province)}
+                    describedBy={e.province ? `${fieldId('province')}-error` : undefined}
+                  />
+                </fieldset>
+              </FieldShell>
+
+              <FieldShell k="postcode" label="รหัสไปรษณีย์" error={e.postcode}>
+                <input
+                  {...a11y('postcode', e.postcode, false)}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  autoComplete="postal-code"
+                  placeholder="50290"
+                  value={form.postcode}
+                  onChange={(ev) => setField('postcode', sanitizeDigits(ev.target.value).slice(0, 5))}
+                  disabled={saving}
+                  className={`${inputCls} font-mono tabular-nums`}
+                  style={border('postcode')}
+                />
+              </FieldShell>
+            </div>
+
+            {form.address && (
+              <FieldShell
+                k="address"
+                label="ที่อยู่เดิม (ข้อความอิสระ, ไม่บังคับ)"
+                help="ใช้สำรองเฉพาะเมื่อยังไม่ได้กรอกที่อยู่แยกช่องด้านบน"
+                error={e.address}
+              >
+                <textarea
+                  {...a11y('address', e.address, true)}
+                  rows={2}
+                  maxLength={TEXT_MAX}
+                  value={form.address}
+                  onChange={(ev) => setField('address', ev.target.value)}
+                  disabled={saving}
+                  className={`${INPUT_BASE} rounded-xl leading-[1.75]`}
+                  style={border('address')}
+                />
+              </FieldShell>
+            )}
+          </div>
+        ) : (
+          <FieldShell k="address" label="ที่อยู่ (ไม่บังคับ)" help="พิมพ์ลงฟอร์ม เว้นว่างได้ถ้าจะให้ผู้บริจาคเขียนเอง" error={e.address}>
+            <textarea
+              {...a11y('address', e.address, true)}
+              rows={2}
+              maxLength={TEXT_MAX}
+              value={form.address}
+              onChange={(ev) => setField('address', ev.target.value)}
+              disabled={saving}
+              className={`${INPUT_BASE} rounded-xl leading-[1.75]`}
+              style={border('address')}
+            />
+          </FieldShell>
+        )}
 
         {form.kind === 'goods' && (
           <FieldShell k="goodsDescription" label="สิ่งของที่บริจาค" help={`เช่น น้ำดื่ม 20 แพ็ก ขนม 5 ลัง (ไม่เกิน ${TEXT_MAX} ตัวอักษร)`} error={e.goodsDescription}>
@@ -984,8 +1274,8 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
       </div>
 
       <p className="max-w-[72ch] text-xs leading-6" style={{ color: INK_3 }}>
-        ขั้นตอน: บันทึกรายการ → พิมพ์ฟอร์มให้ผู้บริจาคเซ็น (บริจาคเงิน: ช่องเลขผู้เสียภาษีเว้นว่างให้เขียนเอง ระบบไม่เก็บเลขนี้ ·
-        สิ่งของ: ฟอร์มไม่มีช่องนี้ เพราะนำไปลดหย่อนภาษีไม่ได้) →
+        ขั้นตอน: บันทึกรายการ → พิมพ์ฟอร์มให้ผู้บริจาคเซ็น (บริจาคเงิน: หากกรอกเลขผู้เสียภาษีและที่อยู่ไว้จะพิมพ์ลงฟอร์มให้อัตโนมัติ
+        ถ้าเว้นว่างจะเว้นบรรทัดให้เขียนเอง · สิ่งของ: ฟอร์มไม่มีช่องเลขผู้เสียภาษี เพราะนำไปลดหย่อนภาษีไม่ได้) →
         อัปโหลดฟอร์มที่เซ็นแล้วและสลิปโอน → ส่งคณะแล้วกด “ส่งคณะแล้ว”
       </p>
 
@@ -1070,6 +1360,24 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
                       )}
                       {d.facultySubmitted && d.facultySubmittedAt && <> · ส่งคณะเมื่อ {formatBangkokDateTime(d.facultySubmittedAt)}</>}
                     </p>
+                    {((d.kind === 'money' && d.taxId) || (d.kind === 'money' ? formatThaiAddress(d) || d.address : d.address)) && (
+                      <div className="mt-1 flex flex-col gap-0.5 text-sm leading-6" style={{ color: INK_2 }}>
+                        {d.kind === 'money' && d.taxId && (
+                          <p className="break-words">
+                            <span style={{ color: INK_3 }}>เลขประจำตัวผู้เสียภาษี/บัตรประชาชน: </span>
+                            <span className="font-mono tabular-nums" style={{ color: INK }}>
+                              {formatThaiTaxId(d.taxId)}
+                            </span>
+                          </p>
+                        )}
+                        {(d.kind === 'money' ? formatThaiAddress(d) || d.address : d.address) && (
+                          <p className="max-w-[68ch] whitespace-pre-line break-words">
+                            <span style={{ color: INK_3 }}>ที่อยู่: </span>
+                            {d.kind === 'money' ? formatThaiAddress(d) || d.address : d.address}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {d.note && (
                       <p className="mt-1 max-w-[68ch] whitespace-pre-line break-words text-sm leading-[1.75]" style={{ color: INK_2 }}>
                         <span className="sr-only">หมายเหตุ: </span>

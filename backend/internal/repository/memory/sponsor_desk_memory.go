@@ -220,6 +220,12 @@ func applyDonationFields(d *domain.SponsorDonation, f domain.SponsorDonationFiel
 	d.GoodsDescription = f.GoodsDescription
 	d.DonatedOn = f.DonatedOn
 	d.Note = f.Note
+	d.TaxID = f.TaxID
+	d.AddressLine = f.AddressLine
+	d.Subdistrict = f.Subdistrict
+	d.District = f.District
+	d.Province = f.Province
+	d.Postcode = f.Postcode
 	switch {
 	case f.FacultySubmitted && d.FacultySubmittedAt == nil:
 		t := now

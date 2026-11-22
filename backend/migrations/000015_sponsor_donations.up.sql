@@ -1,6 +1,6 @@
 -- ComCamp 25th - Sponsor inquiries (public /sponsor form), staff notification addresses, and
 -- donations recorded by staff in /admin with their signed form / transfer slip scans.
--- Tax ID / national ID is never stored (the printed faculty form leaves that line blank).
+-- Tax ID / national ID and the structured address were added later by 000017 (money only).
 -- Additive only and safe with the previous backend running.
 -- On an existing volume apply it by hand (docker-entrypoint-initdb.d only runs on an empty one):
 --   psql -v ON_ERROR_STOP=1 ... < backend/migrations/000015_sponsor_donations.up.sql

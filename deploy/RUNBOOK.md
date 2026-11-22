@@ -85,7 +85,7 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000016`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000017`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
@@ -282,7 +282,7 @@ git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -490,6 +490,40 @@ curl -sSI 'https://comcamp.csmju.com/assets/docs/sponsor-donation-form.pdf?v=1' 
 - หลัง deploy: เปิด `/sponsor` → `แจ้งความประสงค์สนับสนุน` → `แนบแบบฟอร์มที่กรอกแล้ว` ส่งไฟล์ทดสอบ 1 ครั้ง ต้องเห็นรายการพร้อมป้าย `แนบแบบฟอร์ม` และปุ่ม `ดูแบบฟอร์ม` ใน `/admin` → ผู้สนับสนุน → ผู้สนใจสนับสนุน (ลบรายการทดสอบทิ้งได้ ไฟล์ถูกลบตาม)
 - **Build ใหม่บน Schema เก่า:** แท็บผู้สนใจสนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
 - **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000016_sponsor_inquiry_file.down.sql` (ลบ 4 คอลัมน์ — ไฟล์ `sponsor-docs/inquiry-*` ที่ส่งมาแล้วยังอยู่ ลบเองถ้าต้องการ)
+
+### Migration `000017` (ที่อยู่ + เลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนของผู้สนับสนุน)
+
+`000017_sponsor_tax_address.up.sql` **เพิ่มอย่างเดียว** และรันซ้ำได้: เพิ่ม 6 คอลัมน์ `TEXT NOT NULL DEFAULT ''` (`tax_id`, `address_line`, `address_subdistrict`, `address_district`, `address_province`, `address_postcode`) ใน `sponsor_inquiries` และ `sponsor_donations` — ฟอร์ม `/sponsor` (บริจาคเงิน + กรอกบนเว็บ) บังคับกรอก เลข 13 หลักตรวจ checksum; แอดมินทุกคนดูได้ใน `/admin` และพิมพ์ลงฟอร์มคณะ; ไม่ออกทาง endpoint สาธารณะ อีเมล หรือค่าใน audit backend รุ่นก่อนหน้าไม่อ่านคอลัมน์เหล่านี้ จึงรันขณะระบบเดิมทำงานอยู่ได้ (ต้องรัน `000016` มาก่อนแล้ว)
+
+```bash
+cd ~/comcamp25
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+mkdir -p "$B"
+F="$B/cc25_db_pre000017_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"; ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000017 up ขณะ backend เดิมยังทำงาน
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000017_sponsor_tax_address.up.sql
+
+# 3. ตรวจ: ต้องได้ sponsor_donations|6 และ sponsor_inquiries|6
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -Atc "select table_name, count(*) from information_schema.columns where table_name like 'sponsor_%' and column_name in ('tax_id','address_line','address_subdistrict','address_district','address_province','address_postcode') group by 1 order by 1"
+
+# 4. Build และเปิด backend + frontend ตัวใหม่
+$C up -d --build backend frontend
+curl -fsS http://127.0.0.1:6000/api/health
+```
+
+- หลัง deploy: เปิด `/sponsor` → เลือก `เงิน` → `กรอกข้อมูลบนเว็บ` ต้องเห็นกลุ่ม "ข้อมูลสำหรับออกเอกสารลดหย่อนภาษี"; ส่งทดสอบ 1 ครั้งด้วยเลข 13 หลักที่ checksum ถูก แล้วดูใน `/admin` → ผู้สนับสนุน → ผู้สนใจสนับสนุน ว่าเห็นเลขและที่อยู่ (ลบรายการทดสอบทิ้งได้)
+- **Build ใหม่บน Schema เก่า:** แท็บผู้สนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
+- **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000017_sponsor_tax_address.down.sql` (ลบ 6 คอลัมน์ทั้งสองตาราง — เลข/ที่อยู่ที่บันทึกแล้วหายถาวร)
+- **ไฟล์ backup:** หลัง `000017` ไฟล์ `pg_dump` จะมีเลขบัตรประชาชน/เลขผู้เสียภาษีของผู้สนับสนุน เก็บสิทธิ์ `600` เหมือนเดิม
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 

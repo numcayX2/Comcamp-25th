@@ -26,13 +26,19 @@ func NewSponsorInquiryPostgresRepo(pool *pgxpool.Pool) *SponsorInquiryPostgresRe
 	return &SponsorInquiryPostgresRepo{pool: pool}
 }
 
-const inquiryColumns = `id, name, phone, email, kind, details, file_path, file_mime, file_size, file_sha256, handled_at, created_at`
+const inquiryColumns = `id, name, phone, email, kind, details,
+	tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
+	file_path, file_mime, file_size, file_sha256, handled_at, created_at`
 
 func scanInquiry(s scannable) (*domain.SponsorInquiry, error) {
 	var i domain.SponsorInquiry
 	var path, mime, hash *string
 	var size *int
-	if err := s.Scan(&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details, &path, &mime, &size, &hash, &i.HandledAt, &i.CreatedAt); err != nil {
+	if err := s.Scan(
+		&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details,
+		&i.TaxID, &i.AddressLine, &i.Subdistrict, &i.District, &i.Province, &i.Postcode,
+		&path, &mime, &size, &hash, &i.HandledAt, &i.CreatedAt,
+	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
@@ -65,10 +71,16 @@ func (r *SponsorInquiryPostgresRepo) Create(ctx context.Context, inq *domain.Spo
 		path, mime, size, hash = &f.Path, &f.MIME, &f.SizeBytes, &f.SHA256
 	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO sponsor_inquiries (name, phone, email, kind, details, file_path, file_mime, file_size, file_sha256)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO sponsor_inquiries (
+			name, phone, email, kind, details,
+			tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
+			file_path, file_mime, file_size, file_sha256
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at
-	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details, path, mime, size, hash).Scan(&inq.ID, &inq.CreatedAt)
+	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details,
+		inq.TaxID, inq.AddressLine, inq.Subdistrict, inq.District, inq.Province, inq.Postcode,
+		path, mime, size, hash).Scan(&inq.ID, &inq.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert sponsor inquiry: %w", err)
 	}
@@ -210,14 +222,18 @@ func NewSponsorDonationPostgresRepo(pool *pgxpool.Pool) *SponsorDonationPostgres
 
 // amount is read with trailing zeros trimmed ("1200", "1500.5"); donated_on as "YYYY-MM-DD" or "".
 const donationColumns = `id, donor_name, address, phone, kind, trim_scale(amount)::text, goods_description,
-	COALESCE(to_char(donated_on, 'YYYY-MM-DD'), ''), note, faculty_submitted_at, created_at, updated_at`
+	COALESCE(to_char(donated_on, 'YYYY-MM-DD'), ''), note,
+	tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
+	faculty_submitted_at, created_at, updated_at`
 
 const donationFileColumns = `donation_id, kind, path, mime, size_bytes, sha256, uploaded_at`
 
 func scanDonation(s scannable) (*domain.SponsorDonation, error) {
 	var d domain.SponsorDonation
 	err := s.Scan(&d.ID, &d.DonorName, &d.Address, &d.Phone, &d.Kind, &d.Amount, &d.GoodsDescription,
-		&d.DonatedOn, &d.Note, &d.FacultySubmittedAt, &d.CreatedAt, &d.UpdatedAt)
+		&d.DonatedOn, &d.Note,
+		&d.TaxID, &d.AddressLine, &d.Subdistrict, &d.District, &d.Province, &d.Postcode,
+		&d.FacultySubmittedAt, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -327,10 +343,16 @@ func (r *SponsorDonationPostgresRepo) Create(ctx context.Context, f domain.Spons
 	defer tx.Rollback(ctx)
 
 	d, err := scanDonation(tx.QueryRow(ctx, `
-		INSERT INTO sponsor_donations (donor_name, address, phone, kind, amount, goods_description, donated_on, note, faculty_submitted_at)
-		VALUES ($1, $2, $3, $4, $5::text::numeric, $6, NULLIF($7, '')::date, $8, CASE WHEN $9 THEN now() ELSE NULL END)
+		INSERT INTO sponsor_donations (
+			donor_name, address, phone, kind, amount, goods_description, donated_on, note,
+			tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
+			faculty_submitted_at
+		)
+		VALUES ($1, $2, $3, $4, $5::text::numeric, $6, NULLIF($7, '')::date, $8,
+			$9, $10, $11, $12, $13, $14, CASE WHEN $15 THEN now() ELSE NULL END)
 		RETURNING `+donationColumns,
-		f.DonorName, f.Address, f.Phone, f.Kind, f.Amount, f.GoodsDescription, f.DonatedOn, f.Note, f.FacultySubmitted))
+		f.DonorName, f.Address, f.Phone, f.Kind, f.Amount, f.GoodsDescription, f.DonatedOn, f.Note,
+		f.TaxID, f.AddressLine, f.Subdistrict, f.District, f.Province, f.Postcode, f.FacultySubmitted))
 	if err != nil {
 		return nil, fmt.Errorf("insert sponsor donation: %w", err)
 	}
@@ -362,10 +384,13 @@ func (r *SponsorDonationPostgresRepo) Update(ctx context.Context, id int64, f do
 		UPDATE sponsor_donations SET
 			donor_name = $2, address = $3, phone = $4, kind = $5, amount = $6::text::numeric,
 			goods_description = $7, donated_on = NULLIF($8, '')::date, note = $9,
-			faculty_submitted_at = CASE WHEN $10 THEN COALESCE(faculty_submitted_at, now()) ELSE NULL END,
+			tax_id = $10, address_line = $11, address_subdistrict = $12, address_district = $13,
+			address_province = $14, address_postcode = $15,
+			faculty_submitted_at = CASE WHEN $16 THEN COALESCE(faculty_submitted_at, now()) ELSE NULL END,
 			updated_at = now()
 		WHERE id = $1
-	`, id, f.DonorName, f.Address, f.Phone, f.Kind, f.Amount, f.GoodsDescription, f.DonatedOn, f.Note, f.FacultySubmitted); err != nil {
+	`, id, f.DonorName, f.Address, f.Phone, f.Kind, f.Amount, f.GoodsDescription, f.DonatedOn, f.Note,
+		f.TaxID, f.AddressLine, f.Subdistrict, f.District, f.Province, f.Postcode, f.FacultySubmitted); err != nil {
 		return nil, fmt.Errorf("update sponsor donation: %w", err)
 	}
 	if audit != nil {

@@ -9,6 +9,7 @@ import {
   type SponsorInquiry,
 } from '../../lib/api';
 import { formatBytes } from '../../lib/slip-upload';
+import { formatThaiAddress, formatThaiTaxId } from '../../lib/thai-tax-id';
 import { DANGER, FOCUS, INK, INK_2, INK_3, PILL_DANGER, PILL_GHOST, RULE, SUCCESS, SURFACE_SUBTLE, WARNING } from '../admin-ui';
 import {
   NoticeBanner,
@@ -316,6 +317,24 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                         </a>
                       )}
                     </div>
+                    {(inq.taxId || formatThaiAddress(inq)) && (
+                      <div className="mt-1.5 flex flex-col gap-0.5 text-sm leading-6" style={{ color: INK_2 }}>
+                        {inq.taxId && (
+                          <p className="break-words">
+                            <span style={{ color: INK_3 }}>เลขประจำตัวผู้เสียภาษี/บัตรประชาชน: </span>
+                            <span className="font-mono tabular-nums" style={{ color: INK }}>
+                              {formatThaiTaxId(inq.taxId)}
+                            </span>
+                          </p>
+                        )}
+                        {formatThaiAddress(inq) && (
+                          <p className="max-w-[68ch] break-words">
+                            <span style={{ color: INK_3 }}>ที่อยู่: </span>
+                            {formatThaiAddress(inq)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {inq.details && (
                       <p className="mt-2 max-w-[68ch] whitespace-pre-line break-words text-sm leading-[1.75]" style={{ color: INK_2 }}>
                         {inq.details}

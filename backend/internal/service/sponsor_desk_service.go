@@ -33,6 +33,8 @@ const (
 	maxInquiryDetailsRunes      = 500
 	maxDonorNameRunes           = 200
 	maxDonationTextRunes        = 500
+	maxSponsorAddressLineRunes  = 200
+	maxSponsorAreaRunes         = 100
 	sponsorDocsSubdir           = "sponsor-docs"
 	sponsorInquiryFilePrefix    = "inquiry"
 	sponsorDonationAmountMaxTHB = 10_000_000
@@ -56,12 +58,20 @@ var sponsorDocTypes = map[string]string{
 var sponsorAmountRe = regexp.MustCompile(`^[0-9]{1,8}(\.[0-9]{1,2})?$`)
 
 // SponsorInquiryRequest is the body of POST /api/sponsor-inquiries. Website is a honeypot.
+// For JSON money inquiries taxId and the five address fields are required; goods rejects them.
+// POST /api/sponsor-inquiries/upload ignores them (the attached form carries them).
 type SponsorInquiryRequest struct {
 	Name           string `json:"name"`
 	Phone          string `json:"phone"`
 	Email          string `json:"email"`
 	Kind           string `json:"kind"`
 	Details        string `json:"details"`
+	TaxID          string `json:"taxId"`
+	AddressLine    string `json:"addressLine"`
+	Subdistrict    string `json:"subdistrict"`
+	District       string `json:"district"`
+	Province       string `json:"province"`
+	Postcode       string `json:"postcode"`
 	TurnstileToken string `json:"turnstileToken"`
 	Website        string `json:"website"`
 }
@@ -69,16 +79,22 @@ type SponsorInquiryRequest struct {
 // SponsorInquiryEntry is one inquiry in the admin API. File is the attached donation form's
 // metadata (uploadedAt = createdAt), never its path; nil when the sponsor typed the form instead.
 type SponsorInquiryEntry struct {
-	ID        int64                     `json:"id"`
-	Name      string                    `json:"name"`
-	Phone     string                    `json:"phone"`
-	Email     string                    `json:"email"`
-	Kind      string                    `json:"kind"`
-	Details   string                    `json:"details"`
-	File      *SponsorDonationFileEntry `json:"file"`
-	Handled   bool                      `json:"handled"`
-	HandledAt *time.Time                `json:"handledAt"`
-	CreatedAt time.Time                 `json:"createdAt"`
+	ID          int64                     `json:"id"`
+	Name        string                    `json:"name"`
+	Phone       string                    `json:"phone"`
+	Email       string                    `json:"email"`
+	Kind        string                    `json:"kind"`
+	Details     string                    `json:"details"`
+	TaxID       string                    `json:"taxId"`
+	AddressLine string                    `json:"addressLine"`
+	Subdistrict string                    `json:"subdistrict"`
+	District    string                    `json:"district"`
+	Province    string                    `json:"province"`
+	Postcode    string                    `json:"postcode"`
+	File        *SponsorDonationFileEntry `json:"file"`
+	Handled     bool                      `json:"handled"`
+	HandledAt   *time.Time                `json:"handledAt"`
+	CreatedAt   time.Time                 `json:"createdAt"`
 }
 
 // SponsorInquiryEmailData is one staff notification about a new inquiry (one per recipient).
@@ -143,10 +159,14 @@ func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRe
 		return nil
 	}
 	withFile := file != nil
-	if withFile && strings.TrimSpace(req.Kind) == "" {
-		req.Kind = domain.SponsorKindMoney
+	if withFile {
+		if strings.TrimSpace(req.Kind) == "" {
+			req.Kind = domain.SponsorKindMoney
+		}
+		// Upload inquiries carry tax ID and address inside the attached form; ignore any sent text fields.
+		req.TaxID, req.AddressLine, req.Subdistrict, req.District, req.Province, req.Postcode = "", "", "", "", "", ""
 	}
-	inq, err := validateSponsorInquiry(req)
+	inq, err := validateSponsorInquiry(req, withFile)
 	if err != nil {
 		return err
 	}
@@ -330,7 +350,7 @@ func normalizeNotifyEmails(raw []string) ([]string, error) {
 	return out, nil
 }
 
-func validateSponsorInquiry(req SponsorInquiryRequest) (*domain.SponsorInquiry, error) {
+func validateSponsorInquiry(req SponsorInquiryRequest, withFile bool) (*domain.SponsorInquiry, error) {
 	name, err := sponsorLine("name", req.Name, 1, maxInquiryNameRunes)
 	if err != nil {
 		return nil, err
@@ -352,12 +372,109 @@ func validateSponsorInquiry(req SponsorInquiryRequest) (*domain.SponsorInquiry, 
 	if err != nil {
 		return nil, err
 	}
-	return &domain.SponsorInquiry{Name: name, Phone: phone, Email: email, Kind: kind, Details: details}, nil
+	var tax sponsorTaxAddress
+	if !withFile {
+		tax, err = validateSponsorTaxAddress(sponsorTaxAddress{
+			taxID:       req.TaxID,
+			addressLine: req.AddressLine,
+			subdistrict: req.Subdistrict,
+			district:    req.District,
+			province:    req.Province,
+			postcode:    req.Postcode,
+		}, kind, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &domain.SponsorInquiry{
+		Name: name, Phone: phone, Email: email, Kind: kind, Details: details,
+		TaxID: tax.taxID, AddressLine: tax.addressLine, Subdistrict: tax.subdistrict,
+		District: tax.district, Province: tax.province, Postcode: tax.postcode,
+	}, nil
+}
+
+type sponsorTaxAddress struct {
+	taxID       string
+	addressLine string
+	subdistrict string
+	district    string
+	province    string
+	postcode    string
+}
+
+// isValidThaiTaxID checks the standard 13-digit Thai national ID / juristic tax ID modulo-11
+// checksum: check = (11 - sum(d[i]*(13-i), i=0..11) % 11) % 10 == d[12].
+func isValidThaiTaxID(digits string) bool {
+	if len(digits) != 13 || !isNumeric(digits) {
+		return false
+	}
+	sum := 0
+	for i := range 12 {
+		sum += int(digits[i]-'0') * (13 - i)
+	}
+	check := (11 - (sum % 11)) % 10
+	return check == int(digits[12]-'0')
+}
+
+func validateSponsorTaxAddress(raw sponsorTaxAddress, kind string, requiredForMoney bool) (sponsorTaxAddress, error) {
+	if kind == domain.SponsorKindGoods {
+		for _, v := range []string{raw.taxID, raw.addressLine, raw.subdistrict, raw.district, raw.province, raw.postcode} {
+			if strings.TrimSpace(stripZeroWidth(v)) != "" {
+				return sponsorTaxAddress{}, newValidationError("taxId and address fields are not allowed for goods donations")
+			}
+		}
+		return sponsorTaxAddress{}, nil
+	}
+	var out sponsorTaxAddress
+	var err error
+	minRunes := 0
+	if requiredForMoney {
+		minRunes = 1
+	}
+
+	out.taxID = cleanNumber(raw.taxID)
+	if out.taxID == "" {
+		if requiredForMoney {
+			return sponsorTaxAddress{}, newValidationError("taxId is required for money donations")
+		}
+	} else if !isValidThaiTaxID(out.taxID) {
+		return sponsorTaxAddress{}, newValidationError("taxId must be a valid 13-digit Thai tax or national ID")
+	}
+
+	if out.addressLine, err = sponsorLine("addressLine", raw.addressLine, minRunes, maxSponsorAddressLineRunes); err != nil {
+		return sponsorTaxAddress{}, err
+	}
+	if out.subdistrict, err = sponsorLine("subdistrict", raw.subdistrict, minRunes, maxSponsorAreaRunes); err != nil {
+		return sponsorTaxAddress{}, err
+	}
+	if out.district, err = sponsorLine("district", raw.district, minRunes, maxSponsorAreaRunes); err != nil {
+		return sponsorTaxAddress{}, err
+	}
+	if out.province, err = sponsorLine("province", raw.province, minRunes, maxSponsorAreaRunes); err != nil {
+		return sponsorTaxAddress{}, err
+	}
+	if out.province != "" {
+		out.province = canonicalProvince(out.province)
+		if !isThaiProvince(out.province) {
+			return sponsorTaxAddress{}, newValidationError("province must be one of the 77 Thai provinces")
+		}
+	}
+	out.postcode = NormalizeDigitsAndIdentifier(raw.postcode)
+	if out.postcode == "" {
+		if requiredForMoney {
+			return sponsorTaxAddress{}, newValidationError("postcode is required for money donations")
+		}
+	} else if len(out.postcode) != 5 || !isNumeric(out.postcode) {
+		return sponsorTaxAddress{}, newValidationError("postcode must be 5 digits")
+	}
+	return out, nil
 }
 
 func toInquiryEntry(i *domain.SponsorInquiry) SponsorInquiryEntry {
 	e := SponsorInquiryEntry{
 		ID: i.ID, Name: i.Name, Phone: i.Phone, Email: i.Email, Kind: i.Kind, Details: i.Details,
+		TaxID: i.TaxID, AddressLine: i.AddressLine, Subdistrict: i.Subdistrict,
+		District: i.District, Province: i.Province, Postcode: i.Postcode,
 		Handled: i.HandledAt != nil, HandledAt: i.HandledAt, CreatedAt: i.CreatedAt,
 	}
 	if i.File != nil {
@@ -376,6 +493,12 @@ type SponsorDonationInput struct {
 	GoodsDescription string  `json:"goodsDescription"`
 	DonatedOn        string  `json:"donatedOn"`
 	Note             string  `json:"note"`
+	TaxID            string  `json:"taxId"`
+	AddressLine      string  `json:"addressLine"`
+	Subdistrict      string  `json:"subdistrict"`
+	District         string  `json:"district"`
+	Province         string  `json:"province"`
+	Postcode         string  `json:"postcode"`
 	FacultySubmitted bool    `json:"facultySubmitted"`
 }
 
@@ -402,6 +525,12 @@ type SponsorDonationEntry struct {
 	GoodsDescription   string               `json:"goodsDescription"`
 	DonatedOn          string               `json:"donatedOn"`
 	Note               string               `json:"note"`
+	TaxID              string               `json:"taxId"`
+	AddressLine        string               `json:"addressLine"`
+	Subdistrict        string               `json:"subdistrict"`
+	District           string               `json:"district"`
+	Province           string               `json:"province"`
+	Postcode           string               `json:"postcode"`
 	FacultySubmitted   bool                 `json:"facultySubmitted"`
 	FacultySubmittedAt *time.Time           `json:"facultySubmittedAt"`
 	Files              SponsorDonationFiles `json:"files"`
@@ -679,6 +808,23 @@ func validateDonationInput(in SponsorDonationInput) (domain.SponsorDonationField
 	if f.Note, err = sponsorMultiline("note", in.Note, 0, maxDonationTextRunes); err != nil {
 		return f, err
 	}
+	tax, err := validateSponsorTaxAddress(sponsorTaxAddress{
+		taxID:       in.TaxID,
+		addressLine: in.AddressLine,
+		subdistrict: in.Subdistrict,
+		district:    in.District,
+		province:    in.Province,
+		postcode:    in.Postcode,
+	}, f.Kind, false)
+	if err != nil {
+		return f, err
+	}
+	f.TaxID = tax.taxID
+	f.AddressLine = tax.addressLine
+	f.Subdistrict = tax.subdistrict
+	f.District = tax.district
+	f.Province = tax.province
+	f.Postcode = tax.postcode
 	f.FacultySubmitted = in.FacultySubmitted
 	return f, nil
 }
@@ -771,7 +917,10 @@ func toDonationEntry(d *domain.SponsorDonation) SponsorDonationEntry {
 	return SponsorDonationEntry{
 		ID: d.ID, DonorName: d.DonorName, Address: d.Address, Phone: d.Phone, Kind: d.Kind,
 		Amount: canonicalAmount(d.Amount), GoodsDescription: d.GoodsDescription, DonatedOn: d.DonatedOn,
-		Note: d.Note, FacultySubmitted: d.FacultySubmittedAt != nil, FacultySubmittedAt: d.FacultySubmittedAt,
+		Note: d.Note,
+		TaxID: d.TaxID, AddressLine: d.AddressLine, Subdistrict: d.Subdistrict,
+		District: d.District, Province: d.Province, Postcode: d.Postcode,
+		FacultySubmitted: d.FacultySubmittedAt != nil, FacultySubmittedAt: d.FacultySubmittedAt,
 		Files:     SponsorDonationFiles{Signed: toDonationFileEntry(d.Signed), Slip: toDonationFileEntry(d.Slip)},
 		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}

@@ -1345,6 +1345,8 @@ export function isSponsorKind(v: unknown): v is SponsorKind {
 
 export const SPONSOR_NAME_MAX = 120;
 export const SPONSOR_DETAILS_MAX = 500;
+export const SPONSOR_ADDRESS_LINE_MAX = 200;
+export const SPONSOR_AREA_MAX = 100;
 
 /** Body of POST /sponsor-inquiries. `website` is the honeypot and must stay empty. */
 export interface SponsorInquiryPayload {
@@ -1353,6 +1355,13 @@ export interface SponsorInquiryPayload {
   email: string;
   kind: SponsorKind;
   details: string;
+  /** Required when kind = money; omitted for goods. */
+  taxId?: string;
+  addressLine?: string;
+  subdistrict?: string;
+  district?: string;
+  province?: string;
+  postcode?: string;
   turnstileToken: string;
   website?: string;
 }
@@ -1399,6 +1408,12 @@ export interface SponsorInquiry {
   email: string;
   kind: SponsorKind;
   details: string;
+  taxId: string;
+  addressLine: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postcode: string;
   /** The filled donation form the sponsor attached (uploadedAt = createdAt); null when typed. */
   file: SponsorDonationFile | null;
   handled: boolean;
@@ -1432,6 +1447,12 @@ export interface SponsorDonation {
   /** "YYYY-MM-DD" or "". */
   donatedOn: string;
   note: string;
+  taxId: string;
+  addressLine: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postcode: string;
   facultySubmitted: boolean;
   facultySubmittedAt: string | null;
   files: Record<SponsorFileKind, SponsorDonationFile | null>;
@@ -1449,6 +1470,12 @@ export interface SponsorDonationInput {
   goodsDescription: string;
   donatedOn: string;
   note: string;
+  taxId: string;
+  addressLine: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  postcode: string;
   facultySubmitted: boolean;
 }
 
@@ -1466,6 +1493,12 @@ function pickInquiry(raw: unknown): SponsorInquiry | null {
     email: str(r.email),
     kind: r.kind,
     details: str(r.details),
+    taxId: str(r.taxId),
+    addressLine: str(r.addressLine),
+    subdistrict: str(r.subdistrict),
+    district: str(r.district),
+    province: str(r.province),
+    postcode: str(r.postcode),
     file: pickDonationFile(r.file),
     handled: r.handled === true,
     handledAt: strOrNull(r.handledAt),
@@ -1495,6 +1528,12 @@ function pickDonation(raw: unknown): SponsorDonation | null {
     goodsDescription: str(r.goodsDescription),
     donatedOn: str(r.donatedOn),
     note: str(r.note),
+    taxId: str(r.taxId),
+    addressLine: str(r.addressLine),
+    subdistrict: str(r.subdistrict),
+    district: str(r.district),
+    province: str(r.province),
+    postcode: str(r.postcode),
     facultySubmitted: r.facultySubmitted === true,
     facultySubmittedAt: strOrNull(r.facultySubmittedAt),
     files: { signed: pickDonationFile(files.signed), slip: pickDonationFile(files.slip) },

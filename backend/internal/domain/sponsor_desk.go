@@ -16,16 +16,24 @@ const (
 
 // SponsorInquiry is one "แจ้งความประสงค์สนับสนุน" submission from the public /sponsor page.
 // File is the filled donation form the sponsor attached instead of typing (nil = none).
+// TaxID and the five structured address fields are populated for typed money inquiries (empty for
+// goods inquiries and uploaded forms).
 type SponsorInquiry struct {
-	ID        int64
-	Name      string
-	Phone     string
-	Email     string
-	Kind      string
-	Details   string
-	File      *SponsorInquiryFile
-	HandledAt *time.Time
-	CreatedAt time.Time
+	ID          int64
+	Name        string
+	Phone       string
+	Email       string
+	Kind        string
+	Details     string
+	TaxID       string
+	AddressLine string
+	Subdistrict string
+	District    string
+	Province    string
+	Postcode    string
+	File        *SponsorInquiryFile
+	HandledAt   *time.Time
+	CreatedAt   time.Time
 }
 
 // SponsorInquiryFile is the stored metadata of an attached form (migration 000016). Path is
@@ -50,7 +58,8 @@ type SponsorDonationFile struct {
 }
 
 // SponsorDonation is a donation recorded by staff. Amount is a canonical decimal string (nil = not
-// set); DonatedOn is "YYYY-MM-DD" or "". No tax ID / national ID is ever stored.
+// set); DonatedOn is "YYYY-MM-DD" or "". TaxID and structured address fields are optional for money
+// donations and always empty for goods donations.
 type SponsorDonation struct {
 	ID                 int64
 	DonorName          string
@@ -61,6 +70,12 @@ type SponsorDonation struct {
 	GoodsDescription   string
 	DonatedOn          string
 	Note               string
+	TaxID              string
+	AddressLine        string
+	Subdistrict        string
+	District           string
+	Province           string
+	Postcode           string
 	FacultySubmittedAt *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -79,13 +94,19 @@ type SponsorDonationFields struct {
 	GoodsDescription string
 	DonatedOn        string
 	Note             string
+	TaxID            string
+	AddressLine      string
+	Subdistrict      string
+	District         string
+	Province         string
+	Postcode         string
 	FacultySubmitted bool
 }
 
 // ChangedFields returns the JSON names of the editable fields f would change on d (audit details
 // carry names only, never values).
 func (d *SponsorDonation) ChangedFields(f SponsorDonationFields) []string {
-	changed := make([]string, 0, 9)
+	changed := make([]string, 0, 15)
 	add := func(cond bool, name string) {
 		if cond {
 			changed = append(changed, name)
@@ -99,6 +120,12 @@ func (d *SponsorDonation) ChangedFields(f SponsorDonationFields) []string {
 	add(d.GoodsDescription != f.GoodsDescription, "goodsDescription")
 	add(d.DonatedOn != f.DonatedOn, "donatedOn")
 	add(d.Note != f.Note, "note")
+	add(d.TaxID != f.TaxID, "taxId")
+	add(d.AddressLine != f.AddressLine, "addressLine")
+	add(d.Subdistrict != f.Subdistrict, "subdistrict")
+	add(d.District != f.District, "district")
+	add(d.Province != f.Province, "province")
+	add(d.Postcode != f.Postcode, "postcode")
 	add((d.FacultySubmittedAt != nil) != f.FacultySubmitted, "facultySubmitted")
 	return changed
 }

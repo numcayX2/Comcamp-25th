@@ -43,12 +43,21 @@ func TestSponsorDeskPostgres_Inquiries(t *testing.T) {
 	ctx := context.Background()
 	before := countAudit(string(domain.AuditSponsorInquiryCreate))
 
-	a := &domain.SponsorInquiry{Name: "ร้าน ก", Phone: "0812345678", Kind: domain.SponsorKindMoney}
+	a := &domain.SponsorInquiry{
+		Name: "ร้าน ก", Phone: "0812345678", Kind: domain.SponsorKindMoney,
+		TaxID: "1101700203450", AddressLine: "63 หมู่ 4", Subdistrict: "หนองหาร",
+		District: "สันทราย", Province: "เชียงใหม่", Postcode: "50290",
+	}
 	if err := inq.Create(ctx, a, &domain.AuditEntry{Action: domain.AuditSponsorInquiryCreate, TargetType: domain.AuditTargetSponsorInquiry, Details: map[string]any{"kind": "money"}}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if a.ID == 0 || a.CreatedAt.IsZero() {
 		t.Fatalf("create did not populate id/createdAt: %+v", a)
+	}
+	if got, err := inq.GetByID(ctx, a.ID); err != nil ||
+		got.TaxID != a.TaxID || got.AddressLine != a.AddressLine || got.Subdistrict != a.Subdistrict ||
+		got.District != a.District || got.Province != a.Province || got.Postcode != a.Postcode {
+		t.Fatalf("tax/address did not round-trip: %v %+v", err, got)
 	}
 	if countAudit(string(domain.AuditSponsorInquiryCreate))-before != 1 {
 		t.Fatal("create audit row missing")
@@ -117,19 +126,26 @@ func TestSponsorDeskPostgres_Donations(t *testing.T) {
 	amount := "1500.50"
 	d, err := don.Create(ctx, domain.SponsorDonationFields{
 		DonorName: "บริษัท ก", Kind: domain.SponsorKindMoney, Amount: &amount, DonatedOn: "2026-11-20",
+		TaxID: "1101700203450", AddressLine: "63 หมู่ 4", Subdistrict: "หนองหาร",
+		District: "สันทราย", Province: "เชียงใหม่", Postcode: "50290",
 	}, &domain.AuditEntry{Action: domain.AuditSponsorDonationCreate, TargetType: domain.AuditTargetSponsorDonation})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if d.Amount == nil || *d.Amount != "1500.5" || d.DonatedOn != "2026-11-20" || d.FacultySubmittedAt != nil {
+	if d.Amount == nil || *d.Amount != "1500.5" || d.DonatedOn != "2026-11-20" || d.FacultySubmittedAt != nil ||
+		d.TaxID != "1101700203450" || d.Province != "เชียงใหม่" || d.Postcode != "50290" {
 		t.Fatalf("created = %+v", d)
 	}
 
 	updBefore := countAudit(string(domain.AuditSponsorDonationUpdate))
 	upd, err := don.Update(ctx, d.ID, domain.SponsorDonationFields{
-		DonorName: "บริษัท ก", Kind: domain.SponsorKindMoney, Amount: d.Amount, DonatedOn: "", FacultySubmitted: true,
+		DonorName: "บริษัท ก", Kind: domain.SponsorKindMoney, Amount: d.Amount, DonatedOn: "",
+		TaxID: "0105558001231", AddressLine: "99 ถ.ห้วยแก้ว", Subdistrict: "สุเทพ",
+		District: "เมืองเชียงใหม่", Province: "เชียงใหม่", Postcode: "50200",
+		FacultySubmitted: true,
 	}, &domain.AuditEntry{Action: domain.AuditSponsorDonationUpdate, TargetType: domain.AuditTargetSponsorDonation})
-	if err != nil || upd.FacultySubmittedAt == nil || upd.DonatedOn != "" {
+	if err != nil || upd.FacultySubmittedAt == nil || upd.DonatedOn != "" ||
+		upd.TaxID != "0105558001231" || upd.AddressLine != "99 ถ.ห้วยแก้ว" || upd.Postcode != "50200" {
 		t.Fatalf("update: %v %+v", err, upd)
 	}
 	if countAudit(string(domain.AuditSponsorDonationUpdate))-updBefore != 1 {

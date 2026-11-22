@@ -93,10 +93,12 @@ func (h *SponsorDeskHandler) SubmitInquiry(w http.ResponseWriter, r *http.Reques
 }
 
 // SubmitInquiryUpload handles POST /api/sponsor-inquiries/upload: the sponsor sends the filled
-// donation form instead of typing the inquiry. multipart/form-data with the SubmitInquiry fields
-// (name, phone, email, kind, details, turnstileToken, website) plus "file" (PDF/JPG/PNG/WebP
-// ≤ 8 MB); 201 {"ok":true}, nothing echoed back. Parts are read in memory under hard caps, so a
-// public upload never spills multipart temp files onto the small /tmp tmpfs.
+// donation form instead of typing the inquiry. multipart/form-data with the basic SubmitInquiry
+// fields (name, phone, email, kind, details, turnstileToken, website) plus "file" (PDF/JPG/PNG/WebP
+// ≤ 8 MB); taxId and address fields are neither required nor accepted (the attached form already
+// contains them, so any extra parts are discarded); 201 {"ok":true}, nothing echoed back. Parts are
+// read in memory under hard caps, so a public upload never spills multipart temp files onto the
+// small /tmp tmpfs.
 func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.Request) {
 	tooLarge := func() {
 		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorDocTooLarge.Error())
