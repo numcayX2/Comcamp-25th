@@ -213,70 +213,110 @@ const PHOTOS = [
     </ol>
   </section>
 
-  <!-- 4. Ways to support: cash (account, tax form) vs goods, side by side -->
+  <!-- 4. Ways to support: two paper slips (cash, goods) with the same ledger summary rows -->
   <section id="ways" class="sp-sec" aria-labelledby="sp-ways-title">
     <h2 id="sp-ways-title" class="sp-h2">วิธีสนับสนุน</h2>
     <p class="sp-sec__lead">สนับสนุนได้ทั้งเงินและสิ่งของ ต่างกันที่เรื่องแบบฟอร์มและการลดหย่อนภาษี</p>
 
     <div class="sp-ways">
-      <div class="sp-way">
-        <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
-        <p class="sp-way__text">
-          โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้สตาฟค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
-          การบริจาคเงินนำไปลดหย่อนภาษีได้ โดยกรอกแบบฟอร์มบริจาคเงินของคณะวิทยาศาสตร์
-        </p>
-
-        <p class="sp-account__pre">
-          แจ้งความประสงค์หรือติดต่อสตาฟค่ายก่อนโอน และเก็บสลิปไว้ส่งให้สตาฟค่ายตอนติดต่อกลับ
-        </p>
-        <div class="sp-account">
-          <div class="sp-account__head">
-            <p class="sp-account__bank">{PAY_ACCOUNT.bank}</p>
-            <p class="sp-account__name">ชื่อบัญชี {PAY_ACCOUNT.name}</p>
-          </div>
-          <p class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</p>
-          <p class="sp-account__holders">ผู้ถือบัญชี {PAY_ACCOUNT.holders}</p>
-        </div>
-
-        <div class="sp-copy-row">
-          <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT_DIGITS} aria-describedby="sp-copy-status">
-            <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
-            <span>คัดลอกเลขบัญชี</span>
-          </button>
-          <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
-        </div>
-
-        <div class="sp-taxform">
-          <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
-            <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
-            <span>แบบฟอร์มบริจาคเงิน</span>
-            <span class="sp-btn__meta font-mono">PDF</span>
-          </a>
-          <p class="sp-taxform__note">
-            ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้ สตาฟค่ายจะสอบถามตอนติดต่อกลับ
+      <div class="sp-way sp-way--money">
+        <div class="sp-receipt">
+          <h3 class="sp-way__title">สนับสนุนด้วยเงิน</h3>
+          <p class="sp-way__text">
+            โอนเข้าบัญชีของชมรม หรือมอบเงินสดให้สตาฟค่ายโดยตรง ไม่มี QR Code สำหรับการโอน
           </p>
-          <a class="sp-link" href="#sponsor-upload">
-            <span>กรอกแล้ว แนบไฟล์ส่งให้สตาฟค่าย</span>
+
+          <p class="sp-account__pre">
+            แจ้งความประสงค์หรือติดต่อสตาฟค่ายก่อนโอน และเก็บสลิปไว้ส่งให้สตาฟค่ายตอนติดต่อกลับ
+          </p>
+          <dl class="sp-ledger">
+            <div class="sp-ledger__row">
+              <dt>ธนาคาร</dt>
+              <dd>{PAY_ACCOUNT.bank}</dd>
+            </div>
+            <div class="sp-ledger__row">
+              <dt>ชื่อบัญชี</dt>
+              <dd>{PAY_ACCOUNT.name}</dd>
+            </div>
+            <div class="sp-ledger__row sp-ledger__row--stack">
+              <dt>ผู้ถือบัญชี</dt>
+              <dd>{PAY_ACCOUNT.holders}</dd>
+            </div>
+            <div class="sp-ledger__row sp-ledger__row--total">
+              <dt>เลขที่บัญชี</dt>
+              <dd class="sp-account__no font-mono tabular-nums">{PAY_ACCOUNT.number}</dd>
+            </div>
+          </dl>
+
+          <div class="sp-copy-row">
+            <button class="sp-copy" type="button" data-sp-copy={PAY_ACCOUNT_DIGITS} aria-describedby="sp-copy-status">
+              <Copy class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>คัดลอกเลขบัญชี</span>
+            </button>
+            <p id="sp-copy-status" class="sp-copy-status" role="status"></p>
+          </div>
+
+          <dl class="sp-ledger">
+            <div class="sp-ledger__row">
+              <dt>แบบฟอร์มบริจาค</dt>
+              <dd>ใช้แบบฟอร์มของคณะ</dd>
+            </div>
+            <div class="sp-ledger__row">
+              <dt>ลดหย่อนภาษี</dt>
+              <dd>ได้</dd>
+            </div>
+          </dl>
+
+          <div class="sp-taxform">
+            <a class="sp-btn sp-btn--secondary" href={SPONSOR_FORM_PDF} download={SPONSOR_FORM_FILENAME}>
+              <FileDown class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+              <span>แบบฟอร์มบริจาคเงิน</span>
+              <span class="sp-btn__meta font-mono">PDF</span>
+            </a>
+            <p class="sp-taxform__note">
+              ช่องเลขประจำตัวผู้เสียภาษี/เลขบัตรประชาชนเว้นว่างไว้ก่อนได้ สตาฟค่ายจะสอบถามตอนติดต่อกลับ
+            </p>
+            <a class="sp-link" href="#sponsor-upload">
+              <span>กรอกแล้ว แนบไฟล์ส่งให้สตาฟค่าย</span>
+              <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="sp-way sp-way--goods">
+        <div class="sp-receipt">
+          <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
+          <p class="sp-way__text">
+            สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการในแบบฟอร์มท้ายหน้านี้
+            แล้วสตาฟค่ายจะติดต่อกลับเพื่อนัดหมาย
+          </p>
+
+          <p class="sp-receipt__label">ตัวอย่างสิ่งของที่รับ</p>
+          <ul class="sp-goods">
+            <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
+            <li>ของรางวัลสำหรับกิจกรรมในค่าย</li>
+            <li>อาหารและเครื่องดื่มสำหรับผู้เข้าร่วม</li>
+          </ul>
+
+          <dl class="sp-ledger">
+            <div class="sp-ledger__row">
+              <dt>แบบฟอร์มบริจาค</dt>
+              <dd>ไม่ต้องใช้</dd>
+            </div>
+            <div class="sp-ledger__row">
+              <dt>ลดหย่อนภาษี</dt>
+              <dd>ไม่ได้</dd>
+            </div>
+          </dl>
+
+          <a class="sp-link sp-receipt__cta" href="#inquiry">
+            <span>แจ้งรายการสิ่งของในแบบฟอร์ม</span>
             <ArrowRight class="sp-ico" size={16} stroke-width={1.5} aria-hidden="true" />
           </a>
         </div>
       </div>
-
-      <div class="sp-way">
-        <h3 class="sp-way__title">สนับสนุนด้วยสิ่งของ</h3>
-        <p class="sp-way__text">
-          สนับสนุนเป็นอุปกรณ์ ของรางวัล หรืออาหารสำหรับกิจกรรม แจ้งรายการในแบบฟอร์มท้ายหน้านี้
-          แล้วสตาฟค่ายจะติดต่อกลับเพื่อนัดหมาย ไม่ต้องใช้แบบฟอร์มบริจาค และนำไปลดหย่อนภาษีไม่ได้
-        </p>
-        <ul class="sp-goods">
-          <li>อุปกรณ์อิเล็กทรอนิกส์สำหรับกิจกรรมการเรียน</li>
-          <li>ของรางวัลสำหรับกิจกรรมในค่าย</li>
-          <li>อาหารและเครื่องดื่ม (ไม่มีแอลกอฮอล์) สำหรับผู้เข้าร่วม</li>
-        </ul>
-      </div>
     </div>
-
-    <p class="sp-policy">ค่ายไม่รับการสนับสนุนจากธุรกิจเครื่องดื่มแอลกอฮอล์</p>
   </section>
 
   <!-- 5. Sponsor deck: nothing renders until the real PDF exists -->
@@ -344,9 +384,128 @@ const PHOTOS = [
 </article>
 
 <script>
+  import { gsap } from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
   import { copyText } from '../lib/payment';
   import { API_BASE, fetchSponsors } from '../lib/api';
   import { fetchSharedPublicSettings } from '../lib/public-settings-cache';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  /* Soft play-in: blocks rise 20px and fade in, in document order. Enhance-only: the CSS never
+     hides anything, blocks already scrolled past are left alone, and only blocks below the fold
+     are held at opacity 0 until ScrollTrigger plays them in. Reduced motion = no tweens at all. */
+  const REVEAL_SELECTOR = [
+    '.sp-hero__main > *',
+    '.sp-gazette__row',
+    '.sp-sec > .sp-h2',
+    '.sp-sec__lead',
+    '.sp-statement',
+    '.sp-photo',
+    '.sp-photos__note',
+    '.sp-why__body > *',
+    '.sp-benefits__head',
+    '.sp-benefit',
+    '.sp-step',
+    '.sp-receipt',
+    '.sp-deck__text',
+    '.sp-deck__action',
+    '#inquiry',
+    '.sp-contact > *',
+    '.sp-foot',
+  ].join(', ');
+  const REVEAL_FROM = { opacity: 0, y: 20 };
+  const REVEAL_TO = { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', clearProps: 'opacity,transform' };
+  // The two payment slips feed out like a receipt printer: revealed top to bottom while easing down.
+  const RECEIPT = '.sp-receipt';
+  const PRINT_FROM = { clipPath: 'inset(0% 0% 100% 0%)', y: -14 };
+  const PRINT_TO = {
+    clipPath: 'inset(0% 0% 0% 0%)',
+    y: 0,
+    duration: 1.1,
+    ease: 'power2.out',
+    stagger: 0.18,
+    clearProps: 'clipPath,transform',
+  };
+  const CLEAR_ALL = { clearProps: 'opacity,transform,clipPath' };
+  let motionAbort: AbortController | null = null;
+
+  /** Stagger that keeps a long batch from trailing on: at most 0.5s spread in total. */
+  function staggerFor(count: number): number {
+    return count > 1 ? Math.min(0.07, 0.5 / (count - 1)) : 0;
+  }
+
+  function splitReceipts(els: HTMLElement[]): [HTMLElement[], HTMLElement[]] {
+    const receipts = els.filter((el) => el.matches(RECEIPT));
+    return [receipts, els.filter((el) => !el.matches(RECEIPT))];
+  }
+
+  function holdBack(els: HTMLElement[]) {
+    const [receipts, blocks] = splitReceipts(els);
+    if (blocks.length) gsap.set(blocks, REVEAL_FROM);
+    if (receipts.length) gsap.set(receipts, PRINT_FROM);
+  }
+
+  function playIn(els: HTMLElement[]) {
+    const [receipts, blocks] = splitReceipts(els);
+    if (blocks.length) gsap.to(blocks, { ...REVEAL_TO, stagger: staggerFor(blocks.length) });
+    if (receipts.length) gsap.to(receipts, PRINT_TO);
+  }
+
+  function initSponsorMotion() {
+    const page = document.querySelector('.sp-page');
+    if (!page || motionAbort) return;
+    motionAbort = new AbortController();
+    const { signal } = motionAbort;
+    const mm = gsap.matchMedia();
+
+    mm.add('(prefers-reduced-motion: no-preference)', (ctx) => {
+      const items = Array.from(page.querySelectorAll<HTMLElement>(REVEAL_SELECTOR));
+      const viewH = window.innerHeight;
+      const inView: HTMLElement[] = [];
+      const below: HTMLElement[] = [];
+      for (const el of items) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top >= viewH) below.push(el);
+        else if (rect.bottom > 0) inView.push(el);
+      }
+
+      if (inView.length) {
+        holdBack(inView);
+        playIn(inView);
+      }
+      if (!below.length) return;
+      holdBack(below);
+
+      // Blocks that cross the start line together (fast scroll, anchor jumps) play as one
+      // staggered batch; once: true so scrolling back up never hides them again.
+      ScrollTrigger.batch(below, {
+        start: 'top 92%',
+        once: true,
+        onEnter: (batch) => {
+          ctx.add(() => playIn(batch as HTMLElement[]));
+        },
+      });
+      // Web fonts change line wraps, so trigger positions are measured again once they load.
+      document.fonts?.ready.then(() => {
+        if (!signal.aborted) ScrollTrigger.refresh();
+      });
+      // Printing must never capture blocks that were still waiting below the fold.
+      window.addEventListener(
+        'beforeprint',
+        () => gsap.set(below, CLEAR_ALL),
+        { signal },
+      );
+    });
+
+    signal.addEventListener('abort', () => mm.revert());
+  }
+
+  // ClientRouter keeps window alive across pages: drop triggers/tweens before the next page swaps in.
+  document.addEventListener('astro:before-swap', () => {
+    motionAbort?.abort();
+    motionAbort = null;
+  });
 
   const COPY_OK_MS = 2200;
   const COPY_ERR_MS = 5000;
@@ -423,9 +582,11 @@ const PHOTOS = [
     }
   }
 
+  initSponsorMotion();
   initSponsorCopy();
   syncSponsorLink();
   syncSponsorSettings();
+  document.addEventListener('astro:page-load', initSponsorMotion);
   document.addEventListener('astro:page-load', initSponsorCopy);
   document.addEventListener('astro:page-load', syncSponsorLink);
   document.addEventListener('astro:page-load', syncSponsorSettings);
