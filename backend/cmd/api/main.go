@@ -108,11 +108,12 @@ func main() {
 	// 2. Initialize Services
 	applicantSvc := service.NewApplicantService(appRepo, settingRepo, paymentRepo)
 	inquirySvc := service.NewSponsorInquiryService(inquiryRepo, auditRepo, cfg.UploadDir)
+	var verifier service.TurnstileVerifier
 	if cfg.TurnstileSecretKey != "" {
-		verifier := service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts())
+		verifier = service.NewTurnstileVerifier(cfg.TurnstileSecretKey, cfg.TurnstileAllowedHosts())
 		applicantSvc.WithTurnstile(verifier)
 		inquirySvc.WithTurnstile(verifier)
-		log.Println("Cloudflare Turnstile verification is ON for POST /api/applications and /api/sponsor-inquiries")
+		log.Println("Cloudflare Turnstile verification is ON for POST /api/applications, /api/sponsor-inquiries and the application-code ceilings")
 	} else if cfg.IsProduction() {
 		// config.Load already refuses this; kept as a second lock so a future refactor cannot
 		// silently ship an unprotected registration endpoint.
@@ -120,8 +121,12 @@ func main() {
 	}
 	// One application-code guard for every public endpoint keyed by CC25-XXXXXX (status lookup by
 	// code, confirm, slip, withdraw), so unknown codes count per client and globally across all of
-	// them (AGENTS.md §13.5).
+	// them (AGENTS.md §13.5). With the verifier, a global ceiling asks for a Turnstile challenge
+	// instead of refusing everyone.
 	codeGuard := service.NewCodeGuard(auditRepo)
+	if verifier != nil {
+		codeGuard.WithTurnstile(verifier)
+	}
 	settingSvc := service.NewSettingService(settingRepo, appRepo, auditRepo)
 	mailer := service.NewAsyncSMTPMailer(service.SMTPConfig{
 		Host:        cfg.SMTPHost,

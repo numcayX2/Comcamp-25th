@@ -23,8 +23,14 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.As(err, &limited):
 		// Too many unknown application codes from this client, or from all clients (AGENTS.md §13.5).
+		// At a global ceiling with a verifier installed the client may send the same request again
+		// with a passed Turnstile token (CAPTCHA_REQUIRED); Retry-After is when the ceiling lifts.
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(limited.RetryAfter.Seconds())))))
-		response.ErrorCode(w, http.StatusTooManyRequests, response.CodeRateLimited, limited.Error())
+		code := response.CodeRateLimited
+		if limited.Challenge {
+			code = response.CodeCaptchaRequired
+		}
+		response.ErrorCode(w, http.StatusTooManyRequests, code, limited.Error())
 	case errors.As(err, &ve):
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, ve.Error())
 	case errors.Is(err, service.ErrApplicantNotFound):

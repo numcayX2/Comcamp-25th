@@ -25,13 +25,17 @@ import (
 // PATCH/POST/lookup calls from one test IP, which the production per-minute limits answer with 429.
 func setupRelaxedApp(t *testing.T) *testApp {
 	t.Helper()
+	return setupTestAppWith(t, relaxedLimits())
+}
+
+func relaxedLimits() server.RateLimits {
 	limits := server.DefaultRateLimits()
 	limits.Slip = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Confirm = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Withdraw = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.Profile = middleware.NewRateLimiter(10_000, time.Minute)
 	limits.StatusQuery = middleware.NewRateLimiter(10_000, time.Minute)
-	return setupTestAppWith(t, limits)
+	return limits
 }
 
 // uniqueSlip returns a distinct tiny JPEG per n: the upload path rejects a slip whose SHA-256 was

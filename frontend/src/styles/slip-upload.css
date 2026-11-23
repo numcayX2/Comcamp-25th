@@ -1,13 +1,15 @@
 /* ==========================================================================
-   Shared slip upload (SlipUploadPanel, SlipLightbox)
+   Shared slip upload (SlipUploadPanel, SlipLightbox, HumanCheckDialog)
    Used on /register (the .rw wizard tokens) and /status (the global tokens): the --su-* aliases
    below resolve to whichever set is in scope, so both pages look the same in light and dark.
-   Flat by design (AGENTS.md section 2.3): hairlines and whitespace, no nested cards, no shadows.
+   Flat by design (AGENTS.md section 2.3): hairlines and whitespace, no nested cards, no shadows
+   (the human-check dialog floats above the page, so it alone takes --shadow-float).
    Thai text never uses letter-spacing; digits use tabular-nums in the body face.
    ========================================================================== */
 
 .su,
-.su-lightbox {
+.su-lightbox,
+.su-check {
   --su-ink: var(--rw-ink, var(--color-ink));
   --su-ink-2: var(--rw-ink-2, var(--color-ink-muted));
   --su-ink-3: var(--rw-ink-3, var(--color-ink-subtle));
@@ -29,7 +31,7 @@
 
 .su { display: grid; gap: 20px; min-width: 0; max-width: 100%; }
 .su-form { display: grid; gap: 22px; width: 100%; max-width: 560px; min-width: 0; }
-.su *:focus-visible, .su-lightbox *:focus-visible { outline: 2px solid var(--su-focus); outline-offset: 3px; }
+.su *:focus-visible, .su-lightbox *:focus-visible, .su-check *:focus-visible { outline: 2px solid var(--su-focus); outline-offset: 3px; }
 
 .su-sr {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -347,6 +349,75 @@ html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); 
   }
 }
 
+/* ---------- Human check (CodeGuard ceiling): one floating sheet, Turnstile inside ---------- */
+.su-check {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 28px 24px 24px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-float);
+  overflow: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transition-property: opacity, display, overlay;
+  transition-duration: var(--dur-fast, .18s);
+  transition-timing-function: var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  transition-behavior: allow-discrete;
+}
+.su-check[open] { opacity: 1; }
+.su-check:not([open]) { pointer-events: none; }
+.su-check::backdrop {
+  background-color: rgba(8, 10, 16, 0);
+  transition-property: background-color, display, overlay;
+  transition-duration: var(--dur-fast, .18s);
+  transition-timing-function: var(--ease-out, cubic-bezier(.2, .8, .2, 1));
+  transition-behavior: allow-discrete;
+}
+.su-check[open]::backdrop { background-color: rgba(8, 10, 16, 0.56); }
+/* Focused by script on open so screen readers start here; it is not a control, so no ring. */
+.su-check .su-check__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--su-ink);
+  outline: none;
+}
+.su-check__text { margin: 8px 0 20px; font-size: 0.9375rem; line-height: 1.75; color: var(--su-ink-2); }
+.su-check__actions { justify-content: flex-end; margin-top: 20px; }
+/* TurnstileField ships with /register's rw-* hooks; /status does not load register.css. */
+.su-check .rw-captcha { margin: 0; }
+.su-check .rw-captcha__label { margin: 0 0 8px; font-size: 0.9375rem; font-weight: 600; line-height: 1.6; color: var(--su-ink); }
+.su-check .rw-captcha__box { min-height: 65px; max-width: 100%; outline: none; }
+.su-check .rw-captcha__box:focus-visible { border-radius: 12px; }
+.su-check .rw-captcha__box[data-state='failed'] { display: none; }
+.su-check .rw-captcha__hint { margin: 8px 0 0; font-size: 0.875rem; line-height: 1.7; color: var(--su-ink-2); }
+.su-check .rw-captcha__failed { display: grid; justify-items: start; gap: 10px; font-size: 0.9375rem; line-height: 1.75; color: var(--su-ink-2); }
+.su-check .rw-captcha__failed p { margin: 0; }
+.su-check .rw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--su-line);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--su-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .su-check .rw-btn:hover { border-color: var(--su-ink); background: var(--su-fill); }
+}
+
 /* Top-level @starting-style placed after [open] rules; unsupported browsers degrade cleanly to instant open. */
 @starting-style {
   .su-lightbox[open] {
@@ -357,6 +428,12 @@ html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); 
   }
   .su-lightbox[open] .su-lightbox__img {
     opacity: 0;
+  }
+  .su-check[open] {
+    opacity: 0;
+  }
+  .su-check[open]::backdrop {
+    background-color: rgba(8, 10, 16, 0);
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -371,7 +448,10 @@ html.dark .su, html[data-theme="dark"] .su { --su-ok-bg: var(--rw-ok, #10B981); 
   .su *,
   .su-lightbox,
   .su-lightbox::backdrop,
-  .su-lightbox * {
+  .su-lightbox *,
+  .su-check,
+  .su-check::backdrop,
+  .su-check * {
     transition: none !important;
     animation: none !important;
     translate: none !important;

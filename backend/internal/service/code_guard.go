@@ -32,10 +32,16 @@ import (
 //     must not lock everyone on that IP out of their slip upload for a day. A single-IP attacker is
 //     still held to CodeClientMaxMisses guesses per CodeMaxLockout, about 120 a day.
 //  2. Globally, per fixed window of CodeGlobalWindow. Once the misses of all clients together reach
-//     CodeGlobalSoftCeiling, clients with a miss (or a lockout) on their record are refused until the
-//     window ends. At CodeGlobalHardCeiling every client is refused until the window ends. A client
-//     with a clean record, such as an applicant typing their own code, is therefore held up by other
-//     people's misses only while the hard ceiling holds, and never beyond the end of that window.
+//     CodeGlobalSoftCeiling, clients with a miss (or a lockout) on their record are held; at
+//     CodeGlobalHardCeiling every client is. A held request is not simply refused: with a Turnstile
+//     verifier installed (WithTurnstile, always in production) it is answered with a challenge, and
+//     the same request sent again with a passed Turnstile token (X-Turnstile-Token) gets past the
+//     global ceiling for that one lookup. The per-client budget still applies to it, and its miss
+//     still counts in both. So a few addresses guessing codes can no longer refuse every applicant
+//     (the denial of service the hard ceiling alone allowed: ten guesses from six addresses shut the
+//     code endpoints for everyone, window after window); beyond the ceiling, guessing costs one
+//     solved challenge per guess instead. Without a verifier (development without a secret) a held
+//     request is refused until the window ends, as before.
 //
 // A refusal happens BEFORE the database lookup, so it never tells whether a code exists, and it is the
 // same for every endpoint. A hit never clears a client's misses: otherwise someone could interleave
@@ -87,12 +93,18 @@ const (
 )
 
 // CodeGuessLimitedError refuses a code-keyed request: the client sent too many unknown codes, or all
-// clients together did. Handlers answer 429 RATE_LIMITED with Retry-After.
+// clients together did. Handlers answer 429 RATE_LIMITED with Retry-After, or 429 CAPTCHA_REQUIRED
+// when Challenge is set: a global ceiling holds, and the same request with a passed Turnstile token
+// gets past it.
 type CodeGuessLimitedError struct {
 	RetryAfter time.Duration
+	Challenge  bool
 }
 
 func (e *CodeGuessLimitedError) Error() string {
+	if e.Challenge {
+		return "too many lookups with unknown application codes right now, please verify that you are human"
+	}
 	return "too many lookups with unknown application codes, please try again later"
 }
 
@@ -138,9 +150,10 @@ func (c *codeClient) clean() bool {
 // one guard must be shared by every service with a code-keyed public endpoint, so the budgets hold
 // across endpoints.
 type CodeGuard struct {
-	mu    sync.Mutex
-	cfg   CodeGuardConfig
-	audit domain.AuditRepository
+	mu      sync.Mutex
+	cfg     CodeGuardConfig
+	audit   domain.AuditRepository
+	captcha TurnstileVerifier
 
 	clients   map[string]*codeClient
 	lastSweep time.Time
@@ -203,6 +216,13 @@ func NewCodeGuardWith(audit domain.AuditRepository, cfg CodeGuardConfig) *CodeGu
 	return &CodeGuard{cfg: cfg, audit: audit, clients: map[string]*codeClient{}, released: make(chan struct{})}
 }
 
+// WithTurnstile installs the verifier that lets a passed Turnstile challenge past the global
+// ceilings (see the package comment above). Call it while wiring, before the guard is in use.
+func (g *CodeGuard) WithTurnstile(v TurnstileVerifier) *CodeGuard {
+	g.captcha = v
+	return g
+}
+
 // Do runs find, a database lookup by application code, for the client in ctx (see WithClientKey). It
 // refuses with *CodeGuessLimitedError before find runs while the client or the global budget is
 // exhausted, and records find's domain.ErrNotFound as a miss. Any other result, including other
@@ -223,12 +243,27 @@ func (g *CodeGuard) do(ctx context.Context, action string, global bool, find fun
 	key := clientKeyFrom(ctx)
 	var c *codeClient
 	var waitUntil time.Time
+	human := false
 	for {
-		var refused error
+		var refused *CodeGuessLimitedError
 		var busy <-chan struct{}
-		c, refused, busy = g.begin(key, global)
+		c, refused, busy = g.begin(key, global, human)
 		if refused == nil {
 			break
+		}
+		if refused.Challenge {
+			// A global ceiling holds; a passed challenge lifts it for this lookup only. Verified
+			// outside the lock (siteverify is a network call) and only now, so a token sent while
+			// no ceiling holds is never spent.
+			token := turnstileTokenFrom(ctx)
+			if token == "" {
+				return refused
+			}
+			if err := g.captcha.Verify(ctx, token, remoteIPFrom(ctx), ""); err != nil {
+				return err
+			}
+			human = true
+			continue
 		}
 		if busy == nil {
 			return refused
@@ -260,10 +295,11 @@ func (g *CodeGuard) do(ctx context.Context, action string, global bool, find fun
 }
 
 // begin checks the budgets and reserves one lookup for key. With global false only the client's own
-// budget is checked and the global window is left alone. When the refusal comes only from global
-// lookups in flight (the misses alone are below the ceiling), busy is a channel that is closed when
-// a reservation is released, so the caller may wait and try again.
-func (g *CodeGuard) begin(key string, global bool) (_ *codeClient, refused error, busy <-chan struct{}) {
+// budget is checked and the global window is left alone; human (a passed Turnstile challenge) skips
+// the global check too. When the refusal comes only from global lookups in flight (the misses alone
+// are below the ceiling), busy is a channel that is closed when a reservation is released, so the
+// caller may wait and try again.
+func (g *CodeGuard) begin(key string, global, human bool) (_ *codeClient, refused *CodeGuessLimitedError, busy <-chan struct{}) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.cfg.Now()
@@ -287,10 +323,10 @@ func (g *CodeGuard) begin(key string, global bool) (_ *codeClient, refused error
 	if !clean {
 		ceiling = g.cfg.GlobalSoftCeiling
 	}
-	if global && used >= ceiling {
+	if global && !human && used >= ceiling {
 		if g.globalMisses >= ceiling {
 			retry := g.globalStart.Add(g.cfg.GlobalWindow).Sub(now)
-			return nil, &CodeGuessLimitedError{RetryAfter: max(retry, time.Second)}, nil
+			return nil, &CodeGuessLimitedError{RetryAfter: max(retry, time.Second), Challenge: g.captcha != nil}, nil
 		}
 		return nil, &CodeGuessLimitedError{RetryAfter: codeBusyRetry}, g.released
 	}
@@ -386,9 +422,10 @@ func (g *CodeGuard) finish(ctx context.Context, key, action string, c *codeClien
 }
 
 // LastHardCeilingAt reports when the global hard ceiling was last reached (the zero time if never).
-// While someone keeps every code-keyed request refused, applicants cannot upload a slip, so the
-// unpaid-expiry sweep asks this before releasing seats (ApplicantService.ExpireOverdueUnpaid). Safe
-// for concurrent use and on a nil guard.
+// While it holds, applicants must pass a Turnstile challenge to upload a slip (or, without a
+// verifier, cannot), and a student whose in-app browser cannot show the challenge would be stuck,
+// so the unpaid-expiry sweep asks this before releasing seats (ApplicantService.ExpireOverdueUnpaid).
+// Safe for concurrent use and on a nil guard.
 func (g *CodeGuard) LastHardCeilingAt() time.Time {
 	if g == nil {
 		return time.Time{}
@@ -511,6 +548,19 @@ type clientKeyKey struct{}
 // agree on who a client is.
 func WithClientKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, clientKeyKey{}, key)
+}
+
+type turnstileTokenKey struct{}
+
+// WithTurnstileToken attaches the Turnstile token the client sent with a code-keyed request
+// (X-Turnstile-Token). The guard spends it only when a global ceiling holds.
+func WithTurnstileToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, turnstileTokenKey{}, strings.TrimSpace(token))
+}
+
+func turnstileTokenFrom(ctx context.Context) string {
+	token, _ := ctx.Value(turnstileTokenKey{}).(string)
+	return token
 }
 
 // clientKeyFrom falls back to the remote IP, then to one shared bucket for callers that set neither.

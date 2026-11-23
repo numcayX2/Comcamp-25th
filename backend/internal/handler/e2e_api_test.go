@@ -76,8 +76,8 @@ func setupTestAppWith(t *testing.T, limits server.RateLimits) *testApp {
 	return setupTestAppFull(t, limits, nil)
 }
 
-// setupTestAppFull also installs a Turnstile verifier on the applicant service (nil = off, which
-// is what every test outside the captcha tests wants).
+// setupTestAppFull also installs a Turnstile verifier on the applicant service and the code guard,
+// as main does (nil = off, which is what every test outside the captcha tests wants).
 func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.TurnstileVerifier) *testApp {
 	t.Helper()
 
@@ -108,6 +108,7 @@ func setupTestAppFull(t *testing.T, limits server.RateLimits, captcha service.Tu
 		WithOnSeatChange(settingSvc.InvalidatePublicCache)
 	if captcha != nil {
 		applicantSvc.WithTurnstile(captcha)
+		guard.WithTurnstile(captcha)
 	}
 	services := server.Services{
 		Auth:           service.NewAuthService(admRepo, appRepo.Audit(), jwtSecret),

@@ -479,12 +479,14 @@ function xhrUpload<T>(
   formData: FormData,
   onProgress?: (percent: number) => void,
   timeoutMs = 20000,
+  headers: Record<string, string> = {},
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
     xhr.timeout = timeoutMs;
     xhr.setRequestHeader('Accept', 'application/json');
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
     if (onProgress) {
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable && ev.total > 0) onProgress(Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
@@ -558,6 +560,60 @@ async function withFallback<T>(live: () => Promise<T>, mock: () => T): Promise<A
   }
 }
 
+/**
+ * Human check for the application-code endpoints (status lookup, confirm, slip, withdraw). While
+ * many unknown codes are being tried across the site, the server answers 429 CAPTCHA_REQUIRED
+ * instead of serving anyone (AGENTS.md §13.5); the same request with a passed Turnstile token in
+ * X-Turnstile-Token goes through. A page that calls these endpoints mounts <HumanCheckDialog />,
+ * which registers its prompt here; the prompt resolves with a token, or null when the applicant
+ * closes it. The token is single-use and never stored.
+ */
+export type HumanCheckReason = 'required' | 'failed';
+export type HumanCheckPrompt = (reason: HumanCheckReason) => Promise<string | null>;
+
+let humanCheckPrompt: HumanCheckPrompt | null = null;
+
+/** Registers the page's prompt; the returned function unregisters it (only if still current). */
+export function setHumanCheckPrompt(prompt: HumanCheckPrompt): () => void {
+  humanCheckPrompt = prompt;
+  return () => {
+    if (humanCheckPrompt === prompt) humanCheckPrompt = null;
+  };
+}
+
+/** At most this many tokens per request: a rejected (expired) token asks once more, then gives up. */
+const HUMAN_CHECK_ATTEMPTS = 2;
+
+/**
+ * Sends the request; on CAPTCHA_REQUIRED asks the registered prompt for a token and sends it again
+ * with the token. With `prompt: false` (background refreshes) or no prompt registered, or when the
+ * applicant closes the check, the server's error is thrown unchanged.
+ */
+async function withHumanCheck<T>(
+  send: (headers: Record<string, string>) => Promise<T>,
+  prompt = true,
+): Promise<T> {
+  try {
+    return await send({});
+  } catch (first) {
+    if (!prompt || !(first instanceof ApiHttpError) || first.code !== 'CAPTCHA_REQUIRED') throw first;
+    let last: ApiHttpError = first;
+    let reason: HumanCheckReason = 'required';
+    for (let attempt = 0; attempt < HUMAN_CHECK_ATTEMPTS; attempt++) {
+      const token = humanCheckPrompt ? await humanCheckPrompt(reason) : null;
+      if (!token) throw last;
+      try {
+        return await send({ 'X-Turnstile-Token': token });
+      } catch (err) {
+        if (!(err instanceof ApiHttpError) || (err.code !== 'CAPTCHA_FAILED' && err.code !== 'CAPTCHA_REQUIRED')) throw err;
+        last = err;
+        reason = 'failed';
+      }
+    }
+    throw last;
+  }
+}
+
 function mockId(): string {
   return `CC25-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
@@ -625,12 +681,16 @@ export async function submitApplication(
  * GET /applications/status?q=... — by application code the full masked record (`lookup: 'code'`,
  * with `id`); by phone a PhoneLookupResult that never contains the code. Anything else is
  * 400 VALIDATION_ERROR. Unknown codes count against a per-client and a global miss budget:
- * 429 RATE_LIMITED + Retry-After when it is used up.
+ * 429 RATE_LIMITED + Retry-After when the client's is used up; at the global ceiling 429
+ * CAPTCHA_REQUIRED, answered through the human check unless `prompt: false` (background refreshes).
  */
-export function getApplicationStatus(query: string): Promise<ApiResult<StatusLookupResult>> {
+export function getApplicationStatus(
+  query: string,
+  opts: { prompt?: boolean } = {},
+): Promise<ApiResult<StatusLookupResult>> {
   const q = encodeURIComponent(query);
   return withFallback<StatusLookupResult>(
-    () => fetchJson<StatusLookupResult>(`/applications/status?q=${q}`),
+    () => withHumanCheck((headers) => fetchJson<StatusLookupResult>(`/applications/status?q=${q}`, { headers }), opts.prompt ?? true),
     // Dev-only offline mock: shaped like the real answer, so a phone query has NO code in it.
     () =>
       !query.toUpperCase().startsWith('CC25')
@@ -678,10 +738,13 @@ export async function withdrawApplication(
   phone: string,
   reason?: string,
 ): Promise<ApiResult<{ message: string; id: string }>> {
-  const data = await fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
-    method: 'POST',
-    body: JSON.stringify({ phone: sanitizeDigits(phone), reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
-  });
+  const data = await withHumanCheck((headers) =>
+    fetchJson<{ message: string; id: string }>(`/applications/${encodeURIComponent(id)}/withdraw`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ phone: sanitizeDigits(phone), reason: reason || 'ผู้สมัครขอยกเลิกด้วยตนเอง' }),
+    }),
+  );
   return { data, source: 'LIVE GO API' };
 }
 
@@ -692,10 +755,13 @@ export async function withdrawApplication(
 export function confirmAttendance(id: string, confirmed: boolean): Promise<ApiResult<Application>> {
   return withFallback(
     () =>
-      fetchJson<Application>(`/applications/${encodeURIComponent(id)}/confirm`, {
-        method: 'POST',
-        body: JSON.stringify({ confirmed }),
-      }),
+      withHumanCheck((headers) =>
+        fetchJson<Application>(`/applications/${encodeURIComponent(id)}/confirm`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ confirmed }),
+        }),
+      ),
     () => ({
       id,
       fullName: 'ส*** ส***',
@@ -729,7 +795,10 @@ export function uploadPaymentSlip(
   formData.append('slip', file);
 
   return withFallback(
-    () => xhrUpload<SlipUploadResult>(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress),
+    () =>
+      withHumanCheck((headers) =>
+        xhrUpload<SlipUploadResult>(`${API_BASE}/applications/${encodeURIComponent(id)}/slip`, formData, onProgress, undefined, headers),
+      ),
     () => ({
       id,
       status: 'PASSED',

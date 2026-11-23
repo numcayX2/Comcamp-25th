@@ -27,6 +27,7 @@ const (
 	CodeInvalidImageDims   = "INVALID_IMAGE_DIMENSIONS"
 	CodeSlipChanged        = "SLIP_CHANGED"
 	CodeCaptchaFailed      = "CAPTCHA_FAILED"
+	CodeCaptchaRequired    = "CAPTCHA_REQUIRED"
 	CodeForfeitedApp       = "FORFEITED_APPLICATION"
 )
 

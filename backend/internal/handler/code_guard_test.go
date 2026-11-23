@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -28,12 +29,20 @@ func (a *testApp) confirmWith(t *testing.T, appID string) *httptest.ResponseReco
 // doAs sends a request from the given client address (no trusted proxy, so it is the client IP).
 func (a *testApp) doAs(t *testing.T, ip, method, target string, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return a.doAsWith(t, ip, method, target, body, nil)
+}
+
+func (a *testApp) doAsWith(t *testing.T, ip, method, target string, body string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
 	var r *http.Request
 	if body == "" {
 		r = httptest.NewRequest(method, target, nil)
 	} else {
 		r = httptest.NewRequest(method, target, bytes.NewBufferString(body))
 		r.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
 	}
 	r.RemoteAddr = ip + ":40000"
 	rec := httptest.NewRecorder()
@@ -174,6 +183,55 @@ func TestCodeGuard_GlobalCeilingSpansClients(t *testing.T) {
 	app.clock.Advance(time.Duration(secs) * time.Second)
 	if rec := app.doAs(t, "203.0.113.21", http.MethodGet, "/api/applications/status?q="+mine.ID, ""); rec.Code != http.StatusOK {
 		t.Fatalf("after the window: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// The reported denial of service: ten guesses from six addresses reach the hard ceiling, after
+// which every applicant was refused until the window ended. With Turnstile wired as in main the
+// ceiling answers 429 CAPTCHA_REQUIRED, and the same request with a passed X-Turnstile-Token is
+// served on every code-keyed endpoint; one token buys one request.
+func TestCodeGuard_TurnstilePassLiftsTheGlobalCeiling(t *testing.T) {
+	app := setupTestAppFull(t, relaxedLimits(), &cloudflareLike{})
+	rec := app.do(t, http.MethodPost, "/api/applications", submitBody(phoneN(71), "tok-submit"), nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("submit: expected 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var mine service.ApplicationResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &mine)
+
+	for i := range service.CodeClientMaxMisses {
+		wantErrCode(t, app.guessAt(t, "198.51.100.66", "status", i), http.StatusNotFound, response.CodeNotFound)
+	}
+	for i := range service.CodeGlobalHardCeiling - service.CodeGlobalSoftCeiling {
+		wantErrCode(t, app.guessAt(t, fmt.Sprintf("192.0.2.%d", 100+i), "confirm", 10+i), http.StatusNotFound, response.CodeNotFound)
+	}
+
+	const student = "203.0.113.30"
+	status := "/api/applications/status?q=" + mine.ID
+	rec = app.doAs(t, student, http.MethodGet, status, "")
+	wantErrCode(t, rec, http.StatusTooManyRequests, response.CodeCaptchaRequired)
+	if secs, err := strconv.Atoi(rec.Header().Get("Retry-After")); err != nil || secs < 1 || secs > int(service.CodeGlobalWindow/time.Second) {
+		t.Fatalf("CAPTCHA_REQUIRED must carry the window's Retry-After, got %q", rec.Header().Get("Retry-After"))
+	}
+
+	token := func(tok string) map[string]string { return map[string]string{"X-Turnstile-Token": tok} }
+	if rec := app.doAsWith(t, student, http.MethodGet, status, "", token("tok-1")); rec.Code != http.StatusOK {
+		t.Fatalf("status with a passed token: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	wantErrCode(t, app.doAsWith(t, student, http.MethodGet, status, "", token("tok-1")), http.StatusForbidden, response.CodeCaptchaFailed)
+	confirm := "/api/applications/" + mine.ID + "/confirm"
+	if rec := app.doAsWith(t, student, http.MethodPost, confirm, `{"confirmed":true}`, token("tok-2")); rec.Code != http.StatusOK {
+		t.Fatalf("confirm with a passed token: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	body, headers := slipForm(t, "slip.jpg", jpegBytes)
+	r := httptest.NewRequest(http.MethodPost, "/api/applications/"+mine.ID+"/slip", body)
+	r.Header.Set("Content-Type", headers["Content-Type"])
+	r.Header.Set("X-Turnstile-Token", "tok-3")
+	r.RemoteAddr = student + ":40000"
+	slip := httptest.NewRecorder()
+	app.ServeHTTP(slip, r)
+	if slip.Code != http.StatusOK {
+		t.Fatalf("slip upload with a passed token: expected 200, got %d (%s)", slip.Code, slip.Body.String())
 	}
 }
 

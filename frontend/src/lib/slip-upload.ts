@@ -221,6 +221,10 @@ function describeValidationError(message: string, fallback: string): string {
 /** Withdraw failed on the code + phone check. Deliberately does not say which part was wrong (R24). */
 export const WITHDRAW_MISMATCH_COPY = 'ข้อมูลไม่ตรงกับใบสมัคร กรุณาตรวจสอบแล้วลองอีกครั้ง หากยังไม่สำเร็จ กรุณาติดต่อทีมงาน';
 
+/** 429 CAPTCHA_REQUIRED reached the page: the applicant closed the human check (HumanCheckDialog). */
+export const HUMAN_CHECK_COPY =
+  'ขณะนี้ระบบขอให้ยืนยันว่าไม่ใช่โปรแกรมอัตโนมัติก่อนทำรายการด้วยรหัสใบสมัคร กรุณากดอีกครั้งแล้วยืนยันในหน้าต่างที่ปรากฏ';
+
 /** Digits only (Thai digits converted, dashes/spaces/zero-width dropped), at most 10: the withdraw phone field. */
 export function cleanPhoneInput(value: string): string {
   return value
@@ -249,6 +253,8 @@ export function describeApiError(err: unknown, fallback: string): string {
         return 'ขนาดไฟล์รูปภาพใหญ่เกิน 5 MB กรุณาเลือกรูปภาพที่มีขนาดเล็กลง';
       case 'RATE_LIMITED':
         return describeRateLimit(err);
+      case 'CAPTCHA_REQUIRED':
+        return HUMAN_CHECK_COPY;
       case 'VALIDATION_ERROR':
         return describeValidationError(err.message, fallback);
       case 'SERVICE_UNAVAILABLE':

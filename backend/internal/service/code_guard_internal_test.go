@@ -496,3 +496,127 @@ func TestCodeGuard_InFlightLookupDoesNotMakeAClientUnclean(t *testing.T) {
 		t.Fatalf("clients with nothing on record must be forgotten once idle; tracked %d, want 3 (the missers)", n)
 	}
 }
+
+// challengeVerifier behaves like Cloudflare siteverify: a token passes once; "bad" never does.
+type challengeVerifier struct {
+	mu    sync.Mutex
+	used  map[string]bool
+	calls int
+	err   error // when set, returned instead (an outage)
+}
+
+func (v *challengeVerifier) Verify(_ context.Context, token, _, _ string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.calls++
+	if v.err != nil {
+		return v.err
+	}
+	if token == "" || token == "bad" || v.used[token] {
+		return ErrCaptchaFailed
+	}
+	if v.used == nil {
+		v.used = map[string]bool{}
+	}
+	v.used[token] = true
+	return nil
+}
+
+func (v *challengeVerifier) callCount() int {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.calls
+}
+
+func lookupWithToken(g *CodeGuard, client, token string, find func() error) error {
+	return g.Do(WithTurnstileToken(clientCtx(client), token), CodeActionStatus, find)
+}
+
+// A few addresses reaching the global ceiling must not shut the code endpoints for everyone (the
+// reported denial of service): with a verifier, a held request asks for a challenge, and one passed
+// token lets exactly one lookup past the ceiling. The per-client budget still binds, verified misses
+// still count, and a token is only spent while a ceiling holds.
+func TestCodeGuard_ChallengeLiftsTheGlobalCeilingForOneLookup(t *testing.T) {
+	v := &challengeVerifier{}
+	g, clock, _ := newTestCodeGuard(CodeGuardConfig{})
+	g.WithTurnstile(v)
+
+	// Below any ceiling a token is never verified (so never spent).
+	if err := lookupWithToken(g, "192.0.2.10", "tok-unused", codeHit); err != nil {
+		t.Fatalf("below the ceilings: %v", err)
+	}
+	if v.callCount() != 0 {
+		t.Fatalf("a token must not be verified while no ceiling holds; siteverify calls = %d", v.callCount())
+	}
+
+	// The hard ceiling holds: one address uses up its own budget (and reaches the soft ceiling),
+	// then five fresh ones guess once each, the fewest addresses that can do it.
+	for range CodeClientMaxMisses {
+		_ = lookup(g, "10.0.0.1", codeMiss)
+	}
+	for i := range CodeGlobalHardCeiling - CodeGlobalSoftCeiling {
+		_ = lookup(g, fmt.Sprintf("10.0.1.%d", i), codeMiss)
+	}
+	var ran atomic.Int32
+	count := func() error { ran.Add(1); return nil }
+
+	err := lookup(g, "192.0.2.11", count)
+	var limited *CodeGuessLimitedError
+	if !errors.As(err, &limited) || !limited.Challenge || ran.Load() != 0 {
+		t.Fatalf("hard ceiling without a token: want a challenge before any lookup, got %v (lookups run %d)", err, ran.Load())
+	}
+	if limited.RetryAfter <= 0 || limited.RetryAfter > CodeGlobalWindow {
+		t.Fatalf("challenge Retry-After = %v, want (0, %v]", limited.RetryAfter, CodeGlobalWindow)
+	}
+	if err := lookupWithToken(g, "192.0.2.11", "tok-1", count); err != nil || ran.Load() != 1 {
+		t.Fatalf("a passed challenge must get one lookup past the ceiling: err %v, lookups run %d", err, ran.Load())
+	}
+	// The token is spent; a reused or bad token is CAPTCHA_FAILED, still before any lookup.
+	for _, tok := range []string{"tok-1", "bad"} {
+		if err := lookupWithToken(g, "192.0.2.11", tok, count); !errors.Is(err, ErrCaptchaFailed) || ran.Load() != 1 {
+			t.Fatalf("token %q: want ErrCaptchaFailed before any lookup, got %v (lookups run %d)", tok, err, ran.Load())
+		}
+	}
+
+	// A client with a miss on record (not locked) is challenged too, not refused outright.
+	if err := lookup(g, "10.0.1.0", codeHit); !errors.As(err, &limited) || !limited.Challenge {
+		t.Fatalf("client with misses at the ceiling: want a challenge, got %v", err)
+	}
+
+	// Verified misses still count per client: the fifth one locks the client, and a lockout is a
+	// plain refusal that no token lifts (and no token is spent on it).
+	for i := range CodeClientMaxMisses {
+		if err := lookupWithToken(g, "198.51.100.7", fmt.Sprintf("tok-m%d", i), codeMiss); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("verified guess %d: want the lookup's not-found, got %v", i, err)
+		}
+	}
+	calls := v.callCount()
+	err = lookupWithToken(g, "198.51.100.7", "tok-locked", count)
+	if !errors.As(err, &limited) || limited.Challenge || v.callCount() != calls {
+		t.Fatalf("locked client: want a plain refusal without verifying, got %v (siteverify calls %d -> %d)", err, calls, v.callCount())
+	}
+
+	// An outage fails closed.
+	v.mu.Lock()
+	v.err = ErrCaptchaUnavailable
+	v.mu.Unlock()
+	if err := lookupWithToken(g, "192.0.2.12", "tok-2", count); !errors.Is(err, ErrCaptchaUnavailable) || ran.Load() != 1 {
+		t.Fatalf("siteverify outage: want ErrCaptchaUnavailable before any lookup, got %v", err)
+	}
+	v.mu.Lock()
+	v.err = nil
+	v.mu.Unlock()
+
+	// Once the window ends nobody is challenged.
+	clock.Advance(CodeGlobalWindow)
+	if err := lookup(g, "192.0.2.13", codeHit); err != nil {
+		t.Fatalf("after the window: %v", err)
+	}
+
+	// Without a verifier the ceiling is a plain refusal, as before.
+	g2, _, _ := newTestCodeGuard(CodeGuardConfig{GlobalSoftCeiling: 1, GlobalHardCeiling: 1})
+	_ = lookup(g2, "10.0.1.1", codeMiss)
+	if err := lookupWithToken(g2, "192.0.2.14", "tok-3", codeHit); !errors.As(err, &limited) || limited.Challenge {
+		t.Fatalf("no verifier: want a plain refusal, got %v", err)
+	}
+}

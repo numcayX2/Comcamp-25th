@@ -43,10 +43,13 @@ func (h *ApplicantHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, app)
 }
 
-// clientContext carries the client IP (audit rows, Turnstile) and the rate-limit key (the
-// application-code guard counts unknown codes per client under the same key as the per-IP limiters).
+// clientContext carries the client IP (audit rows, Turnstile), the rate-limit key (the
+// application-code guard counts unknown codes per client under the same key as the per-IP limiters)
+// and the X-Turnstile-Token a client sends after a CAPTCHA_REQUIRED answer, which the guard spends
+// only while a global ceiling holds.
 func clientContext(r *http.Request) context.Context {
 	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
+	ctx = service.WithTurnstileToken(ctx, r.Header.Get("X-Turnstile-Token"))
 	return service.WithClientKey(ctx, middleware.RateLimitKey(r))
 }
 

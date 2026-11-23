@@ -13,7 +13,7 @@ import {
   type ApplicationStatus,
   type SlipStatus,
 } from '../../lib/api';
-import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeRateLimit } from '../../lib/slip-upload';
+import { HUMAN_CHECK_COPY, WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeRateLimit } from '../../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../../lib/payment';
 import {
   DORM_MAPS_URL,
@@ -31,6 +31,7 @@ import {
 } from './model';
 import { clearReceipt } from './storage';
 import { SlipBlock } from './SlipBlock';
+import { HumanCheckDialog } from '../slip/HumanCheckDialog';
 import { StepHeader } from './parts';
 
 type CopyState = 'idle' | 'copied' | 'failed';
@@ -38,6 +39,8 @@ type CopyState = 'idle' | 'copied' | 'failed';
 /** Thai copy for a failed withdrawal, keyed by the backend error code. */
 function describeWithdrawError(err: unknown): ReactNode {
   if (err instanceof ApiHttpError) {
+    if (err.code === 'CAPTCHA_REQUIRED') return HUMAN_CHECK_COPY;
+    if (err.code === 'CAPTCHA_FAILED') return 'การยืนยันไม่ผ่านหรือหมดอายุ กรุณากดยืนยันอีกครั้ง';
     if (err.code === 'RATE_LIMITED' || err.status === 429) return describeRateLimit(err);
     if (err.status === 409) {
       return (
@@ -253,7 +256,8 @@ export function Receipt({
     let alive = true;
     setSynced(false);
     setNotFound(false);
-    getApplicationStatus(appId)
+    // A background sync: never opens the human check (the applicant did not ask for anything yet).
+    getApplicationStatus(appId, { prompt: false })
       .then((res) => {
         if (!alive) return;
         const d = res.data;
@@ -619,6 +623,7 @@ export function Receipt({
           <span className="font-mono">source: {source}</span>
         </p>
       )}
+      <HumanCheckDialog />
     </div>
   );
 }

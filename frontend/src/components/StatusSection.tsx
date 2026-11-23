@@ -60,6 +60,7 @@ import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeEr
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
 import { DOCS_READY, PARENT_CONSENT_PDF } from '../lib/camp-facts';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
+import { HumanCheckDialog } from './slip/HumanCheckDialog';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
 const STATUS_DOT: Record<ApplicationStatus, string> = {
@@ -644,7 +645,15 @@ export function StatusSection() {
         setStoredNotice(`ไม่พบข้อมูลใบสมัครที่บันทึกไว้ล่าสุด (${query}) ในระบบ อาจถูกยกเลิกไปแล้ว หากต้องการตรวจสอบ สามารถค้นหาด้วยรหัสใบสมัครจากอีเมล หรือดูสถานะโดยย่อด้วยเบอร์โทรศัพท์ได้ด้านล่าง`);
         return;
       }
-      if (err instanceof ApiHttpError && err.status === 429 && err.retryAfterSeconds && err.retryAfterSeconds <= 60) {
+      // A short pause from the per-IP limits disables the button; CAPTCHA_REQUIRED (the applicant
+      // closed the human check) can be retried at once.
+      if (
+        err instanceof ApiHttpError &&
+        err.status === 429 &&
+        err.code !== 'CAPTCHA_REQUIRED' &&
+        err.retryAfterSeconds &&
+        err.retryAfterSeconds <= 60
+      ) {
         setCooldown(err.retryAfterSeconds);
       }
       setError(describeError(err, 'ไม่พบข้อมูลใบสมัครที่ค้นหา'));
@@ -785,7 +794,7 @@ export function StatusSection() {
         setWithdrawOpen(false);
         setWithdrawPhone('');
         setError('ใบสมัครนี้ยกเลิกเองไม่ได้ (ยืนยันสิทธิ์แล้ว ส่งสลิปแล้ว หรือปิดรายการแล้ว) กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการเพื่อแจ้งยกเลิก');
-        getApplicationStatus(app.id)
+        getApplicationStatus(app.id, { prompt: false })
           .then((res) => {
             if (isPhoneLookup(res.data)) return;
             setApp(res.data);
@@ -1525,6 +1534,7 @@ export function StatusSection() {
           </div>
         </div>
       </section>
+      <HumanCheckDialog />
     </div>
   );
 }
