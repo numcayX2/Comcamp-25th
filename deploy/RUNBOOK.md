@@ -280,7 +280,16 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod start backend
 cd /path/to/Comcamp-site
 git pull origin main
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# ตรวจทันทีหลังอัปเดต: ต้องได้ 200 (ถ้าได้ 502 ดูหมายเหตุด้านล่าง)
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${EDGE_HTTP_PORT:-8080}/api/health
 ```
+
+> **502 ทุกหน้าหลังอัปเดต (เหตุการณ์ 2026-11-24 หลัง deploy `9c20ad9`):** `up -d --build` สร้าง `backend` / `frontend` ใหม่ (ได้ IP ใหม่) แต่ไม่สร้าง `edge-proxy` ใหม่ nginx รุ่นเดิมของ `edge.conf` จำ IP เก่าตั้งแต่ตอนสตาร์ต จึงตอบ 502 จนกว่าจะรีสตาร์ต (log ของ `edge-proxy` มี `connect() failed (111: Connection refused) ... upstream: "http://172.28.0.x:..."`) แก้เฉพาะหน้า: `docker compose -f docker-compose.prod.yml --env-file .env.prod restart edge-proxy` ตั้งแต่ `edge.conf` ใช้ `resolver 127.0.0.11` + `proxy_pass $cc25_backend` / `$cc25_frontend` แล้ว nginx หา IP ใหม่เองทุก 10 วินาที แต่ **ครั้งแรกที่ดึง `edge.conf` รุ่นนี้ต้องตรวจแล้วสร้าง `edge-proxy` ใหม่เอง** เพราะ nginx อ่าน config ตอนสตาร์ตเท่านั้น และไฟล์ที่ bind mount ทีละไฟล์จะไม่เห็นไฟล์ใหม่ที่ `git pull` เขียนทับจนกว่าจะสร้าง container ใหม่:
+> ```bash
+> docker run --rm -v "$PWD/deploy/nginx/edge.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.27-alpine nginx -t
+> docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps --force-recreate edge-proxy
+> ```
+> ถ้า `nginx -t` ไม่ผ่าน ห้ามสร้าง `edge-proxy` ใหม่ (container เดิมยังทำงานต่อด้วย config เก่า)
 
 > **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
