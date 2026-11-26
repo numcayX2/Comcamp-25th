@@ -857,6 +857,23 @@
   .sd-line:hover .sd-line__deco { rotate: -2deg; }
 }
 
+.sd-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.sd-locked svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+  color: var(--color-ink-subtle);
+}
+.sd-locked__title {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
 .sd-qr {
   display: flex;
   flex-direction: column;

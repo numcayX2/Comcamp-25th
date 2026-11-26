@@ -291,9 +291,6 @@ export function Receipt({
 
   // A slip waiting for review or approved (or a confirmed seat) blocks self-withdrawal: the server answers 409.
   const slipLocksWithdraw = slip === 'PENDING' || slip === 'APPROVED' || appStatus === 'CONFIRMED';
-  // LINE is open to every seat holder, paid or not (owner ruling 2026-11-26). Before the sync answers
-  // (or offline) the receipt belongs to an application that was just accepted, so it holds a seat.
-  const seatHeld = appStatus === null || appStatus === 'PASSED' || appStatus === 'CONFIRMED';
   const deadline = describeApplicantPaymentDeadline(createdAt, updatedAt, nowMs);
 
   useEffect(() => {
@@ -484,10 +481,10 @@ export function Receipt({
 
       <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} onUploaded={setSlip} />
 
-      {seatHeld && (
+      {slipLocksWithdraw && (
         <section className="rw-block" aria-labelledby="rw-line-title">
           <h3 id="rw-line-title" className="rw-block__title">เข้ากลุ่ม LINE OpenChat</h3>
-          <p className="rw-block__label">เข้าได้เลย ไม่ต้องรอโอนเงิน</p>
+          <p className="rw-block__label">สำหรับผู้ที่ส่งสลิปแล้ว</p>
           <div className="rw-line-card">
             <img
               className="rw-line-card__qr"
@@ -523,15 +520,13 @@ export function Receipt({
           </li>
           <li>
             <strong>ระบบส่งอีเมลแจ้งยืนยันให้อัตโนมัติ <span className="font-mono tabular-nums">2</span> ช่วง</strong>{' '}
-            (1. อีเมลแจ้งรับใบสมัคร รายละเอียดโอนเงิน และลิงก์เข้ากลุ่ม LINE และ 2. อีเมลยืนยันสิทธิ์สมบูรณ์พร้อมพิกัดเรือนพักหลังทีมงานอนุมัติสลิป)
+            (1. อีเมลแจ้งรับใบสมัครและรายละเอียดโอนเงิน และ 2. อีเมลยืนยันสิทธิ์สมบูรณ์พร้อมพิกัดเรือนพักและลิงก์เข้ากลุ่มหลังทีมงานอนุมัติสลิป)
             — ทั้งนี้น้องสามารถอัปโหลดสลิปและเช็กสถานะบนหน้าเว็บได้ทันทีโดยไม่ต้องรออีเมล
           </li>
-          {seatHeld && (
-            <li>
-              <strong>เข้ากลุ่ม LINE OpenChat ของค่ายได้เลยตั้งแต่ตอนนี้</strong> เพื่อรับข่าวสารจากพี่ค่าย (QR อยู่เหนือส่วนนี้ และเปิดดูซ้ำได้ที่หน้า{' '}
-              <span className="font-mono">/status</span>)
-            </li>
-          )}
+          <li>
+            หลังส่งสลิปแล้ว <strong>สามารถเข้ากลุ่ม LINE OpenChat ของค่ายได้ทันที</strong> (แสดงขึ้นเหนือส่วนนี้หลังอัปโหลดสลิป และเปิดดูซ้ำได้ที่หน้า{' '}
+            <span className="font-mono">/status</span>) จากนั้นรอทีมงานตรวจสลิปและยืนยันสิทธิ์
+          </li>
         </ol>
         <div className="rw-actions">
           <a href="/status" className="rw-btn rw-btn--ghost rw-btn--forward">
