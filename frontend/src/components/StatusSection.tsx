@@ -1,27 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import '../styles/status.css';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  CircleCheck,
-  CircleX,
-  Clock,
-  Copy,
-  FileDown,
-  Hourglass,
-  Info,
-  ListOrdered,
-  MapPin,
-  Phone,
-  Receipt,
-  RotateCcw,
-  Ticket,
-  TriangleAlert,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowUpRight, CircleCheck, Info, MapPin, Phone, TriangleAlert, X } from 'lucide-react';
 import {
   ApiHttpError,
   fetchPublicSettings,
@@ -43,23 +22,17 @@ import {
   DORM_NAME,
   FB_URL,
   CAMP_FEE_TEXT,
-  LINE_OPENCHAT_QR_SRC,
-  LINE_OPENCHAT_URL,
   PROJECT_ADVISOR,
   MAX_CAPACITY,
-  SIZE_CHEST,
-  SIZE_LENGTH,
   PAYMENT_WINDOW_DAYS,
-  PAYMENT_WINDOW_HOURS,
   STAFF_CONTACTS,
   describeApplicantPaymentDeadline,
   formatCampFee,
 } from './register/model';
 import { clearReceipt, loadReceipt } from './register/storage';
 import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeError } from '../lib/slip-upload';
-import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
-import { DOCS_READY, PARENT_CONSENT_FILENAME, PARENT_CONSENT_NOTE, PARENT_CONSENT_PDF } from '../lib/camp-facts';
-import { SlipUploadPanel } from './slip/SlipUploadPanel';
+import { DOCS_READY } from '../lib/camp-facts';
+import { StatusDashboard } from './status/StatusDashboard';
 import { HumanCheckDialog } from './slip/HumanCheckDialog';
 
 /* Status colours are tokens from global.css, so light and dark both follow the theme. */
@@ -118,329 +91,8 @@ function StatusTag({ status }: { status: ApplicationStatus }) {
   );
 }
 
-/* ── Status highlight: what a student or parent needs to know, at a glance ─────────────── */
-
-type Tone = 'tech' | 'warning' | 'danger' | 'success' | 'neutral';
-
-const TONE_COLOR: Record<Tone, string> = {
-  tech: 'var(--color-tech)',
-  warning: 'var(--color-warning)',
-  danger: 'var(--color-danger)',
-  success: 'var(--color-success)',
-  neutral: 'var(--color-ink-subtle)',
-};
-
-interface Highlight {
-  tone: Tone;
-  icon: LucideIcon;
-  badge: string;
-  title: string;
-  body: string;
-  /** Jump to the payment section. */
-  toSlip?: boolean;
-  /** Jump to the LINE OpenChat section. */
-  toLine?: boolean;
-  /** Show camp dates, dorm & Google Maps link (for confirmed seats). */
-  showCampDetails?: boolean;
-  /** Offer the staff Facebook page and phone numbers. */
-  contact?: boolean;
-}
-
-/** One place that decides the headline for every status / slip combination. */
-function describeHighlight(app: Application, seats: number, feeText: string, nowMs: number): Highlight {
-  const slip = hasSlip(app) ? (app.slipStatus ?? 'PENDING') : null;
-
-  switch (app.status) {
-    case 'CONFIRMED':
-      if (slip === 'APPROVED') return confirmedHighlight();
-      if (slip === 'PENDING') {
-        return {
-          tone: 'warning',
-          icon: Clock,
-          badge: 'ยืนยันสิทธิ์แล้ว · รอตรวจสลิป',
-          title: 'สถานะยืนยันสิทธิ์แล้ว (อยู่ระหว่างรอทีมงานตรวจสลิป)',
-          body: 'ทีมงานได้รับสลิปเรียบร้อยแล้ว กำลังตรวจสอบหลักฐานการโอนเงินให้โดยเร็วที่สุด น้องสามารถเข้ากลุ่ม LINE OpenChat ด้านล่างเพื่อรอรับข่าวสารได้เลย',
-          toLine: true,
-          showCampDetails: true,
-        };
-      }
-      if (slip === 'REJECTED') {
-        return {
-          tone: 'danger',
-          icon: TriangleAlert,
-          badge: 'สลิปไม่ผ่าน',
-          title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-          body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง`,
-          toSlip: true,
-          contact: true,
-        };
-      }
-      return {
-        tone: 'success',
-        icon: CircleCheck,
-        badge: 'ยืนยันสิทธิ์แล้ว · ยังไม่พบสลิปในระบบ',
-        title: 'สถานะยืนยันสิทธิ์แล้ว (ยังไม่พบสลิปค่าสมัครในระบบ)',
-        body: `ระบบยังไม่มีสลิปค่าสมัครสำหรับใบสมัครนี้ หากยังไม่ได้ส่งสลิป กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่าง (หากทีมงานยืนยันสิทธิ์กรณีพิเศษให้แล้ว สามารถเข้ากลุ่ม LINE OpenChat ด้านล่างเพื่อรอรับข่าวสารจากทีมงานได้เลย)`,
-        toSlip: true,
-        toLine: true,
-        showCampDetails: true,
-      };
-    case 'REFUND_PENDING':
-      return {
-        tone: 'warning',
-        icon: RotateCcw,
-        badge: 'รอคืนเงิน',
-        title: 'อยู่ระหว่างดำเนินการคืนเงินค่าสมัคร',
-        body: 'ที่นั่งของใบสมัครนี้ถูกคืนให้น้องคนอื่นแล้ว ทีมงานกำลังดำเนินการคืนเงินให้ หากมีข้อสงสัยสามารถติดต่อทีมงานได้เลยนะ',
-        contact: true,
-      };
-    case 'REFUNDED':
-      return {
-        tone: 'neutral',
-        icon: Receipt,
-        badge: 'คืนเงินแล้ว',
-        title: 'ดำเนินการคืนเงินค่าสมัครเรียบร้อยแล้ว',
-        body: 'ใบสมัครนี้ปิดรายการแล้ว หากต้องการสมัครอีกครั้งหรือมีข้อสงสัย กรุณาติดต่อทีมงาน',
-        contact: true,
-      };
-    case 'REJECTED':
-      return {
-        tone: 'danger',
-        icon: CircleX,
-        badge: 'ไม่ผ่าน',
-        title: 'ใบสมัครนี้ไม่ผ่านการพิจารณา',
-        body: 'ที่นั่งของใบสมัครนี้ถูกปล่อยคืนแล้ว หากคิดว่าเกิดความผิดพลาดหรือมีข้อสงสัย กรุณาติดต่อทีมงาน',
-        contact: true,
-      };
-    case 'FORFEITED':
-      return {
-        tone: 'danger',
-        icon: CircleX,
-        badge: 'หมดสิทธิ์',
-        title: 'ใบสมัครนี้หมดสิทธิ์เนื่องจากไม่ได้ชำระเงินตามกำหนด',
-        body: `ใบสมัครถูกตัดสิทธิ์เพราะไม่ได้ชำระเงินและแนบสลิปภายใน ${PAYMENT_WINDOW_DAYS} วัน (${PAYMENT_WINDOW_HOURS} ชั่วโมง) หลังสมัคร ที่นั่งจึงถูกคืนให้ผู้สมัครคนอื่นแล้ว หากชำระเงินไปแล้วหรือคิดว่าเกิดความผิดพลาด กรุณาติดต่อพี่ค่าย`,
-        contact: true,
-      };
-    case 'RESERVE':
-      return {
-        tone: 'neutral',
-        icon: ListOrdered,
-        badge: 'ตัวสำรอง',
-        title: 'อยู่ในรายชื่อตัวสำรอง',
-        body: 'หากมีที่นั่งว่างทีมงานจะติดต่อกลับ ระหว่างนี้ขอให้น้องคอยติดตามข่าวสารจากเพจของโครงการ',
-        contact: true,
-      };
-    case 'PENDING':
-      return {
-        tone: 'warning',
-        icon: Hourglass,
-        badge: 'รอพิจารณา',
-        title: 'ใบสมัครอยู่ระหว่างรอทีมงานพิจารณา',
-        body: 'ทีมงานกำลังตรวจสอบใบสมัครของน้อง เมื่อมีผลแล้วสถานะจะอัปเดตในหน้านี้ ลองกลับมาตรวจสอบอีกครั้งภายหลังนะ',
-      };
-    default:
-      break;
-  }
-
-  // PASSED: single-track flow — register (PASSED) -> pay & upload slip -> staff approve (CONFIRMED).
-  if (slip === 'APPROVED') {
-    return confirmedHighlight();
-  }
-  if (slip === 'PENDING') {
-    return {
-      tone: 'warning',
-      icon: Clock,
-      badge: 'ได้รับสลิปแล้ว · รอทีมงานตรวจสลิป',
-      title: 'ได้รับสลิปแล้ว กำลังรอทีมงานตรวจสอบ',
-      body: 'ทีมงานกำลังตรวจสอบสลิปให้โดยเร็วที่สุด ไม่ต้องส่งสลิปซ้ำ เมื่อสลิปผ่านการตรวจสอบ สถานะจะอัปเดตเป็น “ยืนยันสิทธิ์สมบูรณ์” โดยอัตโนมัติ',
-    };
-  }
-  const dl = describeApplicantPaymentDeadline(app.createdAt, app.updatedAt, nowMs);
-  if (slip === 'REJECTED') {
-    return {
-      tone: 'danger',
-      icon: TriangleAlert,
-      badge: `สลิปไม่ผ่าน · ${dl.remainingText}`,
-      title: 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดสลิปใหม่',
-      body: `โปรดตรวจสอบยอดโอน ${feeText} บาท และความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่ที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (มิฉะนั้นระบบอาจคืนที่นั่งเมื่อพ้นกำหนด)`,
-      toSlip: true,
-      contact: true,
-    };
-  }
-  return {
-    tone: dl.isUrgent ? 'warning' : 'tech',
-    icon: Ticket,
-    badge: `สมัครทันแล้ว · ${dl.remainingText}`,
-    title: 'เย้! ดีใจด้วย คุณสมัครทันแล้ว ได้ที่นั่งในค่าย ComCamp #25',
-    body: `ระบบจองที่นั่งให้คุณเรียบร้อยแล้ว (สิทธิ์แบบมาก่อนได้ก่อน จำกัด ${seats} ที่นั่ง) กรุณาโอนค่าสมัคร ${feeText} บาท และอัปโหลดสลิปที่หัวข้อ “หลักฐานการชำระเงิน” ด้านล่างภายในวันที่ ${dl.deadlineText} (ภายใน ${PAYMENT_WINDOW_DAYS} วัน / ${PAYMENT_WINDOW_HOURS} ชั่วโมงหลังสมัคร) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ`,
-    toSlip: true,
-  };
-}
-
-function confirmedHighlight(): Highlight {
-  return {
-    tone: 'success',
-    icon: CircleCheck,
-    badge: 'สลิปค่าสมัครผ่านการตรวจสอบแล้ว',
-    title: 'สลิปผ่านการตรวจสอบ / ยืนยันสิทธิ์เข้าร่วมค่ายสมบูรณ์แล้ว',
-    body: `น้องมีที่นั่งในค่าย ComCamp #25 วันที่ 5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน) ณ อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) และเข้าพักที่${DORM_NAME}เรียบร้อยแล้ว — กดเข้ากลุ่ม LINE OpenChat ด้านล่างเพื่อรับข่าวสารและกำหนดการวันเข้าค่ายจากพี่ค่ายได้เลย`,
-    toLine: true,
-    showCampDetails: true,
-  };
-}
-
 const FOCUS_RING =
   'outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-tech)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]';
-
-/**
- * Editorial banner above the record: sharp corners, a bold tone-coloured top bar and a 1px frame,
- * like the masthead of sections 01-04. The tint is the tone mixed into the card colour, text stays
- * in ink (AA in both themes), and colour is never the only cue: icon, badge, state token and
- * headline all say the same thing. No side stripe, no icon bubble (AGENTS.md section 6.1).
- */
-function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; seats: number; feeText: string; nowMs: number }) {
-  const h = describeHighlight(app, seats, feeText, nowMs);
-  // Seat holders need the signed parent consent; hidden until the real file replaces the placeholder.
-  const showConsentPdf = DOCS_READY && holdsSeat(app.status);
-  const color = TONE_COLOR[h.tone];
-  const Icon = h.icon;
-  return (
-    <section
-      role="status"
-      aria-labelledby="status-highlight-title"
-      data-status={app.status}
-      data-tone={h.tone}
-      className="st-highlight"
-      style={{ '--st-tone': color } as CSSProperties}
-    >
-      <div
-        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-3"
-        style={{ borderColor: `color-mix(in srgb, ${color} 28%, ${RULE})` }}
-      >
-        <div className="flex flex-wrap items-center gap-3">
-          <span aria-hidden="true" className="shrink-0" style={{ color }}>
-            <Icon size={18} strokeWidth={1.6} />
-          </span>
-          <span
-            className="inline-flex items-center gap-2 rounded-full border-0 px-3 py-1 text-sm font-semibold"
-            style={{ color: INK, backgroundColor: `color-mix(in srgb, ${color} 22%, ${SURFACE})` }}
-          >
-            <span aria-hidden="true" className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-            {h.badge}
-          </span>
-        </div>
-        <span className="text-xs font-semibold" style={{ color: INK_MUTED }}>
-          {STATUS_LABELS[app.status] || app.status}
-        </span>
-      </div>
-      <div className="mt-4 min-w-0">
-          <h2 id="status-highlight-title" className="text-balance text-2xl font-bold leading-[1.35] sm:text-3xl" style={{ color: INK }}>
-            {h.title}
-          </h2>
-          <p className="mt-3 max-w-[62ch] text-base leading-7" style={{ color: INK_MUTED }}>
-            {h.body}
-          </p>
-          {h.showCampDetails && (
-            <div
-              className="mt-4 grid gap-2 border-t pt-3 text-sm leading-6 sm:grid-cols-2"
-              style={{ borderColor: `color-mix(in srgb, ${color} 24%, ${RULE})`, color: INK_MUTED }}
-            >
-              <p>
-                <strong style={{ color: INK }}>วันจัดค่าย:</strong>{' '}
-                <span className="tabular-nums">5–7 กุมภาพันธ์ 2570 (3 วัน 2 คืน)</span>
-              </p>
-              <p>
-                <strong style={{ color: INK }}>อาจารย์ผู้รับผิดชอบ:</strong> {PROJECT_ADVISOR}
-              </p>
-              <p className="sm:col-span-2">
-                <strong style={{ color: INK }}>สถานที่อบรมและที่พัก:</strong> อาคาร 60 ปี แม่โจ้ ชั้น 6 (สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้) · ที่พัก {DORM_NAME} (แยกโซนชาย-หญิง){' '}
-                <a
-                  href={DORM_MAPS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1 font-semibold underline underline-offset-4 ${FOCUS_RING}`}
-                  style={{ color: INK }}
-                >
-                  <MapPin aria-hidden="true" size={14} strokeWidth={1.75} />
-                  <span>ดูแผนที่เรือนพัก (Google Maps)</span>
-                  <ArrowUpRight aria-hidden="true" size={14} strokeWidth={1.75} />
-                </a>
-              </p>
-            </div>
-          )}
-          {(h.toSlip || h.toLine || h.contact || showConsentPdf) && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {h.toSlip && (
-                <a
-                  href="#slip-section"
-                  className={`inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
-                  style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-                >
-                  ไปส่งหลักฐานการชำระเงิน
-                </a>
-              )}
-              {h.toLine && (
-                <a
-                  href="#line-openchat"
-                  className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
-                  style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-                >
-                  <span>ไปเข้ากลุ่ม LINE OpenChat ด้านล่าง</span>
-                  <ArrowRight aria-hidden="true" size={16} strokeWidth={1.75} />
-                </a>
-              )}
-              {showConsentPdf && (
-                <a
-                  href={PARENT_CONSENT_PDF}
-                  download={PARENT_CONSENT_FILENAME}
-                  className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
-                  style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                >
-                  <FileDown aria-hidden="true" size={16} strokeWidth={1.5} />
-                  ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
-                </a>
-              )}
-              {h.contact && (
-                <>
-                  <a
-                    href={FB_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
-                    style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                  >
-                    ติดต่อทีมงานทาง Facebook
-                  </a>
-                  {STAFF_CONTACTS.map((c) => (
-                    <a
-                      key={c.tel}
-                      href={`tel:${c.tel}`}
-                      className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
-                      style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                    >
-                      <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                      <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
-                        <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
-                        <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
-                          <span aria-hidden="true" className="hidden sm:inline">· </span>
-                          {c.name}
-                        </span>
-                      </span>
-                    </a>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-          {showConsentPdf && (
-            <p className="mt-3 max-w-[62ch] text-sm leading-6" style={{ color: INK_MUTED }}>
-              {PARENT_CONSENT_NOTE}
-            </p>
-          )}
-      </div>
-    </section>
-  );
-}
 
 const PHONE_SLIP_LABEL: Record<'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED', string> = {
   NONE: 'ยังไม่ได้ส่งสลิป',
@@ -581,10 +233,6 @@ export function StatusSection() {
   /** Seconds left before the per-IP lookup limit allows another search (after a short 429). */
   const [cooldown, setCooldown] = useState(0);
   const [storedNotice, setStoredNotice] = useState<string | null>(null);
-  const [acctCopy, setAcctCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const [idCopy, setIdCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const acctCopyTimer = useRef<number | undefined>(undefined);
-  const idCopyTimer = useRef<number | undefined>(undefined);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -712,8 +360,6 @@ export function StatusSection() {
     return () => {
       active = false;
       searchRun.current++;
-      window.clearTimeout(acctCopyTimer.current);
-      window.clearTimeout(idCopyTimer.current);
     };
   }, [runSearch]);
 
@@ -817,33 +463,15 @@ export function StatusSection() {
     }
   }
 
-  async function onCopyAccount() {
-    const ok = await copyText(PAY_ACCOUNT_DIGITS);
-    setAcctCopy(ok ? 'copied' : 'failed');
-    window.clearTimeout(acctCopyTimer.current);
-    acctCopyTimer.current = window.setTimeout(() => setAcctCopy('idle'), ok ? 2200 : 5000);
-  }
-
-  async function onCopyAppId() {
-    if (!app) return;
-    const ok = await copyText(app.id);
-    setIdCopy(ok ? 'copied' : 'failed');
-    window.clearTimeout(idCopyTimer.current);
-    idCopyTimer.current = window.setTimeout(() => setIdCopy('idle'), ok ? 2200 : 5000);
-  }
-
   const slipUploaded = hasSlip(app);
   const slipState = slipUploaded ? (app?.slipStatus ?? 'PENDING') : null;
   // Never treat status === 'CONFIRMED' without an approved slip as slipApproved.
   const slipApproved = slipState === 'APPROVED';
-  const slipRejected = slipState === 'REJECTED';
-  const isEligibleForPayment = app && (app.status === 'PASSED' || app.status === 'CONFIRMED');
   const seatHeld = Boolean(app && holdsSeat(app.status));
   // A slip waiting for review or already approved means money has moved: the row must stay in the
   // staff ledger so a refund can be recorded, so only staff can cancel from then on. A slip staff
   // rejected is not money held. A missing slipStatus on an uploaded slip counts as waiting.
   const moneyHeld = slipState === 'PENDING' || slipState === 'APPROVED';
-  const paymentDeadline = app ? describeApplicantPaymentDeadline(app.createdAt, app.updatedAt, nowMs) : null;
 
   useEffect(() => {
     if (!app || app.status !== 'PASSED' || slipApproved || moneyHeld) return;
@@ -891,7 +519,7 @@ export function StatusSection() {
               placeholder="เช่น CC25-1A2B3C หรือ 0812345678"
               autoComplete="off"
               spellCheck={false}
-              className="min-h-11 w-full rounded-none border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)]"
+              className="min-h-11 w-full rounded-xl border bg-[var(--bg-card)] py-2.5 pl-3 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]/30"
               style={{ borderColor: BORDER_INPUT }}
             />
             {q.length > 0 && (
@@ -1009,309 +637,24 @@ export function StatusSection() {
       )}
 
       {app && (
-        <div key={app.id} className="st-result mt-8 space-y-8">
-          <StatusHighlight app={app} seats={seats} feeText={feeText} nowMs={nowMs} />
-
-          {/* ── Payment: the next task for a PASSED applicant, so it comes before the record ── */}
-          {isEligibleForPayment && (
-            <section
-              id="slip-section"
-              tabIndex={-1}
-              className="st-card scroll-mt-32 outline-none"
-            >
-              {/* One container. Its zones are told apart by whitespace and 1px rules, never by inner boxes. */}
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold leading-8" style={{ color: INK }}>หลักฐานการชำระเงิน</h2>
-                  <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    {slipApproved ? (
-                      <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ชำระเงินและตรวจสอบสลิปเรียบร้อยแล้ว
-                      </>
-                    ) : slipState === 'PENDING' ? (
-                      <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · ได้รับสลิปแล้ว อยู่ระหว่างรอทีมงานตรวจสอบ
-                      </>
-                    ) : app.status === 'CONFIRMED' ? (
-                      <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · สถานะยืนยันสิทธิ์แล้ว (หากยังไม่ได้แนบสลิป สามารถอัปโหลดด้านล่าง)
-                      </>
-                    ) : (
-                      <>
-                        ค่าสมัครเข้าร่วมค่าย <span className="font-mono tabular-nums">{feeText}</span> บาท · กรุณาโอนและแนบสลิปภายใน{' '}
-                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
-                      </>
-                    )}
-                  </p>
-                </div>
-                {slipUploaded ? (
-                  slipApproved ? (
-                    <DotPill color="var(--color-success)">อนุมัติสลิปแล้ว</DotPill>
-                  ) : slipRejected ? (
-                    <DotPill color="var(--color-danger)">สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดใหม่</DotPill>
-                  ) : (
-                    <DotPill color="var(--color-warning)">รอทีมงานตรวจสอบ</DotPill>
-                  )
-                ) : (
-                  <DotPill color="var(--color-ink-subtle)">ยังไม่ได้ส่งสลิป</DotPill>
-                )}
-              </div>
-
-              {!slipApproved && !moneyHeld && app.status !== 'CONFIRMED' && paymentDeadline && (
-                <div
-                  role="note"
-                  aria-label={slipRejected ? 'แจ้งเตือนอัปโหลดสลิปใหม่' : `แจ้งเตือนกำหนดเวลาชำระเงิน ${PAYMENT_WINDOW_DAYS} วัน`}
-                  className="st-warning mt-5"
-                >
-                  <p className="flex items-start gap-2 text-sm font-bold leading-6" style={{ color: INK }}>
-                    <TriangleAlert
-                      aria-hidden="true"
-                      size={18}
-                      strokeWidth={1.75}
-                      className="mt-0.5 shrink-0"
-                      style={{ color: slipRejected ? 'var(--color-danger)' : 'var(--color-warning)' }}
-                    />
-                    <span>
-                      {slipRejected ? 'สลิปไม่ผ่านการตรวจสอบ กรุณาอัปโหลดใหม่' : 'ยังไม่ได้ส่งสลิปยืนยันสิทธิ์'} ·{' '}
-                      <span className="tabular-nums">{paymentDeadline.remainingText}</span>
-                    </span>
-                  </p>
-                  <p className="mt-1.5 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    {slipRejected ? (
-                      <>
-                        สลิปก่อนหน้าไม่ผ่านการตรวจสอบ กรุณาเช็กยอดโอน <span className="font-mono tabular-nums">{feeText}</span> บาทและความชัดเจนของรูป แล้วอัปโหลดสลิปใหม่โดยเร็วที่สุด (ภายในกำหนด{' '}
-                        <strong className="tabular-nums" style={{ color: INK }}>{paymentDeadline.deadlineText}</strong> หรือช่วงผ่อนผัน 24 ชั่วโมงหลังถูกปฏิเสธ) มิฉะนั้นระบบจะตัดสิทธิ์และคืนที่นั่งว่างอัตโนมัติ
-                      </>
-                    ) : (
-                      <>
-                        กรุณาโอนเงินและอัปโหลดสลิปภายในวันที่ <strong className="tabular-nums" style={{ color: INK }}>{paymentDeadline.deadlineText}</strong> (ภายใน{' '}
-                        <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน / <span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมงหลังสมัคร)
-                        หากพ้นกำหนดระบบจะตัดสิทธิ์และคืนที่นั่งว่างให้ผู้สมัครคนอื่นโดยอัตโนมัติ
-                      </>
-                    )}
-                  </p>
-                </div>
-              )}
-
-              {app.status === 'CONFIRMED' && !slipUploaded && (
-                <div role="note" className="st-notice mt-5">
-                  <p className="flex items-start gap-2 text-sm leading-7" style={{ color: INK_MUTED }}>
-                    <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
-                    <span>
-                      ใบสมัครนี้ยืนยันสิทธิ์เรียบร้อยแล้ว แต่ยังไม่พบไฟล์สลิปในระบบ — หากน้องโอนเงินค่าสมัครแล้ว สามารถอัปโหลดสลิปด้านล่างเพื่อบันทึกเป็นหลักฐาน หรือกดเข้ากลุ่ม LINE OpenChat ด้านล่างได้ทันที
-                    </span>
-                  </p>
-                </div>
-              )}
-
-              {!slipApproved && (
-                <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }} aria-label="ข้อมูลการโอนเงิน" role="group">
-                  <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                    โอนค่าสมัคร <span className="font-mono tabular-nums">{feeText}</span> บาท · {PAY_ACCOUNT.bank}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <p className="select-all whitespace-nowrap font-mono text-2xl font-medium tabular-nums" style={{ color: INK }}>
-                      {PAY_ACCOUNT.number}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={onCopyAccount}
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
-                      style={{ borderColor: BORDER_INPUT, color: INK }}
-                    >
-                      {acctCopy === 'copied' ? (
-                        <Check aria-hidden="true" size={16} strokeWidth={2} />
-                      ) : (
-                        <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
-                      )}
-                      <span>{acctCopy === 'copied' ? 'คัดลอกเลขบัญชีแล้ว' : 'คัดลอกเลขบัญชี'}</span>
-                    </button>
-                  </div>
-                  <p role="status" aria-live="polite" className="min-h-[1.4em] text-sm" style={{ color: INK_MUTED }}>
-                    {acctCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่เลขบัญชีแล้วเลือกคัดลอก'}
-                  </p>
-                  <p className="mt-1 select-text text-sm leading-7" style={{ color: INK_MUTED }}>
-                    ชื่อบัญชี {PAY_ACCOUNT.name} ({PAY_ACCOUNT.holders})
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <p className="text-sm leading-7" style={{ color: INK_MUTED }}>
-                      อ้างอิงตอนโอน (บันทึกช่วยจำ):{' '}
-                      <span className="select-all whitespace-nowrap font-mono font-semibold tabular-nums" style={{ color: INK }}>
-                        {app.id}
-                      </span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={onCopyAppId}
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors hover:border-[var(--color-ink)] ${FOCUS_RING}`}
-                      style={{ borderColor: BORDER_INPUT, color: INK }}
-                    >
-                      {idCopy === 'copied' ? (
-                        <Check aria-hidden="true" size={16} strokeWidth={2} />
-                      ) : (
-                        <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
-                      )}
-                      <span>{idCopy === 'copied' ? 'คัดลอกรหัสใบสมัครแล้ว' : 'คัดลอกรหัสใบสมัคร'}</span>
-                    </button>
-                  </div>
-                  <p role="status" aria-live="polite" className="min-h-[1.4em] text-sm" style={{ color: INK_MUTED }}>
-                    {idCopy === 'failed' && 'คัดลอกอัตโนมัติไม่ได้ แตะค้างที่รหัสใบสมัครแล้วเลือกคัดลอก'}
-                  </p>
-                  <p className="mt-1 text-sm leading-7" style={{ color: INK_MUTED }}>{NO_QR_NOTE}</p>
-                </div>
-              )}
-
-              <div className="mt-6 border-t pt-5" style={{ borderColor: RULE }}>
-                <SlipUploadPanel
-                  key={app.id}
-                  appId={app.id}
-                  slip={slipApproved ? 'APPROVED' : slipState}
-                  submitLabel="ยืนยันและส่งหลักฐานสลิป"
-                  onUploaded={(status, _message, src) => {
-                    setSource(src);
-                    setError(null);
-                    setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
-                  }}
-                />
-              </div>
-
-              {(moneyHeld || app.status === 'CONFIRMED') && (
-                <div id="line-openchat" className="mt-6 scroll-mt-32 border-t pt-5" style={{ borderColor: RULE }}>
-                  <h3 className="text-base font-bold leading-7" style={{ color: INK }}>
-                    เข้ากลุ่ม LINE OpenChat
-                  </h3>
-                  <p className="mt-1 text-sm" style={{ color: INK_MUTED }}>
-                    {app.status === 'CONFIRMED' && !slipUploaded
-                      ? 'สำหรับผู้ที่ยืนยันสิทธิ์เข้าร่วมค่ายแล้ว'
-                      : app.status === 'CONFIRMED'
-                        ? 'สำหรับผู้ที่ส่งสลิปและยืนยันสิทธิ์แล้ว'
-                        : 'สำหรับผู้ที่ส่งสลิปแล้ว'}
-                  </p>
-                  <div className="mt-4 grid gap-5 sm:grid-cols-[176px_minmax(0,1fr)] sm:items-center">
-                    <img
-                      src={LINE_OPENCHAT_QR_SRC}
-                      alt="QR Code สำหรับเข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25"
-                      width={176}
-                      height={176}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-44 w-44 rounded-xl bg-white object-contain p-1.5"
-                    />
-                    <div className="min-w-0 space-y-4">
-                      <p className="max-w-[54ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                        สแกน QR หรือกดปุ่มด้านล่างเพื่อเข้ากลุ่ม รับข่าวสารและติดต่อสื่อสารกับพี่ค่ายก่อนวันจัดค่าย
-                      </p>
-                      <a
-                        href={LINE_OPENCHAT_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
-                        style={{ backgroundColor: BTN_DARK, color: BTN_DARK_TEXT }}
-                      >
-                        <span>เข้ากลุ่ม LINE OpenChat ทันที</span>
-                        <ArrowRight aria-hidden="true" size={16} strokeWidth={1.75} />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* ── Application record: details, how to ask staff for a correction, withdrawal ── */}
-          <section className="st-card">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: INK }}>
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold leading-6" style={{ color: INK_SUBTLE }}>
-                  ข้อมูลใบสมัคร
-                </h2>
-                <p className="mt-1 select-all whitespace-nowrap font-mono text-2xl font-semibold tabular-nums" style={{ color: INK }}>{app.id}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusTag status={app.status} />
-                {import.meta.env.DEV && source && (
-                  <span className="rounded-sm border px-2 py-0.5 font-mono text-[11px] font-semibold" style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}>
-                    {source}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <dl className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-              {[
-                { k: 'ชื่อ – นามสกุล', v: app.fullName, mono: false },
-                { k: 'ชื่อเล่น', v: app.nickname || '–', mono: false },
-                { k: 'เบอร์โทรศัพท์ติดต่อ', v: app.phone, mono: true },
-                { k: 'โรงเรียน', v: app.school, mono: false },
-                {
-                  k: 'ระดับชั้น / ไซส์เสื้อค่าย',
-                  v:
-                    SIZE_CHEST[app.shirtSize] && SIZE_LENGTH[app.shirtSize]
-                      ? `${app.grade} / ${app.shirtSize} (อก ${SIZE_CHEST[app.shirtSize]}" · ยาว ${SIZE_LENGTH[app.shirtSize]}")`
-                      : `${app.grade} / ${app.shirtSize}`,
-                  mono: false,
-                },
-                ...(app.email ? [{ k: 'อีเมล', v: app.email, mono: false }] : []),
-                ...(app.province ? [{ k: 'จังหวัด', v: app.province, mono: false }] : []),
-              ].map((row) => (
-                <div key={row.k} className="min-w-0 border-b py-2.5 sm:py-3" style={{ borderColor: RULE }}>
-                  <dt className="text-xs font-semibold leading-5" style={{ color: INK_SUBTLE }}>{row.k}</dt>
-                  <dd className={`mt-0.5 select-text break-words [overflow-wrap:anywhere] text-base leading-7 ${row.mono ? 'font-mono tabular-nums' : 'font-medium'}`} style={{ color: INK }}>
-                    {row.v}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-
-            {/* Corrections are staff-only: the applicant self-edit was switched off (the QR code lives in the contacts column below). */}
-            <div id="status-correction" className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
-              <h3 className="text-base font-bold leading-7" style={{ color: INK }}>
-                ต้องการแก้ไขข้อมูล?
-              </h3>
-              <p className="mt-1 max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                หากต้องการแก้ไขข้อมูล (เช่น ชื่อเล่น โรงเรียน จังหวัด ระดับชั้น ไซส์เสื้อ) กรุณาติดต่อทีมงาน พร้อมแจ้งรหัสใบสมัคร{' '}
-                <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a
-                  href={FB_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex min-h-11 w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
-                  style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                >
-                  ติดต่อทีมงานทาง Facebook
-                </a>
-                {STAFF_CONTACTS.map((c) => (
-                  <a
-                    key={c.tel}
-                    href={`tel:${c.tel}`}
-                    className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold leading-7 transition-colors sm:w-auto sm:gap-1.5 sm:px-4 ${FOCUS_RING}`}
-                    style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                  >
-                    <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                    <span className="flex flex-col items-center text-center sm:flex-row sm:gap-1.5">
-                      <span className="whitespace-nowrap font-mono tabular-nums">{c.phone}</span>
-                      <span className="whitespace-normal font-normal" style={{ color: INK_MUTED }}>
-                        <span aria-hidden="true" className="hidden sm:inline">· </span>
-                        {c.name}
-                      </span>
-                    </span>
-                  </a>
-                ))}
-              </div>
-              <p className="mt-2 text-sm leading-7" style={{ color: INK_MUTED }}>
-                สแกน QR เพจ Facebook ได้ที่หัวข้อ{' '}
-                <a href="#status-info-title" className={`font-semibold underline underline-offset-4 ${FOCUS_RING}`} style={{ color: INK }}>
-                  ข้อมูลค่ายและช่องทางติดต่อ
-                </a>{' '}
-                ด้านล่างของหน้านี้
-              </p>
-            </div>
-
+        <div key={app.id} className="mt-8">
+          <StatusDashboard
+            app={app}
+            seats={seats}
+            feeText={feeText}
+            nowMs={nowMs}
+            source={source}
+            onUploaded={(status, _message, src) => {
+              setSource(src);
+              setError(null);
+              setApp((prev) => (prev ? { ...prev, hasSlip: true, slipStatus: status } : null));
+            }}
+            footer={
+              (canWithdraw || mustAskStaffToCancel) && (
+                <footer className="sd-withdraw">
             {/* Self-service withdrawal: frees the seat. Needs the code this record was found by AND the full registered phone (R24). */}
             {canWithdraw && (
-              <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
+              <div>
                 {withdrawOpen ? (
                   <div
                     role="group"
@@ -1408,47 +751,26 @@ export function StatusSection() {
                 )}
               </div>
             )}
-
             {/* Once money has moved (or the place is confirmed) only staff can cancel, so the refund
                 is recorded instead of the application disappearing. */}
             {mustAskStaffToCancel && (
-              <div className="mt-6 border-t pt-4" style={{ borderColor: RULE }}>
-                <p className="max-w-[62ch] text-sm leading-7" style={{ color: INK_MUTED }}>
-                  {app.status === 'CONFIRMED' || slipState === 'APPROVED'
-                    ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'
-                    : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว จึงยกเลิกเองในหน้านี้ไม่ได้'}{' '}
-                  หากต้องการแจ้งสละสิทธิ์ กรุณาติดต่อทีมงานผ่านเพจ Facebook ของโครงการ หรือโทรติดต่อพี่ค่าย พร้อมแจ้งรหัสใบสมัคร{' '}
-                  <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span> (กรณีโอนเงินแล้วหรือยืนยันสิทธิ์แล้ว กรุณาติดต่อคุยกับทีมงานโดยตรง)
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <a
-                    href={FB_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-flex min-h-11 items-center rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
-                    style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                  >
-                    ติดต่อทีมงานทาง Facebook
-                  </a>
-                  {STAFF_CONTACTS.map((c) => (
-                    <a
-                      key={c.tel}
-                      href={`tel:${c.tel}`}
-                      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${FOCUS_RING}`}
-                      style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
-                    >
-                      <Phone aria-hidden="true" size={14} strokeWidth={1.75} />
-                      <span className="font-mono tabular-nums">{c.phone}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
+              <p className="sd-withdraw__quiet">
+                {app.status === 'CONFIRMED' || slipState === 'APPROVED' ? 'ใบสมัครนี้ยืนยันสิทธิ์แล้ว' : 'ใบสมัครนี้ส่งสลิปโอนเงินแล้ว'}
+                {' '}จึงยกเลิกเองในหน้านี้ไม่ได้ หากต้องการสละสิทธิ์ กรุณา
+                <a className="sd-link" href="#sd-staff">
+                  ติดต่อพี่ค่าย
+                </a>{' '}
+                พร้อมแจ้งรหัสใบสมัคร <span className="select-all whitespace-nowrap font-mono tabular-nums">{app.id}</span>
+              </p>
             )}
-          </section>
-
+                </footer>
+              )
+            }
+          />
         </div>
       )}
-      {/* ── 05 · Camp details & staff contacts ──────────────── */}
+      {/* ── Camp details & staff contacts, before a search (a found application has them as tiles) ── */}
+      {!app && (
       <section aria-labelledby="status-info-title" className="mt-12 border-t pt-8" style={{ borderColor: RULE }}>
         <h2 id="status-info-title" className="text-xl font-bold leading-8" style={{ color: INK }}>
           ข้อมูลค่ายและช่องทางติดต่อ
@@ -1543,6 +865,7 @@ export function StatusSection() {
           </div>
         </div>
       </section>
+      )}
       <HumanCheckDialog />
     </div>
   );

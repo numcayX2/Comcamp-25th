@@ -34,6 +34,47 @@ export const PARENT_CONSENT_NOTE =
 export const PARENT_CONSENT_WHERE =
   'ดาวน์โหลดใบขออนุญาตผู้\u2060ปกครองซ้ำได้ทุกเมื่อที่หน้าตรวจสอบสถานะ (ค้นหาด้วยรหัสใบสมัคร)';
 
+/** Camp days (AGENTS.md §0.3). The first day is check-in day; the countdown on /status counts to it. */
+export const CAMP_FIRST_DAY = '2027-02-05';
+export const CAMP_DATES_TEXT = '5–7 กุมภาพันธ์ 2570';
+export const CAMP_LENGTH_TEXT = '3 วัน 2 คืน';
+export const CAMP_CHECKIN_TEXT = '5 ก.พ. 2570';
+export const CAMP_VENUE = 'อาคาร 60 ปี แม่โจ้ ชั้น 6';
+export const CAMP_VENUE_SUB = 'สาขาวิชาวิทยาการคอมพิวเตอร์ คณะวิทยาศาสตร์ มหาวิทยาลัยแม่โจ้';
+/** What the camp fee covers; the same list as the /status fee note and the home page. */
+export const CAMP_FEE_INCLUDES =
+  'ที่พัก 2 คืน · อาหารหลัก 6 มื้อ · อาหารว่าง 5 มื้อ · เสื้อค่าย · กระเป๋าพร้อมปั๊มลาย · เอกสารอบรม · เกียรติบัตร';
+
+/**
+ * What to bring on camp day, for the /status self-check list. The wording follows /guide
+ * (#checklist) and the home page (#essentials): change all three together. `id` is the stable key
+ * of a tick saved on the device, so never reuse an id for a different item.
+ */
+export const CAMP_BRING_LIST: { group: string; items: { id: string; text: string; optional?: boolean; docs?: boolean }[] }[] = [
+  {
+    group: 'เอกสารและยาประจำตัว',
+    items: [
+      { id: 'id-card', text: 'บัตรประจำตัว (บัตรประชาชน / บัตรชมพู) หรือบัตรประจำตัวนักเรียน' },
+      { id: 'consent', text: 'ใบขออนุญาตผู้ปกครองที่ลงนามแล้ว (ตัวจริง)', docs: true },
+      { id: 'meds', text: 'ยาประจำตัว (ถ้ามี)' },
+    ],
+  },
+  {
+    group: 'เครื่องแต่งกายและของใช้ส่วนตัว',
+    items: [
+      { id: 'clothes', text: 'ชุดลำลองสุภาพ 3 วัน 2 คืน (แนะนำกางเกงขายาวและรองเท้าผ้าใบ/หุ้มส้นเข้าห้องแล็บ)' },
+      { id: 'night', text: 'ชุดนอน เสื้อกันหนาว ผ้าเช็ดตัว และของใช้ส่วนตัว (มีเสื้อค่ายแจกให้)' },
+    ],
+  },
+  {
+    group: 'อุปกรณ์อิเล็กทรอนิกส์',
+    items: [
+      { id: 'phone', text: 'สมาร์ตโฟนพร้อมสายชาร์จ/แบตสำรอง (ใช้ทดลองเชื่อม Wi-Fi บอร์ด ESP8266)' },
+      { id: 'laptop', text: 'โน้ตบุ๊กส่วนตัว (มีเครื่อง PC ห้องปฏิบัติการครบทุกคน)', optional: true },
+    ],
+  },
+];
+
 /** Sponsor deck for /sponsor. Same rule as DOCS_READY: the download stays hidden until the file exists. */
 export const SPONSOR_DECK_READY = false;
 export const SPONSOR_DECK_PDF = '/assets/docs/sponsor-deck.pdf?v=1';
