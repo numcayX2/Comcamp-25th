@@ -1187,6 +1187,24 @@
 .sp-method {
   margin-top: 4px;
 }
+/* Amount with its visible unit: "บาท" sits inside the field's right edge, in the Thai face. */
+.sp-amount__control {
+  position: relative;
+}
+.sp-amount__control .sp-input {
+  padding-right: 56px;
+}
+.sp-amount__unit {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--color-ink-subtle);
+  pointer-events: none;
+}
 
 .sp-upload {
   display: grid;
@@ -1674,6 +1692,7 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .sp-method,
+  .sp-amount,
   .sp-upload,
   .sp-tax-group,
   .sp-success {
@@ -1709,6 +1728,7 @@
     transition: none;
   }
   .sp-method,
+  .sp-amount,
   .sp-upload,
   .sp-tax-group,
   .sp-success,

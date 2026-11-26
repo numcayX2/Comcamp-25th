@@ -27,9 +27,9 @@ func (m *MemoryApplicantRepo) ListPublic(ctx context.Context) ([]domain.PublicAp
 		}
 		picked = append(picked, sortable{
 			row: domain.PublicApplicant{
+				Prefix:    a.Prefix,
 				FirstName: a.FirstName,
 				LastName:  a.LastName,
-				Nickname:  a.Nickname,
 				School:    a.School,
 				Province:  a.Province,
 				Status:    a.Status,

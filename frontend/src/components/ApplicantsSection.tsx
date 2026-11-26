@@ -13,7 +13,7 @@ import { STAFF_CONTACTS } from './register/model';
 
 /*
  * /applicants — the public list of applicants. PDPA: this component only ever receives the
- * allowlisted fields (no, fullName, nickname, school, province, status); see fetchPublicApplicants.
+ * allowlisted fields (no, prefix, fullName, school, province, status); see fetchPublicApplicants.
  * It never asks for, stores or renders a code, phone, email or any other identifier.
  */
 
@@ -296,7 +296,7 @@ export function ApplicantsSection() {
       if (province && r.province !== province) return false;
       if (status !== 'ALL' && r.status !== status) return false;
       if (!q) return true;
-      return [r.fullName, r.nickname, r.school].some((field) => normalizeText(field).includes(q));
+      return [r.prefix + r.fullName, r.school].some((field) => normalizeText(field).includes(q));
     });
   }, [rows, query, province, status]);
 
@@ -333,7 +333,7 @@ export function ApplicantsSection() {
         </h1>
         <p className="mt-3 max-w-[60ch] text-base leading-7" style={{ color: INK_MUTED }}>
           รายชื่อน้อง ๆ ที่สมัครค่าย ComCamp <span className="font-mono tabular-nums">#25</span> เรียงตามลำดับการสมัคร
-          ค้นหาชื่อ ชื่อเล่น หรือโรงเรียนของตัวเองและเพื่อนได้ที่นี่
+          ค้นหาชื่อหรือโรงเรียนของตัวเองและเพื่อนได้ที่นี่
         </p>
       </header>
 
@@ -347,7 +347,7 @@ export function ApplicantsSection() {
         <div className="grid gap-4 md:grid-cols-12 md:items-end">
           <div className="md:col-span-8">
             <label htmlFor="ap-q" className="mb-1.5 block text-sm font-semibold" style={{ color: INK }}>
-              ค้นหาชื่อ ชื่อเล่น หรือโรงเรียน
+              ค้นหาชื่อหรือโรงเรียน
             </label>
             <div className="relative flex items-center">
               <Search
@@ -365,7 +365,7 @@ export function ApplicantsSection() {
                 enterKeyHint="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="เช่น ชื่อ ชื่อเล่น หรือชื่อโรงเรียน"
+                placeholder="เช่น ชื่อ นามสกุล หรือชื่อโรงเรียน"
                 autoComplete="off"
                 spellCheck={false}
                 className="ap-input min-h-11 w-full rounded-full border bg-[var(--bg-card)] py-2.5 pl-11 pr-12 text-base outline-none transition-colors focus:border-[var(--color-tech)] focus-visible:ring-2 focus-visible:ring-[var(--color-tech)]"
@@ -542,12 +542,8 @@ export function ApplicantsSection() {
                   </span>
                   <div className="min-w-0">
                     <p className="text-base font-semibold leading-7" style={{ color: INK }}>
+                      {r.prefix}
                       {r.fullName}
-                      {r.nickname && (
-                        <span className="font-normal" style={{ color: INK_MUTED }}>
-                          {' '}({r.nickname})
-                        </span>
-                      )}
                     </p>
                     <p className="text-sm leading-6" style={{ color: INK_MUTED }}>
                       {r.school}
@@ -569,7 +565,6 @@ export function ApplicantsSection() {
                   <tr>
                     <th scope="col" className="w-20">ลำดับ</th>
                     <th scope="col">ชื่อ–นามสกุล</th>
-                    <th scope="col">ชื่อเล่น</th>
                     <th scope="col">โรงเรียน</th>
                     <th scope="col">จังหวัด</th>
                     <th scope="col" className="w-44">สถานะ</th>
@@ -581,8 +576,10 @@ export function ApplicantsSection() {
                       <td style={{ color: INK_MUTED }}>
                         <OrderNo no={r.no} />
                       </td>
-                      <td className="font-semibold" style={{ color: INK }}>{r.fullName}</td>
-                      <td style={{ color: INK }}>{r.nickname}</td>
+                      <td className="font-semibold" style={{ color: INK }}>
+                        {r.prefix}
+                        {r.fullName}
+                      </td>
                       <td style={{ color: INK }}>{r.school}</td>
                       <td style={{ color: INK }}>{r.province}</td>
                       <td>
@@ -602,7 +599,7 @@ export function ApplicantsSection() {
         <p className="flex items-start gap-2.5 text-sm leading-7" style={{ color: INK_MUTED }}>
           <Info aria-hidden="true" size={18} strokeWidth={1.5} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
           <span>
-            หน้านี้แสดงเฉพาะชื่อ–นามสกุล ชื่อเล่น โรงเรียน และจังหวัด ตามที่ผู้สมัครยินยอมไว้ตอนสมัคร
+            หน้านี้แสดงเฉพาะคำนำหน้า ชื่อ–นามสกุล โรงเรียน และจังหวัด ตามที่ผู้สมัครยินยอมไว้ตอนสมัคร
             สถานะ “รอชำระเงิน” คือได้ที่นั่งแล้ว อยู่ระหว่างโอนเงินหรือรอทีมงานตรวจสลิป ส่วน “ยืนยันสิทธิ์แล้ว”
             คือทีมงานยืนยันการชำระเงินเรียบร้อย หากข้อมูลไม่ถูกต้องหรือมีข้อสงสัยเกี่ยวกับการแสดงรายชื่อ ติดต่อพี่ค่าย{' '}
             {STAFF_CONTACTS.map((c, i) => (

@@ -25,13 +25,14 @@ const (
 const publicListCacheTTL = 5 * time.Second
 
 // PublicApplicantEntry is one row of GET /api/applications/public. It is the STRICT PDPA
-// allowlist (CLAUDE_REVAMP_HANDOFF.md 5.4): the registration consent discloses exactly name,
-// nickname, school and province on this page. Never add a field here without changing that
-// consent text, and never serialize domain.Applicant or ApplicationResponse in its place.
+// allowlist (CLAUDE_REVAMP_HANDOFF.md 5.4): the registration consent discloses exactly the title
+// prefix, name, school and province on this page (the nickname is not shown). Never add a field
+// here without changing that consent text, and never serialize domain.Applicant or
+// ApplicationResponse in its place.
 type PublicApplicantEntry struct {
 	No       int    `json:"no"`
+	Prefix   string `json:"prefix"`
 	FullName string `json:"fullName"`
-	Nickname string `json:"nickname"`
 	School   string `json:"school"`
 	Province string `json:"province"`
 	Status   string `json:"status"`
@@ -108,8 +109,8 @@ func (s *ApplicantService) ListPublicApplicants(ctx context.Context) (*PublicApp
 			}
 			entries = append(entries, PublicApplicantEntry{
 				No:       len(entries) + 1,
+				Prefix:   r.Prefix,
 				FullName: publicFullName(r.FirstName, r.LastName),
-				Nickname: r.Nickname,
 				School:   r.School,
 				Province: r.Province,
 				Status:   label,
@@ -154,8 +155,8 @@ func publicStatusLabel(s domain.ApplicationStatus) (string, bool) {
 	return "", false
 }
 
-// publicFullName is first + last name. The title prefix is left out on purpose: the consent
-// discloses the name only, and a prefix (นาย / นางสาว) would add gender to a public page.
+// publicFullName is first + last name. The title prefix travels in its own field so the page can
+// render "นายสมชาย ใจดี" while search keeps matching the name itself.
 func publicFullName(first, last string) string {
 	if last == "" {
 		return first

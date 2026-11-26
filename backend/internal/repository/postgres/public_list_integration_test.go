@@ -28,7 +28,7 @@ func TestPostgres_ListPublicFiltersAndOrders(t *testing.T) {
 		t.Helper()
 		a := newApplicant(i, tag)
 		a.LastName = "ลำดับ"
-		a.Nickname = "n" + tag
+		a.Prefix = "นางสาว"
 		a.School = school
 		a.Status = status
 		if err := repo.Create(ctx, a); err != nil {
@@ -62,8 +62,8 @@ func TestPostgres_ListPublicFiltersAndOrders(t *testing.T) {
 		}
 	}
 	want := []domain.PublicApplicant{
-		{FirstName: passed.FirstName, LastName: "ลำดับ", Nickname: "n" + tag, School: school, Province: passed.Province, Status: domain.StatusPassed},
-		{FirstName: confirmed.FirstName, LastName: "ลำดับ", Nickname: "n" + tag, School: school, Province: confirmed.Province, Status: domain.StatusConfirmed},
+		{Prefix: "นางสาว", FirstName: passed.FirstName, LastName: "ลำดับ", School: school, Province: passed.Province, Status: domain.StatusPassed},
+		{Prefix: "นางสาว", FirstName: confirmed.FirstName, LastName: "ลำดับ", School: school, Province: confirmed.Province, Status: domain.StatusConfirmed},
 	}
 	if len(mine) != len(want) {
 		t.Fatalf("expected %d listed rows (live PASSED + CONFIRMED only), got %d: %+v", len(want), len(mine), mine)

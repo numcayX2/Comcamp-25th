@@ -132,6 +132,7 @@ export type DonationPrefill = {
     | 'donorName'
     | 'phone'
     | 'kind'
+    | 'amount'
     | 'goodsDescription'
     | 'note'
     | 'taxId'

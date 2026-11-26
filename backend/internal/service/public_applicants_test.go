@@ -90,8 +90,8 @@ func TestListPublicApplicants_FiltersOrdersAndLabels(t *testing.T) {
 		t.Fatalf("expected only the live PASSED and CONFIRMED applicants, got %d: %+v", len(got), got)
 	}
 	want := []service.PublicApplicantEntry{
-		{No: 1, FullName: passed.FirstName + " " + passed.LastName, Nickname: passed.Nickname, School: passed.School, Province: passed.Province, Status: "รอชำระเงิน"},
-		{No: 2, FullName: confirmed.FirstName + " " + confirmed.LastName, Nickname: confirmed.Nickname, School: confirmed.School, Province: confirmed.Province, Status: "ยืนยันสิทธิ์แล้ว"},
+		{No: 1, Prefix: passed.Prefix, FullName: passed.FirstName + " " + passed.LastName, School: passed.School, Province: passed.Province, Status: "รอชำระเงิน"},
+		{No: 2, Prefix: confirmed.Prefix, FullName: confirmed.FirstName + " " + confirmed.LastName, School: confirmed.School, Province: confirmed.Province, Status: "ยืนยันสิทธิ์แล้ว"},
 	}
 	for i := range want {
 		if got[i] != want[i] {

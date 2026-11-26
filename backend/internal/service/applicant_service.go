@@ -94,7 +94,7 @@ func isValidGrade(g string) bool {
 
 type ApplicationCreateRequest struct {
 	// Prefix is the title before the name. It is optional for older clients, but when sent it must
-	// be one of namePrefixes. It is stored apart from the name and never shown on the public list.
+	// be one of namePrefixes. It is stored apart from the name and shown before it on the public list.
 	Prefix            string `json:"prefix,omitempty"`
 	FullName          string `json:"fullName"`
 	Nickname          string `json:"nickname"`
@@ -1382,7 +1382,7 @@ func (s *ApplicantService) AdminUpdateProfile(ctx context.Context, applicationNo
 	if err := s.appRepo.UpdateProfile(ctx, applicant.ID, fields, false, audit); err != nil {
 		return nil, notFoundOr(err)
 	}
-	s.InvalidatePublicList() // name, nickname, school and province are listed publicly
+	s.InvalidatePublicList() // prefix, name, school and province are listed publicly
 
 	updated, err := s.appRepo.GetByID(ctx, applicant.ID)
 	if err != nil {

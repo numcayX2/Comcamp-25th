@@ -43,10 +43,11 @@ func TestSponsorDeskPostgres_Inquiries(t *testing.T) {
 	ctx := context.Background()
 	before := countAudit(string(domain.AuditSponsorInquiryCreate))
 
+	amount := "1500.50"
 	a := &domain.SponsorInquiry{
 		Name: "ร้าน ก", Phone: "0812345678", Kind: domain.SponsorKindMoney,
 		TaxID: "1101700203450", AddressLine: "63 หมู่ 4", Subdistrict: "หนองหาร",
-		District: "สันทราย", Province: "เชียงใหม่", Postcode: "50290",
+		District: "สันทราย", Province: "เชียงใหม่", Postcode: "50290", Amount: &amount,
 	}
 	if err := inq.Create(ctx, a, &domain.AuditEntry{Action: domain.AuditSponsorInquiryCreate, TargetType: domain.AuditTargetSponsorInquiry, Details: map[string]any{"kind": "money"}}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -56,8 +57,9 @@ func TestSponsorDeskPostgres_Inquiries(t *testing.T) {
 	}
 	if got, err := inq.GetByID(ctx, a.ID); err != nil ||
 		got.TaxID != a.TaxID || got.AddressLine != a.AddressLine || got.Subdistrict != a.Subdistrict ||
-		got.District != a.District || got.Province != a.Province || got.Postcode != a.Postcode {
-		t.Fatalf("tax/address did not round-trip: %v %+v", err, got)
+		got.District != a.District || got.Province != a.Province || got.Postcode != a.Postcode ||
+		got.Amount == nil || *got.Amount != "1500.5" {
+		t.Fatalf("tax/address/amount did not round-trip: %v %+v", err, got)
 	}
 	if countAudit(string(domain.AuditSponsorInquiryCreate))-before != 1 {
 		t.Fatal("create audit row missing")

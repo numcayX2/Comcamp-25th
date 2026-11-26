@@ -23,7 +23,7 @@ const publicListPath = "/api/applications/public"
 
 // publicListKeys is the STRICT PDPA allowlist for one row of GET /api/applications/public
 // (CLAUDE_REVAMP_HANDOFF.md 5.4). Anything else in a row is a leak.
-var publicListKeys = []string{"fullName", "nickname", "no", "province", "school", "status"}
+var publicListKeys = []string{"fullName", "no", "prefix", "province", "school", "status"}
 
 func (a *testApp) getPublicList(t *testing.T) (*bytes.Buffer, http.Header, []map[string]any) {
 	t.Helper()
@@ -68,8 +68,10 @@ func keysOf(m map[string]any) []string {
 func (a *testApp) submitWithEverySensitiveField(t *testing.T) map[string]string {
 	t.Helper()
 	secret := map[string]string{
+		"prefix":   "นางสาว",
 		"fullName": "ลับสุดยอด นามสกุลสาธารณะ",
-		"nickname": "เปิดเผยได้",
+		// Collected at registration but no longer listed publicly.
+		"nickname": "ชื่อเล่นลับเฉพาะ",
 		// Legacy field from pre-PDPA clients: the server drops it, and it must never surface.
 		"nationalId":        "1509977700119",
 		"phone":             "0897770011",
@@ -116,14 +118,14 @@ func TestPublicList_OnlyAllowlistedKeysAndNoSensitiveValues(t *testing.T) {
 	}
 
 	row := rows[0]
-	if row["no"] != float64(1) || row["fullName"] != secret["fullName"] || row["nickname"] != secret["nickname"] ||
+	if row["no"] != float64(1) || row["prefix"] != secret["prefix"] || row["fullName"] != secret["fullName"] ||
 		row["school"] != secret["school"] || row["province"] != secret["province"] || row["status"] != "รอชำระเงิน" {
 		t.Fatalf("unexpected row %v", row)
 	}
 
 	body := raw.String()
 	for _, field := range []string{
-		"nationalId", "phone", "email", "parentName", "parentRelation", "parentPhone",
+		"nickname", "nationalId", "phone", "email", "parentName", "parentRelation", "parentPhone",
 		"motivation", "allergies", "medicalConditions", "applicationNo", "uuid",
 	} {
 		v := secret[field]

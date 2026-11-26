@@ -18,6 +18,7 @@ import {
   NoticeBanner,
   UNKNOWN_ERROR,
   focusLater,
+  formatAmount,
   formatBangkokDateTime,
   formatPhone,
   isNotFound,
@@ -323,6 +324,15 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                         </a>
                       )}
                     </div>
+                    {inq.kind === 'money' && inq.amount && (
+                      <p className="mt-1.5 text-sm leading-6" style={{ color: INK_2 }}>
+                        <span style={{ color: INK_3 }}>จำนวนเงิน: </span>
+                        <span className="font-mono tabular-nums" style={{ color: INK }}>
+                          {formatAmount(inq.amount)}
+                        </span>{' '}
+                        บาท
+                      </p>
+                    )}
                     {(inq.taxId || formatThaiAddress(inq)) && (
                       <div className="mt-1.5 flex flex-col gap-0.5 text-sm leading-6" style={{ color: INK_2 }}>
                         {inq.taxId && (

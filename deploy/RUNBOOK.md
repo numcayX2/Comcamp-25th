@@ -85,7 +85,7 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000017`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000018`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
@@ -291,7 +291,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${EDGE_HTTP_PORT:-808
 > ```
 > ถ้า `nginx -t` ไม่ผ่าน ห้ามสร้าง `edge-proxy` ใหม่ (container เดิมยังทำงานต่อด้วย config เก่า)
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`, `000018`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -533,6 +533,39 @@ curl -fsS http://127.0.0.1:6000/api/health
 - **Build ใหม่บน Schema เก่า:** แท็บผู้สนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
 - **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000017_sponsor_tax_address.down.sql` (ลบ 6 คอลัมน์ทั้งสองตาราง — เลข/ที่อยู่ที่บันทึกแล้วหายถาวร)
 - **ไฟล์ backup:** หลัง `000017` ไฟล์ `pg_dump` จะมีเลขบัตรประชาชน/เลขผู้เสียภาษีของผู้สนับสนุน เก็บสิทธิ์ `600` เหมือนเดิม
+
+### Migration `000018` (จำนวนเงินที่ผู้สนใจสนับสนุนแจ้ง)
+
+`000018_sponsor_inquiry_amount.up.sql` **เพิ่มอย่างเดียว** และรันซ้ำได้: เพิ่มคอลัมน์ `amount NUMERIC(12, 2) NULL` (มี `CHECK amount > 0`) ใน `sponsor_inquiries` — ฟอร์ม `/sponsor` เมื่อเลือก `เงิน` บังคับกรอกจำนวนเงินทั้งแบบกรอกบนเว็บและแนบแบบฟอร์ม; รายการเดิมและสิ่งของเป็น `NULL`; แอดมินเห็นใน `/admin` และอีเมลแจ้งทีมงานมีบรรทัดจำนวนเงิน; ไม่ออกทาง endpoint สาธารณะหรือค่าใน audit backend รุ่นก่อนหน้าไม่อ่านคอลัมน์นี้ จึงรันขณะระบบเดิมทำงานอยู่ได้ (ต้องรัน `000017` มาก่อนแล้ว)
+
+```bash
+cd ~/comcamp25
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+mkdir -p "$B"
+F="$B/cc25_db_pre000018_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"; ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000018 up ขณะ backend เดิมยังทำงาน
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000018_sponsor_inquiry_amount.up.sql
+
+# 3. ตรวจ: ต้องได้ sponsor_inquiries|numeric
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -Atc "select table_name, data_type from information_schema.columns where table_name = 'sponsor_inquiries' and column_name = 'amount'"
+
+# 4. Build และเปิด backend + frontend ตัวใหม่
+$C up -d --build backend frontend
+curl -fsS http://127.0.0.1:6000/api/health
+```
+
+- หลัง deploy: เปิด `/sponsor` → เลือก `เงิน` ต้องเห็นช่อง "จำนวนเงินที่ต้องการสนับสนุน" (หน่วย บาท) ทั้งแบบกรอกบนเว็บและแนบแบบฟอร์ม; ส่งทดสอบ 1 ครั้ง แล้วดูใน `/admin` → ผู้สนับสนุน → ผู้สนใจสนับสนุน ว่าเห็นจำนวนเงิน และปุ่ม `สร้างรายการบริจาค` เติมจำนวนเงินให้ (ลบรายการทดสอบทิ้งได้)
+- **Build ใหม่บน Schema เก่า:** แท็บผู้สนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
+- **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000018_sponsor_inquiry_amount.down.sql` (ลบคอลัมน์ `amount` — จำนวนเงินที่บันทึกแล้วหายถาวร ข้อความใน `details` ไม่กระทบ)
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 

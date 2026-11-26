@@ -59,6 +59,7 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount,
       values: {
         donorName: inq.name,
         phone: inq.phone,
+        amount: isMoney ? (inq.amount ?? '') : '',
         kind: inq.kind,
         goodsDescription: inq.kind === 'goods' ? inq.details : '',
         note: inq.kind === 'goods' ? '' : inq.details,

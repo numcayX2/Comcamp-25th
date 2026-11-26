@@ -42,6 +42,10 @@ func cloneInquiry(i *domain.SponsorInquiry) *domain.SponsorInquiry {
 		t := *i.HandledAt
 		c.HandledAt = &t
 	}
+	if i.Amount != nil {
+		a := *i.Amount
+		c.Amount = &a
+	}
 	if i.File != nil {
 		f := *i.File
 		c.File = &f

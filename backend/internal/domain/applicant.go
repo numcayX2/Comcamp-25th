@@ -106,12 +106,12 @@ func (a *Applicant) FullName() string {
 
 // PublicApplicant is the allowlisted projection behind the public applicants list
 // (GET /api/applications/public). It deliberately carries only what the registration consent
-// discloses (name, nickname, school, province) plus the status, so no query that fills it can
+// discloses (title prefix, name, school, province) plus the status, so no query that fills it can
 // ever read an identifier, contact or health column (PDPA, CLAUDE_REVAMP_HANDOFF.md 5.4).
 type PublicApplicant struct {
+	Prefix    string
 	FirstName string
 	LastName  string
-	Nickname  string
 	School    string
 	Province  string
 	Status    ApplicationStatus

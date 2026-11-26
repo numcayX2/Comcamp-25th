@@ -26,7 +26,7 @@ func NewSponsorInquiryPostgresRepo(pool *pgxpool.Pool) *SponsorInquiryPostgresRe
 	return &SponsorInquiryPostgresRepo{pool: pool}
 }
 
-const inquiryColumns = `id, name, phone, email, kind, details,
+const inquiryColumns = `id, name, phone, email, kind, details, trim_scale(amount)::text,
 	tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
 	file_path, file_mime, file_size, file_sha256, handled_at, created_at`
 
@@ -35,7 +35,7 @@ func scanInquiry(s scannable) (*domain.SponsorInquiry, error) {
 	var path, mime, hash *string
 	var size *int
 	if err := s.Scan(
-		&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details,
+		&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details, &i.Amount,
 		&i.TaxID, &i.AddressLine, &i.Subdistrict, &i.District, &i.Province, &i.Postcode,
 		&path, &mime, &size, &hash, &i.HandledAt, &i.CreatedAt,
 	); err != nil {
@@ -72,13 +72,13 @@ func (r *SponsorInquiryPostgresRepo) Create(ctx context.Context, inq *domain.Spo
 	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO sponsor_inquiries (
-			name, phone, email, kind, details,
+			name, phone, email, kind, details, amount,
 			tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
 			file_path, file_mime, file_size, file_sha256
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		VALUES ($1, $2, $3, $4, $5, $6::text::numeric, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING id, created_at
-	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details,
+	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details, inq.Amount,
 		inq.TaxID, inq.AddressLine, inq.Subdistrict, inq.District, inq.Province, inq.Postcode,
 		path, mime, size, hash).Scan(&inq.ID, &inq.CreatedAt)
 	if err != nil {

@@ -46,6 +46,23 @@ func newCapturingMailer(t *testing.T) (*service.AsyncSMTPMailer, *memory.MemoryA
 	return m, audit, drain
 }
 
+func TestSponsorInquiryEmail_MoneyShowsAmount(t *testing.T) {
+	m, _, drain := newCapturingMailer(t)
+	amount := "1234567.5"
+	m.EnqueueSponsorInquiry(service.SponsorInquiryEmailData{
+		InquiryID: 7, To: "staff@example.com", Name: "ร้าน", Phone: "0812345678", Kind: "money", Amount: &amount,
+		CreatedAt: time.Date(2026, 11, 21, 3, 0, 0, 0, time.UTC),
+	})
+	sent := drain()
+	if len(sent) != 1 {
+		t.Fatalf("sent = %d", len(sent))
+	}
+	body := decodeMIMEBodies(t, sent[0].raw)
+	if !strings.Contains(body, "จำนวนเงิน: 1,234,567.50 บาท") || !strings.Contains(body, "<strong>จำนวนเงิน:</strong> 1,234,567.50 บาท") {
+		t.Fatalf("email body is missing the amount line:\n%s", body)
+	}
+}
+
 func TestSponsorInquiryEmail_RendersEscapedAndAudits(t *testing.T) {
 	m, audit, drain := newCapturingMailer(t)
 	m.EnqueueSponsorInquiry(service.SponsorInquiryEmailData{
@@ -94,6 +111,9 @@ func TestSponsorInquiryEmail_RendersEscapedAndAudits(t *testing.T) {
 	}
 	if strings.Contains(body, "<b>10</b></p>") || strings.Contains(body, "<script>alert(1)</script></p>") {
 		t.Fatal("unescaped HTML in the html part")
+	}
+	if strings.Contains(body, "จำนวนเงิน") {
+		t.Fatal("goods email must not carry an amount line")
 	}
 
 	var found bool

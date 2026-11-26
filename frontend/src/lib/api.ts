@@ -187,7 +187,7 @@ export function isReferralCode(value: string): value is ReferralCode {
 }
 
 export interface ApplicationPayload {
-  /** Title before the name (นาย, นางสาว, ...). Stored apart from fullName; never on the public list. */
+  /** Title before the name (นาย, นางสาว, ...). Stored apart from fullName; shown before the name on the public list. */
   prefix?: string;
   fullName: string;
   nickname: string;
@@ -1221,14 +1221,15 @@ export type PublicApplicantStatus = 'รอชำระเงิน' | 'ยื�
 
 /**
  * One row of GET /applications/public. This is the complete PDPA allowlist the registration
- * consent discloses (name, nickname, school, province) plus order and status. The server never
- * sends the application code, phone, email, parent, health, motivation, slip or any id, and the
- * client must not add them (CLAUDE_REVAMP_HANDOFF.md 5.4).
+ * consent discloses (title prefix, name, school, province) plus order and status. The nickname is
+ * not listed. The server never sends the application code, phone, email, parent, health,
+ * motivation, slip or any id, and the client must not add them (CLAUDE_REVAMP_HANDOFF.md 5.4).
  */
 export interface PublicApplicant {
   no: number;
+  /** นาย / นางสาว / ... ('' for applications sent before the form asked for it). */
+  prefix: string;
   fullName: string;
-  nickname: string;
   school: string;
   province: string;
   status: PublicApplicantStatus;
@@ -1243,8 +1244,8 @@ function pickPublicApplicant(raw: unknown): PublicApplicant | null {
   if (status === null || typeof r.no !== 'number') return null;
   return {
     no: r.no,
+    prefix: str(r.prefix),
     fullName: str(r.fullName),
-    nickname: str(r.nickname),
     school: str(r.school),
     province: str(r.province),
     status,
@@ -1265,9 +1266,9 @@ export function fetchPublicApplicants(): Promise<ApiResult<PublicApplicant[]>> {
       return list.map(pickPublicApplicant).filter((row): row is PublicApplicant => row !== null);
     },
     () => [
-      { no: 1, fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)', nickname: 'เกียรติ', school: 'โรงเรียนแม่โจ้วิทยาคม', province: 'เชียงใหม่', status: 'ยืนยันสิทธิ์แล้ว' },
-      { no: 2, fullName: 'สมหญิง ใจดี (Mock)', nickname: 'หญิง', school: 'โรงเรียนสันทรายวิทยาคม', province: 'เชียงใหม่', status: 'รอชำระเงิน' },
-      { no: 3, fullName: 'ปิยะ รักเรียน (Mock)', nickname: 'ปิยะ', school: 'โรงเรียนลำพูนวิทยา', province: 'ลำพูน', status: 'รอชำระเงิน' },
+      { no: 1, prefix: 'นาย', fullName: 'สมเกียรติ สุขสมบูรณ์ (Mock)', school: 'โรงเรียนแม่โจ้วิทยาคม', province: 'เชียงใหม่', status: 'ยืนยันสิทธิ์แล้ว' },
+      { no: 2, prefix: 'นางสาว', fullName: 'สมหญิง ใจดี (Mock)', school: 'โรงเรียนสันทรายวิทยาคม', province: 'เชียงใหม่', status: 'รอชำระเงิน' },
+      { no: 3, prefix: 'เด็กชาย', fullName: 'ปิยะ รักเรียน (Mock)', school: 'โรงเรียนลำพูนวิทยา', province: 'ลำพูน', status: 'รอชำระเงิน' },
     ],
   );
 }
@@ -1424,6 +1425,11 @@ export interface SponsorInquiryPayload {
   email: string;
   kind: SponsorKind;
   details: string;
+  /**
+   * Baht as a plain decimal string ("1500.50"): required when kind = money (both routes), omitted
+   * for goods. The server also accepts Thai digits and commas and stores it canonical ("1500.5").
+   */
+  amount?: string;
   /** Required when kind = money; omitted for goods. */
   taxId?: string;
   addressLine?: string;
@@ -1443,11 +1449,11 @@ export async function submitSponsorInquiry(payload: SponsorInquiryPayload): Prom
   });
 }
 
-/** Body of POST /sponsor-inquiries/upload besides the file: `kind` defaults to money server-side. */
+/** Body of POST /sponsor-inquiries/upload besides the file: `kind` defaults to money server-side, so amount is required. */
 export type SponsorFormUploadPayload = Pick<
   SponsorInquiryPayload,
   'name' | 'phone' | 'email' | 'details' | 'turnstileToken' | 'website'
->;
+> & { amount: string };
 
 /**
  * POST /sponsor-inquiries/upload — public multipart: the filled donation form (PDF/JPG/PNG/WebP
@@ -1464,6 +1470,7 @@ export async function submitSponsorFormUpload(
   form.append('phone', payload.phone);
   form.append('email', payload.email ?? '');
   form.append('details', payload.details ?? '');
+  form.append('amount', payload.amount);
   form.append('turnstileToken', payload.turnstileToken);
   form.append('website', payload.website ?? '');
   form.append('file', file, file.name);
@@ -1477,6 +1484,8 @@ export interface SponsorInquiry {
   email: string;
   kind: SponsorKind;
   details: string;
+  /** Canonical baht amount ("1500.5") for money inquiries; null for goods and older rows. */
+  amount: string | null;
   taxId: string;
   addressLine: string;
   subdistrict: string;
@@ -1562,6 +1571,7 @@ function pickInquiry(raw: unknown): SponsorInquiry | null {
     email: str(r.email),
     kind: r.kind,
     details: str(r.details),
+    amount: strOrNull(r.amount),
     taxId: str(r.taxId),
     addressLine: str(r.addressLine),
     subdistrict: str(r.subdistrict),

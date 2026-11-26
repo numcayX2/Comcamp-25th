@@ -94,7 +94,8 @@ func (h *SponsorDeskHandler) SubmitInquiry(w http.ResponseWriter, r *http.Reques
 
 // SubmitInquiryUpload handles POST /api/sponsor-inquiries/upload: the sponsor sends the filled
 // donation form instead of typing the inquiry. multipart/form-data with the basic SubmitInquiry
-// fields (name, phone, email, kind, details, turnstileToken, website) plus "file" (PDF/JPG/PNG/WebP
+// fields (name, phone, email, kind, details, amount, turnstileToken, website; amount is required
+// because an upload is a money inquiry) plus "file" (PDF/JPG/PNG/WebP
 // ≤ 8 MB); taxId and address fields are neither required nor accepted (the attached form already
 // contains them, so any extra parts are discarded); 201 {"ok":true}, nothing echoed back. Parts are
 // read in memory under hard caps, so a public upload never spills multipart temp files onto the
@@ -124,7 +125,7 @@ func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.
 	var req service.SponsorInquiryRequest
 	fields := map[string]*string{
 		"name": &req.Name, "phone": &req.Phone, "email": &req.Email, "kind": &req.Kind,
-		"details": &req.Details, "turnstileToken": &req.TurnstileToken, "website": &req.Website,
+		"details": &req.Details, "amount": &req.Amount, "turnstileToken": &req.TurnstileToken, "website": &req.Website,
 	}
 	var file []byte
 	for {

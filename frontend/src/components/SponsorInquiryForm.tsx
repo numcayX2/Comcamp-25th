@@ -21,6 +21,7 @@ import {
   SPONSOR_DETAILS_MAX,
   SPONSOR_KIND_LABELS,
   SPONSOR_NAME_MAX,
+  normalizeThaiDigits,
   sanitizeDigits,
   stripZeroWidth,
   submitSponsorFormUpload,
@@ -67,6 +68,31 @@ const FILE_VALIDATION_MESSAGE_RE = /file|pdf|image|mime|size/i;
 const KIND_OPTIONS: SponsorKind[] = ['money', 'goods'];
 const UPLOAD_HASH = '#sponsor-upload';
 const PHONE_RE = /^0\d{8,9}$/;
+const AMOUNT_RE = /^\d{1,8}(?:\.\d{1,2})?$/;
+const AMOUNT_MAX = 10_000_000;
+
+/** Mirrors the server on a normalized amount: > 0, at most 2 decimals, at most 10,000,000 baht. */
+function amountError(clean: string): ReactNode | undefined {
+  if (!clean) return 'กรุณากรอกจำนวนเงินที่ต้องการสนับสนุน';
+  if (!AMOUNT_RE.test(clean)) {
+    return (
+      <>
+        กรอกเป็นตัวเลข ทศนิยมไม่เกิน <span className="font-mono tabular-nums">2</span> ตำแหน่ง เช่น{' '}
+        <span className="font-mono tabular-nums">1500</span> หรือ <span className="font-mono tabular-nums">1500.50</span>
+      </>
+    );
+  }
+  const value = Number(clean);
+  if (!(value > 0)) return 'จำนวนเงินต้องมากกว่า 0';
+  if (value > AMOUNT_MAX) {
+    return (
+      <>
+        จำนวนเงินต้องไม่เกิน <span className="font-mono tabular-nums">10,000,000</span> บาท
+      </>
+    );
+  }
+  return undefined;
+}
 
 type Mode = 'web' | 'file';
 const MODE_LABELS: Record<Mode, string> = {
@@ -84,11 +110,10 @@ function kindHint(kind: SponsorKind, mode: Mode): string {
     : 'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ สตาฟค่ายจะส่งแบบฟอร์มบริจาคเงินให้ลงนาม หรือจะแนบแบบฟอร์มที่กรอกแล้วเองก็ได้';
 }
 
-function detailsPlaceholder(kind: SponsorKind | '', mode: Mode): string {
+function detailsPlaceholder(kind: SponsorKind | ''): string {
   if (kind === 'goods') return 'เช่น รายการสิ่งของและจำนวน';
-  if (kind === 'money' && mode === 'file') return 'เช่น ช่วงเวลาที่สะดวกให้ติดต่อกลับ';
-  if (kind === 'money') return 'เช่น จำนวนเงินโดยประมาณ หรือช่วงเวลาที่สะดวกให้ติดต่อกลับ';
-  return 'เช่น จำนวนเงินโดยประมาณ หรือรายการสิ่งของ';
+  if (kind === 'money') return 'เช่น ช่วงเวลาที่สะดวกให้ติดต่อกลับ';
+  return 'เช่น รายการสิ่งของ หรือช่วงเวลาที่สะดวกให้ติดต่อกลับ';
 }
 
 type FieldKey =
@@ -96,6 +121,7 @@ type FieldKey =
   | 'phone'
   | 'email'
   | 'kind'
+  | 'amount'
   | 'file'
   | 'taxId'
   | 'addressLine'
@@ -169,6 +195,7 @@ export default function SponsorInquiryForm() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [kind, setKind] = useState<SponsorKind | ''>('');
+  const [amount, setAmount] = useState('');
   const [taxId, setTaxId] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [subdistrict, setSubdistrict] = useState('');
@@ -206,6 +233,7 @@ export default function SponsorInquiryForm() {
   const postcodeRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   const kindRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadAnchorRef = useRef<HTMLFieldSetElement>(null);
   const uploadScrollRafRef = useRef(0);
@@ -281,6 +309,7 @@ export default function SponsorInquiryForm() {
     setPhone('');
     setEmail('');
     setKind('');
+    setAmount('');
     setTaxId('');
     setAddressLine('');
     setSubdistrict('');
@@ -333,8 +362,10 @@ export default function SponsorInquiryForm() {
       setMode('web');
       clearUploadHash();
       clearFile();
+      setAmount('');
       setErrors((prev) => ({
         ...prev,
+        amount: undefined,
         taxId: undefined,
         addressLine: undefined,
         subdistrict: undefined,
@@ -388,6 +419,7 @@ export default function SponsorInquiryForm() {
 
   function firstInvalidField(next: FieldErrors): HTMLElement | null {
     if (next.kind) return kindRef.current;
+    if (next.amount) return amountRef.current;
     if (next.file) return fileRef.current;
     if (next.name) return nameRef.current;
     if (next.phone) return phoneRef.current;
@@ -434,6 +466,12 @@ export default function SponsorInquiryForm() {
     const mailError = emailError(email);
     if (mailError) next.email = mailError;
     if (!kind) next.kind = 'กรุณาเลือกประเภทการสนับสนุน';
+    // Thai digits → ASCII; zero-width, spaces and commas dropped ("๑,๕๐๐.50" → "1500.50").
+    const cleanAmount = kind === 'money' ? normalizeThaiDigits(stripZeroWidth(amount)).replace(/[,\s]/g, '') : '';
+    if (kind === 'money') {
+      const amountProblem = amountError(cleanAmount);
+      if (amountProblem) next.amount = amountProblem;
+    }
     if (mode === 'file' && !file) {
       next.file = errors.file ?? 'กรุณาแนบไฟล์แบบฟอร์มที่กรอกแล้ว';
     }
@@ -542,7 +580,7 @@ export default function SponsorInquiryForm() {
         if (!file) return;
         setProgress(0);
         await submitSponsorFormUpload(
-          { name: cleanName, phone: digits, email: cleanEmail, details: cleanDetails, turnstileToken, website },
+          { name: cleanName, phone: digits, email: cleanEmail, details: cleanDetails, amount: cleanAmount, turnstileToken, website },
           file,
           setProgress,
         );
@@ -554,6 +592,7 @@ export default function SponsorInquiryForm() {
           email: cleanEmail,
           kind,
           details: cleanDetails,
+          ...(kind === 'money' ? { amount: cleanAmount } : {}),
           ...(needsTaxAddress
             ? {
                 taxId: cleanTaxId,
@@ -711,6 +750,48 @@ export default function SponsorInquiryForm() {
                 </p>
               )}
             </fieldset>
+
+            {kind === 'money' && (
+              <div className="sp-field sp-field--full sp-amount">
+                <label className="sp-label" htmlFor="sp-amount">
+                  <span>
+                    จำนวนเงินที่ต้องการสนับสนุน <span className="sp-req" aria-hidden="true">*</span>
+                    <span className="sr-only"> (จำเป็น)</span>
+                  </span>
+                </label>
+                <div className="sp-amount__control">
+                  <input
+                    id="sp-amount"
+                    name="amount"
+                    ref={amountRef}
+                    className="sp-input sp-input--mono"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    maxLength={20}
+                    placeholder="1,500"
+                    required
+                    disabled={busy}
+                    value={amount}
+                    onChange={(event) => {
+                      setAmount(event.target.value);
+                      clearError('amount');
+                    }}
+                    aria-invalid={errors.amount ? true : undefined}
+                    aria-describedby={`sp-amount-unit${errors.amount ? ' sp-amount-err' : ''}`}
+                  />
+                  <span id="sp-amount-unit" className="sp-amount__unit">
+                    บาท
+                  </span>
+                </div>
+                {errors.amount && (
+                  <p id="sp-amount-err" className="sp-error">
+                    <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{errors.amount}</span>
+                  </p>
+                )}
+              </div>
+            )}
 
             {kind === 'money' && (
               <fieldset className="sp-fieldset sp-method sp-field--full">
@@ -1185,7 +1266,7 @@ export default function SponsorInquiryForm() {
                 className="sp-input sp-textarea"
                 rows={5}
                 maxLength={SPONSOR_DETAILS_MAX}
-                placeholder={detailsPlaceholder(kind, mode)}
+                placeholder={detailsPlaceholder(kind)}
                 disabled={busy}
                 value={details}
                 onChange={(event) => {

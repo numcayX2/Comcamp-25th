@@ -58,14 +58,16 @@ var sponsorDocTypes = map[string]string{
 var sponsorAmountRe = regexp.MustCompile(`^[0-9]{1,8}(\.[0-9]{1,2})?$`)
 
 // SponsorInquiryRequest is the body of POST /api/sponsor-inquiries. Website is a honeypot.
-// For JSON money inquiries taxId and the five address fields are required; goods rejects them.
-// POST /api/sponsor-inquiries/upload ignores them (the attached form carries them).
+// Amount (baht, > 0, ≤ 2 decimals, ≤ 10,000,000) is required for money inquiries in both routes
+// and rejected for goods. For JSON money inquiries taxId and the five address fields are required;
+// goods rejects them. POST /api/sponsor-inquiries/upload ignores them (the attached form carries them).
 type SponsorInquiryRequest struct {
 	Name           string `json:"name"`
 	Phone          string `json:"phone"`
 	Email          string `json:"email"`
 	Kind           string `json:"kind"`
 	Details        string `json:"details"`
+	Amount         string `json:"amount"`
 	TaxID          string `json:"taxId"`
 	AddressLine    string `json:"addressLine"`
 	Subdistrict    string `json:"subdistrict"`
@@ -85,6 +87,7 @@ type SponsorInquiryEntry struct {
 	Email       string                    `json:"email"`
 	Kind        string                    `json:"kind"`
 	Details     string                    `json:"details"`
+	Amount      *string                   `json:"amount"`
 	TaxID       string                    `json:"taxId"`
 	AddressLine string                    `json:"addressLine"`
 	Subdistrict string                    `json:"subdistrict"`
@@ -107,6 +110,7 @@ type SponsorInquiryEmailData struct {
 	Email     string
 	Kind      string
 	Details   string
+	Amount    *string // canonical baht amount (money inquiries), nil otherwise
 	FileMIME  string
 	CreatedAt time.Time
 }
@@ -234,7 +238,7 @@ func (s *SponsorInquiryService) notify(ctx context.Context, inq *domain.SponsorI
 	for _, to := range emails {
 		s.notifier.EnqueueSponsorInquiry(SponsorInquiryEmailData{
 			InquiryID: inq.ID, To: to, Name: inq.Name, Phone: inq.Phone, Email: inq.Email,
-			Kind: inq.Kind, Details: inq.Details, FileMIME: fileMIME, CreatedAt: inq.CreatedAt,
+			Kind: inq.Kind, Details: inq.Details, Amount: inq.Amount, FileMIME: fileMIME, CreatedAt: inq.CreatedAt,
 		})
 	}
 }
@@ -368,6 +372,14 @@ func validateSponsorInquiry(req SponsorInquiryRequest, withFile bool) (*domain.S
 	if err != nil {
 		return nil, err
 	}
+	var amount *string
+	if kind == domain.SponsorKindGoods {
+		if strings.TrimSpace(stripZeroWidth(req.Amount)) != "" {
+			return nil, newValidationError("amount is not allowed for goods donations")
+		}
+	} else if amount, err = sponsorAmount(&req.Amount, true); err != nil {
+		return nil, err
+	}
 	details, err := sponsorMultiline("details", req.Details, 0, maxInquiryDetailsRunes)
 	if err != nil {
 		return nil, err
@@ -387,7 +399,7 @@ func validateSponsorInquiry(req SponsorInquiryRequest, withFile bool) (*domain.S
 		}
 	}
 	return &domain.SponsorInquiry{
-		Name: name, Phone: phone, Email: email, Kind: kind, Details: details,
+		Name: name, Phone: phone, Email: email, Kind: kind, Details: details, Amount: amount,
 		TaxID: tax.taxID, AddressLine: tax.addressLine, Subdistrict: tax.subdistrict,
 		District: tax.district, Province: tax.province, Postcode: tax.postcode,
 	}, nil
@@ -472,7 +484,7 @@ func validateSponsorTaxAddress(raw sponsorTaxAddress, kind string, requiredForMo
 
 func toInquiryEntry(i *domain.SponsorInquiry) SponsorInquiryEntry {
 	e := SponsorInquiryEntry{
-		ID: i.ID, Name: i.Name, Phone: i.Phone, Email: i.Email, Kind: i.Kind, Details: i.Details,
+		ID: i.ID, Name: i.Name, Phone: i.Phone, Email: i.Email, Kind: i.Kind, Details: i.Details, Amount: canonicalAmount(i.Amount),
 		TaxID: i.TaxID, AddressLine: i.AddressLine, Subdistrict: i.Subdistrict,
 		District: i.District, Province: i.Province, Postcode: i.Postcode,
 		Handled: i.HandledAt != nil, HandledAt: i.HandledAt, CreatedAt: i.CreatedAt,

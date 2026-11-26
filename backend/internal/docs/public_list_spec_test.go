@@ -28,7 +28,7 @@ func TestOpenAPISpec_PublicApplicantsList(t *testing.T) {
 		props = append(props, k)
 	}
 	sort.Strings(props)
-	if got, want := strings.Join(props, ","), "fullName,nickname,no,province,school,status"; got != want {
+	if got, want := strings.Join(props, ","), "fullName,no,prefix,province,school,status"; got != want {
 		t.Fatalf("PublicApplicant properties = %s, want exactly %s", got, want)
 	}
 }

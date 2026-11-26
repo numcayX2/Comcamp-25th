@@ -16,8 +16,9 @@ const (
 
 // SponsorInquiry is one "แจ้งความประสงค์สนับสนุน" submission from the public /sponsor page.
 // File is the filled donation form the sponsor attached instead of typing (nil = none).
-// TaxID and the five structured address fields are populated for typed money inquiries (empty for
-// goods inquiries and uploaded forms).
+// Amount is the declared baht amount as a canonical decimal string (required for money inquiries
+// since migration 000018; nil for goods and older rows). TaxID and the five structured address
+// fields are populated for typed money inquiries (empty for goods inquiries and uploaded forms).
 type SponsorInquiry struct {
 	ID          int64
 	Name        string
@@ -25,6 +26,7 @@ type SponsorInquiry struct {
 	Email       string
 	Kind        string
 	Details     string
+	Amount      *string
 	TaxID       string
 	AddressLine string
 	Subdistrict string

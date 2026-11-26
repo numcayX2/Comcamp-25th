@@ -794,7 +794,7 @@
       "get": {
         "tags": ["Applications"],
         "summary": "Public Applicants List",
-        "description": "รายชื่อผู้สมัครสาธารณะสำหรับหน้า /applicants เฉพาะใบสมัครที่ยังไม่ถูกลบและมีสถานะ PASSED หรือ CONFIRMED เรียงตามเวลาที่สมัคร (no = ลำดับ เริ่มที่ 1) แต่ละแถวมีเฉพาะ no, fullName, nickname, school, province และ status (ข้อความภาษาไทย: รอชำระเงิน = PASSED, ยืนยันสิทธิ์แล้ว = CONFIRMED) ตามที่แจ้งไว้ในข้อความยินยอม PDPA ตอนสมัคร ไม่มีรหัสใบสมัคร เบอร์โทร อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ แรงบันดาลใจ สลิป หรือ id ใดๆ ก่อนเปิดรับสมัครจะได้รายการว่าง ฝั่งเซิร์ฟเวอร์ cache ผลไว้สูงสุด 5 วินาที (singleflight) และเมื่อ cache miss จะคืนที่นั่งของผู้สมัครที่ค้างชำระเกินกำหนดก่อนอ่านรายการ (lazy expiry เดียวกับ /status) และล้าง cache ทันทีเมื่อมีการสมัคร เปลี่ยนสถานะ อนุมัติ/ปฏิเสธสลิป แก้ไขข้อมูล ลบ ยกเลิก หรือตัดสิทธิ์อัตโนมัติ ตอบ Cache-Control: no-store",
+        "description": "รายชื่อผู้สมัครสาธารณะสำหรับหน้า /applicants เฉพาะใบสมัครที่ยังไม่ถูกลบและมีสถานะ PASSED หรือ CONFIRMED เรียงตามเวลาที่สมัคร (no = ลำดับ เริ่มที่ 1) แต่ละแถวมีเฉพาะ no, prefix (คำนำหน้า), fullName (ชื่อ–นามสกุล), school, province และ status (ไม่มีชื่อเล่น) (ข้อความภาษาไทย: รอชำระเงิน = PASSED, ยืนยันสิทธิ์แล้ว = CONFIRMED) ตามที่แจ้งไว้ในข้อความยินยอม PDPA ตอนสมัคร ไม่มีรหัสใบสมัคร เบอร์โทร อีเมล ข้อมูลผู้ปกครอง ข้อมูลสุขภาพ แรงบันดาลใจ สลิป หรือ id ใดๆ ก่อนเปิดรับสมัครจะได้รายการว่าง ฝั่งเซิร์ฟเวอร์ cache ผลไว้สูงสุด 5 วินาที (singleflight) และเมื่อ cache miss จะคืนที่นั่งของผู้สมัครที่ค้างชำระเกินกำหนดก่อนอ่านรายการ (lazy expiry เดียวกับ /status) และล้าง cache ทันทีเมื่อมีการสมัคร เปลี่ยนสถานะ อนุมัติ/ปฏิเสธสลิป แก้ไขข้อมูล ลบ ยกเลิก หรือตัดสิทธิ์อัตโนมัติ ตอบ Cache-Control: no-store",
         "responses": {
           "200": {
             "description": "รายชื่อผู้สมัคร (อาจเป็นรายการว่าง)",
@@ -803,8 +803,8 @@
                 "schema": { "$ref": "#/components/schemas/PublicApplicantsResponse" },
                 "example": {
                   "applicants": [
-                    { "no": 1, "fullName": "สมชาย ใจดี", "nickname": "ชาย", "school": "โรงเรียนแม่โจ้วิทยาคม", "province": "เชียงใหม่", "status": "ยืนยันสิทธิ์แล้ว" },
-                    { "no": 2, "fullName": "สมหญิง รักเรียน", "nickname": "หญิง", "school": "โรงเรียนสันทรายวิทยาคม", "province": "เชียงใหม่", "status": "รอชำระเงิน" }
+                    { "no": 1, "prefix": "นาย", "fullName": "สมชาย ใจดี", "school": "โรงเรียนแม่โจ้วิทยาคม", "province": "เชียงใหม่", "status": "ยืนยันสิทธิ์แล้ว" },
+                    { "no": 2, "prefix": "นางสาว", "fullName": "สมหญิง รักเรียน", "school": "โรงเรียนสันทรายวิทยาคม", "province": "เชียงใหม่", "status": "รอชำระเงิน" }
                   ]
                 }
               }
@@ -1005,7 +1005,7 @@
       "post": {
         "tags": ["Sponsors"],
         "summary": "Submit Sponsor Inquiry",
-        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจข้อมูลก่อน Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล เมื่อ kind = money บังคับกรอก taxId (13 หลัก checksum ถูกต้อง) และที่อยู่ครบ 5 ช่อง (addressLine, subdistrict, district, province, postcode) เพื่อใช้ออกเอกสารลดหย่อนภาษี เมื่อ kind = goods หากส่งช่องเหล่านี้ไม่ว่างจะตอบ 400 VALIDATION_ERROR ค่าเหล่านี้ไม่ส่งในอีเมลแจ้งเตือนและไม่บันทึกค่าลง audit_logs",
+        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจข้อมูลก่อน Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล เมื่อ kind = money บังคับกรอก amount (จำนวนเงินบาท มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 รับเลขไทยและจุลภาค) taxId (13 หลัก checksum ถูกต้อง) และที่อยู่ครบ 5 ช่อง (addressLine, subdistrict, district, province, postcode) เพื่อใช้ออกเอกสารลดหย่อนภาษี เมื่อ kind = goods หากส่งช่องเหล่านี้ (รวม amount) ไม่ว่างจะตอบ 400 VALIDATION_ERROR อีเมลแจ้งเตือนแสดงจำนวนเงินแต่ไม่ส่ง taxId/ที่อยู่ และไม่บันทึกค่าเหล่านี้ (รวม amount) ลง audit_logs",
         "requestBody": {
           "required": true,
           "content": {
@@ -1017,6 +1017,7 @@
                 "email": "",
                 "kind": "money",
                 "details": "",
+                "amount": "1500",
                 "taxId": "1101700203450",
                 "addressLine": "63 หมู่ 4 ถ.เชียงใหม่-พร้าว",
                 "subdistrict": "หนองหาร",
@@ -1057,20 +1058,21 @@
       "post": {
         "tags": ["Sponsors"],
         "summary": "Submit Sponsor Inquiry With Filled Form",
-        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ เป็น multipart/form-data มีช่องพื้นฐาน (name, phone, email, kind, details, turnstileToken, website) และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money ไม่บังคับและไม่รับ taxId/ที่อยู่ (ในแบบฟอร์มมีอยู่แล้ว หากส่งมาจะละเว้น) ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
+        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ เป็น multipart/form-data มีช่องพื้นฐาน (name, phone, email, kind, details, amount, turnstileToken, website) และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money จึงบังคับ amount (กติกาเดียวกับ POST /sponsor-inquiries) ไม่บังคับและไม่รับ taxId/ที่อยู่ (ในแบบฟอร์มมีอยู่แล้ว หากส่งมาจะละเว้น) ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ (พร้อมจำนวนเงิน) ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
         "requestBody": {
           "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["name", "phone", "file"],
+                "required": ["name", "phone", "amount", "file"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1, "maxLength": 120 },
                   "phone": { "type": "string", "description": "9–10 หลักขึ้นต้นด้วย 0 รวมเบอร์บ้าน/สำนักงาน (รับเลขไทย ขีด และช่องว่าง)" },
                   "email": { "type": "string", "maxLength": 150 },
                   "kind": { "type": "string", "enum": ["money"], "description": "ว่าง = money; แบบฟอร์มของคณะใช้กับการบริจาคเงินเท่านั้น (สิ่งของลดหย่อนภาษีไม่ได้ จึงไม่มีแบบฟอร์ม) — goods → 400 VALIDATION_ERROR" },
                   "details": { "type": "string", "maxLength": 500 },
+                  "amount": { "type": "string", "example": "1500", "description": "จำนวนเงินบาท (บังคับ) มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 รับเลขไทยและจุลภาค" },
                   "turnstileToken": { "type": "string" },
                   "website": { "type": "string", "description": "honeypot ต้องว่าง" },
                   "file": { "type": "string", "format": "binary", "description": "แบบฟอร์มที่กรอกแล้ว 1 ไฟล์" }
@@ -1831,11 +1833,11 @@
         "type": "object",
         "description": "หนึ่งแถวของรายชื่อผู้สมัครสาธารณะ มีเฉพาะฟิลด์เหล่านี้เท่านั้น (PDPA allowlist)",
         "additionalProperties": false,
-        "required": ["no", "fullName", "nickname", "school", "province", "status"],
+        "required": ["no", "prefix", "fullName", "school", "province", "status"],
         "properties": {
           "no": { "type": "integer", "minimum": 1, "description": "ลำดับตามเวลาที่สมัคร (เริ่มที่ 1)", "example": 1 },
-          "fullName": { "type": "string", "description": "ชื่อ–นามสกุล (ไม่มีคำนำหน้า)", "example": "สมชาย ใจดี" },
-          "nickname": { "type": "string", "example": "ชาย" },
+          "prefix": { "type": "string", "description": "คำนำหน้าชื่อ (นาย, นางสาว, นาง, เด็กชาย, เด็กหญิง) หรือ \"\" สำหรับใบสมัครจาก client รุ่นเก่า แสดงต่อหน้าชื่อ", "example": "นาย" },
+          "fullName": { "type": "string", "description": "ชื่อ–นามสกุล (ไม่รวมคำนำหน้า)", "example": "สมชาย ใจดี" },
           "school": { "type": "string", "example": "โรงเรียนแม่โจ้วิทยาคม" },
           "province": { "type": "string", "example": "เชียงใหม่" },
           "status": { "type": "string", "enum": ["รอชำระเงิน", "ยืนยันสิทธิ์แล้ว"], "example": "รอชำระเงิน" }
@@ -1916,6 +1918,11 @@
             "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
           },
           "details": { "type": "string", "maxLength": 500 },
+          "amount": {
+            "type": "string",
+            "example": "1500",
+            "description": "จำนวนเงินบาทที่ต้องการสนับสนุน มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 (รับเลขไทย จุลภาค และช่องว่าง เก็บเป็นรูปแบบมาตรฐาน เช่น \"1500.5\") บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods"
+          },
           "taxId": {
             "type": "string",
             "description": "เลขประจำตัวประชาชน / เลขประจำตัวผู้เสียภาษี 13 หลักหลัง normalize พร้อมตรวจ checksum (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
@@ -1958,6 +1965,7 @@
           "email",
           "kind",
           "details",
+          "amount",
           "taxId",
           "addressLine",
           "subdistrict",
@@ -1980,6 +1988,7 @@
             "description": "money = เงิน (โอน/เงินสด), goods = สิ่งของ"
           },
           "details": { "type": "string" },
+          "amount": { "type": "string", "nullable": true, "example": "1500.5", "description": "จำนวนเงินบาทรูปแบบมาตรฐาน (ตัดศูนย์ท้าย) null สำหรับสิ่งของหรือคำขอก่อน migration 000018" },
           "taxId": { "type": "string", "description": "13 หลัก หรือ \"\" (สิ่งของ/แบบฟอร์มแนบ)" },
           "addressLine": { "type": "string" },
           "subdistrict": { "type": "string" },

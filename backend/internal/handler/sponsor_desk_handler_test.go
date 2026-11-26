@@ -138,12 +138,15 @@ func expectCode(t *testing.T, rec *httptest.ResponseRecorder, status int, code s
 
 const validMoneyTaxAddrJSON = `"taxId":"๑-๑๐๑๗-๐๐๒๐๓-๔๕-๐\u200b","addressLine":" 63 หมู่ 4 ถ.เชียงใหม่-พร้าว ","subdistrict":"หนองหาร","district":"สันทราย","province":"จ. เชียงใหม่","postcode":"๕๐๒๙๐"`
 
+// validMoneyJSON is a complete valid money inquiry tail: amount plus tax ID and address.
+const validMoneyJSON = `"amount":"1500",` + validMoneyTaxAddrJSON
+
 func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	token := app.login(t)
 	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com","boss@example.com"]}`), http.StatusOK, "")
 
-	rec := app.postInquiry(t, `{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ",`+validMoneyTaxAddrJSON+`}`)
+	rec := app.postInquiry(t, `{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ","amount":"๑,๕๐๐.50",`+validMoneyTaxAddrJSON+`}`)
 	expectCode(t, rec, http.StatusCreated, "")
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
 		t.Fatalf("body = %q, want {\"ok\":true}", got)
@@ -156,7 +159,7 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	got := list[0]
 	if got.Name != "ร้านตัวอย่าง" || got.Phone != "0812345678" || got.Email != "shop@example.com" || got.Details != "ติดต่อช่วงเย็น\nขอบคุณ" ||
 		got.TaxID != "1101700203450" || got.AddressLine != "63 หมู่ 4 ถ.เชียงใหม่-พร้าว" || got.Subdistrict != "หนองหาร" ||
-		got.District != "สันทราย" || got.Province != "เชียงใหม่" || got.Postcode != "50290" {
+		got.District != "สันทราย" || got.Province != "เชียงใหม่" || got.Postcode != "50290" || got.Amount == nil || *got.Amount != "1500.5" {
 		t.Fatalf("stored inquiry not normalised: %+v", got)
 	}
 	if app.notifier.count() != 2 {
@@ -171,6 +174,13 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 			if strings.Contains(s, secret) {
 				t.Fatalf("notification payload leaked %q: %s", secret, s)
 			}
+		}
+	}
+	app.notifier.mu.Unlock()
+	app.notifier.mu.Lock()
+	for _, n := range app.notifier.sent {
+		if n.Amount == nil || *n.Amount != "1500.5" {
+			t.Fatalf("notification amount = %v, want 1500.5", n.Amount)
 		}
 	}
 	app.notifier.mu.Unlock()
@@ -198,7 +208,8 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 		res.Inquiries[0].Subdistrict != "หนองหาร" ||
 		res.Inquiries[0].District != "สันทราย" ||
 		res.Inquiries[0].Province != "เชียงใหม่" ||
-		res.Inquiries[0].Postcode != "50290" {
+		res.Inquiries[0].Postcode != "50290" ||
+		res.Inquiries[0].Amount == nil || *res.Inquiries[0].Amount != "1500.5" {
 		t.Fatalf("admin list = %+v", res.Inquiries)
 	}
 	id := res.Inquiries[0].ID
@@ -247,6 +258,13 @@ func TestSponsorInquiry_ValidationFailures(t *testing.T) {
 		"goods with dist":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","district":"สันทราย"}`,
 		"goods with prov":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","province":"เชียงใหม่"}`,
 		"goods with post":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","postcode":"50290"}`,
+		"money no amount":    `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyTaxAddrJSON + `}`,
+		"money amount 0":     `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"0",` + validMoneyTaxAddrJSON + `}`,
+		"money amount neg":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"-5",` + validMoneyTaxAddrJSON + `}`,
+		"money amount 3dp":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1.234",` + validMoneyTaxAddrJSON + `}`,
+		"money amount abc":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"abc",` + validMoneyTaxAddrJSON + `}`,
+		"money amount cap":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"10000000.01",` + validMoneyTaxAddrJSON + `}`,
+		"goods with amount":  `{"name":"ร้าน","phone":"0812345678","kind":"goods","amount":"500"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			expectCode(t, app.postInquiry(t, body), http.StatusBadRequest, response.CodeValidation)
@@ -286,17 +304,17 @@ func TestSponsorInquiry_TurnstileFailureIs403(t *testing.T) {
 	app := setupSponsorDeskApp(t, captcha)
 	// Invalid taxId fails validation before Turnstile, so the single-use token is not burnt.
 	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290","turnstileToken":"good-1"}`), http.StatusBadRequest, response.CodeValidation)
-	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyTaxAddrJSON+`,"turnstileToken":"bad"}`)
+	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"bad"}`)
 	expectCode(t, rec, http.StatusForbidden, response.CodeCaptchaFailed)
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatal("inquiry stored despite captcha failure")
 	}
-	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyTaxAddrJSON+`,"turnstileToken":"good-1"}`), http.StatusCreated, "")
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"good-1"}`), http.StatusCreated, "")
 }
 
 func TestSponsorInquiry_RateLimited(t *testing.T) {
 	app := setupSponsorDeskAppWith(t, nil, server.DefaultRateLimits())
-	body := `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyTaxAddrJSON + `}`
+	body := `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyJSON + `}`
 	for range server.SponsorInquiryRatePer10Min {
 		expectCode(t, app.postInquiry(t, body), http.StatusCreated, "")
 	}
@@ -307,7 +325,7 @@ func TestSponsorInquiry_RateLimited(t *testing.T) {
 	}
 	// Sending the filled form instead shares the same per-IP bucket.
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
-	expectCode(t, app.postInquiryUpload(t, map[string]string{"name": "ร้าน", "phone": "0812345678"}, "form.pdf", pdf), http.StatusTooManyRequests, response.CodeRateLimited)
+	expectCode(t, app.postInquiryUpload(t, map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1200"}, "form.pdf", pdf), http.StatusTooManyRequests, response.CodeRateLimited)
 }
 
 func TestSponsorDesk_AdminRoutesRequireToken(t *testing.T) {
@@ -612,7 +630,7 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	pdf := []byte("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
 	// Upload route neither requires nor accepts taxId/address fields (even invalid values sent alongside are ignored).
 	rec := app.postInquiryUpload(t, map[string]string{
-		"name": " ร้าน ค ", "phone": "081-234-5678",
+		"name": " ร้าน ค ", "phone": "081-234-5678", "amount": "๑,๒๐๐",
 		"taxId": "not-a-tax-id", "addressLine": "should be ignored", "province": "ดาวอังคาร", "postcode": "abc",
 	}, "form.pdf", pdf)
 	expectCode(t, rec, http.StatusCreated, "")
@@ -641,7 +659,8 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	}
 	if withFile.Kind != "money" || withFile.Phone != "0812345678" || withFile.File == nil ||
 		withFile.File.MIME != "application/pdf" || withFile.File.Size != len(pdf) ||
-		withFile.TaxID != "" || withFile.AddressLine != "" || withFile.Province != "" || withFile.Postcode != "" {
+		withFile.TaxID != "" || withFile.AddressLine != "" || withFile.Province != "" || withFile.Postcode != "" ||
+		withFile.Amount == nil || *withFile.Amount != "1200" || typed.Amount != nil {
 		t.Fatalf("uploaded inquiry = %+v (file %+v)", withFile, withFile.File)
 	}
 	if typed.File != nil {
@@ -689,7 +708,7 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 
 func TestSponsorInquiryUpload_RejectsWithoutLeavingFiles(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
-	ok := map[string]string{"name": "ร้าน ค", "phone": "0812345678"}
+	ok := map[string]string{"name": "ร้าน ค", "phone": "0812345678", "amount": "1200"}
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
 
 	for name, tc := range map[string]struct {
@@ -707,6 +726,8 @@ func TestSponsorInquiryUpload_RejectsWithoutLeavingFiles(t *testing.T) {
 		"bad phone":  {map[string]string{"name": "ร้าน", "phone": "12345"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"bad kind":   {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "alcohol"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"goods kind": {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "goods"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"no amount":  {map[string]string{"name": "ร้าน", "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
+		"bad amount": {map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1.234"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"long field": {map[string]string{"name": strings.Repeat("ก", 2000), "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
 		"too large":  {ok, "big.pdf", append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("a"), service.MaxSponsorDocBytes)...), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
 		"huge image": {ok, "huge.webp", webpVP8XHeader(10001, 10), http.StatusBadRequest, response.CodeInvalidImageDims},
@@ -749,7 +770,7 @@ func TestSponsorInquiryUpload_TurnstileFailureKeepsNoFile(t *testing.T) {
 	captcha := &cloudflareLike{used: map[string]bool{}}
 	app := setupSponsorDeskApp(t, captcha)
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
-	fields := map[string]string{"name": "ร้าน", "phone": "0812345678", "turnstileToken": "bad"}
+	fields := map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1200", "turnstileToken": "bad"}
 	expectCode(t, app.postInquiryUpload(t, fields, "form.pdf", pdf), http.StatusForbidden, response.CodeCaptchaFailed)
 	if files := app.docFiles(t); len(files) != 0 {
 		t.Fatalf("captcha failure left a file: %v", files)

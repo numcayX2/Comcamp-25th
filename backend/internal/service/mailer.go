@@ -358,6 +358,26 @@ var sponsorKindLabels = map[string]string{
 	"goods": "สิ่งของ",
 }
 
+// formatBahtAmount renders a canonical decimal amount ("1500.5") with thousands separators and two
+// decimals when it has a fraction ("1,500.50"); whole amounts stay without decimals ("1,500").
+func formatBahtAmount(canonical string) string {
+	intPart, frac, hasFrac := strings.Cut(canonical, ".")
+	var b strings.Builder
+	for i, r := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	if hasFrac {
+		if len(frac) == 1 {
+			frac += "0"
+		}
+		b.WriteString("." + frac)
+	}
+	return b.String()
+}
+
 // EnqueueSponsorInquiry formats and queues one staff notification about a new sponsor inquiry.
 // Beyond SponsorInquiryEmailsPerHour per hour the email is skipped (the inquiry row is kept).
 func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
@@ -391,10 +411,14 @@ func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
 	case data.FileMIME != "":
 		file = "แบบฟอร์มบริจาคที่กรอกแล้ว (รูปภาพ) เปิดดูได้ในหน้าแอดมิน"
 	}
+	amount := ""
+	if data.Amount != nil {
+		amount = formatBahtAmount(*data.Amount) + " บาท"
+	}
 	view := struct {
-		Name, Phone, Email, Kind, Details, File, Time, AdminURL string
+		Name, Phone, Email, Kind, Amount, Details, File, Time, AdminURL string
 	}{
-		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Details: details, File: file,
+		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Amount: amount, Details: details, File: file,
 		Time: formatBangkokThaiDateTime(createdAt), AdminURL: m.adminURL,
 	}
 	subject := "[ComCamp #25] มีผู้สนใจสนับสนุนค่าย: " + truncateRunes(stripCRLF(data.Name), 60)
@@ -862,7 +886,8 @@ var sponsorInquiryTextTmpl = texttmpl.Must(texttmpl.New("sponsorText").Parse(`�
 เบอร์โทร: {{.Phone}}
 อีเมล: {{.Email}}
 ประเภท: {{.Kind}}
-รายละเอียด: {{.Details}}
+{{if .Amount}}จำนวนเงิน: {{.Amount}}
+{{end}}รายละเอียด: {{.Details}}
 ไฟล์แนบ: {{.File}}
 เวลา: {{.Time}}
 
@@ -877,6 +902,7 @@ var sponsorInquiryHTMLTmpl = htmltmpl.Must(htmltmpl.New("sponsorHTML").Parse(`<!
   <p style="margin:0 0 6px;"><strong>เบอร์โทร:</strong> {{.Phone}}</p>
   <p style="margin:0 0 6px;"><strong>อีเมล:</strong> {{.Email}}</p>
   <p style="margin:0 0 6px;"><strong>ประเภท:</strong> {{.Kind}}</p>
+  {{if .Amount}}<p style="margin:0 0 6px;"><strong>จำนวนเงิน:</strong> {{.Amount}}</p>{{end}}
   <p style="margin:0 0 6px;white-space:pre-line;"><strong>รายละเอียด:</strong> {{.Details}}</p>
   <p style="margin:0 0 6px;"><strong>ไฟล์แนบ:</strong> {{.File}}</p>
   <p style="margin:0;"><strong>เวลา:</strong> {{.Time}}</p>

@@ -12,7 +12,7 @@ import (
 // motivation columns, so a later change to the Go projection cannot leak them by accident.
 // id appears only in ORDER BY as a stable tiebreak and is never returned.
 const listPublicSQL = `
-	SELECT first_name, last_name, nickname, school, province, status
+	SELECT prefix, first_name, last_name, school, province, status
 	FROM applicants
 	WHERE deleted_at IS NULL AND status IN ('PASSED', 'CONFIRMED')
 	ORDER BY created_at ASC, id ASC
@@ -28,7 +28,7 @@ func (r *ApplicantPostgresRepo) ListPublic(ctx context.Context) ([]domain.Public
 	list := make([]domain.PublicApplicant, 0)
 	for rows.Next() {
 		var p domain.PublicApplicant
-		if err := rows.Scan(&p.FirstName, &p.LastName, &p.Nickname, &p.School, &p.Province, &p.Status); err != nil {
+		if err := rows.Scan(&p.Prefix, &p.FirstName, &p.LastName, &p.School, &p.Province, &p.Status); err != nil {
 			return nil, err
 		}
 		list = append(list, p)
