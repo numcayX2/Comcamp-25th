@@ -819,6 +819,27 @@
 
 /* ── 03 / 04 · Parent letter, LINE ───────────────────────────────────────── */
 
+/* LINE tile in LINE green (owner request 2026-11-26), the one brand colour on /status. LINE's
+   #06C755 is hsl(145 94% 40%); the owner asked for half its saturation: hsl(145 47% 40%) = #36975E,
+   the same in both themes. Only ink is readable on it (#121316 = 5.07:1; white 3.67:1), so the tile
+   pins its own inks, hairlines, dark button and focus ring (tech blue is 1.52:1 on this green). */
+.sd-line {
+  --sd-line-green: #36975E;
+  --color-ink: #121316;
+  --color-ink-muted: #121316;
+  --color-ink-subtle: #121316;
+  --color-border: rgba(18, 19, 22, 0.24);
+  --color-border-subtle: rgba(18, 19, 22, 0.24);
+  --color-btn-dark: #121316;
+  --color-btn-dark-text: #F9F8F4;
+  background: var(--sd-line-green);
+}
+.sd-line .sd-badge {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(18, 19, 22, 0.4);
+}
+.sd-line .sd-btn:focus-visible { outline-color: #121316; }
+
 .sd-qr {
   display: flex;
   flex-direction: column;
