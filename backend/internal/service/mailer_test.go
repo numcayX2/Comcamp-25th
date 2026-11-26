@@ -140,6 +140,7 @@ func TestAsyncMailer_RegistrationStageAndReplay(t *testing.T) {
 		"เรือนพักสมาคมศิษย์เก่าแม่โจ้",
 		"080-993-8214",
 		"063-784-4515",
+		"https://line.me/ti/g2/", // LINE is open before paying (owner ruling 2026-11-26)
 	} {
 		if !strings.Contains(decoded, want) {
 			t.Errorf("registration email missing %q", want)

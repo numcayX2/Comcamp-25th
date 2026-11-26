@@ -277,6 +277,7 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		StatusURL     string
 		FBPageURL     string
 		StaffContact  string
+		LineURL       string
 	}{
 		ApplicationNo: stripCRLF(data.ApplicationNo),
 		FullName:      stripCRLF(data.FullName),
@@ -289,6 +290,8 @@ func (m *AsyncSMTPMailer) EnqueueRegistration(data RegistrationEmailData) {
 		StatusURL:     m.statusURL + "?q=" + urlQueryEscape(data.ApplicationNo),
 		FBPageURL:     campFBPageURL,
 		StaffContact:  campStaffContact,
+		// LINE is open to every seat holder, paid or not (owner ruling 2026-11-26).
+		LineURL: campLineOpenChatURL,
 	}
 
 	subject := fmt.Sprintf("[ComCamp #25] แจ้งรับใบสมัคร %s และขั้นตอนการชำระเงินภายใน 5 วัน", view.ApplicationNo)
@@ -816,7 +819,7 @@ var regTextTmpl = texttmpl.Must(texttmpl.New("regText").Parse(`สวัสด�
 - ก่อนโอน ให้ผู้ปกครองอ่านและลงนามใบขออนุญาตผู้ปกครอง ดาวน์โหลดได้ที่หน้าตรวจสอบสถานะ (ค้นหาด้วยรหัสใบสมัคร) แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย
 
 อัปโหลดสลิปและตรวจสอบสถานะได้ที่: {{.StatusURL}}
-(หลังส่งสลิปบนหน้าเว็บ จะได้รับ QR Code และปุ่มเข้ากลุ่ม LINE OpenChat ทันที)
+เข้ากลุ่ม LINE OpenChat ของค่ายได้เลย ไม่ต้องรอโอนเงิน (พี่ค่ายแจ้งข่าวสารในกลุ่มนี้): {{.LineURL}}
 
 ติดต่อสอบถาม: {{.FBPageURL}}
 โทรพี่ค่าย: {{.StaffContact}}
@@ -838,7 +841,8 @@ var regHTMLTmpl = htmltmpl.Must(htmltmpl.New("regHTML").Parse(`<!DOCTYPE html>
   <p style="margin:0;"><strong>ใบขออนุญาตผู้ปกครอง:</strong> ก่อนโอน ให้ผู้ปกครองอ่านและลงนาม ดาวน์โหลดได้ที่<a href="{{.StatusURL}}">หน้าตรวจสอบสถานะ</a> (ค้นหาด้วยรหัสใบสมัคร) แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย</p>
 </div>
 <p><a href="{{.StatusURL}}" style="display:inline-block;padding:10px 20px;border-radius:9999px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">ไปหน้าตรวจสอบสถานะและแนบสลิป</a></p>
-<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้ และหลังส่งสลิปบนเว็บจะมี QR Code สำหรับเข้ากลุ่ม LINE OpenChat แสดงให้ทันที<br/>อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>
+<p>เข้ากลุ่ม LINE OpenChat ของค่ายได้เลย ไม่ต้องรอโอนเงิน (พี่ค่ายแจ้งข่าวสารในกลุ่มนี้): <a href="{{.LineURL}}">เข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25</a></p>
+<p style="font-size:0.9em;color:#4a4d55;">สามารถแนบสลิปบนหน้าเว็บไซต์ได้ทันทีโดยไม่ต้องรออีเมลนี้<br/>อาจารย์ผู้รับผิดชอบโครงการ: ผศ.ปวีณ เขื่อนแก้ว · สอบถามเพิ่มเติม: <a href="{{.FBPageURL}}">เพจ Facebook ComCamp MJU</a> · โทรพี่ค่าย: <a href="tel:0809938214">080-993-8214</a> นายบูรพา มหัทธีรนางกูร (พูล) / <a href="tel:0637844515">063-784-4515</a> นางสาวธมล นวลหมวก (แอมมี่)</p>
 </body></html>`))
 
 var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสดีน้อง {{.Nickname}} ({{.FullName}})
@@ -852,7 +856,7 @@ var confTextTmpl = texttmpl.Must(texttmpl.New("confText").Parse(`สวัสด
 - ที่พัก: {{.DormName}}
 - แผนที่ที่พัก (Google Maps): {{.DormMapsURL}}
 - ไซส์เสื้อที่บันทึกไว้: {{.ShirtSize}}
-- เข้าร่วมกลุ่ม LINE OpenChat สำหรับผู้ยืนยันสิทธิ์: {{.LineURL}}
+- กลุ่ม LINE OpenChat ของค่าย (ถ้ายังไม่ได้เข้า): {{.LineURL}}
 
 สิ่งที่ต้องเตรียมมาค่าย:
 1. เอกสารและยาประจำตัว: บัตรประจำตัว (บัตรประชาชน/บัตรชมพู) หรือบัตรนักเรียน, ยาประจำตัว และใบขออนุญาตผู้ปกครองตัวจริงที่ลงนามแล้ว (ดาวน์โหลดได้ที่หน้าตรวจสอบสถานะ ส่งในวันลงทะเบียนเข้าค่าย)

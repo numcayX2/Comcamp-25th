@@ -5,9 +5,9 @@
  * stretch to the row (their last zone is pinned to the bottom). DOM order = reading order = Tab
  * order: placement is CSS grid areas per layout, never CSS `order`.
  *
- *   task    seat held, no slip waiting: status, pay & send slip (big), parent letter, LINE (locked),
+ *   task    seat held, no slip waiting: status, pay & send slip (big), parent letter, LINE,
  *           packing list, camp day, record, staff
- *   calm    slip sent or approved: the same tiles, payment shrinks to a receipt, LINE opens
+ *   calm    slip sent or approved: the same tiles, payment shrinks to a receipt
  *   closed  no seat (forfeited, rejected, refunded...): status, record, staff
  *
  * Motion is GSAP and enhance-only: CSS never hides anything, every tween clears its props, and with
@@ -16,7 +16,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { gsap } from 'gsap';
 import { Flip } from 'gsap/Flip';
-import { ArrowUpRight, Check, Copy, Download, Lock, MapPin, Phone, TriangleAlert } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, Download, MapPin, Phone, TriangleAlert } from 'lucide-react';
 import { hasSlip, type ApiSource, type Application, type SlipStatus } from '../../lib/api';
 import {
   CAMP_BRING_LIST,
@@ -537,7 +537,6 @@ export function StatusDashboard({
   const moneyHeld = slip === 'PENDING' || slip === 'APPROVED';
   const layout: DashboardLayout = !payFlow ? 'closed' : moneyHeld ? 'calm' : 'task';
   const task = layout === 'task';
-  const lineOpen = moneyHeld || app.status === 'CONFIRMED';
   const showConsent = payFlow && DOCS_READY;
 
   const deadline = app.status === 'PASSED' && !moneyHeld ? deadlineReadout(app, nowMs, slip === 'REJECTED') : null;
@@ -838,37 +837,29 @@ export function StatusDashboard({
               </section>
             )}
 
+            {/* Open to every seat holder, paid or not (owner ruling 2026-11-26): the group is where
+                staff reach students who have not transferred yet. */}
             <section id="line-openchat" className="sd-tile sd-line" aria-labelledby="sd-line-title">
               <TileHead num={num('line')} id="sd-line-title" title="กลุ่ม LINE ค่าย" aside={<SelfCheck />} />
               <div className="sd-zone sd-zone--grow">
-                {lineOpen ? (
-                  <div className="sd-qr">
-                    <img
-                      className="sd-qr__img"
-                      src={LINE_OPENCHAT_QR_SRC}
-                      alt="QR Code สำหรับเข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25"
-                      width={124}
-                      height={124}
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="sd-qr__detail">
-                      <p className="sd-text">เข้ากลุ่มเพื่อรับข่าวสาร ประกาศสำคัญ และนัดหมายวันลงทะเบียนจากพี่ค่าย</p>
-                      <a className="sd-btn sd-btn--dark" href={LINE_OPENCHAT_URL} target="_blank" rel="noopener noreferrer">
-                        <span>เข้ากลุ่ม LINE OpenChat</span>
-                        <ArrowUpRight aria-hidden="true" size={16} strokeWidth={1.5} />
-                      </a>
-                    </div>
+                <div className="sd-qr">
+                  <img
+                    className="sd-qr__img"
+                    src={LINE_OPENCHAT_QR_SRC}
+                    alt="QR Code สำหรับเข้ากลุ่ม LINE OpenChat ค่าย ComCamp #25"
+                    width={124}
+                    height={124}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="sd-qr__detail">
+                    <p className="sd-text">เข้ากลุ่มได้เลยตั้งแต่ตอนนี้ เพื่อรับข่าวสาร ประกาศสำคัญ และนัดหมายวันลงทะเบียนจากพี่ค่าย</p>
+                    <a className="sd-btn sd-btn--dark" href={LINE_OPENCHAT_URL} target="_blank" rel="noopener noreferrer">
+                      <span>เข้ากลุ่ม LINE OpenChat</span>
+                      <ArrowUpRight aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </a>
                   </div>
-                ) : (
-                  <div className="sd-locked">
-                    <Lock aria-hidden="true" size={20} strokeWidth={1.5} />
-                    <div>
-                      <p className="sd-locked__title">เปิดได้หลังส่งสลิป</p>
-                      <p className="sd-text">เมื่อส่งสลิปการโอนเงินแล้ว QR Code และลิงก์เข้ากลุ่ม LINE OpenChat จะแสดงที่ช่องนี้</p>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             </section>
 
