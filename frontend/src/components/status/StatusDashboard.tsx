@@ -16,7 +16,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { gsap } from 'gsap';
 import { Flip } from 'gsap/Flip';
-import { ArrowUpRight, Check, Copy, Download, MapPin, Phone, TriangleAlert } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, Download, MapPin, MessageCircleMore, Phone, TriangleAlert } from 'lucide-react';
 import { hasSlip, type ApiSource, type Application, type SlipStatus } from '../../lib/api';
 import {
   CAMP_BRING_LIST,
@@ -578,6 +578,12 @@ export function StatusDashboard({
           q('.sd-step__trace'),
           { clipPath: 'inset(0 100% 100% 0)', duration: 0.45, ease: 'power2.inOut', stagger: 0.1, clearProps: 'clipPath' },
           0.5,
+        )
+        // The chat bubble behind the LINE tile swings in after its tile lands.
+        .from(
+          q('.sd-line__deco'),
+          { scale: 0.4, rotation: -40, autoAlpha: 0, duration: 0.8, ease: 'back.out(2.2)', clearProps: 'opacity,visibility,transform' },
+          0.45,
         );
       const counters = q('[data-count]') as HTMLElement[];
       for (const el of counters) {
@@ -861,6 +867,7 @@ export function StatusDashboard({
                   </div>
                 </div>
               </div>
+              <MessageCircleMore className="sd-line__deco" aria-hidden="true" size={128} strokeWidth={1.5} />
             </section>
 
             <BringTile num={num('bring')} />
