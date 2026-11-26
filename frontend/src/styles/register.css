@@ -1422,6 +1422,8 @@ html[data-theme="dark"] .rw-due {
   padding-top: 10px;
   padding-bottom: 10px;
 }
+/* How to use the parent consent letter, under the receipt actions. */
+.rw-doc-note { margin-top: 14px; max-width: 60ch; font-size: 0.875rem; line-height: 1.75; color: var(--rw-ink-2); }
 
 .rw-line-card {
   display: grid;

@@ -2,7 +2,13 @@
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode, Ref } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Copy, FileDown, MapPin, Phone, TriangleAlert } from 'lucide-react';
-import { DOCS_READY, PARENT_CONSENT_PDF } from '../../lib/camp-facts';
+import {
+  DOCS_READY,
+  PARENT_CONSENT_FILENAME,
+  PARENT_CONSENT_NOTE,
+  PARENT_CONSENT_PDF,
+  PARENT_CONSENT_WHERE,
+} from '../../lib/camp-facts';
 import {
   ApiHttpError,
   getApplicationStatus,
@@ -528,7 +534,7 @@ export function Receipt({
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
           {DOCS_READY && (
-            <a href={PARENT_CONSENT_PDF} download className="rw-btn rw-btn--ghost rw-btn--doc">
+            <a href={PARENT_CONSENT_PDF} download={PARENT_CONSENT_FILENAME} className="rw-btn rw-btn--ghost rw-btn--doc">
               <FileDown size={18} strokeWidth={1.5} aria-hidden="true" />
               ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
             </a>
@@ -537,6 +543,11 @@ export function Receipt({
             เพจ Facebook โครงการ
           </a>
         </div>
+        {DOCS_READY && (
+          <p className="rw-doc-note">
+            {PARENT_CONSENT_NOTE} {PARENT_CONSENT_WHERE}
+          </p>
+        )}
       </section>
 
       <section className="rw-block" aria-labelledby="rw-camp-title">

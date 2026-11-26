@@ -187,6 +187,50 @@
 .su-checklist li[data-done='true'] { color: var(--su-ink); }
 .su-checklist li[data-done='true'] > span { color: var(--su-ok-bg); }
 
+/* Parent-consent attestation before the slip is sent: hairline above, no box (same build as the
+   /register PDPA tick, .rw-consent). */
+.su-consent {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--su-rule);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--su-ink-2);
+  cursor: pointer;
+}
+.su-consent input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: 2px 0 0;
+  border: 1.5px solid var(--su-line);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.su-consent input::after {
+  content: '';
+  position: absolute;
+  left: 7px; top: 3px;
+  width: 6px; height: 12px;
+  border: solid var(--su-bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.15s ease;
+}
+.su-consent input:checked { background: var(--su-ink); border-color: var(--su-ink); }
+.su-consent input:checked::after { transform: rotate(45deg) scale(1); }
+.su-consent input:disabled { opacity: 0.5; cursor: not-allowed; }
+.su-consent a { color: var(--su-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .su-consent input, .su-consent input::after { transition: none; }
+}
+
 /* ---------- Buttons: full pill, 44px+ targets ---------- */
 .su-btn {
   display: inline-flex;

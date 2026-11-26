@@ -15,7 +15,10 @@ import {
   CAMP_FEE_TEXT,
   DOCS_READY,
   MAX_CAPACITY,
+  PARENT_CONSENT_FILENAME,
+  PARENT_CONSENT_NOTE,
   PARENT_CONSENT_PDF,
+  PARENT_CONSENT_WHERE,
   REGISTRATION_CLOSE_AT,
   REGISTRATION_OPEN_AT,
   formatBangkokTime,
@@ -226,6 +229,14 @@ const tocItems = [
                 แล้วแนบรูปสลิปภายใน <span class="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน
                 (<span class="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังสมัคร
                 ไม่มี QR Code สำหรับชำระเงิน โอนผ่านเลขบัญชีเท่านั้น
+                {DOCS_READY && (
+                  <>
+                    {' '}<strong>ก่อนโอน ให้ผู้ปกครองอ่านและลงนาม<a class="gd-inline-link" href="#documents">ใบขออนุญาตผู้ปกครอง</a></strong>{' '}
+                    (ดาวน์โหลดได้ในหน้านี้ ในใบตอบรับหลังสมัคร และที่หน้า{' '}
+                    <a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a> เมื่อค้นหาด้วยรหัสใบสมัคร){' '}
+                    แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย
+                  </>
+                )}
               </p>
             </div>
           </li>
@@ -316,6 +327,7 @@ const tocItems = [
             <ul class="gd-list">
               <li>บัตรประจำตัว (บัตรประชาชน / บัตรชมพู) หรือบัตรประจำตัวนักเรียน</li>
               <li>ยาประจำตัว (ถ้ามี) และระบุข้อมูลแพ้อาหารหรือโรคประจำตัวในใบสมัคร</li>
+              {DOCS_READY && <li>ใบขออนุญาตผู้ปกครองที่ลงนามแล้ว (ตัวจริง) ส่งในวันลงทะเบียนเข้าค่าย ดาวน์โหลดได้ที่<a class="gd-inline-link" href="#documents">เอกสารดาวน์โหลด</a>หรือหน้าตรวจสอบสถานะ</li>}
             </ul>
           </div>
 
@@ -353,11 +365,9 @@ const tocItems = [
       {DOCS_READY && (
         <section id="documents" class="gd-sec" aria-labelledby="documents-title">
           <h2 id="documents-title" class="gd-h2">เอกสารดาวน์โหลด</h2>
-          <p class="gd-sec-lead">
-            ดาวน์โหลดเอกสารสำหรับผู้ปกครองเพื่อเตรียมพร้อมก่อนเดินทางเข้าร่วมค่าย
-          </p>
+          <p class="gd-sec-lead">{PARENT_CONSENT_NOTE} {PARENT_CONSENT_WHERE}</p>
           <div class="gd-actions">
-            <a class="gd-btn gd-btn--secondary" href={PARENT_CONSENT_PDF} download>
+            <a class="gd-btn gd-btn--secondary" href={PARENT_CONSENT_PDF} download={PARENT_CONSENT_FILENAME}>
               <FileDown class="gd-ico" size={16} stroke-width={1.5} aria-hidden="true" />
               <span>ใบขออนุญาตผู้ปกครอง (PDF)</span>
             </a>
@@ -422,6 +432,23 @@ const tocItems = [
               </p>
             </div>
           </details>
+
+          {DOCS_READY && (
+            <details class="gd-faq__item">
+              <summary class="gd-faq__summary">
+                <span>ใบขออนุญาตผู้ปกครองดาวน์โหลดได้ที่ไหน และต้องส่งอย่างไร</span>
+                <ChevronDown class="gd-faq__chev" size={16} stroke-width={1.5} aria-hidden="true" />
+              </summary>
+              <div class="gd-faq__body">
+                <p>
+                  ดาวน์โหลดได้ที่หัวข้อ<a class="gd-inline-link" href="#documents">เอกสารดาวน์โหลด</a>ในหน้านี้
+                  ในใบตอบรับหลังสมัคร และที่หน้า<a class="gd-inline-link" href="/status">ตรวจสอบสถานะ</a>เมื่อค้นหาด้วยรหัสใบสมัคร
+                  พิมพ์ให้ผู้ปกครองอ่านและลงนามก่อนโอนค่าสมัคร แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย ไม่ต้องส่งทางออนไลน์
+                  หากผู้ปกครองไม่อนุญาต ยกเลิกใบสมัครเองได้ที่หน้าตรวจสอบสถานะก่อนส่งสลิป
+                </p>
+              </div>
+            </details>
+          )}
 
           <details class="gd-faq__item">
             <summary class="gd-faq__summary">

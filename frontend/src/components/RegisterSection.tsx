@@ -27,6 +27,7 @@ import {
   type ShirtSize,
 } from '../lib/api';
 import {
+  DOCS_READY,
   REGISTRATION_CLOSE_AT,
   REGISTRATION_OPEN_AT,
   formatBangkokTime,
@@ -1079,6 +1080,9 @@ export function RegisterSection() {
                 <p>
                   โอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชม.) หลังส่งใบสมัคร ·{' '}
                   <strong className="rw-rules__flag">เกินกำหนดตัดสิทธิ์และคืนที่นั่งอัตโนมัติ</strong>
+                  {DOCS_READY && (
+                    <> · ก่อนโอน ให้ผู้ปกครองลงนามใบขออนุญาต (ดาวน์โหลดได้ในใบตอบรับหลังสมัคร และที่หน้าตรวจสอบสถานะ)</>
+                  )}
                 </p>
                 </div>
               </li>
@@ -1683,6 +1687,11 @@ export function RegisterSection() {
                     <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วันหลังสมัคร
                   </strong>
                   หน้าถัดไปจะแสดงเลขบัญชีธนาคารสำหรับโอน (ไม่มี QR Code) กรุณาโอนและแนบสลิปภายใน <span className="font-mono tabular-nums">{PAYMENT_WINDOW_DAYS}</span> วัน (<span className="font-mono tabular-nums">{PAYMENT_WINDOW_HOURS}</span> ชั่วโมง) หลังส่งใบสมัคร เกินกำหนดระบบจะคืนที่นั่งว่างอัตโนมัติ
+                  {DOCS_READY && (
+                    <>
+                      {' '}<strong>ก่อนโอน ให้ผู้ปกครองอ่านและลงนามใบขออนุญาตผู้ปกครอง</strong> ดาวน์โหลดได้ในหน้าถัดไป และที่หน้าตรวจสอบสถานะ (<span className="font-mono">/status</span>) แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย
+                    </>
+                  )}
                 </li>
                 <li>
                   <strong>แนบสลิป เข้ากลุ่ม LINE OpenChat และรอรับอีเมลยืนยันสิทธิ์สมบูรณ์</strong>

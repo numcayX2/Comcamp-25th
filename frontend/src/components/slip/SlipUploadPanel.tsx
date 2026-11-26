@@ -14,6 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CSSProperties, DragEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
 import { uploadPaymentSlip, type ApiSource, type SlipStatus } from '../../lib/api';
+import { DOCS_READY, PARENT_CONSENT_FILENAME, PARENT_CONSENT_PDF } from '../../lib/camp-facts';
 import {
   SLIP_ACCEPT,
   describeApiError,
@@ -55,7 +56,13 @@ export function SlipUploadPanel({
   deferLink?: { href: string; label: string };
 }) {
   const uid = useId();
-  const ids = { file: `${uid}-file`, fileErr: `${uid}-fileerr`, subErr: `${uid}-suberr`, hint: `${uid}-hint` };
+  const ids = {
+    file: `${uid}-file`,
+    fileErr: `${uid}-fileerr`,
+    subErr: `${uid}-suberr`,
+    hint: `${uid}-hint`,
+    consent: `${uid}-consent`,
+  };
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -69,6 +76,9 @@ export function SlipUploadPanel({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [replace, setReplace] = useState(false);
+  // Attestation only (owner, 2026-11-26): the signed letter is handed in at camp check-in, so the
+  // tick just makes the student talk to a parent before paying. Kept in state, never stored.
+  const [parentSigned, setParentSigned] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
   const [inputKey, setInputKey] = useState(0);
@@ -115,7 +125,8 @@ export function SlipUploadPanel({
 
   const state: SlipStatus | null = slip;
   const showForm = !disabled && state !== 'APPROVED' && (state === null || state === 'REJECTED' || replace);
-  const ready = Boolean(file);
+  const needsConsent = DOCS_READY;
+  const ready = Boolean(file) && (!needsConsent || parentSigned);
 
   /** Validates, shrinks when needed, and shows the picked slip. */
   const pick = useCallback(
@@ -193,7 +204,7 @@ export function SlipUploadPanel({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busyRef.current || busy || preparing || !file) return;
+    if (busyRef.current || busy || preparing || !ready || !file) return;
     busyRef.current = true;
     setBusy(true);
     setProgress(0);
@@ -346,6 +357,25 @@ export function SlipUploadPanel({
             )}
           </div>
 
+          {needsConsent && (
+            <label className="su-consent" htmlFor={ids.consent}>
+              <input
+                id={ids.consent}
+                type="checkbox"
+                checked={parentSigned}
+                onChange={(e) => setParentSigned(e.target.checked)}
+                disabled={busy}
+              />
+              <span>
+                ผู้ปกครองลงนามอนุญาตใน
+                <a href={PARENT_CONSENT_PDF} download={PARENT_CONSENT_FILENAME}>
+                  ใบขออนุญาตผู้ปกครอง
+                </a>
+                แล้ว และจะนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย
+              </span>
+            </label>
+          )}
+
           <div>
             <div className="su-actions">
               <button
@@ -391,6 +421,12 @@ export function SlipUploadPanel({
                   <span aria-hidden="true">{file ? '✓' : '○'}</span>
                   เลือกภาพสลิป
                 </li>
+                {needsConsent && (
+                  <li data-done={parentSigned}>
+                    <span aria-hidden="true">{parentSigned ? '✓' : '○'}</span>
+                    ติ๊กยืนยันใบขออนุญาตผู้ปกครอง
+                  </li>
+                )}
               </ul>
             )}
             {submitError && (

@@ -18,8 +18,21 @@ export const CAMP_FEE_TEXT = CAMP_FEE.toLocaleString('en-US');
  * hidden until the real files replace them (same file name) and this flag is flipped to true.
  * Bump `?v=` whenever the file is replaced: Cloudflare caches /assets for hours.
  */
-export const DOCS_READY = false;
-export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf?v=1';
+export const DOCS_READY = true;
+export const PARENT_CONSENT_PDF = '/assets/docs/parent-consent.pdf?v=2';
+/** Name the browser saves the consent letter under (the `download` attribute). */
+export const PARENT_CONSENT_FILENAME = 'ใบขออนุญาตผู้ปกครอง-ComCamp25.pdf';
+/**
+ * How the letter is used, shown under every download button. Signed before paying because the fee
+ * is not refunded, and self-withdrawal only works until a slip is sent (ApplicantService.Withdraw).
+ * The signed paper is handed in at camp check-in; nothing is uploaded. "ผู้\u2060ปกครอง" carries a
+ * word joiner: Chrome's Thai dictionary otherwise breaks the line between ผู้ and ปกครอง.
+ */
+export const PARENT_CONSENT_NOTE =
+  'พิมพ์ใบนี้ให้ผู้\u2060ปกครองอ่านและลงนามก่อนโอนค่าสมัคร แล้วนำใบตัวจริงมาส่งในวันลงทะเบียนเข้าค่าย หากผู้\u2060ปกครองไม่อนุญาต ยกเลิกใบสมัครเองได้ที่หน้าตรวจสอบสถานะก่อนส่งสลิป';
+/** Where a student finds the letter again later (the receipt is only shown once). */
+export const PARENT_CONSENT_WHERE =
+  'ดาวน์โหลดใบขออนุญาตผู้\u2060ปกครองซ้ำได้ทุกเมื่อที่หน้าตรวจสอบสถานะ (ค้นหาด้วยรหัสใบสมัคร)';
 
 /** Sponsor deck for /sponsor. Same rule as DOCS_READY: the download stays hidden until the file exists. */
 export const SPONSOR_DECK_READY = false;

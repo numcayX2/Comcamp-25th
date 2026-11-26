@@ -58,7 +58,7 @@ import {
 import { clearReceipt, loadReceipt } from './register/storage';
 import { WITHDRAW_MISMATCH_COPY, cleanPhoneInput, describeApiError as describeError } from '../lib/slip-upload';
 import { NO_QR_NOTE, PAY_ACCOUNT, PAY_ACCOUNT_DIGITS, copyText } from '../lib/payment';
-import { DOCS_READY, PARENT_CONSENT_PDF } from '../lib/camp-facts';
+import { DOCS_READY, PARENT_CONSENT_FILENAME, PARENT_CONSENT_NOTE, PARENT_CONSENT_PDF } from '../lib/camp-facts';
 import { SlipUploadPanel } from './slip/SlipUploadPanel';
 import { HumanCheckDialog } from './slip/HumanCheckDialog';
 
@@ -392,7 +392,7 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
               {showConsentPdf && (
                 <a
                   href={PARENT_CONSENT_PDF}
-                  download
+                  download={PARENT_CONSENT_FILENAME}
                   className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto ${FOCUS_RING}`}
                   style={{ borderColor: RULE, color: INK, backgroundColor: SURFACE }}
                 >
@@ -431,6 +431,11 @@ function StatusHighlight({ app, seats, feeText, nowMs }: { app: Application; sea
                 </>
               )}
             </div>
+          )}
+          {showConsentPdf && (
+            <p className="mt-3 max-w-[62ch] text-sm leading-6" style={{ color: INK_MUTED }}>
+              {PARENT_CONSENT_NOTE}
+            </p>
           )}
       </div>
     </section>
@@ -505,7 +510,9 @@ function PhoneLookupCard({
         <p className="flex items-start gap-2.5 text-base font-semibold leading-7" style={{ color: INK }}>
           <Info aria-hidden="true" size={18} strokeWidth={1.75} className="mt-1 shrink-0" style={{ color: 'var(--color-tech)' }} />
           <span>
-            ส่งสลิปหรือจัดการใบสมัคร ต้องค้นหาด้วยรหัสใบสมัคร{' '}
+            {DOCS_READY && holdsSeat(result.status)
+              ? 'ส่งสลิป ดาวน์โหลดใบขออนุญาตผู้ปกครอง หรือจัดการใบสมัคร ต้องค้นหาด้วยรหัสใบสมัคร'
+              : 'ส่งสลิปหรือจัดการใบสมัคร ต้องค้นหาด้วยรหัสใบสมัคร'}{' '}
             <span className="whitespace-nowrap font-mono tabular-nums">CC25-XXXXXX</span>
           </span>
         </p>
@@ -854,7 +861,9 @@ export function StatusSection() {
           ตรวจสอบสถานะใบสมัคร
         </h1>
         <p className="mt-3 max-w-[52ch] text-base leading-7" style={{ color: INK_MUTED }}>
-          ดูผลการสมัครและส่งสลิปโอนเงินได้ในหน้านี้ โดยไม่ต้องสมัครใหม่
+          {DOCS_READY
+            ? 'ดูผลการสมัคร ส่งสลิปโอนเงิน และดาวน์โหลดใบขออนุญาตผู้ปกครองได้ในหน้านี้ โดยไม่ต้องสมัครใหม่'
+            : 'ดูผลการสมัครและส่งสลิปโอนเงินได้ในหน้านี้ โดยไม่ต้องสมัครใหม่'}
         </p>
       </header>
 
@@ -865,7 +874,7 @@ export function StatusSection() {
           </h2>
           <p className="mt-2 max-w-[42ch] text-base leading-7" style={{ color: INK_MUTED }}>
             ค้นหาด้วยรหัสใบสมัคร <span className="whitespace-nowrap font-mono text-sm tabular-nums">CC25-XXXXXX</span>{' '}
-            จากอีเมลหรือหน้าใบตอบรับ เพื่อดูรายละเอียดและส่งสลิป หรือใช้เบอร์โทรศัพท์ที่ใช้สมัครเพื่อดูสถานะโดยย่อ
+            จากอีเมลหรือหน้าใบตอบรับ เพื่อดูรายละเอียด ส่งสลิป{DOCS_READY ? ' และดาวน์โหลดใบขออนุญาตผู้ปกครอง' : ''} หรือใช้เบอร์โทรศัพท์ที่ใช้สมัครเพื่อดูสถานะโดยย่อ
           </p>
         </div>
 

@@ -603,7 +603,7 @@ curl -fsS http://127.0.0.1:6000/api/health
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 
-ตอนนี้ `frontend/public/assets/docs/parent-consent.pdf` เป็น **placeholder ขนาด 0 byte** และ `DOCS_READY = false` ใน `frontend/src/lib/camp-facts.ts` ทำให้ปุ่ม/ลิงก์ดาวน์โหลดถูกซ่อนทั้ง 3 จุด (ใบตอบรับ Step 06 ของ `/register`, ผลค้นด้วยรหัสใน `/status` เฉพาะใบที่ถือที่นั่ง, และหัวข้อ `เอกสารดาวน์โหลด` ใน `/guide`) ไฟล์ใน `public/` ถูกฝังใน image ของ `frontend` ตอน build จึงต้อง build ใหม่ทุกครั้งที่แทนไฟล์:
+ไฟล์จริงใส่แล้ว (2026-11-26, `?v=2`, ฉบับ "นำมาส่งในวันลงทะเบียนเข้าค่าย (๕ ก.พ.๗๐)" ลงนามแล้ว, ล้าง metadata ผู้เขียนออก) และ `DOCS_READY = true` ใน `frontend/src/lib/camp-facts.ts` — ปุ่มดาวน์โหลดแสดง 3 จุด (ใบตอบรับ Step 06 ของ `/register`, ผลค้นด้วยรหัสใน `/status` เฉพาะใบที่ถือที่นั่ง, และหัวข้อ `เอกสารดาวน์โหลด` ใน `/guide`) พร้อมหมายเหตุ "เซ็นก่อนโอน / นำตัวจริงมาส่งวันลงทะเบียน / ไม่อนุญาตยกเลิกเองก่อนส่งสลิป" และช่องติ๊กยืนยันก่อนส่งสลิป (ไม่มีการอัปโหลดใบ) ไฟล์ใน `public/` ถูกฝังใน image ของ `frontend` ตอน build จึงต้อง build ใหม่ทุกครั้งที่**แทนไฟล์อีกครั้ง** (ล้าง metadata ก่อน เช่น author ที่มีรหัสนักศึกษา):
 
 1. **บนเครื่องพัฒนา:** วางไฟล์ PDF จริงทับ `frontend/public/assets/docs/parent-consent.pdf` (**ชื่อไฟล์เดิม**)
 2. แก้ `frontend/src/lib/camp-facts.ts`:
