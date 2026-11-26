@@ -19,9 +19,10 @@ import (
 // MaxSponsorDocRequestBytes caps a donation file upload: the 8 MB file plus 64 KB of multipart framing.
 const MaxSponsorDocRequestBytes = service.MaxSponsorDocBytes + 64<<10
 
-// MaxSponsorInquiryUploadBytes caps POST /api/sponsor-inquiries/upload: the 8 MB form plus 64 KB
-// for the text fields and multipart framing.
-const MaxSponsorInquiryUploadBytes = service.MaxSponsorDocBytes + 64<<10
+// MaxSponsorInquiryUploadBytes caps POST /api/sponsor-inquiries/upload: the 8 MB form, the 1.5 MB
+// transfer slip and 64 KB for the text fields and multipart framing (under the edge proxy's
+// client_max_body_size 10m).
+const MaxSponsorInquiryUploadBytes = service.MaxSponsorDocBytes + service.MaxSponsorSlipBytes + 64<<10
 
 // maxInquiryFieldBytes bounds one text part of the upload form; the service enforces the real
 // per-field limits.
@@ -41,7 +42,7 @@ func writeSponsorDeskError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, service.ErrSponsorRecordNotFound):
 		response.ErrorCode(w, http.StatusNotFound, response.CodeNotFound, "Not found")
-	case errors.Is(err, service.ErrSponsorDocTooLarge):
+	case errors.Is(err, service.ErrSponsorDocTooLarge), errors.Is(err, service.ErrSponsorSlipTooLarge):
 		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, err.Error())
 	case errors.Is(err, service.ErrSponsorDocDimensions):
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeInvalidImageDims, err.Error())
@@ -92,14 +93,15 @@ func (h *SponsorDeskHandler) SubmitInquiry(w http.ResponseWriter, r *http.Reques
 	response.Created(w, map[string]bool{"ok": true})
 }
 
-// SubmitInquiryUpload handles POST /api/sponsor-inquiries/upload: the sponsor sends the filled
-// donation form instead of typing the inquiry. multipart/form-data with the basic SubmitInquiry
-// fields (name, phone, email, kind, details, amount, turnstileToken, website; amount is required
-// because an upload is a money inquiry) plus "file" (PDF/JPG/PNG/WebP
-// ≤ 8 MB); taxId and address fields are neither required nor accepted (the attached form already
-// contains them, so any extra parts are discarded); 201 {"ok":true}, nothing echoed back. Parts are
-// read in memory under hard caps, so a public upload never spills multipart temp files onto the
-// small /tmp tmpfs.
+// SubmitInquiryUpload handles POST /api/sponsor-inquiries/upload, the money inquiry (the sponsor
+// transfers first). multipart/form-data with the SubmitInquiry text fields (name, phone, email,
+// kind, details, amount, taxId, addressLine, subdistrict, district, province, postcode,
+// turnstileToken, website; amount is required) plus "slip" (the transfer slip, JPG/PNG/WebP
+// ≤ 1.5 MB, required) and optionally "file" (the filled donation form, PDF/JPG/PNG/WebP ≤ 8 MB).
+// With "file" the tax ID and address parts are ignored (the form carries them); without it they
+// are required and validated like the JSON route. 201 {"ok":true}, nothing echoed back. Parts
+// are read in memory under hard caps, so a public upload never spills multipart temp files onto
+// the small /tmp tmpfs.
 func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.Request) {
 	tooLarge := func() {
 		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorDocTooLarge.Error())
@@ -126,8 +128,10 @@ func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.
 	fields := map[string]*string{
 		"name": &req.Name, "phone": &req.Phone, "email": &req.Email, "kind": &req.Kind,
 		"details": &req.Details, "amount": &req.Amount, "turnstileToken": &req.TurnstileToken, "website": &req.Website,
+		"taxId": &req.TaxID, "addressLine": &req.AddressLine, "subdistrict": &req.Subdistrict,
+		"district": &req.District, "province": &req.Province, "postcode": &req.Postcode,
 	}
-	var file []byte
+	var upload service.SponsorInquiryUpload
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -145,14 +149,22 @@ func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.
 		var data []byte
 		switch {
 		case name == "file":
-			if file != nil {
+			if upload.File != nil {
 				part.Close()
 				invalid("only one file is allowed")
 				return
 			}
 			// One byte over the limit is enough for the service to answer 413.
 			data, err = io.ReadAll(io.LimitReader(part, service.MaxSponsorDocBytes+1))
-			file = data
+			upload.File = data
+		case name == "slip":
+			if upload.Slip != nil {
+				part.Close()
+				invalid("only one slip is allowed")
+				return
+			}
+			data, err = io.ReadAll(io.LimitReader(part, service.MaxSponsorSlipBytes+1))
+			upload.Slip = data
 		case fields[name] != nil:
 			data, err = io.ReadAll(io.LimitReader(part, maxInquiryFieldBytes+1))
 			if err == nil && len(data) > maxInquiryFieldBytes {
@@ -174,13 +186,8 @@ func (h *SponsorDeskHandler) SubmitInquiryUpload(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	if file == nil {
-		invalid("file is required")
-		return
-	}
-
 	ctx := service.WithRemoteIP(r.Context(), middleware.RemoteIP(r))
-	if err := h.inquiries.Submit(ctx, req, file); err != nil {
+	if err := h.inquiries.Submit(ctx, req, &upload); err != nil {
 		writeSponsorDeskError(w, r, err)
 		return
 	}
@@ -199,6 +206,25 @@ func (h *SponsorDeskHandler) GetInquiryFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	doc, err := h.inquiries.OpenFile(r.Context(), id, adminID, ip)
+	if err != nil {
+		writeSponsorDeskError(w, r, err)
+		return
+	}
+	serveSponsorDoc(w, r, doc)
+}
+
+// GetInquirySlip handles GET /api/admin/sponsor-inquiries/{id}/slip: streams the attached
+// transfer slip (path from the DB only) privately and uncached.
+func (h *SponsorDeskHandler) GetInquirySlip(w http.ResponseWriter, r *http.Request) {
+	adminID, ip, ok := adminIdentity(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	doc, err := h.inquiries.OpenSlip(r.Context(), id, adminID, ip)
 	if err != nil {
 		writeSponsorDeskError(w, r, err)
 		return

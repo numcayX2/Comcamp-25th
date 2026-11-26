@@ -87,30 +87,38 @@ func TestSponsorDeskPostgres_Inquiries(t *testing.T) {
 		t.Fatalf("notify emails order = %v", list)
 	}
 
-	// 000016: an attached form round-trips through Create / GetByID / Delete.
+	// 000016 + 000019: an attached form and transfer slip round-trip through Create / GetByID / List / Delete.
 	hash := strings.Repeat("ab", 32)
 	b := &domain.SponsorInquiry{Name: "ร้าน ข", Phone: "0812345679", Kind: domain.SponsorKindMoney,
-		File: &domain.SponsorInquiryFile{Path: "sponsor-docs/inquiry-x.pdf", MIME: "application/pdf", SizeBytes: 1234, SHA256: hash}}
+		File: &domain.SponsorInquiryFile{Path: "sponsor-docs/inquiry-x.pdf", MIME: "application/pdf", SizeBytes: 1234, SHA256: hash},
+		Slip: &domain.SponsorInquiryFile{Path: "sponsor-docs/inquiry-slip-x.jpg", MIME: "image/jpeg", SizeBytes: 567, SHA256: strings.Repeat("cd", 32)}}
 	if err := inq.Create(ctx, b, nil); err != nil {
 		t.Fatalf("create with file: %v", err)
 	}
 	got, err = inq.GetByID(ctx, b.ID)
-	if err != nil || got.File == nil || *got.File != *b.File {
-		t.Fatalf("get with file: %v %+v", err, got)
+	if err != nil || got.File == nil || *got.File != *b.File || got.Slip == nil || *got.Slip != *b.Slip {
+		t.Fatalf("get with file and slip: %v %+v", err, got)
 	}
-	if got, err = inq.GetByID(ctx, a.ID); err != nil || got.File != nil {
-		t.Fatalf("typed inquiry must have no file: %v %+v", err, got)
+	if list, err := inq.List(ctx); err != nil || len(list) != 2 || list[0].ID != b.ID || list[0].Slip == nil || list[1].Slip != nil {
+		t.Fatalf("list with slip: %v %+v", err, list)
+	}
+	if got, err = inq.GetByID(ctx, a.ID); err != nil || got.File != nil || got.Slip != nil {
+		t.Fatalf("typed inquiry must have no file or slip: %v %+v", err, got)
 	}
 	if err := inq.Create(ctx, &domain.SponsorInquiry{Name: "x", Phone: "0812345678", Kind: domain.SponsorKindMoney,
 		File: &domain.SponsorInquiryFile{Path: "sponsor-docs/x.svg", MIME: "image/svg+xml", SizeBytes: 1, SHA256: hash}}, nil); err == nil {
 		t.Fatal("file CHECK constraint must reject an SVG")
 	}
+	if err := inq.Create(ctx, &domain.SponsorInquiry{Name: "x", Phone: "0812345678", Kind: domain.SponsorKindMoney,
+		Slip: &domain.SponsorInquiryFile{Path: "sponsor-docs/x.pdf", MIME: "application/pdf", SizeBytes: 1, SHA256: hash}}, nil); err == nil {
+		t.Fatal("slip CHECK constraint must reject a PDF")
+	}
 	if _, err := inq.GetByID(ctx, 9999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing inquiry: want ErrNotFound, got %v", err)
 	}
 	deleted, err := inq.Delete(ctx, b.ID, nil)
-	if err != nil || deleted.File == nil || deleted.File.Path != b.File.Path {
-		t.Fatalf("delete with file must return its path: %v %+v", err, deleted)
+	if err != nil || deleted.File == nil || deleted.File.Path != b.File.Path || deleted.Slip == nil || deleted.Slip.Path != b.Slip.Path {
+		t.Fatalf("delete with file and slip must return their paths: %v %+v", err, deleted)
 	}
 
 	if _, err := inq.Delete(ctx, a.ID, nil); err != nil {

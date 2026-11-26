@@ -1693,6 +1693,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .sp-method,
   .sp-amount,
+  .sp-slip,
   .sp-upload,
   .sp-tax-group,
   .sp-success {
@@ -1729,6 +1730,7 @@
   }
   .sp-method,
   .sp-amount,
+  .sp-slip,
   .sp-upload,
   .sp-tax-group,
   .sp-success,

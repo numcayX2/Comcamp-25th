@@ -72,7 +72,7 @@ func setupSponsorDeskAppWith(t *testing.T, captcha service.TurnstileVerifier, li
 		Auth:            service.NewAuthService(sponsorAdminRepo(t, base), base.auditRepo, "test-jwt-secret-key-32-characters-long"),
 		Sponsor:         service.NewSponsorService(base.sponsorRepo, uploadDir),
 		SponsorInquiry:  inquirySvc,
-		SponsorDonation: service.NewSponsorDonationService(donationRepo, base.auditRepo, uploadDir),
+		SponsorDonation: service.NewSponsorDonationService(donationRepo, base.auditRepo, uploadDir).WithInquiries(inquiryRepo),
 	}, server.Options{RateLimits: limits})
 	return &sponsorDeskApp{
 		sponsorTestApp: base, inquiryRepo: inquiryRepo, donationRepo: donationRepo,
@@ -141,12 +141,28 @@ const validMoneyTaxAddrJSON = `"taxId":"๑-๑๐๑๗-๐๐๒๐๓-๔๕-
 // validMoneyJSON is a complete valid money inquiry tail: amount plus tax ID and address.
 const validMoneyJSON = `"amount":"1500",` + validMoneyTaxAddrJSON
 
+func TestSponsorInquiry_JSONMoneyNeedsSlip(t *testing.T) {
+	app := setupSponsorDeskApp(t, nil)
+	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`}`)
+	expectCode(t, rec, http.StatusBadRequest, response.CodeValidation)
+	if e := decodeErr(t, rec.Body.Bytes()); e.Error != "slip is required for money donations" {
+		t.Fatalf("error = %q", e.Error)
+	}
+	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
+		t.Fatal("JSON money inquiry was stored")
+	}
+}
+
 func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	token := app.login(t)
 	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com","boss@example.com"]}`), http.StatusOK, "")
 
-	rec := app.postInquiry(t, `{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ","amount":"๑,๕๐๐.50",`+validMoneyTaxAddrJSON+`}`)
+	// Web mode: typed tax ID + address with the transfer slip, no filled form.
+	slip := encodePNG(20, 10)
+	var fields map[string]string
+	_ = json.Unmarshal([]byte(`{"name":"  ร้านตัวอย่าง ","phone":"๐๘๑-๒๓๔-๕๖๗๘\u200b","email":"Shop@Example.com","kind":"money","details":"ติดต่อช่วงเย็น\r\nขอบคุณ","amount":"๑,๕๐๐.50",`+validMoneyTaxAddrJSON+`}`), &fields)
+	rec := app.postInquiryUpload(t, fields, slipPart("slip.png", slip))
 	expectCode(t, rec, http.StatusCreated, "")
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
 		t.Fatalf("body = %q, want {\"ok\":true}", got)
@@ -155,6 +171,9 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	list, _ := app.inquiryRepo.List(context.Background())
 	if len(list) != 1 {
 		t.Fatalf("stored inquiries = %d, want 1", len(list))
+	}
+	if list[0].Slip == nil || list[0].File != nil {
+		t.Fatalf("web-mode inquiry must have a slip and no form: slip %+v file %+v", list[0].Slip, list[0].File)
 	}
 	got := list[0]
 	if got.Name != "ร้านตัวอย่าง" || got.Phone != "0812345678" || got.Email != "shop@example.com" || got.Details != "ติดต่อช่วงเย็น\nขอบคุณ" ||
@@ -179,8 +198,8 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	app.notifier.mu.Unlock()
 	app.notifier.mu.Lock()
 	for _, n := range app.notifier.sent {
-		if n.Amount == nil || *n.Amount != "1500.5" {
-			t.Fatalf("notification amount = %v, want 1500.5", n.Amount)
+		if n.Amount == nil || *n.Amount != "1500.5" || !n.HasSlip || n.FileMIME != "" {
+			t.Fatalf("notification = %+v, want amount 1500.5 with slip", n)
 		}
 	}
 	app.notifier.mu.Unlock()
@@ -189,8 +208,8 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 	}
 	for _, e := range app.auditRepo.Entries() {
 		if e.Action == domain.AuditSponsorInquiryCreate {
-			if len(e.Details) != 1 || e.Details["kind"] != "money" {
-				t.Fatalf("inquiry audit details must hold kind only: %+v", e.Details)
+			if len(e.Details) != 3 || e.Details["kind"] != "money" || e.Details["slipMime"] != "image/png" || e.Details["slipSize"] == nil {
+				t.Fatalf("inquiry audit details must hold kind and slip mime/size only: %+v", e.Details)
 			}
 		}
 	}
@@ -209,10 +228,35 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 		res.Inquiries[0].District != "สันทราย" ||
 		res.Inquiries[0].Province != "เชียงใหม่" ||
 		res.Inquiries[0].Postcode != "50290" ||
-		res.Inquiries[0].Amount == nil || *res.Inquiries[0].Amount != "1500.5" {
+		res.Inquiries[0].Amount == nil || *res.Inquiries[0].Amount != "1500.5" ||
+		res.Inquiries[0].File != nil || res.Inquiries[0].Slip == nil ||
+		res.Inquiries[0].Slip.MIME != "image/png" || res.Inquiries[0].Slip.Size != len(slip) ||
+		!res.Inquiries[0].Slip.UploadedAt.Equal(res.Inquiries[0].CreatedAt) {
 		t.Fatalf("admin list = %+v", res.Inquiries)
 	}
+	if strings.Contains(rec.Body.String(), "sponsor-docs") || strings.Contains(rec.Body.String(), "inquiry-slip-") {
+		t.Fatal("admin list leaks the stored slip path")
+	}
 	id := res.Inquiries[0].ID
+	rec = app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", id), "")
+	expectCode(t, rec, http.StatusOK, "")
+	if !bytes.Equal(rec.Body.Bytes(), slip) {
+		t.Fatal("served slip differs from upload")
+	}
+	for h, want := range map[string]string{
+		"Content-Type":           "image/png",
+		"Cache-Control":          "private, no-store",
+		"X-Content-Type-Options": "nosniff",
+		"Content-Disposition":    fmt.Sprintf(`inline; filename="sponsor-inquiry-slip-%d.png"`, id),
+	} {
+		if got := rec.Header().Get(h); got != want {
+			t.Fatalf("%s = %q, want %q", h, got, want)
+		}
+	}
+	if app.auditCount(domain.AuditSponsorInquirySlipView) != 1 {
+		t.Fatal("slip view not audited")
+	}
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", id), ""), http.StatusNotFound, response.CodeNotFound)
 	rec = app.authed(t, token, http.MethodPatch, fmt.Sprintf("/api/admin/sponsor-inquiries/%d", id), `{"handled":true}`)
 	expectCode(t, rec, http.StatusOK, "")
 	var upd service.SponsorInquiryEntry
@@ -221,7 +265,11 @@ func TestSponsorInquiry_SubmitStoresAndNotifiesWithoutEcho(t *testing.T) {
 		t.Fatalf("handled not set: %+v", upd)
 	}
 	expectCode(t, app.authed(t, token, http.MethodDelete, fmt.Sprintf("/api/admin/sponsor-inquiries/%d", id), ""), http.StatusNoContent, "")
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("inquiry delete must remove its slip: %v", files)
+	}
 	expectCode(t, app.authed(t, token, http.MethodDelete, fmt.Sprintf("/api/admin/sponsor-inquiries/%d", id), ""), http.StatusNotFound, response.CodeNotFound)
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", id), ""), http.StatusNotFound, response.CodeNotFound)
 }
 
 func TestSponsorInquiry_ValidationFailures(t *testing.T) {
@@ -229,49 +277,62 @@ func TestSponsorInquiry_ValidationFailures(t *testing.T) {
 	long := strings.Repeat("ก", 501)
 	longAddr := strings.Repeat("ก", 201)
 	longArea := strings.Repeat("ก", 101)
-	for name, body := range map[string]string{
-		"bad phone":          `{"name":"ร้าน","phone":"12345","kind":"goods"}`,
-		"phone no lead 0":    `{"name":"ร้าน","phone":"812345678","kind":"goods"}`,
-		"phone 11 digits":    `{"name":"ร้าน","phone":"08123456789","kind":"goods"}`,
-		"missing name":       `{"name":"  ","phone":"0812345678","kind":"goods"}`,
-		"bad kind":           `{"name":"ร้าน","phone":"0812345678","kind":"alcohol"}`,
-		"long details":       `{"name":"ร้าน","phone":"0812345678","kind":"goods","details":"` + long + `"}`,
-		"bad email":          `{"name":"ร้าน","phone":"0812345678","kind":"goods","email":"not-an-email"}`,
-		"control in name":    `{"name":"ร้าน\u0007","phone":"0812345678","kind":"goods"}`,
+	goods := map[string]string{
+		"bad phone":         `{"name":"ร้าน","phone":"12345","kind":"goods"}`,
+		"phone no lead 0":   `{"name":"ร้าน","phone":"812345678","kind":"goods"}`,
+		"phone 11 digits":   `{"name":"ร้าน","phone":"08123456789","kind":"goods"}`,
+		"missing name":      `{"name":"  ","phone":"0812345678","kind":"goods"}`,
+		"bad kind":          `{"name":"ร้าน","phone":"0812345678","kind":"alcohol"}`,
+		"long details":      `{"name":"ร้าน","phone":"0812345678","kind":"goods","details":"` + long + `"}`,
+		"bad email":         `{"name":"ร้าน","phone":"0812345678","kind":"goods","email":"not-an-email"}`,
+		"control in name":   `{"name":"ร้าน\u0007","phone":"0812345678","kind":"goods"}`,
+		"goods with taxId":  `{"name":"ร้าน","phone":"0812345678","kind":"goods","taxId":"1101700203450"}`,
+		"goods with addr":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","addressLine":"1"}`,
+		"goods with sub":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","subdistrict":"หนองหาร"}`,
+		"goods with dist":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","district":"สันทราย"}`,
+		"goods with prov":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","province":"เชียงใหม่"}`,
+		"goods with post":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","postcode":"50290"}`,
+		"goods with amount": `{"name":"ร้าน","phone":"0812345678","kind":"goods","amount":"500"}`,
+	}
+	// Money goes through the upload route in web mode (valid slip attached): tax ID and address are
+	// validated exactly like the old JSON route.
+	money := map[string]string{
 		"money missing all":  `{"name":"ร้าน","phone":"0812345678","kind":"money"}`,
-		"money missing tax":  `{"name":"ร้าน","phone":"0812345678","kind":"money","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money bad checksum": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money short tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"110170020345","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money alpha tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"110170020345a","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money missing addr": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money long addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"` + longAddr + `","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money ctrl addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1\n2","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money missing sub":  `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money long sub":     `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"` + longArea + `","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
-		"money missing dist": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","province":"เชียงใหม่","postcode":"50290"}`,
-		"money bad province": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"ดาวอังคาร","postcode":"50290"}`,
-		"money bad postcode": `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"5029"}`,
-		"money dash post":    `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50-290"}`,
-		"goods with taxId":   `{"name":"ร้าน","phone":"0812345678","kind":"goods","taxId":"1101700203450"}`,
-		"goods with addr":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","addressLine":"1"}`,
-		"goods with sub":     `{"name":"ร้าน","phone":"0812345678","kind":"goods","subdistrict":"หนองหาร"}`,
-		"goods with dist":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","district":"สันทราย"}`,
-		"goods with prov":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","province":"เชียงใหม่"}`,
-		"goods with post":    `{"name":"ร้าน","phone":"0812345678","kind":"goods","postcode":"50290"}`,
+		"money missing tax":  `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money bad checksum": `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money short tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"110170020345","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money alpha tax":    `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"110170020345a","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing addr": `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money long addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"` + longAddr + `","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money ctrl addr":    `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1\n2","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing sub":  `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money long sub":     `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","subdistrict":"` + longArea + `","district":"สันทราย","province":"เชียงใหม่","postcode":"50290"}`,
+		"money missing dist": `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","province":"เชียงใหม่","postcode":"50290"}`,
+		"money bad province": `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"ดาวอังคาร","postcode":"50290"}`,
+		"money bad postcode": `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"5029"}`,
+		"money dash post":    `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203450","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50-290"}`,
 		"money no amount":    `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyTaxAddrJSON + `}`,
 		"money amount 0":     `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"0",` + validMoneyTaxAddrJSON + `}`,
 		"money amount neg":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"-5",` + validMoneyTaxAddrJSON + `}`,
 		"money amount 3dp":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1.234",` + validMoneyTaxAddrJSON + `}`,
 		"money amount abc":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"abc",` + validMoneyTaxAddrJSON + `}`,
 		"money amount cap":   `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"10000000.01",` + validMoneyTaxAddrJSON + `}`,
-		"goods with amount":  `{"name":"ร้าน","phone":"0812345678","kind":"goods","amount":"500"}`,
-	} {
+	}
+	for name, body := range goods {
 		t.Run(name, func(t *testing.T) {
 			expectCode(t, app.postInquiry(t, body), http.StatusBadRequest, response.CodeValidation)
 		})
 	}
+	for name, body := range money {
+		t.Run(name, func(t *testing.T) {
+			expectCode(t, app.postMoneyWeb(t, body), http.StatusBadRequest, response.CodeValidation)
+		})
+	}
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatalf("invalid inquiries were stored: %d", len(list))
+	}
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("invalid inquiries left files: %v", files)
 	}
 }
 
@@ -303,18 +364,22 @@ func TestSponsorInquiry_TurnstileFailureIs403(t *testing.T) {
 	captcha := &cloudflareLike{used: map[string]bool{}}
 	app := setupSponsorDeskApp(t, captcha)
 	// Invalid taxId fails validation before Turnstile, so the single-use token is not burnt.
-	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290","turnstileToken":"good-1"}`), http.StatusBadRequest, response.CodeValidation)
-	rec := app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"bad"}`)
+	expectCode(t, app.postMoneyWeb(t, `{"name":"ร้าน","phone":"0812345678","kind":"money","amount":"1","taxId":"1101700203451","addressLine":"1","subdistrict":"หนองหาร","district":"สันทราย","province":"เชียงใหม่","postcode":"50290","turnstileToken":"good-1"}`), http.StatusBadRequest, response.CodeValidation)
+	rec := app.postMoneyWeb(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"bad"}`)
 	expectCode(t, rec, http.StatusForbidden, response.CodeCaptchaFailed)
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatal("inquiry stored despite captcha failure")
 	}
-	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"good-1"}`), http.StatusCreated, "")
+	if files := app.docFiles(t); len(files) != 0 {
+		t.Fatalf("captcha failure left a slip: %v", files)
+	}
+	expectCode(t, app.postMoneyWeb(t, `{"name":"ร้าน","phone":"0812345678","kind":"money",`+validMoneyJSON+`,"turnstileToken":"good-1"}`), http.StatusCreated, "")
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน","phone":"0812345678","kind":"goods","turnstileToken":"bad"}`), http.StatusForbidden, response.CodeCaptchaFailed)
 }
 
 func TestSponsorInquiry_RateLimited(t *testing.T) {
 	app := setupSponsorDeskAppWith(t, nil, server.DefaultRateLimits())
-	body := `{"name":"ร้าน","phone":"0812345678","kind":"money",` + validMoneyJSON + `}`
+	body := `{"name":"ร้าน","phone":"0812345678","kind":"goods"}`
 	for range server.SponsorInquiryRatePer10Min {
 		expectCode(t, app.postInquiry(t, body), http.StatusCreated, "")
 	}
@@ -323,9 +388,9 @@ func TestSponsorInquiry_RateLimited(t *testing.T) {
 	if rec.Header().Get("Retry-After") == "" {
 		t.Fatal("429 without Retry-After")
 	}
-	// Sending the filled form instead shares the same per-IP bucket.
+	// Sending the money form (slip upload) shares the same per-IP bucket.
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
-	expectCode(t, app.postInquiryUpload(t, map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1200"}, "form.pdf", pdf), http.StatusTooManyRequests, response.CodeRateLimited)
+	expectCode(t, app.postInquiryUpload(t, map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1200"}, formPart("form.pdf", pdf), validSlip()), http.StatusTooManyRequests, response.CodeRateLimited)
 }
 
 func TestSponsorDesk_AdminRoutesRequireToken(t *testing.T) {
@@ -335,6 +400,7 @@ func TestSponsorDesk_AdminRoutesRequireToken(t *testing.T) {
 		{http.MethodPatch, "/api/admin/sponsor-inquiries/1"},
 		{http.MethodDelete, "/api/admin/sponsor-inquiries/1"},
 		{http.MethodGet, "/api/admin/sponsor-inquiries/1/file"},
+		{http.MethodGet, "/api/admin/sponsor-inquiries/1/slip"},
 		{http.MethodGet, "/api/admin/sponsor-notify-emails"},
 		{http.MethodPut, "/api/admin/sponsor-notify-emails"},
 		{http.MethodGet, "/api/admin/sponsor-donations"},
@@ -595,8 +661,29 @@ func TestSponsorDonation_OversizedImageDimensions(t *testing.T) {
 	expectCode(t, app.putFile(t, token, d.ID, "signed", "huge.webp", webpVP8XHeader(10001, 10)), http.StatusBadRequest, response.CodeInvalidImageDims)
 }
 
-// inquiryUploadBody builds a POST /api/sponsor-inquiries/upload body; a nil file omits the part.
-func inquiryUploadBody(t *testing.T, fields map[string]string, fileName string, file []byte) (*bytes.Buffer, string) {
+// uploadPart is one file part of a POST /api/sponsor-inquiries/upload body.
+type uploadPart struct {
+	field, name string
+	data        []byte
+}
+
+func formPart(name string, data []byte) uploadPart { return uploadPart{"file", name, data} }
+
+func slipPart(name string, data []byte) uploadPart { return uploadPart{"slip", name, data} }
+
+// validSlip is a small PNG transfer slip (PNG is stored byte for byte).
+func validSlip() uploadPart { return slipPart("slip.png", encodePNG(20, 10)) }
+
+// moneyWebFields is a complete valid web-mode (no form attached) money inquiry.
+func moneyWebFields() map[string]string {
+	return map[string]string{
+		"name": "ร้าน", "phone": "0812345678", "amount": "1500", "taxId": "1101700203450", "addressLine": "63 หมู่ 4",
+		"subdistrict": "หนองหาร", "district": "สันทราย", "province": "เชียงใหม่", "postcode": "50290",
+	}
+}
+
+// inquiryUploadBody builds a POST /api/sponsor-inquiries/upload body from text fields and file parts.
+func inquiryUploadBody(t *testing.T, fields map[string]string, parts ...uploadPart) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -605,21 +692,55 @@ func inquiryUploadBody(t *testing.T, fields map[string]string, fileName string, 
 			t.Fatal(err)
 		}
 	}
-	if file != nil {
-		part, err := w.CreateFormFile("file", fileName)
+	for _, p := range parts {
+		part, err := w.CreateFormFile(p.field, p.name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = part.Write(file)
+		_, _ = part.Write(p.data)
 	}
 	_ = w.Close()
 	return &buf, w.FormDataContentType()
 }
 
-func (a *sponsorDeskApp) postInquiryUpload(t *testing.T, fields map[string]string, fileName string, file []byte) *httptest.ResponseRecorder {
+func (a *sponsorDeskApp) postInquiryUpload(t *testing.T, fields map[string]string, parts ...uploadPart) *httptest.ResponseRecorder {
 	t.Helper()
-	body, ct := inquiryUploadBody(t, fields, fileName, file)
+	body, ct := inquiryUploadBody(t, fields, parts...)
 	return a.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", body, map[string]string{"Content-Type": ct})
+}
+
+// postMoneyWeb sends a JSON-shaped money inquiry through the upload route in web mode (no form)
+// with a valid slip.
+func (a *sponsorDeskApp) postMoneyWeb(t *testing.T, jsonBody string) *httptest.ResponseRecorder {
+	t.Helper()
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(jsonBody), &fields); err != nil {
+		t.Fatalf("bad test body %s: %v", jsonBody, err)
+	}
+	return a.postInquiryUpload(t, fields, validSlip())
+}
+
+func (a *sponsorDeskApp) listInquiries(t *testing.T, token string) []service.SponsorInquiryEntry {
+	t.Helper()
+	rec := a.authed(t, token, http.MethodGet, "/api/admin/sponsor-inquiries", "")
+	expectCode(t, rec, http.StatusOK, "")
+	var res struct {
+		Inquiries []service.SponsorInquiryEntry `json:"inquiries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	return res.Inquiries
+}
+
+func countPrefix(names []string, prefix string) int {
+	n := 0
+	for _, name := range names {
+		if strings.HasPrefix(name, prefix) {
+			n++
+		}
+	}
+	return n
 }
 
 func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
@@ -628,16 +749,17 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	expectCode(t, app.authed(t, token, http.MethodPut, "/api/admin/sponsor-notify-emails", `{"emails":["staff@example.com"]}`), http.StatusOK, "")
 
 	pdf := []byte("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
-	// Upload route neither requires nor accepts taxId/address fields (even invalid values sent alongside are ignored).
+	slip := encodeJPEG(20, 10)
+	// With the form attached, taxId/address fields are neither required nor accepted (even invalid values sent alongside are ignored).
 	rec := app.postInquiryUpload(t, map[string]string{
 		"name": " ร้าน ค ", "phone": "081-234-5678", "amount": "๑,๒๐๐",
 		"taxId": "not-a-tax-id", "addressLine": "should be ignored", "province": "ดาวอังคาร", "postcode": "abc",
-	}, "form.pdf", pdf)
+	}, formPart("form.pdf", pdf), slipPart("slip.jpg", slip))
 	expectCode(t, rec, http.StatusCreated, "")
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"ok":true}` {
 		t.Fatalf("body = %q, want {\"ok\":true}", got)
 	}
-	// A typed inquiry next to it has no file.
+	// A typed goods inquiry next to it has no file.
 	expectCode(t, app.postInquiry(t, `{"name":"ร้าน ง","phone":"0812345679","kind":"goods"}`), http.StatusCreated, "")
 
 	rec = app.authed(t, token, http.MethodGet, "/api/admin/sponsor-inquiries", "")
@@ -659,24 +781,38 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	}
 	if withFile.Kind != "money" || withFile.Phone != "0812345678" || withFile.File == nil ||
 		withFile.File.MIME != "application/pdf" || withFile.File.Size != len(pdf) ||
+		withFile.Slip == nil || withFile.Slip.MIME != "image/jpeg" || withFile.Slip.Size <= 0 ||
 		withFile.TaxID != "" || withFile.AddressLine != "" || withFile.Province != "" || withFile.Postcode != "" ||
 		withFile.Amount == nil || *withFile.Amount != "1200" || typed.Amount != nil {
-		t.Fatalf("uploaded inquiry = %+v (file %+v)", withFile, withFile.File)
+		t.Fatalf("uploaded inquiry = %+v (file %+v, slip %+v)", withFile, withFile.File, withFile.Slip)
 	}
-	if typed.File != nil {
-		t.Fatalf("typed inquiry must have no file: %+v", typed.File)
+	if typed.File != nil || typed.Slip != nil {
+		t.Fatalf("typed inquiry must have no file or slip: %+v %+v", typed.File, typed.Slip)
 	}
 	if strings.Contains(rec.Body.String(), "sponsor-docs") {
 		t.Fatal("admin list leaks the stored file path")
 	}
-	if files := app.docFiles(t); len(files) != 1 || !strings.HasPrefix(files[0], "inquiry-") || !strings.HasSuffix(files[0], ".pdf") {
+	files := app.docFiles(t)
+	if len(files) != 2 || countPrefix(files, "inquiry-slip-") != 1 {
 		t.Fatalf("files on disk = %v", files)
+	}
+	for _, f := range files {
+		if strings.HasPrefix(f, "inquiry-slip-") && !strings.HasSuffix(f, ".jpg") || !strings.HasPrefix(f, "inquiry-slip-") && !strings.HasSuffix(f, ".pdf") {
+			t.Fatalf("unexpected stored name %q", f)
+		}
 	}
 	app.notifier.mu.Lock()
 	sent := append([]service.SponsorInquiryEmailData{}, app.notifier.sent...)
 	app.notifier.mu.Unlock()
-	if len(sent) != 2 || sent[0].FileMIME != "application/pdf" || sent[1].FileMIME != "" {
+	if len(sent) != 2 || sent[0].FileMIME != "application/pdf" || !sent[0].HasSlip || sent[1].FileMIME != "" || sent[1].HasSlip {
 		t.Fatalf("notifications = %+v", sent)
+	}
+	for _, e := range app.auditRepo.Entries() {
+		if e.Action == domain.AuditSponsorInquiryCreate && e.Details["kind"] == "money" {
+			if len(e.Details) != 5 || e.Details["mime"] != "application/pdf" || e.Details["slipMime"] != "image/jpeg" {
+				t.Fatalf("upload audit details = %+v", e.Details)
+			}
+		}
 	}
 
 	rec = app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", withFile.ID), "")
@@ -697,63 +833,85 @@ func TestSponsorInquiryUpload_StoresServesAndDeletesForm(t *testing.T) {
 	if app.auditCount(domain.AuditSponsorInquiryFileView) != 1 {
 		t.Fatal("file view not audited")
 	}
+	rec = app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", withFile.ID), "")
+	expectCode(t, rec, http.StatusOK, "")
+	if rec.Header().Get("Content-Type") != "image/jpeg" || rec.Header().Get("Cache-Control") != "private, no-store" ||
+		rec.Header().Get("Content-Disposition") != fmt.Sprintf(`inline; filename="sponsor-inquiry-slip-%d.jpg"`, withFile.ID) {
+		t.Fatalf("slip headers = %v", rec.Header())
+	}
+	if app.auditCount(domain.AuditSponsorInquirySlipView) != 1 {
+		t.Fatal("slip view not audited")
+	}
 	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", typed.ID), ""), http.StatusNotFound, response.CodeNotFound)
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", typed.ID), ""), http.StatusNotFound, response.CodeNotFound)
 
 	expectCode(t, app.authed(t, token, http.MethodDelete, fmt.Sprintf("/api/admin/sponsor-inquiries/%d", withFile.ID), ""), http.StatusNoContent, "")
 	if files := app.docFiles(t); len(files) != 0 {
-		t.Fatalf("inquiry delete must remove its form: %v", files)
+		t.Fatalf("inquiry delete must remove its form and slip: %v", files)
 	}
 	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/file", withFile.ID), ""), http.StatusNotFound, response.CodeNotFound)
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", withFile.ID), ""), http.StatusNotFound, response.CodeNotFound)
 }
 
 func TestSponsorInquiryUpload_RejectsWithoutLeavingFiles(t *testing.T) {
 	app := setupSponsorDeskApp(t, nil)
 	ok := map[string]string{"name": "ร้าน ค", "phone": "0812345678", "amount": "1200"}
+	noTax := moneyWebFields()
+	delete(noTax, "taxId")
+	badTax := moneyWebFields()
+	badTax["taxId"] = "1101700203451"
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
+	form := formPart("form.pdf", pdf)
+	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+	bigSlip := append(encodePNG(20, 10), bytes.Repeat([]byte{0}, service.MaxSponsorSlipBytes)...)
 
 	for name, tc := range map[string]struct {
-		fields   map[string]string
-		fileName string
-		file     []byte
-		status   int
-		code     string
+		fields map[string]string
+		parts  []uploadPart
+		status int
+		code   string
 	}{
-		"svg":        {ok, "evil.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`), http.StatusBadRequest, response.CodeValidation},
-		"html":       {ok, "evil.html", []byte(`<!DOCTYPE html><html><script>alert(1)</script></html>`), http.StatusBadRequest, response.CodeValidation},
-		"gif":        {ok, "anim.gif", []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;"), http.StatusBadRequest, response.CodeValidation},
-		"empty file": {ok, "form.pdf", []byte{}, http.StatusBadRequest, response.CodeValidation},
-		"no file":    {ok, "", nil, http.StatusBadRequest, response.CodeValidation},
-		"bad phone":  {map[string]string{"name": "ร้าน", "phone": "12345"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"bad kind":   {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "alcohol"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"goods kind": {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "goods"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"no amount":  {map[string]string{"name": "ร้าน", "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"bad amount": {map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1.234"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"long field": {map[string]string{"name": strings.Repeat("ก", 2000), "phone": "0812345678"}, "form.pdf", pdf, http.StatusBadRequest, response.CodeValidation},
-		"too large":  {ok, "big.pdf", append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("a"), service.MaxSponsorDocBytes)...), http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
-		"huge image": {ok, "huge.webp", webpVP8XHeader(10001, 10), http.StatusBadRequest, response.CodeInvalidImageDims},
+		"svg":             {ok, []uploadPart{formPart("evil.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)), validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"html":            {ok, []uploadPart{formPart("evil.html", []byte(`<!DOCTYPE html><html><script>alert(1)</script></html>`)), validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"gif":             {ok, []uploadPart{formPart("anim.gif", gif), validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"empty file":      {ok, []uploadPart{formPart("form.pdf", []byte{}), validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"no slip":         {ok, []uploadPart{form}, http.StatusBadRequest, response.CodeValidation},
+		"no slip web":     {moneyWebFields(), nil, http.StatusBadRequest, response.CodeValidation},
+		"empty slip":      {ok, []uploadPart{form, slipPart("slip.png", []byte{})}, http.StatusBadRequest, response.CodeValidation},
+		"slip pdf":        {ok, []uploadPart{form, slipPart("slip.pdf", pdf)}, http.StatusBadRequest, response.CodeValidation},
+		"slip gif":        {ok, []uploadPart{form, slipPart("slip.gif", gif)}, http.StatusBadRequest, response.CodeValidation},
+		"slip svg":        {ok, []uploadPart{form, slipPart("slip.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`))}, http.StatusBadRequest, response.CodeValidation},
+		"slip too large":  {ok, []uploadPart{form, slipPart("slip.png", bigSlip)}, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
+		"slip huge image": {ok, []uploadPart{form, slipPart("slip.webp", webpVP8XHeader(10001, 10))}, http.StatusBadRequest, response.CodeInvalidImageDims},
+		"two slips":       {ok, []uploadPart{form, validSlip(), validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"web no taxId":    {noTax, []uploadPart{validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"web bad taxId":   {badTax, []uploadPart{validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"web no address":  {ok, []uploadPart{validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"bad phone":       {map[string]string{"name": "ร้าน", "phone": "12345", "amount": "1200"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"bad kind":        {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "alcohol"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"goods kind":      {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "goods"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"goods kind slip": {map[string]string{"name": "ร้าน", "phone": "0812345678", "kind": "goods"}, []uploadPart{validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"no amount":       {map[string]string{"name": "ร้าน", "phone": "0812345678"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"bad amount":      {map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1.234"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"long field":      {map[string]string{"name": strings.Repeat("ก", 2000), "phone": "0812345678"}, []uploadPart{form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
+		"form too large":  {ok, []uploadPart{formPart("big.pdf", append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("a"), service.MaxSponsorDocBytes)...)), validSlip()}, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge},
+		"form huge image": {ok, []uploadPart{formPart("huge.webp", webpVP8XHeader(10001, 10)), validSlip()}, http.StatusBadRequest, response.CodeInvalidImageDims},
+		"two forms":       {ok, []uploadPart{form, form, validSlip()}, http.StatusBadRequest, response.CodeValidation},
 	} {
 		t.Run(name, func(t *testing.T) {
-			expectCode(t, app.postInquiryUpload(t, tc.fields, tc.fileName, tc.file), tc.status, tc.code)
+			expectCode(t, app.postInquiryUpload(t, tc.fields, tc.parts...), tc.status, tc.code)
 		})
 	}
-
-	// Two file parts are refused.
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	for range 2 {
-		part, _ := w.CreateFormFile("file", "form.pdf")
-		_, _ = part.Write(pdf)
+	rec := app.postInquiryUpload(t, ok, form)
+	if e := decodeErr(t, rec.Body.Bytes()); e.Error != "slip is required for money donations" {
+		t.Fatalf("missing slip error = %q", e.Error)
 	}
-	_ = w.WriteField("name", "ร้าน")
-	_ = w.WriteField("phone", "0812345678")
-	_ = w.Close()
-	expectCode(t, app.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", &buf, map[string]string{"Content-Type": w.FormDataContentType()}), http.StatusBadRequest, response.CodeValidation)
 	// JSON is not a multipart form.
 	expectCode(t, app.do(t, http.MethodPost, "/api/sponsor-inquiries/upload", bytes.NewBufferString(`{"name":"ร้าน"}`), nil), http.StatusBadRequest, response.CodeValidation)
 
-	// A filled honeypot answers success but stores neither the row nor the file.
+	// A filled honeypot answers success but stores neither the row nor the files.
 	honeypot := map[string]string{"name": "bot", "phone": "0812345678", "website": "http://spam.example"}
-	expectCode(t, app.postInquiryUpload(t, honeypot, "form.pdf", pdf), http.StatusCreated, "")
+	expectCode(t, app.postInquiryUpload(t, honeypot, form, validSlip()), http.StatusCreated, "")
 
 	if list, _ := app.inquiryRepo.List(context.Background()); len(list) != 0 {
 		t.Fatalf("rejected uploads were stored: %d", len(list))
@@ -771,14 +929,81 @@ func TestSponsorInquiryUpload_TurnstileFailureKeepsNoFile(t *testing.T) {
 	app := setupSponsorDeskApp(t, captcha)
 	pdf := []byte("%PDF-1.4\n%%EOF\n")
 	fields := map[string]string{"name": "ร้าน", "phone": "0812345678", "amount": "1200", "turnstileToken": "bad"}
-	expectCode(t, app.postInquiryUpload(t, fields, "form.pdf", pdf), http.StatusForbidden, response.CodeCaptchaFailed)
+	expectCode(t, app.postInquiryUpload(t, fields, formPart("form.pdf", pdf), validSlip()), http.StatusForbidden, response.CodeCaptchaFailed)
 	if files := app.docFiles(t); len(files) != 0 {
 		t.Fatalf("captcha failure left a file: %v", files)
 	}
-	// An invalid file is refused before Turnstile, so the token is not burnt.
+	// An invalid form or slip is refused before Turnstile, so the token is not burnt.
 	fields["turnstileToken"] = "good-1"
-	expectCode(t, app.postInquiryUpload(t, fields, "x.gif", []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")), http.StatusBadRequest, response.CodeValidation)
-	expectCode(t, app.postInquiryUpload(t, fields, "form.pdf", pdf), http.StatusCreated, "")
+	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+	expectCode(t, app.postInquiryUpload(t, fields, formPart("x.gif", gif), validSlip()), http.StatusBadRequest, response.CodeValidation)
+	expectCode(t, app.postInquiryUpload(t, fields, formPart("form.pdf", pdf), slipPart("x.gif", gif)), http.StatusBadRequest, response.CodeValidation)
+	expectCode(t, app.postInquiryUpload(t, fields, formPart("form.pdf", pdf), validSlip()), http.StatusCreated, "")
+	if files := app.docFiles(t); len(files) != 2 {
+		t.Fatalf("files on disk = %v", files)
+	}
+}
+
+func TestSponsorDonation_CreateFromInquiryCopiesSlip(t *testing.T) {
+	app := setupSponsorDeskApp(t, nil)
+	token := app.login(t)
+	slip := encodePNG(20, 10)
+	expectCode(t, app.postInquiryUpload(t, moneyWebFields(), slipPart("slip.png", slip)), http.StatusCreated, "")
+	expectCode(t, app.postInquiry(t, `{"name":"ร้าน ง","phone":"0812345679","kind":"goods"}`), http.StatusCreated, "")
+	var money, goods service.SponsorInquiryEntry
+	for _, e := range app.listInquiries(t, token) {
+		if e.Kind == "money" {
+			money = e
+		} else {
+			goods = e
+		}
+	}
+	if money.Slip == nil {
+		t.Fatalf("money inquiry has no slip: %+v", money)
+	}
+
+	d := app.createDonation(t, token, fmt.Sprintf(`{"donorName":"ร้าน","kind":"money","amount":"1500","fromInquiryId":%d}`, money.ID))
+	if d.Files.Slip == nil || d.Files.Slip.MIME != "image/png" || d.Files.Slip.Size != len(slip) || d.Files.Signed != nil {
+		t.Fatalf("donation files = %+v", d.Files)
+	}
+	files := app.docFiles(t)
+	if len(files) != 2 || countPrefix(files, "inquiry-slip-") != 1 || countPrefix(files, fmt.Sprintf("%d-slip-", d.ID)) != 1 {
+		t.Fatalf("files on disk = %v", files)
+	}
+	rec := app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-donations/%d/files/slip", d.ID), "")
+	expectCode(t, rec, http.StatusOK, "")
+	if !bytes.Equal(rec.Body.Bytes(), slip) {
+		t.Fatal("copied slip differs from the inquiry slip")
+	}
+	var copyAudits int
+	for _, e := range app.auditRepo.Entries() {
+		if e.Action == domain.AuditSponsorDonationFileUp {
+			copyAudits++
+			if e.Details["kind"] != "slip" || e.Details["source"] != "inquiry" {
+				t.Fatalf("copy audit details = %+v", e.Details)
+			}
+		}
+	}
+	if copyAudits != 1 {
+		t.Fatalf("copy audits = %d, want 1", copyAudits)
+	}
+	// The inquiry keeps its own slip, also after the donation (and its copy) is deleted.
+	expectCode(t, app.authed(t, token, http.MethodDelete, fmt.Sprintf("/api/admin/sponsor-donations/%d", d.ID), ""), http.StatusNoContent, "")
+	expectCode(t, app.authed(t, token, http.MethodGet, fmt.Sprintf("/api/admin/sponsor-inquiries/%d/slip", money.ID), ""), http.StatusOK, "")
+	if files := app.docFiles(t); len(files) != 1 || countPrefix(files, "inquiry-slip-") != 1 {
+		t.Fatalf("files on disk after donation delete = %v", files)
+	}
+
+	// No slip to copy: goods inquiry, unknown inquiry, goods donation. Each is still created.
+	for _, body := range []string{
+		fmt.Sprintf(`{"donorName":"ร้าน ง","kind":"money","amount":"100","fromInquiryId":%d}`, goods.ID),
+		`{"donorName":"ร้าน จ","kind":"money","amount":"100","fromInquiryId":999}`,
+		fmt.Sprintf(`{"donorName":"ร้าน ฉ","kind":"goods","goodsDescription":"น้ำดื่ม","fromInquiryId":%d}`, money.ID),
+	} {
+		if got := app.createDonation(t, token, body); got.Files.Slip != nil {
+			t.Fatalf("%s: donation got a slip %+v", body, got.Files.Slip)
+		}
+	}
 	if files := app.docFiles(t); len(files) != 1 {
 		t.Fatalf("files on disk = %v", files)
 	}

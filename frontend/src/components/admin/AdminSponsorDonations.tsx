@@ -142,6 +142,8 @@ export type DonationPrefill = {
     | 'province'
     | 'postcode'
   >;
+  /** Money inquiry whose transfer slip the server copies into the new donation. */
+  fromInquiryId?: number;
 };
 
 interface Props {
@@ -423,6 +425,8 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
   const [formTarget, setFormTarget] = useState<FormTarget>(null);
   const [form, setForm] = useState<DonationForm>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  /** Set by "สร้างรายการบริจาค" from a money inquiry with a slip: the server copies that slip on create. */
+  const [fromInquiryId, setFromInquiryId] = useState<number | null>(null);
 
   /** Running mutation: 'save' | `faculty-<id>` | `delete-<id>` | `upload-<id>-<kind>` | `filedel-<id>-<kind>`. */
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -492,6 +496,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     setConfirmFileKey(null);
     setFieldErrors({});
     setForm({ ...emptyForm(), ...prefill.values });
+    setFromInquiryId(prefill.fromInquiryId ?? null);
     setFormTarget('new');
     requestAnimationFrame(() => {
       const el = document.getElementById(fieldId('donorName'));
@@ -532,6 +537,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     setFieldErrors({});
     if (target === 'new') {
       setFormTarget('new');
+      setFromInquiryId(null);
       setForm(emptyForm());
     } else {
       setFormTarget(target.id);
@@ -543,6 +549,7 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
   function closeForm(returnFocus = true) {
     const target = formTarget;
     setFormTarget(null);
+    setFromInquiryId(null);
     setFieldErrors({});
     if (!returnFocus) return;
     if (typeof target === 'number') focusLater(`donation-edit-${target}`, 'donation-add-button');
@@ -587,7 +594,10 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
     if (!lock('save')) return;
     try {
       if (formTarget === 'new') {
-        const created = await createSponsorDonation(token, input);
+        const created = await createSponsorDonation(
+          token,
+          fromInquiryId !== null && input.kind === 'money' ? { ...input, fromInquiryId } : input,
+        );
         setItems((prev) => [created, ...(prev ?? [])]);
         setNotice({ kind: 'ok', text: `บันทึกรายการบริจาคของ “${created.donorName}” แล้ว พิมพ์ฟอร์มให้ผู้บริจาคเซ็นได้จากรายการด้านล่าง` });
         closeForm(false);
@@ -754,6 +764,11 @@ export function AdminSponsorDonations({ token, canEdit, onAuthError, prefill }: 
         <h3 id="donation-form-title" className="text-base font-semibold leading-snug" style={{ color: INK }}>
           {isNew ? 'เพิ่มรายการบริจาค' : `แก้ไขรายการของ “${editing?.donorName ?? ''}”`}
         </h3>
+        {isNew && fromInquiryId !== null && form.kind === 'money' && (
+          <p className="text-sm leading-6" style={{ color: INK_2 }}>
+            สลิปจากผู้สนใจสนับสนุนจะถูกแนบให้อัตโนมัติ
+          </p>
+        )}
 
         <FieldShell k="donorName" label="ชื่อผู้บริจาค (บุคคลหรือหน่วยงาน)" error={e.donorName}>
           <input

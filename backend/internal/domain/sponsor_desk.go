@@ -15,7 +15,9 @@ const (
 )
 
 // SponsorInquiry is one "แจ้งความประสงค์สนับสนุน" submission from the public /sponsor page.
-// File is the filled donation form the sponsor attached instead of typing (nil = none).
+// File is the filled donation form the sponsor attached instead of typing (nil = none). Slip is
+// the transfer slip a money sponsor attaches (required for new money inquiries since migration
+// 000019; nil for goods and older rows), stored with the same metadata shape as File.
 // Amount is the declared baht amount as a canonical decimal string (required for money inquiries
 // since migration 000018; nil for goods and older rows). TaxID and the five structured address
 // fields are populated for typed money inquiries (empty for goods inquiries and uploaded forms).
@@ -34,11 +36,13 @@ type SponsorInquiry struct {
 	Province    string
 	Postcode    string
 	File        *SponsorInquiryFile
+	Slip        *SponsorInquiryFile
 	HandledAt   *time.Time
 	CreatedAt   time.Time
 }
 
-// SponsorInquiryFile is the stored metadata of an attached form (migration 000016). Path is
+// SponsorInquiryFile is the stored metadata of an attached form (migration 000016) or transfer
+// slip (migration 000019). Path is
 // relative to UPLOAD_DIR ("sponsor-docs/<name>") and never serialized; the upload time is the
 // inquiry's CreatedAt.
 type SponsorInquiryFile struct {

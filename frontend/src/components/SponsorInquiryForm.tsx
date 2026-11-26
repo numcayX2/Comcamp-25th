@@ -31,7 +31,7 @@ import {
 import { SPONSOR_FORM_FILENAME, SPONSOR_FORM_PDF } from '../lib/camp-facts';
 import { canonicalProvince } from '../lib/provinces';
 import { formatBytes, middleTruncate } from '../lib/slip-upload';
-import { SPONSOR_FORM_ACCEPT, prepareSponsorFormFile } from '../lib/sponsor-upload';
+import { SPONSOR_FORM_ACCEPT, SPONSOR_SLIP_ACCEPT, prepareSponsorFormFile, prepareSponsorSlipFile } from '../lib/sponsor-upload';
 import { isValidPostcode, isValidThaiTaxId, normalizePostcode, normalizeThaiTaxId } from '../lib/thai-tax-id';
 import { ProvinceCombobox } from './ProvinceCombobox';
 import { TurnstileField, type TurnstileFieldHandle } from './register/TurnstileField';
@@ -62,6 +62,7 @@ const CAPTCHA_LOAD_FAILED_MESSAGE = (
 const SEND_FAILED_MESSAGE = 'ส่งไม่สำเร็จ กรุณาลองใหม่ หรือโทรหาสตาฟค่าย';
 const VALIDATION_FAILED_MESSAGE = 'ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
 const FILE_REJECTED_MESSAGE = 'ระบบไม่รับไฟล์นี้ กรุณาเลือกไฟล์ PDF หรือรูปภาพ (JPG, PNG, WebP) ใหม่';
+const SLIP_REJECTED_MESSAGE = 'ระบบไม่รับรูปสลิปนี้ กรุณาบันทึกสลิปจากแอปธนาคารใหม่ แล้วแนบอีกครั้ง';
 /** Only a server complaint about the attachment deserves the file-specific wording. */
 const FILE_VALIDATION_MESSAGE_RE = /file|pdf|image|mime|size/i;
 
@@ -106,8 +107,8 @@ function kindHint(kind: SponsorKind, mode: Mode): string {
     return 'สนับสนุนด้วยสิ่งของนำไปลดหย่อนภาษีไม่ได้ จึงไม่ต้องใช้แบบฟอร์มบริจาค แจ้งรายการสิ่งของในช่องรายละเอียดด้านล่าง';
   }
   return mode === 'file'
-    ? 'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ แนบแบบฟอร์มบริจาคเงินที่กรอกและลงนามแล้วด้านล่าง'
-    : 'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ สตาฟค่ายจะส่งแบบฟอร์มบริจาคเงินให้ลงนาม หรือจะแนบแบบฟอร์มที่กรอกแล้วเองก็ได้';
+    ? 'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ โอนเข้าบัญชีของคณะก่อน แล้วแนบสลิปพร้อมแบบฟอร์มบริจาคเงินที่กรอกและลงนามแล้วด้านล่าง (มอบเงินสด กรุณาโทรนัดสตาฟค่ายโดยตรง)'
+    : 'บริจาคเงินนำไปลดหย่อนภาษีได้ผ่านคณะวิทยาศาสตร์ โอนเข้าบัญชีของคณะก่อน แล้วแนบสลิปและกรอกข้อมูลด้านล่าง สตาฟค่ายจะส่งแบบฟอร์มบริจาคเงินให้ลงนาม หรือจะแนบแบบฟอร์มที่กรอกแล้วเองก็ได้ (มอบเงินสด กรุณาโทรนัดสตาฟค่ายโดยตรง)';
 }
 
 function detailsPlaceholder(kind: SponsorKind | ''): string {
@@ -122,6 +123,7 @@ type FieldKey =
   | 'email'
   | 'kind'
   | 'amount'
+  | 'slip'
   | 'file'
   | 'taxId'
   | 'addressLine'
@@ -158,17 +160,28 @@ function emailError(value: string): ReactNode | undefined {
   );
 }
 
-function errorMessage(err: unknown, mode: Mode): ReactNode {
+function errorMessage(err: unknown, mode: Mode, withSlip: boolean): ReactNode {
   if (err instanceof ApiHttpError) {
+    const aboutSlip = withSlip && (/slip/i.test(err.message) || mode === 'web');
     if (err.code === 'PAYLOAD_TOO_LARGE') {
+      if (aboutSlip) {
+        return (
+          <>
+            รูปสลิปใหญ่เกิน <span className="font-mono tabular-nums">1.5</span> MB กรุณาบันทึกสลิปจากแอปธนาคารใหม่
+          </>
+        );
+      }
       return (
         <>
           ไฟล์ใหญ่เกิน <span className="font-mono tabular-nums">8</span> MB กรุณาถ่ายรูปแบบฟอร์มใหม่ หรือสแกนให้ไฟล์เล็กลง
         </>
       );
     }
-    if (err.code === 'INVALID_IMAGE_DIMENSIONS') return 'รูปมีขนาดใหญ่เกินไป กรุณาถ่ายรูปแบบฟอร์มใหม่';
+    if (err.code === 'INVALID_IMAGE_DIMENSIONS') {
+      return aboutSlip ? SLIP_REJECTED_MESSAGE : 'รูปมีขนาดใหญ่เกินไป กรุณาถ่ายรูปแบบฟอร์มใหม่';
+    }
     if (err.code === 'VALIDATION_ERROR') {
+      if (withSlip && /slip/i.test(err.message)) return SLIP_REJECTED_MESSAGE;
       return mode === 'file' && FILE_VALIDATION_MESSAGE_RE.test(err.message)
         ? FILE_REJECTED_MESSAGE
         : VALIDATION_FAILED_MESSAGE;
@@ -207,6 +220,9 @@ export default function SponsorInquiryForm() {
   const [file, setFile] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [slip, setSlip] = useState<File | null>(null);
+  const [slipPreparing, setSlipPreparing] = useState(false);
+  const [slipDragging, setSlipDragging] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
 
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -235,6 +251,8 @@ export default function SponsorInquiryForm() {
   const kindRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const slipRef = useRef<HTMLInputElement>(null);
+  const slipPickRef = useRef(0);
   const uploadAnchorRef = useRef<HTMLFieldSetElement>(null);
   const uploadScrollRafRef = useRef(0);
   const successRef = useRef<HTMLDivElement>(null);
@@ -319,6 +337,7 @@ export default function SponsorInquiryForm() {
     setDetails('');
     setWebsite('');
     clearFile();
+    clearSlip();
     setErrors({});
     setFormError(null);
     setCaptchaError(null);
@@ -362,10 +381,12 @@ export default function SponsorInquiryForm() {
       setMode('web');
       clearUploadHash();
       clearFile();
+      clearSlip();
       setAmount('');
       setErrors((prev) => ({
         ...prev,
         amount: undefined,
+        slip: undefined,
         taxId: undefined,
         addressLine: undefined,
         subdistrict: undefined,
@@ -417,9 +438,58 @@ export default function SponsorInquiryForm() {
     void pickFile(event.dataTransfer.files?.[0]);
   }
 
+  /** Drops the chosen slip; bumping slipPickRef also discards a re-encode still in flight. */
+  function clearSlip() {
+    slipPickRef.current += 1;
+    setSlipPreparing(false);
+    setSlip(null);
+    if (slipRef.current) slipRef.current.value = '';
+  }
+
+  function removeSlip() {
+    if (busyRef.current) return;
+    clearSlip();
+    clearError('slip');
+    setFormError(null);
+    slipRef.current?.focus();
+  }
+
+  async function pickSlip(picked: File | null | undefined) {
+    if (!picked || busyRef.current) return;
+    const pick = ++slipPickRef.current;
+    setSlipPreparing(true);
+    clearError('slip');
+    setFormError(null);
+    try {
+      const check = await prepareSponsorSlipFile(picked);
+      if (pick !== slipPickRef.current) return;
+      if (check.ok) {
+        setSlip(check.file);
+      } else {
+        setSlip(null);
+        setErrors((prev) => ({ ...prev, slip: check.message }));
+      }
+    } finally {
+      if (pick === slipPickRef.current) setSlipPreparing(false);
+    }
+  }
+
+  function onSlipInput(event: ChangeEvent<HTMLInputElement>) {
+    const picked = event.target.files?.[0];
+    event.target.value = '';
+    void pickSlip(picked);
+  }
+
+  function onSlipDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setSlipDragging(false);
+    void pickSlip(event.dataTransfer.files?.[0]);
+  }
+
   function firstInvalidField(next: FieldErrors): HTMLElement | null {
     if (next.kind) return kindRef.current;
     if (next.amount) return amountRef.current;
+    if (next.slip) return slipRef.current;
     if (next.file) return fileRef.current;
     if (next.name) return nameRef.current;
     if (next.phone) return phoneRef.current;
@@ -436,7 +506,7 @@ export default function SponsorInquiryForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busyRef.current || preparing) return;
+    if (busyRef.current || preparing || slipPreparing) return;
 
     // Tabs arrive when a name or a list is pasted from a spreadsheet; the server refuses them as
     // control characters, so they become spaces here instead of failing the whole submission.
@@ -471,6 +541,9 @@ export default function SponsorInquiryForm() {
     if (kind === 'money') {
       const amountProblem = amountError(cleanAmount);
       if (amountProblem) next.amount = amountProblem;
+    }
+    if (kind === 'money' && !slip) {
+      next.slip = errors.slip ?? 'กรุณาแนบสลิปโอนเงิน';
     }
     if (mode === 'file' && !file) {
       next.file = errors.file ?? 'กรุณาแนบไฟล์แบบฟอร์มที่กรอกแล้ว';
@@ -576,33 +649,40 @@ export default function SponsorInquiryForm() {
     setBusy(true);
 
     try {
-      if (mode === 'file') {
-        if (!file) return;
+      if (kind === 'money') {
+        if (!slip || (mode === 'file' && !file)) return;
         setProgress(0);
         await submitSponsorFormUpload(
-          { name: cleanName, phone: digits, email: cleanEmail, details: cleanDetails, amount: cleanAmount, turnstileToken, website },
-          file,
+          {
+            name: cleanName,
+            phone: digits,
+            email: cleanEmail,
+            details: cleanDetails,
+            amount: cleanAmount,
+            ...(needsTaxAddress
+              ? {
+                  taxId: cleanTaxId,
+                  addressLine: cleanAddressLine,
+                  subdistrict: cleanSubdistrict,
+                  district: cleanDistrict,
+                  province: officialProvince,
+                  postcode: cleanPostcode,
+                }
+              : {}),
+            turnstileToken,
+            website,
+          },
+          mode === 'file' ? file : null,
+          slip,
           setProgress,
         );
       } else {
-        if (!kind) return;
         await submitSponsorInquiry({
           name: cleanName,
           phone: digits,
           email: cleanEmail,
-          kind,
+          kind: 'goods',
           details: cleanDetails,
-          ...(kind === 'money' ? { amount: cleanAmount } : {}),
-          ...(needsTaxAddress
-            ? {
-                taxId: cleanTaxId,
-                addressLine: cleanAddressLine,
-                subdistrict: cleanSubdistrict,
-                district: cleanDistrict,
-                province: officialProvince,
-                postcode: cleanPostcode,
-              }
-            : {}),
           turnstileToken,
           website,
         });
@@ -611,7 +691,7 @@ export default function SponsorInquiryForm() {
       setDone(mode);
     } catch (err) {
       const captchaFailed = err instanceof ApiHttpError && err.code === 'CAPTCHA_FAILED';
-      setFormError(captchaFailed ? null : errorMessage(err, mode));
+      setFormError(captchaFailed ? null : errorMessage(err, mode, kind === 'money'));
       captchaRef.current?.reset();
       if (captchaFailed) {
         setCaptchaError(CAPTCHA_FAILED_MESSAGE);
@@ -634,7 +714,7 @@ export default function SponsorInquiryForm() {
 
   const fileMode = mode === 'file';
   let submitLabel: ReactNode;
-  if (busy && fileMode) {
+  if (busy && kind === 'money') {
     submitLabel = (
       <>
         กำลังส่งไฟล์… <span className="font-mono tabular-nums">{progress ?? 0}%</span>
@@ -736,7 +816,7 @@ export default function SponsorInquiryForm() {
                       aria-invalid={errors.kind ? true : undefined}
                       aria-describedby={errors.kind ? 'sp-kind-err' : undefined}
                     />
-                    <span className="sp-choice__pill">{SPONSOR_KIND_LABELS[option]}</span>
+                    <span className="sp-choice__pill">{option === 'money' ? 'เงิน (โอนเข้าบัญชีคณะ)' : SPONSOR_KIND_LABELS[option]}</span>
                   </label>
                 ))}
               </div>
@@ -788,6 +868,84 @@ export default function SponsorInquiryForm() {
                   <p id="sp-amount-err" className="sp-error">
                     <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
                     <span>{errors.amount}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {kind === 'money' && (
+              <div className="sp-field sp-field--full sp-slip">
+                <span className="sp-label" id="sp-slip-label">
+                  <span>
+                    สลิปโอนเงิน <span className="sp-req" aria-hidden="true">*</span>
+                    <span className="sr-only"> (จำเป็น)</span>
+                  </span>
+                </span>
+                <label
+                  className="sp-drop"
+                  data-drag={slipDragging || undefined}
+                  data-filled={slip ? true : undefined}
+                  data-invalid={errors.slip ? true : undefined}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (!busy) setSlipDragging(true);
+                  }}
+                  onDragLeave={() => setSlipDragging(false)}
+                  onDrop={onSlipDrop}
+                >
+                  <input
+                    ref={slipRef}
+                    id="sp-slip"
+                    name="slip"
+                    className="sp-drop__input"
+                    type="file"
+                    accept={SPONSOR_SLIP_ACCEPT}
+                    disabled={busy}
+                    onChange={onSlipInput}
+                    aria-labelledby="sp-slip-label"
+                    aria-invalid={errors.slip ? true : undefined}
+                    aria-describedby={`sp-slip-state sp-slip-hint${errors.slip ? ' sp-slip-err' : ''}`}
+                  />
+                  {slip ? (
+                    <>
+                      <ImageIcon className="sp-drop__icon" size={20} strokeWidth={1.5} aria-hidden="true" />
+                      <span className="sp-drop__text" id="sp-slip-state">
+                        <span className="sp-drop__name">{middleTruncate(slip.name, 34)}</span>
+                        <span className="sp-drop__meta font-mono tabular-nums">{formatBytes(slip.size)}</span>
+                      </span>
+                      <span className="sp-drop__action" aria-hidden="true">
+                        เปลี่ยนไฟล์
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="sp-drop__icon" size={20} strokeWidth={1.5} aria-hidden="true" />
+                      <span className="sp-drop__text" id="sp-slip-state">
+                        <span className="sp-drop__name">{slipPreparing ? 'กำลังเตรียมรูปสลิป…' : 'เลือกรูปสลิปโอนเงิน'}</span>
+                      </span>
+                    </>
+                  )}
+                </label>
+                {slip && (
+                  <div className="sp-drop__actions">
+                    <button
+                      type="button"
+                      className="sp-btn sp-btn--secondary sp-btn--sm"
+                      disabled={busy}
+                      onClick={removeSlip}
+                      aria-describedby="sp-slip-state"
+                    >
+                      ลบไฟล์
+                    </button>
+                  </div>
+                )}
+                <p id="sp-slip-hint" className="sp-hint sp-hint--wrap">
+                  โอนเข้าบัญชีของคณะก่อน แล้วแนบรูปสลิปจากแอปธนาคาร JPG, PNG หรือ WebP รูปจะถูกย่อให้อัตโนมัติ
+                </p>
+                {errors.slip && (
+                  <p id="sp-slip-err" className="sp-error" role="alert">
+                    <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <span>{errors.slip}</span>
                   </p>
                 )}
               </div>
@@ -1323,7 +1481,7 @@ export default function SponsorInquiryForm() {
               <button
                 type="submit"
                 className="sp-btn sp-btn--primary"
-                disabled={busy || preparing || !hydrated || CAPTCHA_MODE === 'missing-key'}
+                disabled={busy || preparing || slipPreparing || !hydrated || CAPTCHA_MODE === 'missing-key'}
                 aria-busy={busy || undefined}
               >
                 {submitLabel}

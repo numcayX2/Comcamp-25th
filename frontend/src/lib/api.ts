@@ -1449,20 +1449,26 @@ export async function submitSponsorInquiry(payload: SponsorInquiryPayload): Prom
   });
 }
 
-/** Body of POST /sponsor-inquiries/upload besides the file: `kind` defaults to money server-side, so amount is required. */
+/**
+ * Body of POST /sponsor-inquiries/upload besides the files: `kind` defaults to money server-side,
+ * so amount is required. Tax ID + address are required (web mode) only when no form `file` is sent.
+ */
 export type SponsorFormUploadPayload = Pick<
   SponsorInquiryPayload,
   'name' | 'phone' | 'email' | 'details' | 'turnstileToken' | 'website'
+  | 'taxId' | 'addressLine' | 'subdistrict' | 'district' | 'province' | 'postcode'
 > & { amount: string };
 
 /**
- * POST /sponsor-inquiries/upload — public multipart: the filled donation form (PDF/JPG/PNG/WebP
- * ≤ 8 MB) instead of the typed inquiry. XHR for upload progress; 2 min timeout so an 8 MB scan
+ * POST /sponsor-inquiries/upload — public multipart for every money inquiry: the transfer `slip`
+ * (JPG/PNG/WebP ≤ 1.5 MB, required) plus either the filled donation form (`file`, PDF/JPG/PNG/WebP
+ * ≤ 8 MB) or the typed tax ID + address. XHR for upload progress; 2 min timeout so an 8 MB scan
  * still makes it over a slow mobile uplink. No mock fallback.
  */
 export async function submitSponsorFormUpload(
   payload: SponsorFormUploadPayload,
-  file: File,
+  file: File | null,
+  slip: File,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   const form = new FormData();
@@ -1473,7 +1479,17 @@ export async function submitSponsorFormUpload(
   form.append('amount', payload.amount);
   form.append('turnstileToken', payload.turnstileToken);
   form.append('website', payload.website ?? '');
-  form.append('file', file, file.name);
+  if (file) {
+    form.append('file', file, file.name);
+  } else {
+    form.append('taxId', payload.taxId ?? '');
+    form.append('addressLine', payload.addressLine ?? '');
+    form.append('subdistrict', payload.subdistrict ?? '');
+    form.append('district', payload.district ?? '');
+    form.append('province', payload.province ?? '');
+    form.append('postcode', payload.postcode ?? '');
+  }
+  form.append('slip', slip, slip.name);
   await xhrUpload<{ ok?: boolean }>(`${API_BASE}/sponsor-inquiries/upload`, form, onProgress, 120000);
 }
 
@@ -1494,6 +1510,8 @@ export interface SponsorInquiry {
   postcode: string;
   /** The filled donation form the sponsor attached (uploadedAt = createdAt); null when typed. */
   file: SponsorDonationFile | null;
+  /** The transfer slip sent with a money inquiry (uploadedAt = createdAt); null for goods and older rows. */
+  slip: SponsorDonationFile | null;
   handled: boolean;
   handledAt: string | null;
   createdAt: string;
@@ -1505,6 +1523,8 @@ export const SPONSOR_FILE_LABELS: Record<SponsorFileKind, string> = {
   slip: 'สลิปโอน',
 };
 export const SPONSOR_FILE_MAX_BYTES = 8 * 1024 * 1024;
+/** Server cap on the transfer slip sent with a money inquiry (MaxSponsorSlipBytes). */
+export const SPONSOR_SLIP_MAX_BYTES = 1536 * 1024;
 export const SPONSOR_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
 
 export interface SponsorDonationFile {
@@ -1555,6 +1575,8 @@ export interface SponsorDonationInput {
   province: string;
   postcode: string;
   facultySubmitted: boolean;
+  /** Create only: copy this money inquiry's transfer slip into the new donation's `slip` file. */
+  fromInquiryId?: number;
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -1579,6 +1601,7 @@ function pickInquiry(raw: unknown): SponsorInquiry | null {
     province: str(r.province),
     postcode: str(r.postcode),
     file: pickDonationFile(r.file),
+    slip: pickDonationFile(r.slip),
     handled: r.handled === true,
     handledAt: strOrNull(r.handledAt),
     createdAt: str(r.createdAt),
@@ -1649,11 +1672,20 @@ export async function deleteSponsorInquiry(token: string, id: number): Promise<v
 }
 
 /** GET the form a sponsor attached as a blob: URL (admin-only, no-store). Revoke it when done. */
-export async function fetchSponsorInquiryFile(token: string, id: number): Promise<string> {
+export function fetchSponsorInquiryFile(token: string, id: number): Promise<string> {
+  return fetchInquiryBlob(token, id, 'file');
+}
+
+/** GET the transfer slip a sponsor attached as a blob: URL (admin-only, no-store). Revoke it when done. */
+export function fetchSponsorInquirySlip(token: string, id: number): Promise<string> {
+  return fetchInquiryBlob(token, id, 'slip');
+}
+
+async function fetchInquiryBlob(token: string, id: number, part: 'file' | 'slip'): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
-    const res = await fetch(`${API_BASE}/admin/sponsor-inquiries/${id}/file`, {
+    const res = await fetch(`${API_BASE}/admin/sponsor-inquiries/${id}/${part}`, {
       method: 'GET',
       signal: controller.signal,
       headers: authHeader(token),

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { Check, Eye, FilePlus2, FileText, Mail, Phone, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
+import { Check, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Phone, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
 import {
   SPONSOR_KIND_LABELS,
   deleteSponsorInquiry,
   fetchSponsorInquiries,
   fetchSponsorInquiryFile,
+  fetchSponsorInquirySlip,
   setSponsorInquiryHandled,
   type SponsorInquiry,
 } from '../../lib/api';
@@ -61,8 +62,8 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
   /** Last successful "ติดต่อแล้ว" toggle, so only that row's button plays the success beat. */
   const [handledDone, setHandledDone] = useState<{ id: number; n: number } | null>(null);
   const loadingRef = useRef(false);
-  /** Inquiry id whose attached form is being fetched, mirrored by `viewRef`. */
-  const [viewingId, setViewingId] = useState<number | null>(null);
+  /** `${id}-file` or `${id}-slip` while that attachment is being opened. */
+  const [viewingKey, setViewingKey] = useState<string | null>(null);
   const viewRef = useRef(false);
   const viewUrlsRef = useRef(new Set<string>());
 
@@ -167,7 +168,8 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
     }
   }
 
-  async function onViewFile(inq: SponsorInquiry) {
+  async function onViewFile(inq: SponsorInquiry, part: 'file' | 'slip') {
+    const what = part === 'slip' ? 'สลิป' : 'แบบฟอร์ม';
     if (viewRef.current) return;
     // Open the tab inside the click so popup blockers allow it, then point it at the blob.
     const win = window.open('', '_blank');
@@ -177,10 +179,10 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
     }
     win.opener = null;
     viewRef.current = true;
-    setViewingId(inq.id);
+    setViewingKey(`${inq.id}-${part}`);
     setNotice(null);
     try {
-      const url = await fetchSponsorInquiryFile(token, inq.id);
+      const url = await (part === 'slip' ? fetchSponsorInquirySlip : fetchSponsorInquiryFile)(token, inq.id);
       viewUrlsRef.current.add(url);
       setTimeout(() => {
         URL.revokeObjectURL(url);
@@ -190,11 +192,11 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
     } catch (err) {
       win.close();
       if (onAuthError(err)) return;
-      setNotice({ kind: 'error', text: `เปิดแบบฟอร์มไม่สำเร็จ: ${sponsorErrorText(err, UNKNOWN_ERROR)}` });
+      setNotice({ kind: 'error', text: `เปิด${what}ไม่สำเร็จ: ${sponsorErrorText(err, UNKNOWN_ERROR)}` });
       if (isNotFound(err)) load();
     } finally {
       viewRef.current = false;
-      setViewingId(null);
+      setViewingKey(null);
     }
   }
 
@@ -301,6 +303,15 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                           <span className="font-mono tabular-nums">{formatBytes(inq.file.size)}</span>
                         </span>
                       )}
+                      {inq.slip && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium leading-5"
+                          style={{ borderColor: INK, color: INK }}
+                        >
+                          <ImageIcon aria-hidden="true" size={12} strokeWidth={2} />
+                          แนบสลิป · <span className="font-mono tabular-nums">{formatBytes(inq.slip.size)}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-7">
                       <a
@@ -363,18 +374,32 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
-                    {inq.file && (
+                    {inq.slip && (
                       <button
                         type="button"
-                        disabled={viewingId !== null}
-                        aria-busy={viewingId === inq.id || undefined}
-                        aria-label={`ดูแบบฟอร์มที่ ${inq.name} แนบมา (เปิดในแท็บใหม่)`}
-                        onClick={() => onViewFile(inq)}
+                        disabled={viewingKey !== null}
+                        aria-busy={viewingKey === `${inq.id}-slip` || undefined}
+                        aria-label={`ดูสลิปโอนเงินที่ ${inq.name} แนบมา (เปิดในแท็บใหม่)`}
+                        onClick={() => onViewFile(inq, 'slip')}
                         className={`${PILL_GHOST} gap-1.5`}
                         style={{ borderColor: INK, color: INK }}
                       >
                         <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
-                        {viewingId === inq.id ? 'กำลังเปิด…' : 'ดูแบบฟอร์ม'}
+                        {viewingKey === `${inq.id}-slip` ? 'กำลังเปิด…' : 'ดูสลิป'}
+                      </button>
+                    )}
+                    {inq.file && (
+                      <button
+                        type="button"
+                        disabled={viewingKey !== null}
+                        aria-busy={viewingKey === `${inq.id}-file` || undefined}
+                        aria-label={`ดูแบบฟอร์มที่ ${inq.name} แนบมา (เปิดในแท็บใหม่)`}
+                        onClick={() => onViewFile(inq, 'file')}
+                        className={`${PILL_GHOST} gap-1.5`}
+                        style={{ borderColor: INK, color: INK }}
+                      >
+                        <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
+                        {viewingKey === `${inq.id}-file` ? 'กำลังเปิด…' : 'ดูแบบฟอร์ม'}
                       </button>
                     )}
                     <StatefulButton
@@ -440,8 +465,8 @@ export function AdminSponsorInquiries({ token, canEdit, onAuthError, onUnhandled
                           <span className="min-w-0 break-words">ยืนยันลบรายการของ “{inq.name}”?</span>
                         </p>
                         <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                          {inq.file
-                            ? 'ข้อมูลติดต่อและไฟล์แบบฟอร์มที่แนบมาจะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'
+                          {inq.file || inq.slip
+                            ? 'ข้อมูลติดต่อและไฟล์ที่แนบมา (แบบฟอร์ม/สลิป) จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'
                             : 'ข้อมูลติดต่อนี้จะหายไปถาวร กู้คืนไม่ได้ (รายการบริจาคที่สร้างไว้แล้วไม่ถูกลบ)'}
                         </p>
                         <div className="mt-3 flex flex-wrap items-center gap-2">

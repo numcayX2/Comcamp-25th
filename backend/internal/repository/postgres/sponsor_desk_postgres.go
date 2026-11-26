@@ -28,16 +28,18 @@ func NewSponsorInquiryPostgresRepo(pool *pgxpool.Pool) *SponsorInquiryPostgresRe
 
 const inquiryColumns = `id, name, phone, email, kind, details, trim_scale(amount)::text,
 	tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
-	file_path, file_mime, file_size, file_sha256, handled_at, created_at`
+	file_path, file_mime, file_size, file_sha256,
+	slip_path, slip_mime, slip_size, slip_sha256, handled_at, created_at`
 
 func scanInquiry(s scannable) (*domain.SponsorInquiry, error) {
 	var i domain.SponsorInquiry
-	var path, mime, hash *string
-	var size *int
+	var path, mime, hash, slipPath, slipMIME, slipHash *string
+	var size, slipSize *int
 	if err := s.Scan(
 		&i.ID, &i.Name, &i.Phone, &i.Email, &i.Kind, &i.Details, &i.Amount,
 		&i.TaxID, &i.AddressLine, &i.Subdistrict, &i.District, &i.Province, &i.Postcode,
-		&path, &mime, &size, &hash, &i.HandledAt, &i.CreatedAt,
+		&path, &mime, &size, &hash,
+		&slipPath, &slipMIME, &slipSize, &slipHash, &i.HandledAt, &i.CreatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -46,6 +48,9 @@ func scanInquiry(s scannable) (*domain.SponsorInquiry, error) {
 	}
 	if path != nil && mime != nil && size != nil && hash != nil {
 		i.File = &domain.SponsorInquiryFile{Path: *path, MIME: *mime, SizeBytes: *size, SHA256: *hash}
+	}
+	if slipPath != nil && slipMIME != nil && slipSize != nil && slipHash != nil {
+		i.Slip = &domain.SponsorInquiryFile{Path: *slipPath, MIME: *slipMIME, SizeBytes: *slipSize, SHA256: *slipHash}
 	}
 	return &i, nil
 }
@@ -65,22 +70,27 @@ func (r *SponsorInquiryPostgresRepo) Create(ctx context.Context, inq *domain.Spo
 	}
 	defer tx.Rollback(ctx)
 
-	var path, mime, hash *string
-	var size *int
+	var path, mime, hash, slipPath, slipMIME, slipHash *string
+	var size, slipSize *int
 	if f := inq.File; f != nil {
 		path, mime, size, hash = &f.Path, &f.MIME, &f.SizeBytes, &f.SHA256
+	}
+	if f := inq.Slip; f != nil {
+		slipPath, slipMIME, slipSize, slipHash = &f.Path, &f.MIME, &f.SizeBytes, &f.SHA256
 	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO sponsor_inquiries (
 			name, phone, email, kind, details, amount,
 			tax_id, address_line, address_subdistrict, address_district, address_province, address_postcode,
-			file_path, file_mime, file_size, file_sha256
+			file_path, file_mime, file_size, file_sha256,
+			slip_path, slip_mime, slip_size, slip_sha256
 		)
-		VALUES ($1, $2, $3, $4, $5, $6::text::numeric, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		VALUES ($1, $2, $3, $4, $5, $6::text::numeric, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+			$17, $18, $19, $20)
 		RETURNING id, created_at
 	`, inq.Name, inq.Phone, inq.Email, inq.Kind, inq.Details, inq.Amount,
 		inq.TaxID, inq.AddressLine, inq.Subdistrict, inq.District, inq.Province, inq.Postcode,
-		path, mime, size, hash).Scan(&inq.ID, &inq.CreatedAt)
+		path, mime, size, hash, slipPath, slipMIME, slipSize, slipHash).Scan(&inq.ID, &inq.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert sponsor inquiry: %w", err)
 	}

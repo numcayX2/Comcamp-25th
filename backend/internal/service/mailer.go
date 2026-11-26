@@ -411,14 +411,18 @@ func (m *AsyncSMTPMailer) EnqueueSponsorInquiry(data SponsorInquiryEmailData) {
 	case data.FileMIME != "":
 		file = "แบบฟอร์มบริจาคที่กรอกแล้ว (รูปภาพ) เปิดดูได้ในหน้าแอดมิน"
 	}
+	slip := ""
+	if data.HasSlip {
+		slip = "แนบสลิปโอนเงินแล้ว เปิดดูได้ในหน้าแอดมิน"
+	}
 	amount := ""
 	if data.Amount != nil {
 		amount = formatBahtAmount(*data.Amount) + " บาท"
 	}
 	view := struct {
-		Name, Phone, Email, Kind, Amount, Details, File, Time, AdminURL string
+		Name, Phone, Email, Kind, Amount, Details, File, Slip, Time, AdminURL string
 	}{
-		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Amount: amount, Details: details, File: file,
+		Name: data.Name, Phone: data.Phone, Email: email, Kind: kind, Amount: amount, Details: details, File: file, Slip: slip,
 		Time: formatBangkokThaiDateTime(createdAt), AdminURL: m.adminURL,
 	}
 	subject := "[ComCamp #25] มีผู้สนใจสนับสนุนค่าย: " + truncateRunes(stripCRLF(data.Name), 60)
@@ -889,7 +893,8 @@ var sponsorInquiryTextTmpl = texttmpl.Must(texttmpl.New("sponsorText").Parse(`�
 {{if .Amount}}จำนวนเงิน: {{.Amount}}
 {{end}}รายละเอียด: {{.Details}}
 ไฟล์แนบ: {{.File}}
-เวลา: {{.Time}}
+{{if .Slip}}สลิปโอนเงิน: {{.Slip}}
+{{end}}เวลา: {{.Time}}
 
 ดูและจัดการในหน้าแอดมิน: {{.AdminURL}}
 `))
@@ -905,6 +910,7 @@ var sponsorInquiryHTMLTmpl = htmltmpl.Must(htmltmpl.New("sponsorHTML").Parse(`<!
   {{if .Amount}}<p style="margin:0 0 6px;"><strong>จำนวนเงิน:</strong> {{.Amount}}</p>{{end}}
   <p style="margin:0 0 6px;white-space:pre-line;"><strong>รายละเอียด:</strong> {{.Details}}</p>
   <p style="margin:0 0 6px;"><strong>ไฟล์แนบ:</strong> {{.File}}</p>
+  {{if .Slip}}<p style="margin:0 0 6px;"><strong>สลิปโอนเงิน:</strong> {{.Slip}}</p>{{end}}
   <p style="margin:0;"><strong>เวลา:</strong> {{.Time}}</p>
 </div>
 <p><a href="{{.AdminURL}}" style="display:inline-block;padding:10px 20px;background:#121316;color:#f5f4ef;text-decoration:none;font-weight:600;">เปิดหน้าแอดมิน</a></p>

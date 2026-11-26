@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -26,7 +27,8 @@ import (
 
 // Sponsor inquiry / donation bounds (migration 000015, sponsor contract).
 const (
-	MaxSponsorDocBytes          = 8 << 20 // 8 MB per signed form / slip scan
+	MaxSponsorDocBytes          = 8 << 20    // 8 MB per signed form / slip scan
+	MaxSponsorSlipBytes         = 1536 << 10 // 1.5 MB per public inquiry transfer slip (compressed in the browser)
 	MaxSponsorDocDimension      = 10000
 	MaxSponsorNotifyEmails      = 10
 	maxInquiryNameRunes         = 120
@@ -37,14 +39,18 @@ const (
 	maxSponsorAreaRunes         = 100
 	sponsorDocsSubdir           = "sponsor-docs"
 	sponsorInquiryFilePrefix    = "inquiry"
+	sponsorInquirySlipPrefix    = "inquiry-slip"
 	sponsorDonationAmountMaxTHB = 10_000_000
 )
 
 var (
 	ErrSponsorRecordNotFound = errors.New("not found")
 	ErrSponsorDocTooLarge    = errors.New("file must not exceed 8 MB")
+	ErrSponsorSlipTooLarge   = errors.New("slip must not exceed 1.5 MB")
 	ErrSponsorDocDimensions  = fmt.Errorf("image must be between 1×1 and %d×%d pixels", MaxSponsorDocDimension, MaxSponsorDocDimension)
 	errSponsorDocType        = newValidationError("invalid file type: only PDF, JPG, PNG and WebP files are allowed")
+	errSponsorSlipType       = newValidationError("invalid slip type: only JPG, PNG and WebP images are allowed")
+	errSponsorSlipRequired   = newValidationError("slip is required for money donations")
 )
 
 // sponsorDocTypes maps sniffed MIME types to stored extensions. SVG, HTML and GIF are excluded.
@@ -59,8 +65,9 @@ var sponsorAmountRe = regexp.MustCompile(`^[0-9]{1,8}(\.[0-9]{1,2})?$`)
 
 // SponsorInquiryRequest is the body of POST /api/sponsor-inquiries. Website is a honeypot.
 // Amount (baht, > 0, ≤ 2 decimals, ≤ 10,000,000) is required for money inquiries in both routes
-// and rejected for goods. For JSON money inquiries taxId and the five address fields are required;
-// goods rejects them. POST /api/sponsor-inquiries/upload ignores them (the attached form carries them).
+// and rejected for goods. Money inquiries need a transfer slip, so the JSON route accepts goods
+// only. POST /api/sponsor-inquiries/upload (money) requires taxId and the five address fields when
+// no filled form is attached (web mode) and ignores them when one is (the form carries them).
 type SponsorInquiryRequest struct {
 	Name           string `json:"name"`
 	Phone          string `json:"phone"`
@@ -80,6 +87,7 @@ type SponsorInquiryRequest struct {
 
 // SponsorInquiryEntry is one inquiry in the admin API. File is the attached donation form's
 // metadata (uploadedAt = createdAt), never its path; nil when the sponsor typed the form instead.
+// Slip is the attached transfer slip's metadata in the same shape (nil = none).
 type SponsorInquiryEntry struct {
 	ID          int64                     `json:"id"`
 	Name        string                    `json:"name"`
@@ -95,13 +103,15 @@ type SponsorInquiryEntry struct {
 	Province    string                    `json:"province"`
 	Postcode    string                    `json:"postcode"`
 	File        *SponsorDonationFileEntry `json:"file"`
+	Slip        *SponsorDonationFileEntry `json:"slip"`
 	Handled     bool                      `json:"handled"`
 	HandledAt   *time.Time                `json:"handledAt"`
 	CreatedAt   time.Time                 `json:"createdAt"`
 }
 
 // SponsorInquiryEmailData is one staff notification about a new inquiry (one per recipient).
-// FileMIME is the attached form's type ("" = no file); the file itself is never emailed.
+// FileMIME is the attached form's type ("" = no file); HasSlip reports an attached transfer slip.
+// Neither file is ever emailed.
 type SponsorInquiryEmailData struct {
 	InquiryID int64
 	To        string
@@ -112,6 +122,7 @@ type SponsorInquiryEmailData struct {
 	Details   string
 	Amount    *string // canonical baht amount (money inquiries), nil otherwise
 	FileMIME  string
+	HasSlip   bool
 	CreatedAt time.Time
 }
 
@@ -152,37 +163,66 @@ func (s *SponsorInquiryService) WithNotifier(n SponsorInquiryNotifier) *SponsorI
 	return s
 }
 
-// Submit validates and stores a public inquiry, then notifies staff after commit. file is the
-// filled donation form from POST /api/sponsor-inquiries/upload (nil from the JSON route): it is
+// SponsorInquiryUpload carries the files of POST /api/sponsor-inquiries/upload (a money inquiry).
+// File is the optional filled donation form (nil = web mode: tax ID and address typed); Slip is
+// the required transfer slip.
+type SponsorInquiryUpload struct {
+	File []byte
+	Slip []byte
+}
+
+// sponsorInquiryDoc is a validated file ready to be written under docsDir.
+type sponsorInquiryDoc struct {
+	data              []byte
+	mime, ext, sha256 string
+}
+
+// Submit validates and stores a public inquiry, then notifies staff after commit. upload is nil
+// from the JSON route, which accepts goods only (money needs a transfer slip). From the upload
+// route the inquiry is money; the slip is required and the filled form optional (without it the
+// tax ID and address are required like a typed inquiry, with it they are ignored). Both files are
 // validated (magic bytes, header-only dimensions, EXIF stripped) before Turnstile, written
 // exclusively with fsync before the DB insert and removed again when the insert fails. A filled
 // honeypot answers success without storing or sending anything. The client IP comes from ctx
 // (WithRemoteIP).
-func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRequest, file []byte) error {
+func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRequest, upload *SponsorInquiryUpload) error {
 	if strings.TrimSpace(req.Website) != "" {
 		return nil
 	}
-	withFile := file != nil
-	if withFile {
+	withFile := upload != nil && upload.File != nil
+	if upload == nil {
+		if kind, err := sponsorKind(req.Kind); err == nil && kind == domain.SponsorKindMoney {
+			return errSponsorSlipRequired
+		}
+	} else {
 		if strings.TrimSpace(req.Kind) == "" {
 			req.Kind = domain.SponsorKindMoney
 		}
-		// Upload inquiries carry tax ID and address inside the attached form; ignore any sent text fields.
-		req.TaxID, req.AddressLine, req.Subdistrict, req.District, req.Province, req.Postcode = "", "", "", "", "", ""
+		if withFile {
+			// The attached form carries tax ID and address; ignore any sent text fields.
+			req.TaxID, req.AddressLine, req.Subdistrict, req.District, req.Province, req.Postcode = "", "", "", "", "", ""
+		}
 	}
 	inq, err := validateSponsorInquiry(req, withFile)
 	if err != nil {
 		return err
 	}
-	if withFile && inq.Kind != domain.SponsorKindMoney {
-		// The faculty form is a cash donation form: goods cannot be claimed as a tax deduction, so
-		// there is no form to send for them. A bare upload (no kind) is a money inquiry.
-		return newValidationError("the donation form is for cash donations only")
-	}
-	var cleaned []byte
-	var mimeType, ext, hash string
-	if withFile {
-		if cleaned, mimeType, ext, hash, err = prepareSponsorDoc(file); err != nil {
+	var form, slip *sponsorInquiryDoc
+	if upload != nil {
+		if inq.Kind != domain.SponsorKindMoney {
+			// The faculty form and the transfer slip are for cash donations: goods cannot be claimed
+			// as a tax deduction and are never transferred. A bare upload (no kind) is money.
+			return newValidationError("uploads are for cash donations only")
+		}
+		if upload.Slip == nil {
+			return errSponsorSlipRequired
+		}
+		if withFile {
+			if form, err = prepareInquiryDoc(upload.File); err != nil {
+				return err
+			}
+		}
+		if slip, err = prepareInquirySlip(upload.Slip); err != nil {
 			return err
 		}
 	}
@@ -193,18 +233,32 @@ func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRe
 		}
 	}
 	details := map[string]any{"kind": inq.Kind}
-	dest := ""
-	if withFile {
-		name := fmt.Sprintf("%s-%s.%s", sponsorInquiryFilePrefix, uuid.NewString(), ext)
-		dest = filepath.Join(s.docsDir, name)
-		if err := writeFileExclusive(dest, cleaned); err != nil {
+	var written []string
+	cleanup := func() {
+		for _, p := range written {
+			_ = os.Remove(p)
+		}
+	}
+	if form != nil {
+		stored, dest, err := s.writeInquiryDoc(sponsorInquiryFilePrefix, form)
+		if err != nil {
 			return fmt.Errorf("save sponsor inquiry form: %w", err)
 		}
-		inq.File = &domain.SponsorInquiryFile{
-			Path: sponsorDocsSubdir + "/" + name, MIME: mimeType, SizeBytes: len(cleaned), SHA256: hash,
+		written = append(written, dest)
+		inq.File = stored
+		details["mime"] = stored.MIME
+		details["size"] = stored.SizeBytes
+	}
+	if slip != nil {
+		stored, dest, err := s.writeInquiryDoc(sponsorInquirySlipPrefix, slip)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("save sponsor inquiry slip: %w", err)
 		}
-		details["mime"] = mimeType
-		details["size"] = len(cleaned)
+		written = append(written, dest)
+		inq.Slip = stored
+		details["slipMime"] = stored.MIME
+		details["slipSize"] = stored.SizeBytes
 	}
 	audit := &domain.AuditEntry{
 		Action:     domain.AuditSponsorInquiryCreate,
@@ -213,13 +267,47 @@ func (s *SponsorInquiryService) Submit(ctx context.Context, req SponsorInquiryRe
 		IPAddress:  remoteIPFrom(ctx),
 	}
 	if err := s.repo.Create(ctx, inq, audit); err != nil {
-		if dest != "" {
-			_ = os.Remove(dest)
-		}
+		cleanup()
 		return fmt.Errorf("create sponsor inquiry: %w", err)
 	}
 	s.notify(ctx, inq)
 	return nil
+}
+
+// writeInquiryDoc writes doc exclusively (fsync, 0600) as "<prefix>-<uuid>.<ext>" and returns its
+// metadata and absolute path.
+func (s *SponsorInquiryService) writeInquiryDoc(prefix string, doc *sponsorInquiryDoc) (*domain.SponsorInquiryFile, string, error) {
+	name := fmt.Sprintf("%s-%s.%s", prefix, uuid.NewString(), doc.ext)
+	dest := filepath.Join(s.docsDir, name)
+	if err := writeFileExclusive(dest, doc.data); err != nil {
+		return nil, "", err
+	}
+	return &domain.SponsorInquiryFile{
+		Path: sponsorDocsSubdir + "/" + name, MIME: doc.mime, SizeBytes: len(doc.data), SHA256: doc.sha256,
+	}, dest, nil
+}
+
+func prepareInquiryDoc(data []byte) (*sponsorInquiryDoc, error) {
+	cleaned, mimeType, ext, hash, err := prepareSponsorDoc(data)
+	if err != nil {
+		return nil, err
+	}
+	return &sponsorInquiryDoc{data: cleaned, mime: mimeType, ext: ext, sha256: hash}, nil
+}
+
+// prepareInquirySlip is prepareSponsorDoc for a transfer slip: images only (no PDF), ≤ 1.5 MB.
+func prepareInquirySlip(data []byte) (*sponsorInquiryDoc, error) {
+	if len(data) == 0 {
+		return nil, errSponsorSlipRequired
+	}
+	if len(data) > MaxSponsorSlipBytes {
+		return nil, ErrSponsorSlipTooLarge
+	}
+	doc, err := prepareInquiryDoc(data)
+	if errors.Is(err, errSponsorDocType) || (err == nil && doc.mime == "application/pdf") {
+		return nil, errSponsorSlipType
+	}
+	return doc, err
 }
 
 func (s *SponsorInquiryService) notify(ctx context.Context, inq *domain.SponsorInquiry) {
@@ -238,7 +326,8 @@ func (s *SponsorInquiryService) notify(ctx context.Context, inq *domain.SponsorI
 	for _, to := range emails {
 		s.notifier.EnqueueSponsorInquiry(SponsorInquiryEmailData{
 			InquiryID: inq.ID, To: to, Name: inq.Name, Phone: inq.Phone, Email: inq.Email,
-			Kind: inq.Kind, Details: inq.Details, Amount: inq.Amount, FileMIME: fileMIME, CreatedAt: inq.CreatedAt,
+			Kind: inq.Kind, Details: inq.Details, Amount: inq.Amount, FileMIME: fileMIME, HasSlip: inq.Slip != nil,
+			CreatedAt: inq.CreatedAt,
 		})
 	}
 }
@@ -267,7 +356,7 @@ func (s *SponsorInquiryService) SetHandled(ctx context.Context, id int64, handle
 	return &e, nil
 }
 
-// Delete removes the inquiry and audit row atomically, then its attached form after commit.
+// Delete removes the inquiry and audit row atomically, then its attached form and slip after commit.
 func (s *SponsorInquiryService) Delete(ctx context.Context, id int64, adminID int64, ip string) error {
 	if id <= 0 {
 		return ErrSponsorRecordNotFound
@@ -276,8 +365,10 @@ func (s *SponsorInquiryService) Delete(ctx context.Context, id int64, adminID in
 	if err != nil {
 		return sponsorRecordNotFoundOr(err)
 	}
-	if inq.File != nil {
-		removeSponsorDoc(s.docsDir, inq.File.Path)
+	for _, f := range []*domain.SponsorInquiryFile{inq.File, inq.Slip} {
+		if f != nil {
+			removeSponsorDoc(s.docsDir, f.Path)
+		}
 	}
 	return nil
 }
@@ -285,6 +376,15 @@ func (s *SponsorInquiryService) Delete(ctx context.Context, id int64, adminID in
 // OpenFile resolves the attached form strictly from its DB path inside UPLOAD_DIR/sponsor-docs and
 // records the view in the audit log.
 func (s *SponsorInquiryService) OpenFile(ctx context.Context, id int64, adminID int64, ip string) (*SponsorDocFile, error) {
+	return s.open(ctx, id, false, adminID, ip)
+}
+
+// OpenSlip is OpenFile for the attached transfer slip (audit sponsor.inquiry.slip.view).
+func (s *SponsorInquiryService) OpenSlip(ctx context.Context, id int64, adminID int64, ip string) (*SponsorDocFile, error) {
+	return s.open(ctx, id, true, adminID, ip)
+}
+
+func (s *SponsorInquiryService) open(ctx context.Context, id int64, slip bool, adminID int64, ip string) (*SponsorDocFile, error) {
 	if id <= 0 {
 		return nil, ErrSponsorRecordNotFound
 	}
@@ -292,25 +392,29 @@ func (s *SponsorInquiryService) OpenFile(ctx context.Context, id int64, adminID 
 	if err != nil {
 		return nil, sponsorRecordNotFoundOr(err)
 	}
-	if inq.File == nil {
+	f, action, label := inq.File, domain.AuditSponsorInquiryFileView, "sponsor-inquiry"
+	if slip {
+		f, action, label = inq.Slip, domain.AuditSponsorInquirySlipView, "sponsor-inquiry-slip"
+	}
+	if f == nil {
 		return nil, ErrSponsorRecordNotFound
 	}
-	ext, ok := sponsorDocTypes[inq.File.MIME]
+	ext, ok := sponsorDocTypes[f.MIME]
 	if !ok {
 		return nil, ErrSponsorRecordNotFound
 	}
-	full, ok := resolveSponsorDoc(s.docsDir, inq.File.Path)
+	full, ok := resolveSponsorDoc(s.docsDir, f.Path)
 	if !ok {
-		log.Printf("sponsor docs: unusable path for inquiry %d", id)
+		log.Printf("sponsor docs: unusable path for inquiry %d (%s)", id, label)
 		return nil, ErrSponsorRecordNotFound
 	}
 	if s.audit != nil {
-		_ = s.audit.Log(ctx, sponsorAudit(domain.AuditSponsorInquiryFileView, domain.AuditTargetSponsorInquiry, id, adminID, ip, nil))
+		_ = s.audit.Log(ctx, sponsorAudit(action, domain.AuditTargetSponsorInquiry, id, adminID, ip, nil))
 	}
 	return &SponsorDocFile{
 		Path:        full,
-		ContentType: inq.File.MIME,
-		FileName:    fmt.Sprintf("sponsor-inquiry-%d.%s", id, ext),
+		ContentType: f.MIME,
+		FileName:    fmt.Sprintf("%s-%d.%s", label, id, ext),
 	}, nil
 }
 
@@ -492,10 +596,15 @@ func toInquiryEntry(i *domain.SponsorInquiry) SponsorInquiryEntry {
 	if i.File != nil {
 		e.File = &SponsorDonationFileEntry{MIME: i.File.MIME, Size: i.File.SizeBytes, UploadedAt: i.CreatedAt}
 	}
+	if i.Slip != nil {
+		e.Slip = &SponsorDonationFileEntry{MIME: i.Slip.MIME, Size: i.Slip.SizeBytes, UploadedAt: i.CreatedAt}
+	}
 	return e
 }
 
-// SponsorDonationInput is the body of POST / PATCH /api/admin/sponsor-donations.
+// SponsorDonationInput is the body of POST / PATCH /api/admin/sponsor-donations. FromInquiryID
+// (POST only, ignored by PATCH) names the inquiry the donation was recorded from: a money
+// donation then gets a copy of that inquiry's transfer slip as its own slip file.
 type SponsorDonationInput struct {
 	DonorName        string  `json:"donorName"`
 	Address          string  `json:"address"`
@@ -512,6 +621,7 @@ type SponsorDonationInput struct {
 	Province         string  `json:"province"`
 	Postcode         string  `json:"postcode"`
 	FacultySubmitted bool    `json:"facultySubmitted"`
+	FromInquiryID    *int64  `json:"fromInquiryId"`
 }
 
 // SponsorDonationFileEntry is a stored file's public metadata (never its path).
@@ -559,9 +669,10 @@ type SponsorDocFile struct {
 
 // SponsorDonationService manages staff-recorded donations and their signed form / slip files.
 type SponsorDonationService struct {
-	repo    domain.SponsorDonationRepository
-	audit   domain.AuditRepository
-	docsDir string
+	repo      domain.SponsorDonationRepository
+	inquiries domain.SponsorInquiryRepository
+	audit     domain.AuditRepository
+	docsDir   string
 }
 
 // NewSponsorDonationService stores files under uploadDir/sponsor-docs; audit records file views.
@@ -571,6 +682,13 @@ func NewSponsorDonationService(repo domain.SponsorDonationRepository, audit doma
 		log.Printf("WARNING: cannot create sponsor docs directory %s: %v", dir, err)
 	}
 	return &SponsorDonationService{repo: repo, audit: audit, docsDir: dir}
+}
+
+// WithInquiries lets Create copy an inquiry's transfer slip (fromInquiryId); both services must
+// share the same UPLOAD_DIR.
+func (s *SponsorDonationService) WithInquiries(repo domain.SponsorInquiryRepository) *SponsorDonationService {
+	s.inquiries = repo
+	return s
 }
 
 func (s *SponsorDonationService) List(ctx context.Context) ([]SponsorDonationEntry, error) {
@@ -585,6 +703,10 @@ func (s *SponsorDonationService) List(ctx context.Context) ([]SponsorDonationEnt
 	return out, nil
 }
 
+// Create records a donation. With FromInquiryID set on a money donation, the inquiry's transfer
+// slip (if any) is copied into the new donation's slip file after the create; an unknown inquiry,
+// a missing slip or a failed copy never fails the create (the failure is logged) and the inquiry
+// keeps its own slip.
 func (s *SponsorDonationService) Create(ctx context.Context, in SponsorDonationInput, adminID int64, ip string) (*SponsorDonationEntry, error) {
 	f, err := validateDonationInput(in)
 	if err != nil {
@@ -594,8 +716,48 @@ func (s *SponsorDonationService) Create(ctx context.Context, in SponsorDonationI
 	if err != nil {
 		return nil, fmt.Errorf("create sponsor donation: %w", err)
 	}
+	if in.FromInquiryID != nil && *in.FromInquiryID > 0 && f.Kind == domain.SponsorKindMoney {
+		withSlip, err := s.copyInquirySlip(ctx, d.ID, *in.FromInquiryID, adminID, ip)
+		if err != nil {
+			log.Printf("sponsor donation %d: cannot copy the slip of inquiry %d: %v", d.ID, *in.FromInquiryID, err)
+		} else if withSlip != nil {
+			d = withSlip
+		}
+	}
 	e := toDonationEntry(d)
 	return &e, nil
+}
+
+// copyInquirySlip stores a copy of inquiry inquiryID's transfer slip as donation id's slip file.
+// It returns nil, nil when the inquiry does not exist or has no slip.
+func (s *SponsorDonationService) copyInquirySlip(ctx context.Context, id, inquiryID, adminID int64, ip string) (*domain.SponsorDonation, error) {
+	if s.inquiries == nil {
+		return nil, nil
+	}
+	inq, err := s.inquiries.GetByID(ctx, inquiryID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if inq.Slip == nil {
+		return nil, nil
+	}
+	full, ok := resolveSponsorDoc(s.docsDir, inq.Slip.Path)
+	if !ok {
+		return nil, fmt.Errorf("unusable slip path")
+	}
+	src, err := os.Open(full)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	data, err := io.ReadAll(io.LimitReader(src, MaxSponsorDocBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	return s.putFile(ctx, id, domain.SponsorFileSlip, data, adminID, ip, map[string]any{"source": "inquiry"})
 }
 
 func (s *SponsorDonationService) Update(ctx context.Context, id int64, in SponsorDonationInput, adminID int64, ip string) (*SponsorDonationEntry, error) {
@@ -638,6 +800,16 @@ func (s *SponsorDonationService) PutFile(ctx context.Context, id int64, kind str
 	if id <= 0 || !validSponsorFileKind(kind) {
 		return nil, ErrSponsorRecordNotFound
 	}
+	d, err := s.putFile(ctx, id, kind, data, adminID, ip, nil)
+	if err != nil {
+		return nil, err
+	}
+	e := toDonationEntry(d)
+	return &e, nil
+}
+
+// putFile is PutFile after the id/kind checks; extra is merged into the audit details.
+func (s *SponsorDonationService) putFile(ctx context.Context, id int64, kind string, data []byte, adminID int64, ip string, extra map[string]any) (*domain.SponsorDonation, error) {
 	cleaned, mimeType, ext, hash, err := prepareSponsorDoc(data)
 	if err != nil {
 		return nil, err
@@ -650,8 +822,11 @@ func (s *SponsorDonationService) PutFile(ctx context.Context, id int64, kind str
 	file := domain.SponsorDonationFile{
 		Kind: kind, Path: sponsorDocsSubdir + "/" + name, MIME: mimeType, SizeBytes: len(cleaned), SHA256: hash,
 	}
-	audit := sponsorAudit(domain.AuditSponsorDonationFileUp, domain.AuditTargetSponsorDonation, id, adminID, ip,
-		map[string]any{"kind": kind, "mime": mimeType, "size": len(cleaned)})
+	details := map[string]any{"kind": kind, "mime": mimeType, "size": len(cleaned)}
+	for k, v := range extra {
+		details[k] = v
+	}
+	audit := sponsorAudit(domain.AuditSponsorDonationFileUp, domain.AuditTargetSponsorDonation, id, adminID, ip, details)
 	d, oldPath, err := s.repo.PutFile(ctx, id, file, audit)
 	if err != nil {
 		_ = os.Remove(dest)
@@ -660,8 +835,7 @@ func (s *SponsorDonationService) PutFile(ctx context.Context, id int64, kind str
 	if oldPath != "" && oldPath != file.Path {
 		removeSponsorDoc(s.docsDir, oldPath)
 	}
-	e := toDonationEntry(d)
-	return &e, nil
+	return d, nil
 }
 
 // DeleteFile removes the file row + audit atomically, then the file after commit.
@@ -929,7 +1103,7 @@ func toDonationEntry(d *domain.SponsorDonation) SponsorDonationEntry {
 	return SponsorDonationEntry{
 		ID: d.ID, DonorName: d.DonorName, Address: d.Address, Phone: d.Phone, Kind: d.Kind,
 		Amount: canonicalAmount(d.Amount), GoodsDescription: d.GoodsDescription, DonatedOn: d.DonatedOn,
-		Note: d.Note,
+		Note:  d.Note,
 		TaxID: d.TaxID, AddressLine: d.AddressLine, Subdistrict: d.Subdistrict,
 		District: d.District, Province: d.Province, Postcode: d.Postcode,
 		FacultySubmitted: d.FacultySubmittedAt != nil, FacultySubmittedAt: d.FacultySubmittedAt,

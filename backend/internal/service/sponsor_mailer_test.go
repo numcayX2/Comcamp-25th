@@ -50,7 +50,7 @@ func TestSponsorInquiryEmail_MoneyShowsAmount(t *testing.T) {
 	m, _, drain := newCapturingMailer(t)
 	amount := "1234567.5"
 	m.EnqueueSponsorInquiry(service.SponsorInquiryEmailData{
-		InquiryID: 7, To: "staff@example.com", Name: "ร้าน", Phone: "0812345678", Kind: "money", Amount: &amount,
+		InquiryID: 7, To: "staff@example.com", Name: "ร้าน", Phone: "0812345678", Kind: "money", Amount: &amount, HasSlip: true,
 		CreatedAt: time.Date(2026, 11, 21, 3, 0, 0, 0, time.UTC),
 	})
 	sent := drain()
@@ -60,6 +60,9 @@ func TestSponsorInquiryEmail_MoneyShowsAmount(t *testing.T) {
 	body := decodeMIMEBodies(t, sent[0].raw)
 	if !strings.Contains(body, "จำนวนเงิน: 1,234,567.50 บาท") || !strings.Contains(body, "<strong>จำนวนเงิน:</strong> 1,234,567.50 บาท") {
 		t.Fatalf("email body is missing the amount line:\n%s", body)
+	}
+	if !strings.Contains(body, "สลิปโอนเงิน: แนบสลิปโอนเงินแล้ว เปิดดูได้ในหน้าแอดมิน") || !strings.Contains(body, "<strong>สลิปโอนเงิน:</strong> แนบสลิปโอนเงินแล้ว") {
+		t.Fatalf("email body is missing the slip line:\n%s", body)
 	}
 }
 
@@ -112,8 +115,8 @@ func TestSponsorInquiryEmail_RendersEscapedAndAudits(t *testing.T) {
 	if strings.Contains(body, "<b>10</b></p>") || strings.Contains(body, "<script>alert(1)</script></p>") {
 		t.Fatal("unescaped HTML in the html part")
 	}
-	if strings.Contains(body, "จำนวนเงิน") {
-		t.Fatal("goods email must not carry an amount line")
+	if strings.Contains(body, "จำนวนเงิน") || strings.Contains(body, "สลิปโอนเงิน") {
+		t.Fatal("goods email must not carry an amount or slip line")
 	}
 
 	var found bool

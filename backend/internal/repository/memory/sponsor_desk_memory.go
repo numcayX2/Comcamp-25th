@@ -50,6 +50,10 @@ func cloneInquiry(i *domain.SponsorInquiry) *domain.SponsorInquiry {
 		f := *i.File
 		c.File = &f
 	}
+	if i.Slip != nil {
+		f := *i.Slip
+		c.Slip = &f
+	}
 	return &c
 }
 

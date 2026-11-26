@@ -6,7 +6,7 @@
  * with a 2400 px long edge: about 200 dpi on A4, so handwriting stays legible. PDFs are sent as
  * they are. The server re-validates everything; nothing here touches storage.
  */
-import { SPONSOR_FILE_MAX_BYTES } from './api';
+import { SPONSOR_FILE_MAX_BYTES, SPONSOR_SLIP_MAX_BYTES } from './api';
 import { decodeImage, shrinkImage, type EncodedCanvas } from './slip-upload';
 
 /** `accept` for the file input. Listing image types explicitly makes iOS hand over JPEG, not HEIC. */
@@ -89,3 +89,54 @@ export async function prepareSponsorFormFile(file: File): Promise<SponsorFormChe
     img.close();
   }
 }
+
+export type SponsorSlipCheck = { ok: true; file: File } | { ok: false; message: string };
+
+/** `accept` for the transfer slip input: images only (HEIC is re-encoded in the browser). */
+export const SPONSOR_SLIP_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif';
+
+const SLIP_WRONG_TYPE = 'กรุณาเลือกรูปสลิปโอนเงิน (JPG, PNG หรือ WebP) ไม่รับไฟล์ PDF';
+const SLIP_UNREADABLE = 'เปิดรูปสลิปนี้ไม่ได้ กรุณาบันทึกสลิปจากแอปธนาคารใหม่ แล้วเลือกอีกครั้ง';
+const SLIP_TOO_BIG = 'รูปสลิปใหญ่เกิน 1.5 MB แม้ย่อแล้ว กรุณาบันทึกสลิปจากแอปธนาคารใหม่';
+
+/**
+ * Validates the transfer slip for a money inquiry (server cap 1.5 MB, JPG/PNG/WebP, no PDF).
+ * Small JPG/WebP slips are sent as they are; PNG screenshots, HEIC photos and anything large are
+ * re-encoded through the applicant slip pipeline (<= 1600 px WebP/JPEG), which keeps bank text crisp.
+ */
+export async function prepareSponsorSlipFile(file: File): Promise<SponsorSlipCheck> {
+  if (file.size === 0) return { ok: false, message: 'ไฟล์นี้ว่างเปล่า กรุณาเลือกไฟล์ใหม่' };
+  if (isPdf(file)) return { ok: false, message: SLIP_WRONG_TYPE };
+  const mime = uploadType(file);
+  if (!mime.startsWith('image/') || mime === 'image/gif' || mime === 'image/svg+xml') return { ok: false, message: SLIP_WRONG_TYPE };
+
+  const img = await decodeImage(file);
+  if (!img) return { ok: false, message: SERVER_IMAGE_TYPES.includes(mime) ? SLIP_UNREADABLE : SLIP_WRONG_TYPE };
+  try {
+    const sendable =
+      SERVER_IMAGE_TYPES.includes(mime) &&
+      mime !== 'image/png' &&
+      file.size <= SLIP_OPTIMIZE_ABOVE_BYTES &&
+      Math.max(img.width, img.height) <= SLIP_MAX_EDGE;
+    if (sendable) return { ok: true, file };
+
+    let encoded: EncodedCanvas | null = null;
+    for (const [edge, q] of [[SLIP_MAX_EDGE, 0.82], [1280, 0.76], [1024, 0.7]] as const) {
+      encoded = await shrinkImage(img, edge, q);
+      if (encoded && encoded.blob.size <= SPONSOR_SLIP_MAX_BYTES) break;
+    }
+    const keepOriginal =
+      SERVER_IMAGE_TYPES.includes(mime) && file.size <= SPONSOR_SLIP_MAX_BYTES && img.width <= MAX_IMAGE_PX && img.height <= MAX_IMAGE_PX;
+    if (!encoded) return keepOriginal ? { ok: true, file } : { ok: false, message: SLIP_UNREADABLE };
+    if (encoded.blob.size > SPONSOR_SLIP_MAX_BYTES) return keepOriginal ? { ok: true, file } : { ok: false, message: SLIP_TOO_BIG };
+    if (keepOriginal && encoded.blob.size >= file.size) return { ok: true, file };
+
+    const base = file.name.replace(/\.[^.]+$/, '') || 'slip';
+    return { ok: true, file: new File([encoded.blob], `${base}.${encoded.ext}`, { type: encoded.mime, lastModified: Date.now() }) };
+  } finally {
+    img.close();
+  }
+}
+
+const SLIP_MAX_EDGE = 1600;
+const SLIP_OPTIMIZE_ABOVE_BYTES = 300 * 1024;

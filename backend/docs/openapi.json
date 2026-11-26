@@ -1005,7 +1005,7 @@
       "post": {
         "tags": ["Sponsors"],
         "summary": "Submit Sponsor Inquiry",
-        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจข้อมูลก่อน Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล เมื่อ kind = money บังคับกรอก amount (จำนวนเงินบาท มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 รับเลขไทยและจุลภาค) taxId (13 หลัก checksum ถูกต้อง) และที่อยู่ครบ 5 ช่อง (addressLine, subdistrict, district, province, postcode) เพื่อใช้ออกเอกสารลดหย่อนภาษี เมื่อ kind = goods หากส่งช่องเหล่านี้ (รวม amount) ไม่ว่างจะตอบ 400 VALIDATION_ERROR อีเมลแจ้งเตือนแสดงจำนวนเงินแต่ไม่ส่ง taxId/ที่อยู่ และไม่บันทึกค่าเหล่านี้ (รวม amount) ลง audit_logs",
+        "description": "ฟอร์มแจ้งความประสงค์สนับสนุนจากหน้า /sponsor บันทึกคำขอและส่งอีเมลแจ้งทีมงานตามรายชื่อใน /admin (สูงสุด 30 ฉบับต่อชั่วโมงทั้งระบบ) ตรวจข้อมูลก่อน Turnstile เมื่อเปิดใช้ rate limit 5 ครั้งต่อ 10 นาทีต่อ IP ช่อง website เป็น honeypot: ถ้ามีค่าจะตอบ 201 แต่ไม่บันทึกและไม่ส่งอีเมล route JSON นี้รับเฉพาะ kind = goods: การบริจาคเงินต้องแนบสลิปโอนเงินจึงต้องส่งผ่าน POST /sponsor-inquiries/upload (kind = money ที่นี่ → 400 VALIDATION_ERROR \"slip is required for money donations\") กติกาของ amount (มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 รับเลขไทยและจุลภาค) taxId (13 หลัก checksum ถูกต้อง) และที่อยู่ 5 ช่อง (addressLine, subdistrict, district, province, postcode) ของเงินตรวจที่ route upload เมื่อ kind = goods หากส่งช่องเหล่านี้ (รวม amount) ไม่ว่างจะตอบ 400 VALIDATION_ERROR อีเมลแจ้งเตือนแสดงจำนวนเงินแต่ไม่ส่ง taxId/ที่อยู่ และไม่บันทึกค่าเหล่านี้ (รวม amount) ลง audit_logs",
         "requestBody": {
           "required": true,
           "content": {
@@ -1015,15 +1015,8 @@
                 "name": "ร้านตัวอย่าง",
                 "phone": "0812345678",
                 "email": "",
-                "kind": "money",
-                "details": "",
-                "amount": "1500",
-                "taxId": "1101700203450",
-                "addressLine": "63 หมู่ 4 ถ.เชียงใหม่-พร้าว",
-                "subdistrict": "หนองหาร",
-                "district": "สันทราย",
-                "province": "เชียงใหม่",
-                "postcode": "50290",
+                "kind": "goods",
+                "details": "น้ำดื่ม 10 แพ็ค",
                 "turnstileToken": "…",
                 "website": ""
               }
@@ -1057,25 +1050,32 @@
     "/sponsor-inquiries/upload": {
       "post": {
         "tags": ["Sponsors"],
-        "summary": "Submit Sponsor Inquiry With Filled Form",
-        "description": "ส่งแบบฟอร์มบริจาคที่กรอกแล้ว (PDF หรือรูปถ่าย/สแกน) แทนการกรอกฟอร์มบนเว็บ เป็น multipart/form-data มีช่องพื้นฐาน (name, phone, email, kind, details, amount, turnstileToken, website) และต้องมี file (ไม่เกิน 8 MB รับเฉพาะ PDF, JPEG, PNG, WebP ตรวจจาก magic bytes รูปภาพต้องมีขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG) kind ว่าง = money จึงบังคับ amount (กติกาเดียวกับ POST /sponsor-inquiries) ไม่บังคับและไม่รับ taxId/ที่อยู่ (ในแบบฟอร์มมีอยู่แล้ว หากส่งมาจะละเว้น) ตรวจข้อมูลและไฟล์ก่อน Turnstile แล้วเขียนไฟล์ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์แนบ (พร้อมจำนวนเงิน) ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
+        "summary": "Submit Money Sponsor Inquiry With Transfer Slip",
+        "description": "คำขอสนับสนุนแบบเงิน (โอนเข้าบัญชีคณะก่อน แล้วส่งฟอร์มพร้อมสลิป) เป็น multipart/form-data มีช่องข้อความ (name, phone, email, kind, details, amount, taxId, addressLine, subdistrict, district, province, postcode, turnstileToken, website) ต้องมี slip (สลิปโอนเงิน 1 ไฟล์ ไม่เกิน 1.5 MB รับเฉพาะ JPEG, PNG, WebP ตรวจจาก magic bytes ขนาด 1×1 ถึง 10000×10000 ลบ EXIF ของ JPEG ไม่รับ PDF) และแนบ file ได้ (แบบฟอร์มบริจาคที่กรอกแล้ว 1 ไฟล์ ไม่เกิน 8 MB รับ PDF, JPEG, PNG, WebP กติกาเดียวกัน) kind ว่าง = money จึงบังคับ amount (กติกาเดียวกับ POST /sponsor-inquiries) kind = goods → 400 มี file = แนบแบบฟอร์ม ไม่บังคับและละเว้น taxId/ที่อยู่ (ในแบบฟอร์มมีอยู่แล้ว) ไม่มี file = กรอกบนเว็บ บังคับและตรวจ taxId กับที่อยู่ 5 ช่องเหมือน POST /sponsor-inquiries ขนาดคำขอรวมไม่เกิน 8 MB + 1.5 MB + 64 KB ตรวจข้อมูลและไฟล์ทั้งหมดก่อน Turnstile แล้วเขียนไฟล์ (inquiry-<uuid> และ inquiry-slip-<uuid>) ก่อนบันทึกแถว (ลบไฟล์เมื่อบันทึกไม่สำเร็จ) audit บันทึกเพียง kind และ mime/size ของแต่ละไฟล์ ไฟล์ไม่เปิดสาธารณะ พี่ค่ายเปิดดูได้ที่ GET /admin/sponsor-inquiries/{id}/file และ /slip เท่านั้น อีเมลแจ้งทีมงานบอกเพียงว่ามีไฟล์/สลิปแนบ (พร้อมจำนวนเงิน) ใช้ rate limit ถังเดียวกับ POST /sponsor-inquiries (5 ครั้งต่อ 10 นาทีต่อ IP) honeypot website มีค่า = ตอบ 201 แต่ไม่บันทึกทั้งแถวและไฟล์",
         "requestBody": {
           "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["name", "phone", "amount", "file"],
+                "required": ["name", "phone", "amount", "slip"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1, "maxLength": 120 },
                   "phone": { "type": "string", "description": "9–10 หลักขึ้นต้นด้วย 0 รวมเบอร์บ้าน/สำนักงาน (รับเลขไทย ขีด และช่องว่าง)" },
                   "email": { "type": "string", "maxLength": 150 },
-                  "kind": { "type": "string", "enum": ["money"], "description": "ว่าง = money; แบบฟอร์มของคณะใช้กับการบริจาคเงินเท่านั้น (สิ่งของลดหย่อนภาษีไม่ได้ จึงไม่มีแบบฟอร์ม) — goods → 400 VALIDATION_ERROR" },
+                  "kind": { "type": "string", "enum": ["money"], "description": "ว่าง = money; route นี้ใช้กับการบริจาคเงินเท่านั้น (สิ่งของไม่มีสลิปและลดหย่อนภาษีไม่ได้) — goods → 400 VALIDATION_ERROR" },
                   "details": { "type": "string", "maxLength": 500 },
                   "amount": { "type": "string", "example": "1500", "description": "จำนวนเงินบาท (บังคับ) มากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง ไม่เกิน 10,000,000 รับเลขไทยและจุลภาค" },
+                  "taxId": { "type": "string", "description": "บังคับเมื่อไม่แนบ file (13 หลัก checksum ถูกต้อง) ละเว้นเมื่อแนบ file" },
+                  "addressLine": { "type": "string", "maxLength": 200, "description": "บังคับเมื่อไม่แนบ file ละเว้นเมื่อแนบ file" },
+                  "subdistrict": { "type": "string", "maxLength": 100, "description": "บังคับเมื่อไม่แนบ file ละเว้นเมื่อแนบ file" },
+                  "district": { "type": "string", "maxLength": 100, "description": "บังคับเมื่อไม่แนบ file ละเว้นเมื่อแนบ file" },
+                  "province": { "type": "string", "maxLength": 100, "description": "บังคับเมื่อไม่แนบ file (1 ใน 77 จังหวัด) ละเว้นเมื่อแนบ file" },
+                  "postcode": { "type": "string", "description": "บังคับเมื่อไม่แนบ file (5 หลัก) ละเว้นเมื่อแนบ file" },
                   "turnstileToken": { "type": "string" },
                   "website": { "type": "string", "description": "honeypot ต้องว่าง" },
-                  "file": { "type": "string", "format": "binary", "description": "แบบฟอร์มที่กรอกแล้ว 1 ไฟล์" }
+                  "slip": { "type": "string", "format": "binary", "description": "สลิปโอนเงิน 1 ไฟล์ (บังคับ) JPEG/PNG/WebP ไม่เกิน 1.5 MB" },
+                  "file": { "type": "string", "format": "binary", "description": "แบบฟอร์มที่กรอกแล้ว 1 ไฟล์ (ไม่บังคับ) PDF/JPEG/PNG/WebP ไม่เกิน 8 MB" }
                 }
               }
             }
@@ -1087,7 +1087,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } } }
           },
           "400": {
-            "description": "ข้อมูลหรือไฟล์ไม่ถูกต้อง ไม่มีไฟล์ หรือมีมากกว่า 1 ไฟล์ (VALIDATION_ERROR / INVALID_IMAGE_DIMENSIONS)",
+            "description": "ข้อมูลหรือไฟล์ไม่ถูกต้อง ไม่มีสลิป (\"slip is required for money donations\") สลิปเป็น PDF/ชนิดอื่น ไม่ได้แนบ file แต่ขาด taxId/ที่อยู่ หรือมี file/slip มากกว่าอย่างละ 1 ไฟล์ (VALIDATION_ERROR / INVALID_IMAGE_DIMENSIONS)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "403": {
@@ -1095,7 +1095,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "413": {
-            "description": "ไฟล์เกิน 8 MB (code PAYLOAD_TOO_LARGE)",
+            "description": "แบบฟอร์มเกิน 8 MB สลิปเกิน 1.5 MB หรือคำขอรวมเกินเพดาน (code PAYLOAD_TOO_LARGE)",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
           },
           "429": {
@@ -1246,6 +1246,44 @@
         }
       }
     },
+    "/admin/sponsor-inquiries/{id}/slip": {
+      "get": {
+        "tags": ["Sponsors", "Admin Management"],
+        "summary": "Admin View Sponsor Inquiry Transfer Slip",
+        "description": "ส่งสลิปโอนเงินที่ผู้สนับสนุนแนบมาตาม path ใน DB เท่านั้น Cache-Control: private, no-store, X-Content-Type-Options: nosniff และ Content-Disposition: inline บันทึก audit sponsor.inquiry.slip.view สิทธิ์: admin",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "สลิปที่บันทึกไว้",
+            "content": {
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "401": {
+            "description": "ไม่มี token, token หมดอายุ หรือบัญชีถูกระงับ (code UNAUTHORIZED)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "บทบาทของบัญชีนี้ไม่มีสิทธิ์ (code FORBIDDEN)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "ไม่พบคำขอหรือคำขอนี้ไม่มีสลิป (code NOT_FOUND)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
     "/admin/sponsor-notify-emails": {
       "get": {
         "tags": ["Sponsors", "Admin Management"],
@@ -1325,7 +1363,7 @@
       "post": {
         "tags": ["Sponsors", "Admin Management"],
         "summary": "Admin Create Sponsor Donation",
-        "description": "บันทึกการสนับสนุนใหม่ บันทึก audit sponsor.donation.create สิทธิ์: admin",
+        "description": "บันทึกการสนับสนุนใหม่ บันทึก audit sponsor.donation.create เมื่อส่ง fromInquiryId ของคำขอเงินที่มีสลิป ระบบคัดลอกสลิปเป็นไฟล์ slip ของรายการใหม่ (ดู SponsorDonationInput.fromInquiryId) สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -1925,7 +1963,7 @@
           },
           "taxId": {
             "type": "string",
-            "description": "เลขประจำตัวประชาชน / เลขประจำตัวผู้เสียภาษี 13 หลักหลัง normalize พร้อมตรวจ checksum (บังคับเมื่อ kind = money; ต้องว่างเมื่อ kind = goods)"
+            "description": "เลขประจำตัวประชาชน / เลขประจำตัวผู้เสียภาษี 13 หลักหลัง normalize พร้อมตรวจ checksum (บังคับเมื่อ kind = money ซึ่งต้องส่งผ่าน POST /sponsor-inquiries/upload; ต้องว่างเมื่อ kind = goods)"
           },
           "addressLine": {
             "type": "string",
@@ -1973,6 +2011,7 @@
           "province",
           "postcode",
           "file",
+          "slip",
           "handled",
           "handledAt",
           "createdAt"
@@ -1999,6 +2038,11 @@
             "allOf": [{ "$ref": "#/components/schemas/SponsorDonationFile" }],
             "nullable": true,
             "description": "แบบฟอร์มที่ผู้สนับสนุนแนบมา (uploadedAt = createdAt) null เมื่อกรอกบนเว็บ"
+          },
+          "slip": {
+            "allOf": [{ "$ref": "#/components/schemas/SponsorDonationFile" }],
+            "nullable": true,
+            "description": "สลิปโอนเงินที่แนบมา (JPEG/PNG/WebP, uploadedAt = createdAt) เปิดดูที่ GET /admin/sponsor-inquiries/{id}/slip null สำหรับสิ่งของหรือคำขอก่อน migration 000019"
           },
           "handled": { "type": "boolean" },
           "handledAt": { "type": "string", "format": "date-time", "nullable": true },
@@ -2151,6 +2195,12 @@
           "facultySubmitted": {
             "type": "boolean",
             "description": "true ตั้ง facultySubmittedAt = now() ถ้ายังไม่มี; false ล้างค่า"
+          },
+          "fromInquiryId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "เฉพาะ POST: id ของคำขอสนับสนุนที่ใช้สร้างรายการนี้ เมื่อ kind = money และคำขอนั้นมีสลิปโอนเงิน ระบบคัดลอกสลิปเป็นไฟล์ slip ของรายการใหม่ให้อัตโนมัติ (audit sponsor.donation.file.upload details kind=slip, source=inquiry) ไม่พบคำขอ ไม่มีสลิป หรือ goods = สร้างรายการตามปกติโดยไม่แนบสลิป คัดลอกไม่สำเร็จก็ยังสร้างรายการได้ (files.slip เป็น null) คำขอยังเก็บสลิปของตัวเองไว้ PATCH ไม่ใช้ช่องนี้"
           }
         }
       }

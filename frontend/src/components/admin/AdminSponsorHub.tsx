@@ -70,6 +70,7 @@ export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount,
         province: isMoney ? inq.province : '',
         postcode: isMoney ? inq.postcode : '',
       },
+      ...(isMoney && inq.slip ? { fromInquiryId: inq.id } : {}),
     }));
     setTab('donations');
   }, []);

@@ -157,7 +157,7 @@ func main() {
 		Payment:         paymentSvc,
 		Sponsor:         sponsorSvc,
 		SponsorInquiry:  inquirySvc,
-		SponsorDonation: service.NewSponsorDonationService(donationRepo, auditRepo, cfg.UploadDir),
+		SponsorDonation: service.NewSponsorDonationService(donationRepo, auditRepo, cfg.UploadDir).WithInquiries(inquiryRepo),
 	}
 
 	// 3. Router (all security middleware lives in internal/server)
