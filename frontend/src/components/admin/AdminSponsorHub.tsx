@@ -12,7 +12,7 @@ type SponsorTab = 'inquiries' | 'donations' | 'logos' | 'notify';
 const TABS: { key: SponsorTab; label: string }[] = [
   { key: 'inquiries', label: 'ผู้สนใจสนับสนุน' },
   { key: 'donations', label: 'รายการบริจาค' },
-  { key: 'logos', label: 'โลโก้บนเว็บ' },
+  { key: 'logos', label: 'ผู้สนับสนุนบนหน้าแรก' },
   { key: 'notify', label: 'อีเมลแจ้งเตือน' },
 ];
 
@@ -29,7 +29,7 @@ interface Props {
 
 /**
  * The /admin "ผู้สนับสนุน" view: a pill tablist over inquiries, donations (+ printable faculty form),
- * home-page logos and notify emails. Every panel stays mounted (hidden) so unsaved edits survive a
+ * home-page sponsors (logo or name-only) and notify emails. Every panel stays mounted (hidden) so unsaved edits survive a
  * tab switch.
  */
 export function AdminSponsorHub({ token, canEdit, onAuthError, onUnhandledCount, visible = true }: Props) {

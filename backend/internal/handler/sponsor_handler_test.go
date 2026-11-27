@@ -233,6 +233,87 @@ func TestSponsors_CreatePNGLogoRouteAndAudit(t *testing.T) {
 	}
 }
 
+// A sponsor without a logo (e.g. an individual donor) is name-only: logoUrl is "", the logo route
+// 404s, a logo can be added later and removed again (file deleted), but an empty logo part and
+// "new logo + removeLogo" are rejected.
+func TestSponsors_NameOnlyLifecycle(t *testing.T) {
+	app := setupSponsorTestApp(t)
+	token := app.login(t)
+	logoFiles := func() int {
+		entries, err := os.ReadDir(app.sponsorDir)
+		if err != nil {
+			t.Fatalf("read sponsor dir: %v", err)
+		}
+		return len(entries)
+	}
+	decode := func(rec *httptest.ResponseRecorder) service.AdminSponsorEntry {
+		t.Helper()
+		var e service.AdminSponsorEntry
+		if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+			t.Fatalf("decode sponsor: %v (%s)", err, rec.Body.String())
+		}
+		return e
+	}
+
+	if rec := app.createSponsor(t, token, map[string]string{"name": "Empty Part"}, "logo.png", nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty logo part: expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	rec := app.createSponsor(t, token, map[string]string{"name": "คุณสมชาย ใจดี", "showName": "false"}, "", nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create name-only: expected 201, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	created := decode(rec)
+	if created.LogoURL != "" || created.Name != "คุณสมชาย ใจดี" {
+		t.Fatalf("name-only sponsor = %+v, want empty logoUrl", created)
+	}
+	if n := logoFiles(); n != 0 {
+		t.Fatalf("name-only create wrote %d logo files", n)
+	}
+
+	pub := app.do(t, http.MethodGet, "/api/sponsors", nil, nil)
+	if want := fmt.Sprintf(`{"sponsors":[{"id":%d,"name":"คุณสมชาย ใจดี","url":"","showName":false,"logoUrl":""}]}`, created.ID); strings.TrimSpace(pub.Body.String()) != want {
+		t.Fatalf("public list = %s, want %s", pub.Body.String(), want)
+	}
+	logoPath := fmt.Sprintf("/api/sponsors/%d/logo", created.ID)
+	if r := app.do(t, http.MethodGet, logoPath, nil, nil); r.Code != http.StatusNotFound {
+		t.Fatalf("GET logo of name-only sponsor: expected 404, got %d", r.Code)
+	}
+
+	added := decode(app.patchSponsor(t, token, created.ID, nil, "logo.png", encodePNG(8, 8)))
+	if !strings.HasPrefix(added.LogoURL, logoPath+"?v=") || logoFiles() != 1 {
+		t.Fatalf("after adding a logo: logoUrl %q, files %d", added.LogoURL, logoFiles())
+	}
+
+	if r := app.patchSponsor(t, token, created.ID, map[string]string{"removeLogo": "true"}, "logo.png", encodePNG(8, 8)); r.Code != http.StatusBadRequest {
+		t.Fatalf("new logo + removeLogo: expected 400, got %d (%s)", r.Code, r.Body.String())
+	}
+	if logoFiles() != 1 {
+		t.Fatalf("rejected patch left %d logo files, want 1", logoFiles())
+	}
+
+	removed := decode(app.patchSponsor(t, token, created.ID, map[string]string{"removeLogo": "true"}, "", nil))
+	if removed.LogoURL != "" || logoFiles() != 0 {
+		t.Fatalf("after removeLogo: logoUrl %q, files %d", removed.LogoURL, logoFiles())
+	}
+	if r := app.do(t, http.MethodGet, logoPath, nil, nil); r.Code != http.StatusNotFound {
+		t.Fatalf("GET logo after removal: expected 404, got %d", r.Code)
+	}
+	var sawRemoved bool
+	for _, e := range app.auditRepo.Entries() {
+		if e.Action == domain.AuditSponsorUpdate && e.Details["logoRemoved"] == true {
+			sawRemoved = true
+		}
+	}
+	if !sawRemoved {
+		t.Fatal("expected a sponsor.update audit row with logoRemoved=true")
+	}
+
+	if r := app.do(t, http.MethodDelete, fmt.Sprintf("/api/admin/sponsors/%d", created.ID), nil, map[string]string{"Authorization": "Bearer " + token}); r.Code != http.StatusNoContent {
+		t.Fatalf("delete name-only: expected 204, got %d (%s)", r.Code, r.Body.String())
+	}
+}
+
 func TestSponsors_PublicJSONKeySetIsExact(t *testing.T) {
 	app := setupSponsorTestApp(t)
 	token := app.login(t)

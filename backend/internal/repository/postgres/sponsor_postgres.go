@@ -27,7 +27,8 @@ func NewSponsorPostgresRepo(pool *pgxpool.Pool) *SponsorPostgresRepo {
 	return &SponsorPostgresRepo{pool: pool}
 }
 
-const sponsorColumns = `id, name, url, show_name, sort_order, logo_path, logo_mime, logo_hash, created_at, updated_at`
+// Logo columns are NULL for a name-only sponsor (migration 000020); they scan as "".
+const sponsorColumns = `id, name, url, show_name, sort_order, COALESCE(logo_path, ''), COALESCE(logo_mime, ''), COALESCE(logo_hash, ''), created_at, updated_at`
 
 func scanSponsor(s scannable) (*domain.Sponsor, error) {
 	var sp domain.Sponsor
@@ -86,7 +87,7 @@ func (r *SponsorPostgresRepo) Create(ctx context.Context, s *domain.Sponsor, aud
 	var id int64
 	err = tx.QueryRow(ctx, `
 		INSERT INTO sponsors (name, url, show_name, sort_order, logo_path, logo_mime, logo_hash, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, NULLIF($5::text, ''), NULLIF($6::text, ''), NULLIF($7::text, ''), $8, $9)
 		RETURNING id
 	`, s.Name, s.URL, s.ShowName, nextOrder, s.LogoPath, s.LogoMIME, s.LogoHash, now, now).Scan(&id)
 	if err != nil {
@@ -107,6 +108,7 @@ func (r *SponsorPostgresRepo) Create(ctx context.Context, s *domain.Sponsor, aud
 		entry.Details["url"] = s.URL
 		entry.Details["showName"] = s.ShowName
 		entry.Details["sortOrder"] = s.SortOrder
+		entry.Details["hasLogo"] = s.HasLogo()
 		if err := insertAudit(ctx, tx, entry); err != nil {
 			return err
 		}
@@ -158,6 +160,7 @@ func (r *SponsorPostgresRepo) Update(ctx context.Context, id int64, patch domain
 
 	oldLogoPath := ""
 	logoReplaced := false
+	logoRemoved := false
 	if patch.LogoPath != nil && patch.LogoMIME != nil && patch.LogoHash != nil {
 		oldLogoPath = existing.LogoPath
 		next.LogoPath = *patch.LogoPath
@@ -165,8 +168,14 @@ func (r *SponsorPostgresRepo) Update(ctx context.Context, id int64, patch domain
 		next.LogoHash = *patch.LogoHash
 		logoReplaced = true
 		changed = true
+	} else if patch.RemoveLogo && existing.HasLogo() {
+		oldLogoPath = existing.LogoPath
+		next.LogoPath, next.LogoMIME, next.LogoHash = "", "", ""
+		logoRemoved = true
+		changed = true
 	}
 	details["logoReplaced"] = logoReplaced
+	details["logoRemoved"] = logoRemoved
 
 	if !changed {
 		return existing, "", nil
@@ -176,7 +185,9 @@ func (r *SponsorPostgresRepo) Update(ctx context.Context, id int64, patch domain
 	next.UpdatedAt = now
 	_, err = tx.Exec(ctx, `
 		UPDATE sponsors
-		SET name = $1, url = $2, show_name = $3, logo_path = $4, logo_mime = $5, logo_hash = $6, updated_at = $7
+		SET name = $1, url = $2, show_name = $3,
+		    logo_path = NULLIF($4::text, ''), logo_mime = NULLIF($5::text, ''), logo_hash = NULLIF($6::text, ''),
+		    updated_at = $7
 		WHERE id = $8
 	`, next.Name, next.URL, next.ShowName, next.LogoPath, next.LogoMIME, next.LogoHash, now, id)
 	if err != nil {

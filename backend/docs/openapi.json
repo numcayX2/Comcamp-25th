@@ -890,7 +890,7 @@
       "post": {
         "tags": ["Sponsors", "Admin Management"],
         "summary": "Admin Create Sponsor",
-        "description": "เพิ่มผู้สนับสนุนใหม่ต่อท้ายลำดับปัจจุบัน (sortOrder = max + 1) รับ multipart/form-data สูงสุด 2 MB ตรวจ magic bytes เฉพาะ JPEG/PNG/WebP (ปฏิเสธ SVG/GIF), ตรวจขนาดภาพจาก header ไม่เกิน 4096×4096 px, ลบ JPEG EXIF, เขียนและ fsync ก่อนบันทึก DB และบันทึก audit sponsor.create ใน transaction เดียวกัน สิทธิ์: admin",
+        "description": "เพิ่มผู้สนับสนุนใหม่ต่อท้ายลำดับปัจจุบัน (sortOrder = max + 1) รับ multipart/form-data สูงสุด 2 MB; logo ไม่บังคับ — ไม่ส่ง part logo = ผู้สนับสนุนแบบชื่ออย่างเดียว (logoUrl = \"\", หน้าแรกแสดงชื่อเป็นตัวหนังสือ) ส่วน part logo ที่ว่างถูกปฏิเสธ; ถ้ามี logo ตรวจ magic bytes เฉพาะ JPEG/PNG/WebP (ปฏิเสธ SVG/GIF), ตรวจขนาดภาพจาก header ไม่เกิน 4096×4096 px, ลบ JPEG EXIF, เขียนและ fsync ก่อนบันทึก DB และบันทึก audit sponsor.create ใน transaction เดียวกัน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -898,12 +898,12 @@
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["name", "logo"],
+                "required": ["name"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1, "maxLength": 120, "description": "ชื่อผู้สนับสนุน (1-120 ตัวอักษร บรรทัดเดียว ไม่มีอักขระควบคุม)" },
                   "url": { "type": "string", "maxLength": 500, "description": "ลิงก์เว็บไซต์ http:// หรือ https:// (เว้นว่างได้)" },
-                  "showName": { "type": "string", "enum": ["true", "false"], "description": "แสดงชื่อใต้โลโก้บนหน้าแรก (ไม่ส่ง = false)" },
-                  "logo": { "type": "string", "format": "binary", "description": "ไฟล์รูปโลโก้ JPG, PNG หรือ WebP สูงสุด 2 MB ไม่เกิน 4096×4096 px" }
+                  "showName": { "type": "string", "enum": ["true", "false"], "description": "แสดงชื่อใต้โลโก้บนหน้าแรก (ไม่ส่ง = false; ไม่มีผลกับผู้สนับสนุนที่ไม่มีโลโก้)" },
+                  "logo": { "type": "string", "format": "binary", "description": "ไม่บังคับ: ไฟล์รูปโลโก้ JPG, PNG หรือ WebP สูงสุด 2 MB ไม่เกิน 4096×4096 px" }
                 }
               }
             }
@@ -951,7 +951,7 @@
       "patch": {
         "tags": ["Sponsors", "Admin Management"],
         "summary": "Admin Update Sponsor",
-        "description": "แก้ไขข้อมูลผู้สนับสนุนบางส่วนหรือแทนที่โลโก้ (ทุกฟิลด์เป็นทางเลือก ฟิลด์ที่ไม่ส่งคงค่าเดิม หากส่ง logo ไฟล์เก่าจะถูกลบหลัง commit) บันทึก audit sponsor.update พร้อม old→new และ logoReplaced ใน transaction เดียวกัน สิทธิ์: admin",
+        "description": "แก้ไขข้อมูลผู้สนับสนุนบางส่วน แทนที่/เพิ่มโลโก้ หรือลบโลโก้ (ทุกฟิลด์เป็นทางเลือก ฟิลด์ที่ไม่ส่งคงค่าเดิม หากส่ง logo หรือ removeLogo=true ไฟล์เก่าจะถูกลบหลัง commit; ส่ง logo พร้อม removeLogo=true → 400 VALIDATION_ERROR) บันทึก audit sponsor.update พร้อม old→new, logoReplaced และ logoRemoved ใน transaction เดียวกัน สิทธิ์: admin",
         "security": [{ "BearerAuth": [] }],
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64", "minimum": 1 } }
@@ -966,7 +966,8 @@
                   "name": { "type": "string", "minLength": 1, "maxLength": 120 },
                   "url": { "type": "string", "maxLength": 500 },
                   "showName": { "type": "string", "enum": ["true", "false"] },
-                  "logo": { "type": "string", "format": "binary" }
+                  "logo": { "type": "string", "format": "binary" },
+                  "removeLogo": { "type": "string", "enum": ["true", "false"], "description": "true = ลบโลโก้ ผู้สนับสนุนกลายเป็นแบบชื่ออย่างเดียว (ห้ามส่งพร้อม logo)" }
                 }
               }
             }
@@ -1899,7 +1900,7 @@
           "name": { "type": "string", "maxLength": 120, "example": "Acme Tech" },
           "url": { "type": "string", "maxLength": 500, "example": "https://acme.example.com" },
           "showName": { "type": "boolean", "example": true },
-          "logoUrl": { "type": "string", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" }
+          "logoUrl": { "type": "string", "description": "\"\" = ผู้สนับสนุนแบบชื่ออย่างเดียว (ไม่มีโลโก้)", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" }
         }
       },
       "PublicSponsorsResponse": {
@@ -1918,7 +1919,7 @@
           "name": { "type": "string", "maxLength": 120, "example": "Acme Tech" },
           "url": { "type": "string", "maxLength": 500, "example": "https://acme.example.com" },
           "showName": { "type": "boolean", "example": true },
-          "logoUrl": { "type": "string", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" },
+          "logoUrl": { "type": "string", "description": "\"\" = ผู้สนับสนุนแบบชื่ออย่างเดียว (ไม่มีโลโก้)", "example": "/api/sponsors/1/logo?v=a1b2c3d4e5f6" },
           "sortOrder": { "type": "integer", "example": 0 },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }

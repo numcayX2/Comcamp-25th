@@ -1714,9 +1714,10 @@
   })();
 
   // Sponsor band (#sponsors, right under the hero). Fetched at boot (GET /api/sponsors is cached
-  // server-side) and revealed only when at least one valid logo arrives; no JS, an error or an empty
-  // list leaves it hidden. Server data goes into the DOM through createElement / textContent /
-  // properties only (never innerHTML).
+  // server-side) and revealed only when at least one valid entry arrives; no JS, an error or an empty
+  // list leaves it hidden. An entry with logoUrl "" is a name-only sponsor (e.g. an individual
+  // donor) and is shown as its name in text. Server data goes into the DOM through createElement /
+  // textContent / properties only (never innerHTML).
   (function initSponsors(){
     var section = $('sponsors');
     var list = section ? section.querySelector('[data-sponsor-list]') : null;
@@ -1767,7 +1768,9 @@
       });
     };
     var buildItem = function(s){
-      if (!s || typeof s.name !== 'string' || typeof s.logoUrl !== 'string' || !LOGO_PATH.test(s.logoUrl)) return null;
+      if (!s || typeof s.name !== 'string' || typeof s.logoUrl !== 'string') return null;
+      var nameOnly = s.logoUrl === '';
+      if (!nameOnly && !LOGO_PATH.test(s.logoUrl)) return null;
       var name = s.name.trim();
       if (!name) return null;
       var href = safeLink(s.url);
@@ -1781,6 +1784,16 @@
         cell.rel = 'noopener noreferrer';
         // One clean accessible name (no "name name" when the caption is shown); it still contains the visible label.
         cell.setAttribute('aria-label', name + ' (เปิดในแท็บใหม่)');
+      }
+      if (nameOnly) {
+        // The name is the mark: it sits in the logo zone, so it lines up with the logos' row.
+        cell.className += ' ed-sponsors__cell--name';
+        var mark = document.createElement('span');
+        mark.className = 'ed-sponsors__wordmark';
+        mark.textContent = name;
+        cell.appendChild(mark);
+        li.appendChild(cell);
+        return li;
       }
       var img = document.createElement('img');
       img.className = 'ed-sponsors__logo';

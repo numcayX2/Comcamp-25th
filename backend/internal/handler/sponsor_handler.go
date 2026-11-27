@@ -46,7 +46,9 @@ func parseSponsorID(raw string) (int64, error) {
 	return id, nil
 }
 
-func parseShowNameValue(vals []string, required bool) (*bool, error) {
+// parseBoolField parses a multipart "true"/"false" field. An absent or empty value yields
+// false when required, otherwise nil (unchanged).
+func parseBoolField(field string, vals []string, required bool) (*bool, error) {
 	if len(vals) == 0 || vals[0] == "" {
 		if required {
 			v := false
@@ -62,7 +64,7 @@ func parseShowNameValue(vals []string, required bool) (*bool, error) {
 		v := false
 		return &v, nil
 	default:
-		return nil, errors.New(`showName must be "true" or "false"`)
+		return nil, fmt.Errorf(`%s must be "true" or "false"`, field)
 	}
 }
 
@@ -152,7 +154,8 @@ func (h *SponsorHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, res)
 }
 
-// AdminCreate handles POST /api/admin/sponsors (multipart/form-data: name, url?, showName?, logo).
+// AdminCreate handles POST /api/admin/sponsors (multipart/form-data: name, url?, showName?, logo?).
+// Omitting the logo part creates a name-only sponsor; an empty logo part is still rejected.
 func (h *SponsorHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetAdminClaims(r.Context())
 	if claims == nil {
@@ -174,40 +177,42 @@ func (h *SponsorHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
 		formVals = r.MultipartForm.Value
 	}
 
-	showNamePtr, err := parseShowNameValue(formVals["showName"], true)
+	showNamePtr, err := parseBoolField("showName", formVals["showName"], true)
 	if err != nil {
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, err.Error())
 		return
 	}
 
-	file, header, err := r.FormFile("logo")
-	if err != nil {
-		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "logo file is required in 'logo' field")
-		return
-	}
-	defer file.Close()
-
-	if header.Size > service.MaxSponsorLogoBytes {
-		response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorLogoTooLarge.Error())
-		return
-	}
-	fileBytes, err := io.ReadAll(io.LimitReader(file, service.MaxSponsorLogoBytes+1))
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorLogoTooLarge.Error())
-			return
-		}
-		response.Internal(w, r, fmt.Errorf("read sponsor logo: %w", err))
-		return
-	}
-
-	created, err := h.sponsorService.Create(r.Context(), service.CreateSponsorRequest{
+	req := service.CreateSponsorRequest{
 		Name:     r.FormValue("name"),
 		URL:      r.FormValue("url"),
 		ShowName: *showNamePtr,
-		LogoData: fileBytes,
-	}, claims.AdminID, middleware.RemoteIP(r))
+	}
+	file, header, err := r.FormFile("logo")
+	if err == nil {
+		defer file.Close()
+		if header.Size > service.MaxSponsorLogoBytes {
+			response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorLogoTooLarge.Error())
+			return
+		}
+		fileBytes, readErr := io.ReadAll(io.LimitReader(file, service.MaxSponsorLogoBytes+1))
+		if readErr != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(readErr, &tooLarge) {
+				response.ErrorCode(w, http.StatusRequestEntityTooLarge, response.CodePayloadTooLarge, service.ErrSponsorLogoTooLarge.Error())
+				return
+			}
+			response.Internal(w, r, fmt.Errorf("read sponsor logo: %w", readErr))
+			return
+		}
+		req.HasLogo = true
+		req.LogoData = fileBytes
+	} else if !errors.Is(err, http.ErrMissingFile) {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, "invalid logo field")
+		return
+	}
+
+	created, err := h.sponsorService.Create(r.Context(), req, claims.AdminID, middleware.RemoteIP(r))
 	if err != nil {
 		writeSponsorError(w, r, err)
 		return
@@ -215,7 +220,8 @@ func (h *SponsorHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, created)
 }
 
-// AdminUpdate handles PATCH /api/admin/sponsors/{id} (multipart/form-data; every field is optional).
+// AdminUpdate handles PATCH /api/admin/sponsors/{id} (multipart/form-data; every field is optional;
+// removeLogo=true turns the sponsor into a name-only sponsor and cannot be sent with a new logo).
 func (h *SponsorHandler) AdminUpdate(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetAdminClaims(r.Context())
 	if claims == nil {
@@ -252,12 +258,18 @@ func (h *SponsorHandler) AdminUpdate(w http.ResponseWriter, r *http.Request) {
 		v := vals[0]
 		req.URL = &v
 	}
-	showNamePtr, err := parseShowNameValue(formVals["showName"], false)
+	showNamePtr, err := parseBoolField("showName", formVals["showName"], false)
 	if err != nil {
 		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, err.Error())
 		return
 	}
 	req.ShowName = showNamePtr
+	removeLogoPtr, err := parseBoolField("removeLogo", formVals["removeLogo"], false)
+	if err != nil {
+		response.ErrorCode(w, http.StatusBadRequest, response.CodeValidation, err.Error())
+		return
+	}
+	req.RemoveLogo = removeLogoPtr != nil && *removeLogoPtr
 
 	file, header, err := r.FormFile("logo")
 	if err == nil {

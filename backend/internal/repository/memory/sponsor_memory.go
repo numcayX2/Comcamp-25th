@@ -101,6 +101,7 @@ func (m *MemorySponsorRepo) Create(ctx context.Context, s *domain.Sponsor, audit
 		entry.Details["url"] = s.URL
 		entry.Details["showName"] = s.ShowName
 		entry.Details["sortOrder"] = s.SortOrder
+		entry.Details["hasLogo"] = s.HasLogo()
 		if err := m.audit.Log(ctx, entry); err != nil {
 			delete(m.data, s.ID)
 			return err
@@ -150,6 +151,7 @@ func (m *MemorySponsorRepo) Update(ctx context.Context, id int64, patch domain.S
 
 	oldLogoPath := ""
 	logoReplaced := false
+	logoRemoved := false
 	if patch.LogoPath != nil && patch.LogoMIME != nil && patch.LogoHash != nil {
 		oldLogoPath = existing.LogoPath
 		next.LogoPath = *patch.LogoPath
@@ -157,8 +159,14 @@ func (m *MemorySponsorRepo) Update(ctx context.Context, id int64, patch domain.S
 		next.LogoHash = *patch.LogoHash
 		logoReplaced = true
 		changed = true
+	} else if patch.RemoveLogo && existing.HasLogo() {
+		oldLogoPath = existing.LogoPath
+		next.LogoPath, next.LogoMIME, next.LogoHash = "", "", ""
+		logoRemoved = true
+		changed = true
 	}
 	details["logoReplaced"] = logoReplaced
+	details["logoRemoved"] = logoRemoved
 
 	if !changed {
 		return &prev, "", nil

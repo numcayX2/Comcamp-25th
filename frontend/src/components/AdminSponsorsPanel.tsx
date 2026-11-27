@@ -143,8 +143,25 @@ function LogoThumb({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+/** Thumb slot for a name-only sponsor: the name as quiet text, never an <img>. */
+function NameThumb({ name }: { name: string }) {
+  return (
+    <span
+      className="flex h-16 w-32 shrink-0 flex-col items-center justify-center rounded-xl border px-2 text-center"
+      style={{ borderColor: RULE, backgroundColor: SURFACE_SUBTLE }}
+    >
+      <span className="line-clamp-2 break-words text-xs font-semibold leading-5" style={{ color: INK_2 }}>
+        {name}
+      </span>
+      <span className="text-[11px] leading-4" style={{ color: INK_3 }}>
+        ชื่ออย่างเดียว
+      </span>
+    </span>
+  );
+}
+
 /**
- * Collapsible /admin panel for the home-page sponsor logos: list in display order, add, edit,
+ * Collapsible /admin panel for the home-page sponsors (logo or name-only): list in display order, add, edit,
  * delete (2-step confirm) and move up/down. Read-only list when `canEdit` is false.
  */
 export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
@@ -157,6 +174,8 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
   const [urlInput, setUrlInput] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  /** Edit only: the current logo is marked for removal (sent as removeLogo=true on save). */
+  const [removeLogo, setRemoveLogo] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -228,6 +247,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     setConfirmDeleteId(null);
     setFieldErrors({});
     clearFile();
+    setRemoveLogo(false);
     if (target === 'new') {
       setFormTarget('new');
       setNameInput('');
@@ -247,6 +267,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     setFormTarget(null);
     setFieldErrors({});
     clearFile();
+    setRemoveLogo(false);
     if (!returnFocus) return;
     if (typeof target === 'number') focusLater(`sponsor-edit-${target}`, 'sponsor-add-button');
     else focusLater('sponsor-add-button');
@@ -261,6 +282,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     }
     setFieldErrors((prev) => ({ ...prev, logo: undefined }));
     setLogoFile(file);
+    setRemoveLogo(false);
   }
 
   /** Validates the form; focuses the first bad field and returns null when anything is invalid. */
@@ -287,8 +309,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
       }
     }
 
-    if (formTarget === 'new' && !logoFile) next.logo = 'กรุณาเลือกไฟล์โลโก้';
-    else if (logoFile) {
+    if (logoFile) {
       const problem = logoProblem(logoFile);
       if (problem) next.logo = problem;
     }
@@ -318,12 +339,11 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
     setNotice(null);
     try {
       if (formTarget === 'new') {
-        if (!logoFile) return;
         const created = await createSponsor(token, {
           name: values.name,
           url: values.url,
           showName: showNameInput,
-          logo: logoFile,
+          logo: logoFile ?? undefined,
         });
         setSponsors((prev) => [...(prev ?? []), created]);
         setNotice({ kind: 'ok', text: `เพิ่ม “${created.name}” แล้ว` });
@@ -336,6 +356,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
           url: values.url,
           showName: showNameInput,
           logo: logoFile ?? undefined,
+          removeLogo: removeLogo && !logoFile,
         });
         setSponsors((prev) => (prev ?? []).map((s) => (s.id === updated.id ? updated : s)));
         setNotice({ kind: 'ok', text: `บันทึก “${updated.name}” แล้ว` });
@@ -409,9 +430,11 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
 
   function renderForm() {
     const isNew = formTarget === 'new';
-    const currentLogo = editing ? sponsorLogoSrc(editing.logoUrl) : null;
+    const hasCurrentLogo = Boolean(editing?.logoUrl);
+    const currentLogo = editing?.logoUrl && !removeLogo ? sponsorLogoSrc(editing.logoUrl) : null;
     const shownPreview = previewUrl ?? currentLogo;
     const previewAlt = nameInput.trim() || editing?.name || 'ตัวอย่างโลโก้';
+    const willHaveLogo = Boolean(logoFile) || (hasCurrentLogo && !removeLogo);
     return (
       <motion.form
         initial={{ opacity: 0, y: -6 }}
@@ -492,26 +515,37 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
           )}
         </div>
 
-        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 self-start text-sm" style={{ color: INK_2 }}>
-          <input
-            type="checkbox"
-            checked={showNameInput}
-            onChange={(e) => setShowNameInput(e.target.checked)}
-            disabled={saving}
-            className="size-4 accent-[var(--color-tech)]"
-          />
-          <span>แสดงชื่อใต้โลโก้</span>
-        </label>
+        <div>
+          <label
+            className={`inline-flex min-h-11 items-center gap-2.5 self-start text-sm ${willHaveLogo ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+            style={{ color: INK_2 }}
+          >
+            <input
+              type="checkbox"
+              checked={showNameInput}
+              onChange={(e) => setShowNameInput(e.target.checked)}
+              disabled={saving || !willHaveLogo}
+              aria-describedby={willHaveLogo ? undefined : 'sponsor-showname-reason'}
+              className="size-4 accent-[var(--color-tech)]"
+            />
+            <span>แสดงชื่อใต้โลโก้</span>
+          </label>
+          {!willHaveLogo && (
+            <p id="sponsor-showname-reason" className="text-xs leading-5" style={{ color: INK_3 }}>
+              ไม่มีโลโก้ — หน้าแรกจะแสดงเป็นชื่ออย่างเดียวอยู่แล้ว
+            </p>
+          )}
+        </div>
 
         <div>
           <p className="mb-2 block text-sm font-semibold" style={{ color: INK }}>
-            {isNew ? 'ไฟล์โลโก้' : 'เปลี่ยนโลโก้ (ไม่บังคับ)'}
+            {isNew ? 'ไฟล์โลโก้ (ไม่บังคับ)' : hasCurrentLogo ? 'เปลี่ยนโลโก้ (ไม่บังคับ)' : 'เพิ่มโลโก้ (ไม่บังคับ)'}
           </p>
           <FileDropzone
             id="sponsor-logo-input"
             accept={LOGO_ACCEPT}
             onFile={onFileChange}
-            label={isNew ? 'เลือกไฟล์โลโก้' : 'เลือกไฟล์โลโก้ใหม่'}
+            label={isNew || !hasCurrentLogo ? 'เลือกไฟล์โลโก้' : 'เลือกไฟล์โลโก้ใหม่'}
             hint="คลิกหรือลากไฟล์มาวาง"
             file={logoFile ? { name: logoFile.name, size: logoFile.size, type: logoFile.type } : null}
             disabled={saving}
@@ -519,7 +553,11 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
           />
           <p id="sponsor-logo-help" className="mt-1.5 text-xs leading-5" style={{ color: INK_3 }}>
             PNG, JPG หรือ WebP ไม่เกิน 2 MB และไม่เกิน 4096×4096 px (ไม่รับ SVG)
-            {isNew ? '' : ' ถ้าไม่เลือกไฟล์จะใช้โลโก้เดิม'}
+            {isNew || !hasCurrentLogo
+              ? ' ไม่ใส่โลโก้ก็ได้ — หน้าแรกจะแสดงเป็นชื่ออย่างเดียว (เหมาะกับผู้บริจาคส่วนบุคคล)'
+              : removeLogo
+                ? ''
+                : ' ถ้าไม่เลือกไฟล์จะใช้โลโก้เดิม'}
           </p>
           {fieldErrors.logo && (
             <p id="sponsor-logo-error" className="mt-1 text-sm leading-6" style={{ color: DANGER }}>
@@ -532,6 +570,37 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
               <span className="text-xs leading-5" style={{ color: INK_3 }}>
                 {previewUrl ? 'ตัวอย่างไฟล์ใหม่' : 'โลโก้ปัจจุบัน'}
               </span>
+            </div>
+          )}
+          {hasCurrentLogo && !logoFile && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {removeLogo ? (
+                <>
+                  <p className="text-sm leading-6" style={{ color: INK_2 }}>
+                    จะลบโลโก้และแสดงเป็นชื่ออย่างเดียวเมื่อกดบันทึก
+                  </p>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setRemoveLogo(false)}
+                    className={PILL_GHOST}
+                    style={{ borderColor: RULE, color: INK }}
+                  >
+                    เลิกลบโลโก้
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setRemoveLogo(true)}
+                  className={PILL_DANGER}
+                  style={{ borderColor: DANGER, color: DANGER }}
+                >
+                  <Trash2 aria-hidden="true" size={16} strokeWidth={1.5} />
+                  ลบโลโก้ (แสดงเป็นชื่ออย่างเดียว)
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -624,7 +693,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
 
           {sponsors && sponsors.length > 0 && (
             <LayoutGroup id={listGroupId}>
-            <ol className="flex flex-col border-t" style={{ borderColor: RULE }} aria-label="ลำดับโลโก้บนหน้าแรก">
+            <ol className="flex flex-col border-t" style={{ borderColor: RULE }} aria-label="ลำดับผู้สนับสนุนบนหน้าแรก">
               {sponsors.map((s, i) => {
                 const confirming = confirmDeleteId === s.id;
                 const deleting = deletingId === s.id;
@@ -646,7 +715,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
                         >
                           {i + 1}
                         </span>
-                        <LogoThumb src={sponsorLogoSrc(s.logoUrl)} alt={s.name} />
+                        {s.logoUrl ? <LogoThumb src={sponsorLogoSrc(s.logoUrl)} alt={s.name} /> : <NameThumb name={s.name} />}
                         <div className="min-w-0 flex-1">
                           <p className="break-words text-sm font-semibold leading-7" style={{ color: INK }}>
                             <span className="sr-only">ลำดับที่ {i + 1}: </span>
@@ -669,7 +738,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
                             </p>
                           )}
                           <p className="text-xs leading-6" style={{ color: INK_3 }}>
-                            แสดงชื่อใต้โลโก้: {s.showName ? 'เปิด' : 'ปิด'}
+                            {s.logoUrl ? `แสดงชื่อใต้โลโก้: ${s.showName ? 'เปิด' : 'ปิด'}` : 'แสดงเป็นชื่ออย่างเดียว'}
                           </p>
                         </div>
                       </div>
@@ -755,7 +824,7 @@ export function AdminSponsorsPanel({ token, canEdit, onAuthError }: Props) {
                               <span className="min-w-0 break-words">ยืนยันลบ “{s.name}”?</span>
                             </p>
                             <p className="mt-1 text-sm leading-6" style={{ color: INK_2 }}>
-                              โลโก้จะหายจากหน้าแรกทันทีและลบไฟล์ออกจากเซิร์ฟเวอร์ กู้คืนไม่ได้
+                              {s.logoUrl ? 'โลโก้จะหายจากหน้าแรกทันทีและลบไฟล์ออกจากเซิร์ฟเวอร์ กู้คืนไม่ได้' : 'ชื่อจะหายจากหน้าแรกทันที กู้คืนไม่ได้'}
                             </p>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <button

@@ -107,7 +107,7 @@ func TestSponsorService_CacheSingleflightAndInvalidation(t *testing.T) {
 	ctx := context.Background()
 
 	first, err := svc.Create(ctx, service.CreateSponsorRequest{
-		Name: "Alpha Sponsor", URL: "https://alpha.example.com", ShowName: true, LogoData: testSponsorPNG(t, 4, 4),
+		Name: "Alpha Sponsor", URL: "https://alpha.example.com", ShowName: true, HasLogo: true, LogoData: testSponsorPNG(t, 4, 4),
 	}, 1, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -213,7 +213,7 @@ func TestSponsorService_TwoPhaseWriteRollbackRemovesNewFile(t *testing.T) {
 
 	// Create fails in DB -> written logo file must be cleaned up immediately.
 	if _, err := svc.Create(ctx, service.CreateSponsorRequest{
-		Name: "Fail Co", LogoData: testSponsorPNG(t, 4, 4),
+		Name: "Fail Co", HasLogo: true, LogoData: testSponsorPNG(t, 4, 4),
 	}, 1, "127.0.0.1"); err == nil {
 		t.Fatal("expected create error")
 	}
@@ -228,7 +228,7 @@ func TestSponsorService_TwoPhaseWriteRollbackRemovesNewFile(t *testing.T) {
 	// Succeed create, then fail update with new logo -> new file deleted, old file kept.
 	repo.createErr = nil
 	created, err := svc.Create(ctx, service.CreateSponsorRequest{
-		Name: "Keep Co", LogoData: testSponsorPNG(t, 4, 4),
+		Name: "Keep Co", HasLogo: true, LogoData: testSponsorPNG(t, 4, 4),
 	}, 1, "127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestSponsorService_JPEGExifStrippedAndFormatsAccepted(t *testing.T) {
 	}
 
 	created, err := svc.Create(ctx, service.CreateSponsorRequest{
-		Name: "JPEG Sponsor", LogoData: jpegWithExif,
+		Name: "JPEG Sponsor", HasLogo: true, LogoData: jpegWithExif,
 	}, 1, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("create jpeg: %v", err)
@@ -289,7 +289,7 @@ func TestSponsorService_JPEGExifStrippedAndFormatsAccepted(t *testing.T) {
 
 	// WebP is also accepted.
 	webpSponsor, err := svc.Create(ctx, service.CreateSponsorRequest{
-		Name: "WebP Sponsor", LogoData: testSponsorWebP(t),
+		Name: "WebP Sponsor", HasLogo: true, LogoData: testSponsorWebP(t),
 	}, 1, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("create webp: %v", err)

@@ -85,7 +85,7 @@ chmod +x deploy/postgres-init/01-run-up-migrations.sh
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000019`):
+ตรวจสอบสถานะ Healthcheck และ Log การรัน Migration (`000001`–`000020`):
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
@@ -291,7 +291,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${EDGE_HTTP_PORT:-808
 > ```
 > ถ้า `nginx -t` ไม่ผ่าน ห้ามสร้าง `edge-proxy` ใหม่ (container เดิมยังทำงานต่อด้วย config เก่า)
 
-> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`, `000018`, `000019`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
+> **ถ้าการอัปเดตมี Migration ใหม่ (เช่น `000011`, `000013`, `000014`, `000015`, `000016`, `000017`, `000018`, `000019`, `000020`) ห้ามใช้คำสั่งด้านบนตรงๆ** ให้ทำตามบล็อกของ migration นั้นด้านล่าง เพราะ `docker-entrypoint-initdb.d` ไม่รัน Migration บน Volume ที่มีข้อมูลอยู่แล้ว
 
 ### Phase 5 deploy (migration `000011`)
 
@@ -600,6 +600,40 @@ curl -fsS http://127.0.0.1:6000/api/health
 - หลัง deploy: เปิด `/sponsor` → เลือก `เงิน` ต้องเห็นช่อง "สลิปโอนเงิน" ใต้จำนวนเงินทั้งแบบกรอกบนเว็บและแนบแบบฟอร์ม; ส่งทดสอบ 1 ครั้งพร้อมรูปสลิป แล้วดูใน `/admin` → ผู้สนับสนุน → ผู้สนใจสนับสนุน ว่ามีป้าย `แนบสลิป` และปุ่ม `ดูสลิป` เปิดรูปได้; กด `สร้างรายการบริจาค` แล้วรายการใหม่ต้องมีไฟล์สลิปแนบอยู่ (ลบรายการทดสอบทั้งสองฝั่งทิ้งได้ ไฟล์ถูกลบตาม)
 - **Build ใหม่บน Schema เก่า:** แท็บผู้สนับสนุนใน `/admin` และการส่งฟอร์มที่ `/sponsor` ตอบ `500` (ระบบรับสมัครทำงานปกติ) — แก้โดยรันข้อ 2
 - **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000019_sponsor_inquiry_slip.down.sql` (ลบ 4 คอลัมน์ — ไฟล์ `inquiry-slip-*` ใน `UPLOAD_DIR/sponsor-docs` ยังอยู่ ลบเองถ้าไม่ต้องการ; สลิปที่คัดลอกไปเป็นไฟล์ของรายการบริจาคแล้วไม่กระทบ) หมายเหตุ: backend รุ่นก่อนหน้ารับเงินผ่าน JSON โดยไม่มีสลิป
+
+### Migration `000020` (ผู้สนับสนุนแบบไม่มีโลโก้ — แสดงเป็นชื่ออย่างเดียว)
+
+`000020_sponsor_logo_optional.up.sql` **ไม่ลบข้อมูล** และรันซ้ำได้: ให้คอลัมน์ `logo_path`, `logo_mime`, `logo_hash` ของ `sponsors` เป็น `NULL` ได้ พร้อม `CHECK sponsors_logo_all_or_none` (มีครบทั้ง 3 ค่า หรือว่างทั้ง 3) — แอดมินเพิ่มผู้สนับสนุนโดยไม่อัปโหลดโลโก้ได้ (เช่น ผู้บริจาคส่วนบุคคล) และหน้าแรกแสดงเป็นชื่อตัวหนังสือในแถบ `ขอบคุณผู้สนับสนุน`; ลบโลโก้ของรายการเดิมได้ (`removeLogo`) ไฟล์โลโก้ถูกลบหลัง commit; โลโก้เดิมทุกรายการไม่เปลี่ยน
+
+```bash
+cd ~/comcamp25
+git pull --ff-only origin main
+set -a; . ./.env.prod; set +a
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+B="$HOME/cc25-backups/db"
+
+# 1. สำรองฐานข้อมูลก่อนเสมอ — ถ้าคำสั่งใดล้มเหลว ห้ามไปข้อ 2
+mkdir -p "$B"
+F="$B/cc25_db_pre000020_$(date +%Y%m%d_%H%M%S).dump"
+$C exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -F c > "$F"
+chmod 600 "$F"; ls -l "$F"
+$C exec -T db pg_restore -l < "$F" | head
+
+# 2. รัน 000020 up ขณะ backend เดิมยังทำงาน
+$C exec -T db psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < backend/migrations/000020_sponsor_logo_optional.up.sql
+
+# 3. ตรวจ: ต้องได้ 3 บรรทัดลงท้าย |YES (logo_hash, logo_mime, logo_path) และ 1 บรรทัด sponsors_logo_all_or_none
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -Atc "select column_name, is_nullable from information_schema.columns where table_name = 'sponsors' and column_name like 'logo\_%' order by 1"
+$C exec db psql -U "$DB_USER" -d "$DB_NAME" -Atc "select conname from pg_constraint where conname = 'sponsors_logo_all_or_none'"
+
+# 4. Build และเปิด backend + frontend ตัวใหม่
+$C up -d --build backend frontend
+curl -fsS http://127.0.0.1:6000/api/health
+```
+
+- หลัง deploy: `/admin` → ผู้สนับสนุน → แท็บ `ผู้สนับสนุนบนหน้าแรก` → `เพิ่มผู้สนับสนุน` กรอกเฉพาะชื่อ (ไม่เลือกไฟล์) → หน้าแรกต้องเห็นชื่อเป็นตัวหนังสือในแถวเดียวกับโลโก้ (ลบรายการทดสอบทิ้งหลังตรวจ) — **ขอความยินยอมจากผู้บริจาคก่อนแสดงชื่อบุคคลเสมอ**
+- **Build ใหม่บน Schema เก่า:** รายการที่มีโลโก้ทำงานปกติ แต่การเพิ่มผู้สนับสนุนแบบไม่มีโลโก้/ลบโลโก้ตอบ `500` — แก้โดยรันข้อ 2
+- **ย้อนกลับ:** deploy backend รุ่นก่อนหน้าก่อน แล้วจึงรัน `000020_sponsor_logo_optional.down.sql` — **ลบผู้สนับสนุนที่ไม่มีโลโก้ทิ้ง** (schema เดิมเก็บไม่ได้ และ backend รุ่นก่อนหน้าอ่านรายการที่ไม่มีโลโก้ไม่ได้ — แถบผู้สนับสนุนจะหายจนกว่าจะรัน down) แล้วจึงคืน `NOT NULL`
 
 ### แทนไฟล์ใบขออนุญาตผู้ปกครอง (`parent-consent.pdf`)
 

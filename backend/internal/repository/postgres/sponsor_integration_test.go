@@ -109,3 +109,39 @@ func TestSponsorPostgres_Lifecycle(t *testing.T) {
 		t.Fatalf("list after delete: %v %+v", err, rest)
 	}
 }
+
+// Name-only sponsors (migration 000020): logo columns are stored as NULL and read back as "",
+// a logo can be added and removed again, and a partial logo is rejected by the schema.
+func TestSponsorPostgres_NameOnly(t *testing.T) {
+	repo, _ := setupSponsorRepo(t)
+	ctx := context.Background()
+
+	s := &domain.Sponsor{Name: "คุณสมชาย ใจดี"}
+	if err := repo.Create(ctx, s, nil); err != nil {
+		t.Fatalf("create name-only (is migration 000020 applied?): %v", err)
+	}
+	got, err := repo.GetByID(ctx, s.ID)
+	if err != nil || got.HasLogo() || got.LogoMIME != "" || got.LogoHash != "" {
+		t.Fatalf("name-only read back: %v %+v", err, got)
+	}
+
+	partial := &domain.Sponsor{Name: "Partial", LogoPath: "sponsors/p.png"}
+	if err := repo.Create(ctx, partial, nil); err == nil {
+		t.Fatal("a logo path without mime/hash must be rejected by the schema")
+	}
+
+	path, mime, hash := "sponsors/s.png", "image/png", strings.Repeat("c", 64)
+	withLogo, oldPath, err := repo.Update(ctx, s.ID, domain.SponsorPatch{LogoPath: &path, LogoMIME: &mime, LogoHash: &hash}, nil)
+	if err != nil || oldPath != "" || withLogo.LogoPath != path || withLogo.LogoHash != hash {
+		t.Fatalf("add logo: %v old=%q %+v", err, oldPath, withLogo)
+	}
+
+	removed, oldPath, err := repo.Update(ctx, s.ID, domain.SponsorPatch{RemoveLogo: true}, nil)
+	if err != nil || oldPath != path || removed.HasLogo() {
+		t.Fatalf("remove logo: %v old=%q %+v", err, oldPath, removed)
+	}
+	list, err := repo.List(ctx)
+	if err != nil || len(list) != 1 || list[0].HasLogo() || list[0].LogoHash != "" {
+		t.Fatalf("list after removal: %v %+v", err, list)
+	}
+}

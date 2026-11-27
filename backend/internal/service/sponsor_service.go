@@ -80,22 +80,26 @@ type AdminSponsorsResponse struct {
 	Sponsors []AdminSponsorEntry `json:"sponsors"`
 }
 
-// CreateSponsorRequest is the validated input to SponsorService.Create.
+// CreateSponsorRequest is the validated input to SponsorService.Create. HasLogo is false for a
+// name-only sponsor (no logo part at all); an empty logo part (HasLogo with no bytes) is rejected.
 type CreateSponsorRequest struct {
 	Name     string
 	URL      string
 	ShowName bool
+	HasLogo  bool
 	LogoData []byte
 }
 
 // UpdateSponsorRequest is the partial input to SponsorService.Update. Nil pointer fields are
-// left unchanged; HasLogo distinguishes an omitted logo file from an empty upload.
+// left unchanged; HasLogo distinguishes an omitted logo file from an empty upload. RemoveLogo
+// turns the sponsor into a name-only sponsor and cannot be combined with a new logo.
 type UpdateSponsorRequest struct {
-	Name     *string
-	URL      *string
-	ShowName *bool
-	HasLogo  bool
-	LogoData []byte
+	Name       *string
+	URL        *string
+	ShowName   *bool
+	HasLogo    bool
+	LogoData   []byte
+	RemoveLogo bool
 }
 
 // SponsorLogoFile describes a validated sponsor logo ready to stream on GET /api/sponsors/{id}/logo.
@@ -203,9 +207,9 @@ func (s *SponsorService) ListAdmin(ctx context.Context) (*AdminSponsorsResponse,
 	return &AdminSponsorsResponse{Sponsors: entries}, nil
 }
 
-// Create validates input and logo, writes the logo file exclusively and fsyncs it before the DB
-// transaction, inserts the sponsor with an audit row in the same transaction, and removes the
-// written file if the transaction fails.
+// Create validates input and the optional logo, writes the logo file exclusively and fsyncs it
+// before the DB transaction, inserts the sponsor with an audit row in the same transaction, and
+// removes the written file if the transaction fails. Without a logo the sponsor is name-only.
 func (s *SponsorService) Create(ctx context.Context, req CreateSponsorRequest, adminID int64, ip string) (*AdminSponsorEntry, error) {
 	name, err := validateSponsorName(req.Name)
 	if err != nil {
@@ -215,25 +219,28 @@ func (s *SponsorService) Create(ctx context.Context, req CreateSponsorRequest, a
 	if err != nil {
 		return nil, err
 	}
-	logoBytes, mimeType, ext, logoHash, err := prepareSponsorLogo(req.LogoData)
-	if err != nil {
-		return nil, err
-	}
-
-	fileName := uuid.NewString() + ext
-	destPath := filepath.Join(s.sponsorDir, fileName)
-	if err := writeFileExclusive(destPath, logoBytes); err != nil {
-		return nil, fmt.Errorf("save sponsor logo: %w", err)
-	}
 
 	sp := &domain.Sponsor{
 		Name:     name,
 		URL:      link,
 		ShowName: req.ShowName,
-		LogoPath: "sponsors/" + fileName,
-		LogoMIME: mimeType,
-		LogoHash: logoHash,
 	}
+	destPath := ""
+	if req.HasLogo {
+		logoBytes, mimeType, ext, logoHash, err := prepareSponsorLogo(req.LogoData)
+		if err != nil {
+			return nil, err
+		}
+		fileName := uuid.NewString() + ext
+		destPath = filepath.Join(s.sponsorDir, fileName)
+		if err := writeFileExclusive(destPath, logoBytes); err != nil {
+			return nil, fmt.Errorf("save sponsor logo: %w", err)
+		}
+		sp.LogoPath = "sponsors/" + fileName
+		sp.LogoMIME = mimeType
+		sp.LogoHash = logoHash
+	}
+
 	audit := &domain.AuditEntry{
 		AdminID:    &adminID,
 		Action:     domain.AuditSponsorCreate,
@@ -242,7 +249,9 @@ func (s *SponsorService) Create(ctx context.Context, req CreateSponsorRequest, a
 		IPAddress:  ip,
 	}
 	if err := s.repo.Create(ctx, sp, audit); err != nil {
-		_ = os.Remove(destPath)
+		if destPath != "" {
+			_ = os.Remove(destPath)
+		}
 		return nil, fmt.Errorf("create sponsor: %w", err)
 	}
 
@@ -251,9 +260,9 @@ func (s *SponsorService) Create(ctx context.Context, req CreateSponsorRequest, a
 	return &entry, nil
 }
 
-// Update validates any provided fields (and optional replacement logo), writes a replacement logo
-// before the DB transaction, applies the update + audit row atomically, removes the new file on tx
-// failure, and deletes the replaced file only after a successful commit.
+// Update validates any provided fields (and an optional replacement logo or logo removal), writes a
+// replacement logo before the DB transaction, applies the update + audit row atomically, removes the
+// new file on tx failure, and deletes the replaced/removed file only after a successful commit.
 func (s *SponsorService) Update(ctx context.Context, id int64, req UpdateSponsorRequest, adminID int64, ip string) (*AdminSponsorEntry, error) {
 	if id <= 0 {
 		return nil, ErrSponsorNotFound
@@ -278,6 +287,9 @@ func (s *SponsorService) Update(ctx context.Context, id int64, req UpdateSponsor
 		v := *req.ShowName
 		patch.ShowName = &v
 	}
+	if req.RemoveLogo && req.HasLogo {
+		return nil, newValidationError("send either a new logo or removeLogo, not both")
+	}
 
 	var (
 		logoBytes []byte
@@ -293,7 +305,7 @@ func (s *SponsorService) Update(ctx context.Context, id int64, req UpdateSponsor
 		}
 	}
 
-	if patch.Name == nil && patch.URL == nil && patch.ShowName == nil && !req.HasLogo {
+	if patch.Name == nil && patch.URL == nil && patch.ShowName == nil && !req.HasLogo && !req.RemoveLogo {
 		existing, err := s.repo.GetByID(ctx, id)
 		if err != nil {
 			return nil, sponsorNotFoundOr(err)
@@ -320,6 +332,7 @@ func (s *SponsorService) Update(ctx context.Context, id int64, req UpdateSponsor
 		patch.LogoMIME = &mimeType
 		patch.LogoHash = &logoHash
 	}
+	patch.RemoveLogo = req.RemoveLogo
 
 	audit := &domain.AuditEntry{
 		AdminID:    &adminID,
@@ -366,7 +379,9 @@ func (s *SponsorService) Delete(ctx context.Context, id int64, adminID int64, ip
 	}
 
 	s.InvalidatePublicCache()
-	s.removeLogoFile(deleted.LogoPath)
+	if deleted.HasLogo() {
+		s.removeLogoFile(deleted.LogoPath)
+	}
 	return nil
 }
 
@@ -411,7 +426,7 @@ func (s *SponsorService) Reorder(ctx context.Context, ids []int64, adminID int64
 }
 
 // OpenLogo resolves the sponsor's logo path strictly from the DB logo_path and verifies it stays
-// inside UPLOAD_DIR/sponsors/.
+// inside UPLOAD_DIR/sponsors/. A name-only sponsor has no logo and returns ErrSponsorNotFound.
 func (s *SponsorService) OpenLogo(ctx context.Context, id int64) (*SponsorLogoFile, error) {
 	if id <= 0 {
 		return nil, ErrSponsorNotFound
@@ -419,6 +434,9 @@ func (s *SponsorService) OpenLogo(ctx context.Context, id int64) (*SponsorLogoFi
 	sp, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, sponsorNotFoundOr(err)
+	}
+	if !sp.HasLogo() {
+		return nil, ErrSponsorNotFound
 	}
 	if _, ok := allowedSponsorLogoTypes[sp.LogoMIME]; !ok {
 		return nil, ErrSponsorNotFound
@@ -556,12 +574,16 @@ func validateSponsorURL(raw string) (string, error) {
 	return u, nil
 }
 
-func sponsorLogoURL(id int64, logoHash string) string {
-	v := logoHash
+// sponsorLogoURL is the cache-busted public logo URL, or "" for a name-only sponsor.
+func sponsorLogoURL(s *domain.Sponsor) string {
+	if !s.HasLogo() {
+		return ""
+	}
+	v := s.LogoHash
 	if len(v) > 12 {
 		v = v[:12]
 	}
-	return fmt.Sprintf("/api/sponsors/%d/logo?v=%s", id, v)
+	return fmt.Sprintf("/api/sponsors/%d/logo?v=%s", s.ID, v)
 }
 
 func toPublicSponsor(s *domain.Sponsor) PublicSponsorEntry {
@@ -570,7 +592,7 @@ func toPublicSponsor(s *domain.Sponsor) PublicSponsorEntry {
 		Name:     s.Name,
 		URL:      s.URL,
 		ShowName: s.ShowName,
-		LogoURL:  sponsorLogoURL(s.ID, s.LogoHash),
+		LogoURL:  sponsorLogoURL(s),
 	}
 }
 
@@ -580,7 +602,7 @@ func toAdminSponsor(s *domain.Sponsor) AdminSponsorEntry {
 		Name:      s.Name,
 		URL:       s.URL,
 		ShowName:  s.ShowName,
-		LogoURL:   sponsorLogoURL(s.ID, s.LogoHash),
+		LogoURL:   sponsorLogoURL(s),
 		SortOrder: s.SortOrder,
 		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: s.UpdatedAt.UTC().Format(time.RFC3339),

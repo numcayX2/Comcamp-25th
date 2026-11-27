@@ -1281,7 +1281,7 @@ export interface Sponsor {
   name: string;
   url: string;
   showName: boolean;
-  /** Same-origin `/api/sponsors/:id/logo?v=…` path (prefix with API_BASE origin when cross-origin). */
+  /** Same-origin `/api/sponsors/:id/logo?v=…` path (prefix with API_BASE origin when cross-origin), or '' for a name-only sponsor. */
   logoUrl: string;
 }
 
@@ -1291,12 +1291,14 @@ export interface AdminSponsor extends Sponsor {
   updatedAt: string;
 }
 
-/** Fields for create/update; `logo` is required on create, optional (= keep) on update. */
+/** Fields for create/update; `logo` is optional on create (omit = name-only) and on update (= keep). */
 export interface SponsorPayload {
   name?: string;
   url?: string;
   showName?: boolean;
   logo?: File | Blob | null;
+  /** Update only: clear the logo (sponsor becomes name-only). Never combine with `logo`. */
+  removeLogo?: boolean;
 }
 
 export const SPONSOR_LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -1317,8 +1319,8 @@ function pickSponsor(raw: unknown): Sponsor | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'number' || typeof r.name !== 'string' || typeof r.logoUrl !== 'string') return null;
-  // The logo is always served by our API; refuse anything that is not a same-API path.
-  if (!/^\/api\/sponsors\/\d+\/logo(\?v=[0-9a-f]+)?$/.test(r.logoUrl)) return null;
+  // The logo is always served by our API ('' = name-only); refuse anything else.
+  if (r.logoUrl !== '' && !/^\/api\/sponsors\/\d+\/logo(\?v=[0-9a-f]+)?$/.test(r.logoUrl)) return null;
   return { id: r.id, name: r.name, url: safeSponsorUrl(r.url), showName: r.showName === true, logoUrl: r.logoUrl };
 }
 
@@ -1358,6 +1360,7 @@ async function sponsorMultipart(token: string, path: string, method: 'POST' | 'P
   if (p.url !== undefined) form.append('url', p.url);
   if (p.showName !== undefined) form.append('showName', p.showName ? 'true' : 'false');
   if (p.logo) form.append('logo', p.logo);
+  if (p.removeLogo === true) form.append('removeLogo', 'true');
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
@@ -1377,8 +1380,8 @@ async function sponsorMultipart(token: string, path: string, method: 'POST' | 'P
   }
 }
 
-/** POST /admin/sponsors (multipart). PNG/JPG/WebP ≤ 2 MB; SVG is refused by the server. */
-export function createSponsor(token: string, p: SponsorPayload & { name: string; logo: File | Blob }): Promise<AdminSponsor> {
+/** POST /admin/sponsors (multipart). Logo optional (PNG/JPG/WebP ≤ 2 MB; SVG refused); omit for a name-only sponsor. */
+export function createSponsor(token: string, p: SponsorPayload & { name: string; logo?: File | Blob }): Promise<AdminSponsor> {
   return sponsorMultipart(token, '/admin/sponsors', 'POST', p);
 }
 
