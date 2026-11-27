@@ -379,7 +379,6 @@ export function Receipt({
           คือกุญแจส่วนตัวของน้องสำหรับหน้าตรวจสอบสถานะ ใช้ส่งสลิปและจัดการใบสมัคร แนะนำให้คัดลอกหรือแคปหน้าจอเก็บไว้
           ระบบส่งรหัสนี้ไปทางอีเมลด้วย ส่วนการค้นหาด้วยเบอร์โทรจะแสดงเพียงสถานะโดยย่อเท่านั้น
         </p>
-        <p className="rw-keep rw-keep--quiet">ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / จดหมายขยะ หรือแท็บ Promotions (Gmail)</p>
       </section>
 
       <section className="rw-block" aria-labelledby="rw-pay-title">
@@ -479,6 +478,20 @@ export function Receipt({
         </article>
       </section>
 
+      {DOCS_READY && (
+        <section className="rw-block" aria-labelledby="rw-consent-title">
+          <h3 id="rw-consent-title" className="rw-block__title">ใบขออนุญาตผู้ปกครอง</h3>
+          <p className="rw-keep">{PARENT_CONSENT_NOTE}</p>
+          <div className="rw-actions">
+            <a href={PARENT_CONSENT_PDF} download={PARENT_CONSENT_FILENAME} className="rw-btn rw-btn--ghost rw-btn--doc">
+              <FileDown size={18} strokeWidth={1.5} aria-hidden="true" />
+              ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
+            </a>
+          </div>
+          <p className="rw-keep rw-keep--quiet">{PARENT_CONSENT_WHERE}</p>
+        </section>
+      )}
+
       <SlipBlock appId={appId} slip={slip} appStatus={appStatus} synced={synced} onUploaded={setSlip} />
 
       {slipLocksWithdraw && (
@@ -533,21 +546,10 @@ export function Receipt({
             ไปหน้าตรวจสอบสถานะ
             <ArrowRight size={18} strokeWidth={1.5} aria-hidden="true" />
           </a>
-          {DOCS_READY && (
-            <a href={PARENT_CONSENT_PDF} download={PARENT_CONSENT_FILENAME} className="rw-btn rw-btn--ghost rw-btn--doc">
-              <FileDown size={18} strokeWidth={1.5} aria-hidden="true" />
-              ดาวน์โหลดใบขออนุญาตผู้ปกครอง (PDF)
-            </a>
-          )}
           <a href={FB_URL} className="rw-textlink" target="_blank" rel="noopener noreferrer">
             เพจ Facebook โครงการ
           </a>
         </div>
-        {DOCS_READY && (
-          <p className="rw-doc-note">
-            {PARENT_CONSENT_NOTE} {PARENT_CONSENT_WHERE}
-          </p>
-        )}
       </section>
 
       <section className="rw-block" aria-labelledby="rw-camp-title">

@@ -43,7 +43,6 @@ export function SlipUploadPanel({
   disabled,
   onUploaded,
   submitLabel = 'ส่งสลิป',
-  deferLink,
 }: {
   appId: string;
   /** What the server knows: null = no slip yet. */
@@ -52,8 +51,6 @@ export function SlipUploadPanel({
   disabled?: boolean;
   onUploaded: (status: SlipStatus, message: string, source: ApiSource) => void;
   submitLabel?: string;
-  /** Quiet link under the submit button, e.g. "send it later on /status". */
-  deferLink?: { href: string; label: string };
 }) {
   const uid = useId();
   const ids = {
@@ -432,11 +429,6 @@ export function SlipUploadPanel({
             {submitError && (
               <p id={ids.subErr} className="su-msg su-msg--err" role="alert">
                 {submitError}
-              </p>
-            )}
-            {deferLink && (
-              <p className="su-defer">
-                <a href={deferLink.href}>{deferLink.label}</a>
               </p>
             )}
           </div>

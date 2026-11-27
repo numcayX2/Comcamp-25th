@@ -292,21 +292,6 @@
   transition: transform 180ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
-.su-defer { margin-top: 12px; font-size: 0.9375rem; line-height: 1.7; }
-.su-defer a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: var(--su-ink-2);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  text-decoration-color: var(--su-line);
-  transition: color var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1)), outline-offset var(--dur-fast, .16s) var(--ease-out, cubic-bezier(.2, .8, .2, 1));
-}
-@media (hover: hover) and (pointer: fine) {
-  .su-defer a:hover { color: var(--su-ink); text-decoration-color: var(--su-ink); }
-}
-
 /* ---------- Lightbox: edge-to-edge image, no card (top-layer @starting-style transitions) ---------- */
 .su-lightbox {
   position: fixed;
